@@ -198,7 +198,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Cast { target, value } => {
 				let cast = match &target.0 {
-					Expr::Ident(name) => self.cast_call(name, std::slice::from_ref(&**value), expr.1)?,
+					Expr::Ident(name) => {
+						let name = self.type_params.get(name).map_or(name.clone(), Typ::to_string);
+						self.cast_call(&name, std::slice::from_ref(&**value), expr.1)?
+					}
 					_ => None,
 				};
 				cast.ok_or_else(|| {

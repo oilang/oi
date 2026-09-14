@@ -191,6 +191,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(())
 	}
 
+	fn parse_str(&mut self, val: Value, out: Typ) -> Result<TypedVal, Diagnostic> {
+		let def = self.generic_fns[role::PARSE_INT].clone();
+		let subst = HashMap::from([(def.type_params[0].name.clone(), out)]);
+		let sig = self.declare_instance(role::PARSE_INT, &def, subst)?;
+		Ok(self.emit_call(&sig, &[val]))
+	}
+
 	// A numeric cast builtin.
 	pub(super) fn cast_call(
 		&mut self,
@@ -294,9 +301,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if let Some(target) = int_cast_width('i', name) {
 			let (val, typ) = self.cast_operand(name, args, span)?;
-			if typ == Typ::Str && target == 32 {
-				let sig = self.funcs[role::PARSE_INT].clone();
-				return Ok(Some(self.emit_call(&sig, &[val])));
+			if typ == Typ::Str {
+				return Ok(Some(self.parse_str(val, Typ::Int(target))?));
 			}
 			let (val, typ) = self.enum_as_backing(val, typ, args[0].1)?;
 			let target_cl = cl_type(&Typ::Int(target), self.int);
@@ -325,6 +331,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if let Some(target) = int_cast_width('u', name) {
 			let (val, typ) = self.cast_operand(name, args, span)?;
+			if typ == Typ::Str {
+				return Ok(Some(self.parse_str(val, Typ::UInt(target))?));
+			}
 			let (val, typ) = self.enum_as_backing(val, typ, args[0].1)?;
 			let target_cl = cl_type(&Typ::UInt(target), self.int);
 			let out = match &typ {

@@ -134,10 +134,20 @@ is_space :: fn(x: u8) bool {
 	x == 32 || (x >= 9 && x <= 13)
 }
 
-## Parse an integer.
-pub parse_int :: fn(s: string) ?int {
-	if s.starts_with("-") { return -digits(s[1..])? }
-	digits(s)
+## Parse an integer of any width.
+pub parse_int[T] :: fn(s: string) ?T {
+	neg :: s.starts_with("-")
+	digits :: if neg { s[1..] } else { s }
+	if digits.len == 0 { return }
+	out: T = 0
+	loop c in digits {
+		d :: int.(c) - 48
+		if d < 0 || d > 9 { return }
+		n :: if neg { out * 10 - T.(d) } else { out * 10 + T.(d) }
+		if n / 10 != out { return }
+		out = n
+	}
+	out
 }
 
 ## Parse a float.
@@ -159,17 +169,6 @@ float_digits :: fn(s: string) ?float {
 		d :: int.(c) - 48
 		if d < 0 || d > 9 { return }
 		out = out * 10.0 + float.(d)
-	}
-	out
-}
-
-digits :: fn(s: string) ?int {
-	if s.len == 0 { return }
-	out := 0
-	loop c in s {
-		d :: int.(c) - 48
-		if d < 0 || d > 9 { return }
-		out = out * 10 + d
 	}
 	out
 }

@@ -266,3 +266,16 @@ fn cast_syntax() {
 	check(r#"float.("x") == none"#, "true");
 	fail_with("int(3)", "undefined function `int`");
 }
+
+#[test]
+fn string_casts_honor_width() {
+	check(
+		indoc! {r#"
+			print(i64.("3905245786"))
+			print(int.("3905245786"))
+			print(i8.("-128"))
+			print(u8.("-1"))
+		"#},
+		["some(3905245786)", "none", "some(-128)", "none"],
+	);
+}
