@@ -228,15 +228,13 @@ impl Loader {
 		name: &mut String,
 		qualify: bool,
 		public: bool,
-		span: Option<Span>,
+		span: Span,
 	) -> Result<(), Diagnostic> {
 		let bare = name.clone();
 		if qualify {
 			*name = format!("{}::{bare}", m.name);
 		}
-		if m.scope.env.insert(bare.clone(), name.clone()).is_some()
-			&& let Some(span) = span
-		{
+		if m.scope.env.insert(bare.clone(), name.clone()).is_some() {
 			let msg = format!("`{bare}` is defined twice in module `{}`", m.name);
 			return Err(err(msg, span, "duplicate definition"));
 		}
@@ -362,6 +360,7 @@ impl Loader {
 						if public {
 							self.reexports.insert(format!("{}::{local}", m.name), target.clone());
 						}
+						m.scope.env.insert(format!("{local}!"), format!("{target}!"));
 						if m.scope.env.insert(local.clone(), target).is_some() {
 							let msg = format!("`{local}` is already defined in module `{}`", m.name);
 							return Err(err(msg, *span, "conflicting import"));
@@ -387,7 +386,7 @@ impl Loader {
 			if let Expr::MacroCall { args, .. } = &mut item.0
 				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
 			{
-				self.define(m, name, !main, public || pubbed, Some(span))?;
+				self.define(m, name, !main, public || pubbed, span)?;
 				m.items.push(item);
 				continue;
 			}
@@ -397,12 +396,15 @@ impl Loader {
 				| Expr::EnumDef { name, .. }
 				| Expr::TypeAlias { name, .. }
 				| Expr::TraitDef { name, .. } => {
-					self.define(m, name, !main, public, Some(span))?;
+					self.define(m, name, !main, public, span)?;
 					if !anns.is_empty() {
 						self.annotations.entry(name.clone()).or_default().extend(anns);
 					}
 				}
-				Expr::MacroDef { name, .. } => self.define(m, name, !main, public, None)?,
+				Expr::MacroDef { name, .. } => {
+					name.push('!');
+					self.define(m, name, !main, public, span)?;
+				}
 				Expr::Bind {
 					mutable,
 					name,
@@ -418,7 +420,7 @@ impl Loader {
 						(true, ..) => Some(("a module-level binding must be a const", "use `::`")),
 						(_, _, Some(v)) if matches!(v.0, Expr::Foreign) => match typ {
 							Some((TypeExpr::Fn(..), _)) => {
-								self.define(m, name, !main, public, Some(span))?;
+								self.define(m, name, !main, public, span)?;
 								if !anns.is_empty() {
 									self.annotations.entry(name.clone()).or_default().extend(anns);
 								}
@@ -430,7 +432,7 @@ impl Loader {
 							Some(("type annotations on consts aren't supported yet", "drop the annotation"))
 						}
 						(_, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
-							self.define(m, name, true, public, Some(span))?;
+							self.define(m, name, true, public, span)?;
 							let mut v = v.clone();
 							if let Expr::StructLit { name: n, .. } = &mut v.0
 								&& !n.is_empty()
@@ -441,7 +443,7 @@ impl Loader {
 							continue;
 						}
 						(_, _, Some(v)) if TypeExpr::from_expr(&v.0).is_some() => {
-							self.define(m, name, true, public, Some(span))?;
+							self.define(m, name, true, public, span)?;
 							None
 						}
 						_ => Some(("cannot evaluate this at compile time", "not a const expression")),
@@ -639,7 +641,8 @@ impl Loader {
 						})
 					})
 			};
-			let (msg, label) = match m.scope.env.get(name) {
+			let found = m.scope.env.get(name).or_else(|| m.scope.env.get(&format!("{name}!")));
+			let (msg, label) = match found {
 				None => (format!("module `{module}` has no `{name}`"), "no such name"),
 				Some(q) if !is_def(q) => (
 					format!("`{name}` cannot be imported"),

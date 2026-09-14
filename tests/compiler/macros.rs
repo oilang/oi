@@ -34,6 +34,14 @@ fn unknown_macro_errors() {
 }
 
 #[test]
+fn macro_shares_a_name_with_a_value() {
+	check(
+		"test :: struct { n: int }\ntest! :: fn() Ast { `1` }\nprint(test.{ n = 1 }.n + test!())",
+		"2",
+	);
+}
+
+#[test]
 fn module_fn_body_uses_a_sibling_macro() {
 	Project::new()
 		.file("main.oi", ["module main", "use util", "print(util.f())"])

@@ -83,7 +83,8 @@ fn def_name(e: &mut Expr) -> Option<&mut String> {
 
 // Resolve a bare macro name through scope.
 fn resolve_bare(name: &str, scope: &Scope) -> String {
-	scope.env.get(name).cloned().unwrap_or_else(|| name.to_string())
+	let key = format!("{name}!");
+	scope.env.get(&key).cloned().unwrap_or(key)
 }
 
 // Get a fn's defining module, encoded in its qualified name.
@@ -103,7 +104,7 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 		if macros.contains_key(&resolved) {
 			let args = std::mem::take(args);
 			*e = Expr::Call {
-				name: format!("{resolved}!"),
+				name: resolved,
 				type_args: vec![],
 				args,
 			};
@@ -133,11 +134,11 @@ impl Expander {
 	) -> Result<(), Diagnostic> {
 		let ast = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Ast");
 		let bare = name.rsplit("::").next().unwrap_or(&name);
-		if BUILTINS.contains(&bare) {
-			return fail(format!("`{name}!` is a builtin macro"), span, "reserved name");
+		if BUILTINS.contains(&bare.trim_end_matches('!')) {
+			return fail(format!("`{name}` is a builtin macro"), span, "reserved name");
 		}
 		if self.macros.contains_key(&name) {
-			return fail(format!("`{name}!` is already defined"), span, "duplicate macro");
+			return fail(format!("`{name}` is already defined"), span, "duplicate macro");
 		}
 		if let Some(p) = params.iter().find(|p| !ast(&p.typ)) {
 			return fail("macro params must be `Ast`", p.span, "not Ast");
@@ -152,7 +153,7 @@ impl Expander {
 		}
 		self.macros.insert(name.clone(), (params.len(), std::ptr::null()));
 		let f = Expr::Fn {
-			name: format!("{name}!"),
+			name,
 			type_params: vec![],
 			params_tuple: params.len() != 1,
 			params,
@@ -211,7 +212,7 @@ impl Expander {
 		let mut compiler = Compiler::default();
 		compiler.compile(&synthetic)?;
 		for (name, (_, ptr)) in &mut self.macros {
-			*ptr = compiler.module.get_finalized_function(compiler.hoisted[&format!("{name}!")].id);
+			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);
 		}
 		self.stage0 = Some(compiler);
 		Ok(())
@@ -237,7 +238,7 @@ impl Expander {
 		let Some(vis) = scope.visible.get(module) else {
 			return fail(format!("cannot find module `{module}`"), span, "no such module");
 		};
-		let key = format!("{}::{rest}", vis.module);
+		let key = format!("{}::{rest}!", vis.module);
 		if !self.publics.contains(&key) {
 			return fail(format!("`{rest}` is private to module `{module}`"), span, "not public");
 		}
