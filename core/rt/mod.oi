@@ -39,6 +39,7 @@ pub oi_epilogue : fn() : foreign
 
 # ast
 pub oi_ast_ident : fn(s: string) Ast : foreign
+pub oi_ast_gensym : fn(prefix: string) Ast : foreign
 
 # misc
 pub oi_write : fn(tag: isize, bits: isize, width: isize, quote: isize, sink: isize) : foreign

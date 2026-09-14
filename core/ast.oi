@@ -6,3 +6,8 @@ use rt
 pub ident :: fn(s: string) Ast {
 	unsafe rt.oi_ast_ident(s)
 }
+
+## A fresh name for definitions made by a quote.
+pub gensym :: fn(prefix: string) Ast {
+	unsafe rt.oi_ast_gensym(prefix)
+}

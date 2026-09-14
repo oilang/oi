@@ -763,6 +763,14 @@ pub(crate) extern "C" fn rt_ast_ident(s: *const runtime::StrHeader) -> *mut Span
 	Box::into_raw(Box::new((Expr::Ident(name), Span::from(0..0))))
 }
 
+// A process symbol.
+#[unsafe(export_name = "oi_ast_gensym")]
+pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
+	let prefix = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) });
+	let n = HYGIENE.fetch_add(1, Ordering::Relaxed) + 1;
+	Box::into_raw(Box::new((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0))))
+}
+
 // A field as the Ast a param hole takes.
 fn field_ast(f: &Param) -> Expr {
 	let bind = Expr::Bind {

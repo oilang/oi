@@ -574,3 +574,19 @@ fn attr_macro_wraps_a_public_module_def() {
 		)
 		.check("1");
 }
+
+#[test]
+fn gensym_names_let_a_def_macro_expand_twice() {
+	check(
+		indoc! {r#"
+			m! :: fn() Ast {
+				n := gensym("t")
+				`%n :: fn() int { 7 }`
+			}
+			m!()
+			m!()
+			print(1)
+		"#},
+		"1",
+	);
+}
