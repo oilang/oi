@@ -436,6 +436,15 @@ fn dir_wins_over_single_file_module() {
 }
 
 #[test]
+fn subdir_folds_into_module() {
+	let p = Project::new()
+		.file("main.oi", ["module main", "use foo", "print(foo.hi())"])
+		.file("foo/lib.oi", ["module foo", "pub hi :: fn() int { gen() }"])
+		.file("foo/api/gen.oi", ["module foo", "pub gen :: fn() int { 7 }"]);
+	p.check("7");
+}
+
+#[test]
 fn single_file_module_chains_import() {
 	let p = Project::new()
 		.file("main.oi", ["module main", "use foo", "print(foo.hi())"])

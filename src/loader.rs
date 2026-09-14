@@ -182,6 +182,19 @@ fn is_const_value(e: &Expr) -> bool {
 	}
 }
 
+fn walk_oi(dir: &Path) -> Vec<PathBuf> {
+	let mut files = vec![];
+	for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+		let path = entry.path();
+		if path.is_dir() {
+			files.extend(walk_oi(&path));
+		} else if path.extension().is_some_and(|x| x == "oi") {
+			files.push(path);
+		}
+	}
+	files
+}
+
 // Lex and parse the file just pushed onto the map.
 fn parse_file(map: &SourceMap, base: usize) -> Result<Vec<Spanned<Expr>>, Reported> {
 	let src = map.last_src();
@@ -543,17 +556,7 @@ impl Loader {
 			r.join(name).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
 		};
 		let root = self.roots.iter().find(has).unwrap_or(&self.roots[0]);
-		let mut disk: Vec<_> = if from_core {
-			vec![]
-		} else {
-			fs::read_dir(root.join(name))
-				.into_iter()
-				.flatten()
-				.flatten()
-				.map(|e| e.path())
-				.filter(|p| p.extension().is_some_and(|x| x == "oi"))
-				.collect()
-		};
+		let mut disk = (!from_core).then(|| walk_oi(&root.join(name))).unwrap_or_default();
 		disk.sort();
 		let candidate = root.join(file);
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
