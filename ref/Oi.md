@@ -145,8 +145,6 @@ tags: []
 - [ ] load the `oi init` scaffolding from fs, to make them easier to maintain
 ## consider
 - `nil`
-- revisit test syntax
-	`test! "leading literal" { #{ trailing fn, elided header #} }`
 - C++20 uses `operator|`, a naked `|` for pipelines
 	- back on the table now that `|x|` lambda fences are gone
 	- that said, `|>` has grown on me

@@ -1,4 +1,4 @@
-@test bounds :: fn() {
+test! "bounds" {
 	assert! int.max == 2147483647
 	assert! int.min == -2147483648
 	assert! float.max > 0.0
@@ -6,7 +6,7 @@
 	assert! float.epsilon > 0.0
 }
 
-@test nan_and_inf :: fn() {
+test! "nan and inf" {
 	assert! (0.0 / 0.0).is_nan()
 	assert! nan.is_nan()
 	assert! !(1.0).is_nan()

@@ -25,7 +25,7 @@ num :: fn(j: Json) float {
 	}
 }
 
-@test extension_api :: fn() {
+test! "extension api" {
 	# TODO: revisit with `r#""#` style strings
 	src :: "{{\"header\": {{\"version_major\": 4}}, \"classes\": [{{\"name\": \"Node\", \"methods\": [{{\"name\": \"get_name\", \"hash\": 3218959716}}]}}]}}"
 	top :: obj(parse(src) or { :null })
@@ -35,11 +35,11 @@ num :: fn(j: Json) float {
 	assert! num(method["hash"]) == 3218959716.0
 }
 
-@test escapes :: fn() {
+test! "escapes" {
 	assert! text(parse("\"a\\n\\\"b\\u00e9\"") or { :null }) == "a\n\"b\\u00e9"
 }
 
-@test malformed :: fn() {
+test! "malformed" {
 	assert! text(parse("[1, 2") or { $.message() }) == "expected a comma at 5"
 	assert! text(parse("{{\"a\": }}") or { $.message() }) == "invalid number at 6"
 }

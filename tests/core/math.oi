@@ -1,28 +1,28 @@
 use math
 
-@test pow :: fn() {
+test! "pow" {
 	assert! math.pow(2, 0) == 1
 	assert! math.pow(2, 5) == 32
 	assert! math.pow(1.5, 2) == 2.25
 }
 
-@test constants :: fn() {
+test! "constants" {
 	assert! math.pi > 3.1 && math.pi < 3.2
 }
 
-@test abs :: fn() {
+test! "abs" {
 	assert! math.abs(4) == 4
 	assert! math.abs(-6.9) == 6.9
 }
 
-@test min_max :: fn() {
+test! "min max" {
 	assert! math.min(3, 7) == 3
 	assert! math.min(7.2, 3.2) == 3.2
 	assert! math.max(3, 7) == 7
 	assert! math.max(7.2, 3.2) == 7.2
 }
 
-@test clamp :: fn() {
+test! "clamp" {
 	assert! math.clamp(-1, 0, 10) == 0
 	assert! math.clamp(5.2, 0.0, 10.2) == 5.2
 	assert! math.clamp(11, 0, 10) == 10

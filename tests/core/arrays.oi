@@ -1,10 +1,10 @@
-@test is_empty :: fn() {
+test! "is empty" {
 	xs : []int : []
 	assert! xs.is_empty()
 	assert! ![1, 2, 3].is_empty()
 }
 
-@test first_and_last :: fn() {
+test! "first and last" {
 	xs : []int : []
 	assert! xs.first() == none
 	assert! xs.last() == none
@@ -14,7 +14,7 @@
 	assert! ys.last() == ?int(3)
 }
 
-@test searching :: fn() {
+test! "searching" {
 	xs := [1, 2, 3]
 	assert! xs.contains(2)
 	assert! !xs.contains(9)
@@ -22,14 +22,14 @@
 	assert! xs.index(9) == none
 }
 
-@test reverse :: fn() {
+test! "reverse" {
 	assert! [1, 2, 3].reverse() == [3, 2, 1]
 
 	xs : []int : []
 	assert! xs.reverse() == []
 }
 
-@test join :: fn() {
+test! "join" {
 	assert! [1 2 3].join(", ") == "1, 2, 3"
 	assert! ["a" "b" "c"].join("-") == "a-b-c"
 

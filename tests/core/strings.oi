@@ -1,16 +1,16 @@
-@test is_empty :: fn() {
+test! "is empty" {
 	assert! "".is_empty()
 	assert! !"hi".is_empty()
 }
 
-@test first_and_last :: fn() {
+test! "first and last" {
 	assert! "hi there".first() == "h"
 	assert! "hi there".first(4) == "hi t"
 	assert! "hi there".last() == "e"
 	assert! "hi there".last(4) == "here"
 }
 
-@test searching :: fn() {
+test! "searching" {
 	assert! "hello".contains("hell")
 	assert! !"hello".contains("xyz")
 	assert! "hello".starts_with("he")
@@ -19,28 +19,28 @@
 	assert! !"hello".ends_with("he")
 }
 
-@test casing :: fn() {
+test! "casing" {
 	assert! "Hi There!".upper() == "HI THERE!"
 	assert! "Hi There!".lower() == "hi there!"
 }
 
-@test trim :: fn() {
+test! "trim" {
 	assert! "  pad\t\n".trim() == "pad"
 	assert! "".trim() == ""
 }
 
-@test replace :: fn() {
+test! "replace" {
 	assert! "a-b-c".replace("-", "+") == "a+b+c"
 	assert! "aaa".replace("aa", "b") == "ba"
 	assert! "abc".replace("", "x") == "abc"
 }
 
-@test split :: fn() {
+test! "split" {
 	assert! "a,b,,c".split(",") == ["a", "b", "", "c"]
 	assert! "abc".split("") == ["abc"]
 }
 
-@test parsing :: fn() {
+test! "parsing" {
 	assert! parse_int("-42") == -42
 	assert! parse_int("4x") == none
 	assert! parse_float("-2.05") == -2.05

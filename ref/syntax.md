@@ -2029,7 +2029,11 @@ main :: fn() {
 	# annotations attach to definitions and struct fields
 	GetProc :: @c fn(name: cstr) ptr
 
-	# `@test` marks a fn as a test
+	# `test! "name" { ... }` is the usual way to write a test
+	# it expands to an `@test` fn
+	test! "trims edges" { assert! trim(" hi ") == "hi" }
+
+	# `@test` is the underlying annotation, needed for fields `test!` doesn't expose (like `skip`)
 	# they get stripped from normal builds, and are run by `oi test`
 	# pub test :: struct { name: string = "", skip: bool = false }
 	@test trims_edges :: fn() { assert! trim(" hi ") == "hi" }
