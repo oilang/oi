@@ -94,6 +94,15 @@ fn annotation_space_after_at() {
 }
 
 #[test]
+fn parse_error_names_its_file() {
+	crate::common::Project::new()
+		.file("main.oi", ["module main", "use foo", "print(foo.hi())"])
+		.file("foo/a.oi", ["module foo", "pub bad :: fn() int { ) }"])
+		.file("foo/b.oi", ["module foo", "pub hi :: fn() int { 1 }"])
+		.fail_with("foo/a.oi:2");
+}
+
+#[test]
 fn top_level_stmt_with_main() {
 	let src = indoc! {"
 		main :: fn() {

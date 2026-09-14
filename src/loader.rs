@@ -195,20 +195,14 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 	files
 }
 
-// Lex and parse the file just pushed onto the map.
-fn parse_file(map: &SourceMap, base: usize) -> Result<Vec<Spanned<Expr>>, Reported> {
-	let src = map.last_src();
+// Lex and parse one file's source at its base offset.
+fn parse_file(src: &str, base: usize) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
 	let toks = lex_at(src, base);
 	let eoi = (base + src.len()..base + src.len()).into();
 	parser(src, base)
 		.parse(Stream::from_iter(toks).map(eoi, |t| t))
 		.into_result()
-		.map_err(|errs| {
-			for e in &errs {
-				Diagnostic::from_rich(e).report_mapped(map);
-			}
-			Reported
-		})
+		.map_err(|errs| errs.iter().map(Diagnostic::from_rich).collect())
 }
 
 struct Loader {
@@ -529,9 +523,17 @@ impl Loader {
 	fn load_files(&mut self, name: &str, files: Vec<(String, String)>) -> Result<(), Reported> {
 		let mut module = Module::new(name);
 		let mut imports = vec![];
-		for (file, src) in files {
-			let base = self.map.push(file, src);
-			let items = parse_file(&self.map, base)?;
+		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.map.push(file, src)).collect();
+		let map = &self.map;
+		let parsed: Vec<_> = std::thread::scope(|s| {
+			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b))).collect();
+			jobs.into_iter().map(|j| j.join().unwrap()).collect()
+		});
+		for result in parsed {
+			let items = result.map_err(|ds| {
+				ds.iter().for_each(|d| d.report_mapped(&self.map));
+				Reported
+			})?;
 			self.add_file(&mut module, &mut imports, items).map_err(|d| self.report(d))?;
 		}
 		self.seal(module, imports)

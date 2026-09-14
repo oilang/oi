@@ -28,8 +28,8 @@ impl SourceMap {
 		base
 	}
 
-	pub fn last_src(&self) -> &str {
-		&self.files.last().unwrap().src
+	pub fn src(&self, base: usize) -> &str {
+		&self.files[self.files.partition_point(|f| f.base < base)].src
 	}
 
 	// Map a program-wide span back to its file and local range.
