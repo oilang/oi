@@ -192,7 +192,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	fn parse_str(&mut self, val: Value, out: Typ) -> Result<TypedVal, Diagnostic> {
-		let role = if matches!(out, Typ::Float(_)) { role::PARSE_FLOAT } else { role::PARSE_INT };
+		let role = if matches!(out, Typ::Float(_)) {
+			role::PARSE_FLOAT
+		} else {
+			role::PARSE_INT
+		};
 		let def = self.generic_fns[role].clone();
 		let subst = HashMap::from([(def.type_params[0].name.clone(), out)]);
 		let sig = self.declare_instance(role, &def, subst)?;

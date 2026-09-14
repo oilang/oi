@@ -711,6 +711,7 @@ pub enum Capture {
 pub struct TypeParam {
 	pub name: String,
 	pub bound: Option<String>,
+	pub default: Option<Spanned<TypeExpr>>,
 }
 
 // Params access modifiers.

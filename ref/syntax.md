@@ -682,6 +682,11 @@ max[T: Ord] :: fn(a: T, b: T) T {
 	if a.cmp(b) == .greater { a } else { b }
 }
 
+# a type param may default, for when nothing at the callsite pins it
+parse_int[T = int] :: fn(s: string) ?T { ... }
+n :: parse_int("42")? # T = int
+b :: parse_int[u8]("42")? # an explicit arg or an inferred one wins
+
 ## associated constants
 
 Bounded :: trait {

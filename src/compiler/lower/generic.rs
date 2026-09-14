@@ -112,7 +112,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let access: Vec<Access> = def.params.iter().map(|p| p.access).collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
 		let mut subst = HashMap::new();
-		if !type_args.is_empty() && type_args.len() != def.type_params.len() {
+		if type_args.len() > def.type_params.len() {
 			return Err(Diagnostic::new(
 				format!(
 					"`{name}` expects {} type argument(s), got {}",
@@ -145,6 +145,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
 			vals.push(val);
 		}
+		self.type_defaults(def, &mut subst)?;
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
 			return Err(Diagnostic::new(
 				format!("cannot infer type parameter `{}`", missing.name),
@@ -179,8 +180,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut subst = HashMap::new();
 		let recv = &def.params.first()?.typ;
 		unify(recv, typ, &def.type_params, &mut subst, self.generics).ok()?;
+		self.type_defaults(&def, &mut subst).ok()?;
 		def.type_params.iter().all(|p| subst.contains_key(&p.name)).then_some(())?;
 		self.declare_instance(key, &def, subst).ok()
+	}
+
+	// Fill any params inference didn't pin from their declared defaults.
+	fn type_defaults(&self, def: &GenericFnDef, subst: &mut HashMap<String, Typ>) -> Result<(), Diagnostic> {
+		for p in &def.type_params {
+			let Some((te, span)) = &p.default else { continue };
+			if subst.contains_key(&p.name) {
+				continue;
+			}
+			let typ = self.types().with_scope(self.home_scope(&def.module)).resolve(te, *span)?;
+			subst.insert(p.name.clone(), typ);
+		}
+		Ok(())
 	}
 
 	// Declare a monomorphed instance's signature, reusing a prior one if it exists.

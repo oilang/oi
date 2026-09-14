@@ -119,6 +119,7 @@ fn fn_def(
 		type_params.push(TypeParam {
 			name: "$I".into(),
 			bound: None,
+			default: None,
 		});
 		let param = Param {
 			name: "$".into(),
@@ -484,7 +485,8 @@ where
 	// generics
 	let type_param = ident()
 		.then(just(Token::Colon).ignore_then(ident()).or_not())
-		.map(|(name, bound)| TypeParam { name, bound });
+		.then(just(Token::Assign).ignore_then(spanned(type_expr.clone())).or_not())
+		.map(|((name, bound), default)| TypeParam { name, bound, default });
 	let type_params = bracket(list(type_param)).or_not().map(Option::unwrap_or_default).boxed();
 
 	// a bare block is a fn literal wherever a fn type is expected
@@ -1697,7 +1699,15 @@ where
 	let via = just(Token::Via).ignore_then(ident()).or_not();
 	// arrays and maps
 	let bracket_head = bracket(ident().or_not()).then(ident()).map(|(k, v)| {
-		let names: Vec<_> = k.into_iter().chain([v]).map(|name| TypeParam { name, bound: None }).collect();
+		let names: Vec<_> = k
+			.into_iter()
+			.chain([v])
+			.map(|name| TypeParam {
+				name,
+				bound: None,
+				default: None,
+			})
+			.collect();
 		(if names.len() == 1 { "array" } else { "map" }.into(), names)
 	});
 	let head = def_name.clone().then(type_params.clone()).or(bracket_head).boxed();

@@ -135,13 +135,13 @@ is_space :: fn(x: u8) bool {
 }
 
 ## Parse an integer of any width.
-pub parse_int[T] :: fn(s: string) ?T {
+pub parse_int[T = int] :: fn(s: string) ?T {
 	neg :: s.starts_with("-")
 	digits[T](if neg { s[1..] } else { s }, neg)
 }
 
 ## Parse a float of any width.
-pub parse_float[T] :: fn(s: string) ?T {
+pub parse_float[T = float] :: fn(s: string) ?T {
 	if s.starts_with("-") { return -parse_float[T](s[1..])? }
 	loop i in 0..s.len {
 		if s[i] == 46 {

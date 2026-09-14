@@ -196,3 +196,25 @@ fn unknown_bound_trait() {
 		"unknown trait",
 	);
 }
+
+#[test]
+fn default_type_param_fills_when_uninferable() {
+	let src = indoc! {"
+		none_of[T = int] :: fn() ?T {
+			?T(none)
+		}
+		none_of()
+	"};
+	check(src, "none");
+}
+
+#[test]
+fn inference_and_explicit_args_beat_the_default() {
+	let src = indoc! {r#"
+		id[T = int] :: fn(x: T) T { x }
+		none_of[T = int] :: fn() ?T { ?T(none) }
+		print(id("a"))
+		print(none_of[string]())
+	"#};
+	check(src, ["a", "none"]);
+}
