@@ -542,7 +542,10 @@ where
 			None => (true, Some(typ), None),
 		});
 	// macro bindings
-	let hole_ident = just(Token::Percent).then_ignore(adjacent).ignore_then(ident()).map(|n| format!("%{n}"));
+	let hole_ident = just(Token::Percent)
+		.then_ignore(adjacent)
+		.ignore_then(ident())
+		.map(|n| format!("%{n}"));
 	let def_name = ident().or(hole_ident.clone()).boxed();
 	let bind_name = just(Token::Percent)
 		.then_ignore(adjacent)
@@ -865,7 +868,8 @@ where
 		);
 
 		// struct literals
-		let struct_lit = def_name.clone()
+		let struct_lit = def_name
+			.clone()
 			.then(call_type_args.clone().or_not())
 			.or_not()
 			.then_ignore(just(Token::Dot))
@@ -1564,7 +1568,8 @@ where
 				names,
 			}
 		});
-	let enum_def = def_name.clone()
+	let enum_def = def_name
+		.clone()
 		.then(type_params.clone())
 		.then(backing)
 		.then_ignore(just(Token::Enum))

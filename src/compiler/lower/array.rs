@@ -113,7 +113,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Spreading a non-array collects it first, if its type knows how.
 	pub(super) fn collect_spread(&mut self, (val, typ): TypedVal) -> TypedVal {
-		let Some(sig) = self.funcs.get(&format!("{typ}.collect")).cloned() else { return (val, typ) };
+		let Some(sig) = self.funcs.get(&format!("{typ}.collect")).cloned() else {
+			return (val, typ);
+		};
 		if is_range(&typ) {
 			let (.., open) = self.range_parts(val);
 			self.trap_if(open, "cannot spread an open range");

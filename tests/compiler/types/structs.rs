@@ -650,3 +650,14 @@ fn duplicate_field_errors() {
 	);
 	fail_with("p := .{ x = 1, x = 2 }", "`x` is repeated");
 }
+
+#[test]
+fn quoted_struct_def_in_fn_body_errors() {
+	fail_with(
+		indoc! {r#"
+			mk! :: fn() Ast { `P :: struct { x: int }` }
+			f :: fn() { mk!() }
+		"#},
+		"definitions are only allowed at the top level",
+	);
+}

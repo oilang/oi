@@ -786,12 +786,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
 			Expr::PatBind { .. } => unreachable!("destructuring in expression position"),
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
-			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
-			Expr::StructDef { .. } => unreachable!("struct definition in expression position"),
-			Expr::EnumDef { .. } => unreachable!("enum definition in expression position"),
+			Expr::Fn { .. }
+			| Expr::StructDef { .. }
+			| Expr::EnumDef { .. }
+			| Expr::TraitDef { .. }
+			| Expr::TypeAlias { .. } => Err(Diagnostic::new(
+				"definitions are only allowed at the top level",
+				expr.1.into_range(),
+			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
-			Expr::TraitDef { .. } => unreachable!("trait definition in expression position"),
-			Expr::TypeAlias { .. } => unreachable!("type alias in expression position"),
 			Expr::TypePat(_) => unreachable!("type pattern in expression position"),
 			Expr::FieldAssign { .. } => unreachable!("field assign in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
