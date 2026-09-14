@@ -426,19 +426,16 @@ where
 		})
 		.boxed();
 
-	// param type is kept for the compiler to resolve
-	// NOTE: a bare `self` receiver gets the type `Self`
+	let param_type = just(Token::Colon)
+		.ignore_then(type_expr.clone())
+		.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
+		.or(bind_default.clone())
+		.boxed();
 	let param = access
 		.clone()
 		.or_not()
 		.then(ident())
-		.then(
-			just(Token::Colon)
-				.ignore_then(type_expr.clone())
-				.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
-				.or(bind_default.clone())
-				.or_not(),
-		)
+		.then(param_type.clone().or_not())
 		.map_with(|((access, name), typed), ex| {
 			let (typ, default) = typed.unzip();
 			Param {
@@ -460,7 +457,20 @@ where
 		public: false,
 		annotations: vec![],
 	});
-	let param = param_hole.clone().or(param).boxed();
+	let name_hole = just(Token::Percent)
+		.then_ignore(adjacent)
+		.ignore_then(brace(ident()))
+		.then(param_type)
+		.map_with(|(name, (typ, default)), ex| Param {
+			name: format!("%{name}"),
+			typ,
+			span: ex.span(),
+			default,
+			access: Access::Read,
+			public: false,
+			annotations: vec![],
+		});
+	let param = name_hole.or(param_hole.clone()).or(param).boxed();
 	// NOTE: a trailing comma forces a tuple even for one param
 	let params = paren(
 		param

@@ -453,6 +453,18 @@ fn splat_spreads_into_params() {
 }
 
 #[test]
+fn hole_names_a_param() {
+	check(
+		indoc! {r"
+			def! :: fn(name: Ast, p: Ast) Ast { `%{name} :: fn(%{p}: int) int { %{p} + 1 }` }
+			def!(inc, n)
+			print(inc(41))
+		"},
+		"42",
+	);
+}
+
+#[test]
 fn type_holes_nest_in_option_and_array() {
 	check(
 		indoc! {r"

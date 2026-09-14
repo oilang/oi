@@ -61,7 +61,10 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 			pat, mutable: Some(_), ..
 		}
 		| Expr::For { pat, .. } => pat_names(pat).into_iter().for_each(f),
-		Expr::AnonFn { params, .. } => params.iter_mut().filter(|p| !p.name.is_empty()).for_each(|p| f(&mut p.name)),
+		Expr::AnonFn { params, .. } => params
+			.iter_mut()
+			.filter(|p| !p.name.is_empty() && !p.name.starts_with('%'))
+			.for_each(|p| f(&mut p.name)),
 		Expr::Match { arms, .. } => arms.iter_mut().flat_map(|a| &mut a.binding).for_each(f),
 		_ => {}
 	}
@@ -437,6 +440,12 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 			if let Some(n) = def_name(e).and_then(|n| n.strip_prefix('%')) {
 				push_name(slots, n);
 			}
+			if let Expr::Fn { params, .. } | Expr::AnonFn { params, .. } = e {
+				params
+					.iter()
+					.filter_map(|p| p.name.strip_prefix('%'))
+					.for_each(|n| push_name(slots, n));
+			}
 		}
 	}
 	for_binders(e, &mut |n| {
@@ -626,6 +635,12 @@ fn fill_sig(params: &mut Vec<Param>, ret: Option<&mut Spanned<TypeExpr>>, args: 
 				Arg::Seq(v) => out.extend(v.iter().map(|a| to_param(&p, a))),
 			},
 			None => {
+				if let Some(k) = p.name.strip_prefix('%') {
+					match &args[k] {
+						Arg::Ast((Expr::Ident(n), _)) => p.name = n.clone(),
+						_ => flag("a param name hole needs a plain name argument"),
+					}
+				}
 				fill_type(&mut p.typ, args);
 				out.push(p);
 			}
