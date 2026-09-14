@@ -1,4 +1,4 @@
-use crate::common::{Project, Run, oi, trim};
+use crate::common::{Project, Run, oi, ok, trim};
 use crate::helpers::*;
 
 #[test]
@@ -541,6 +541,22 @@ fn quoted_def_can_be_public() {
 		"},
 		"1",
 	);
+}
+
+#[test]
+fn quoted_item_can_be_annotated() {
+	let dir = Project::new().file(
+		"main.oi",
+		indoc! {r#"
+			mktest! :: fn() Ast {
+				n := ident("t1")
+				`@test %n :: fn() { assert!(true) }`
+			}
+			mktest!()
+		"#},
+	);
+	let out = ok(oi(&["test"]).current_dir(&dir).run(None));
+	assert!(out.contains("t1") && out.contains("1 passed"), "stdout:\n{out}");
 }
 
 #[test]

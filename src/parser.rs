@@ -1749,8 +1749,6 @@ where
 		.ignore_then(def.clone().or(use_decl.clone()).or(bind.clone()).or(macro_def))
 		.map_with(|d, ex| (Expr::Pub(Box::new(d)), ex.span()))
 		.boxed();
-	item.define(public.clone().or(def.clone()));
-
 	// annotations
 	let annotated = annotations.then(just(Token::Pub).or_not()).then(def.clone().or(bind)).map_with(
 		|((anns, public), item), ex| {
@@ -1761,6 +1759,7 @@ where
 			(Expr::Annotated(anns, Box::new(item)), ex.span())
 		},
 	);
+	item.define(annotated.clone().or(public.clone()).or(def.clone()));
 
 	// annotation macros
 	let attr_macro = just(Token::At)
