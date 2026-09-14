@@ -212,7 +212,10 @@ impl Expander {
 			annotations,
 			roots: program.roots.clone(),
 		};
-		let mut compiler = Compiler::default();
+		let mut compiler = Compiler {
+			roots: self.macros.keys().cloned().collect(),
+			..Default::default()
+		};
 		compiler.compile(&synthetic)?;
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);

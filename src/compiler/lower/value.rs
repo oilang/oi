@@ -81,6 +81,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A capture-free fn's value.
 	pub(crate) fn fn_object(&mut self, id: FuncId) -> Value {
+		self.wanted.push(id);
 		let mut desc = DataDescription::new();
 		desc.set_align(8);
 		desc.define(vec![0; 8].into_boxed_slice());

@@ -110,6 +110,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.get(&key)
 			.unwrap_or_else(|| panic!("`{key}` is not declared in `core/rt`"));
 		let (id, unit) = (sig.id, sig.ret.is_unit());
+		self.wanted.push(id);
 		let func = self.module.declare_func_in_func(id, self.b.func);
 		let call = self.b.ins().call(func, args);
 		(!unit).then(|| self.b.inst_results(call)[0])
@@ -506,6 +507,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
+		self.wanted.push(sig.id);
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, vals);
 		let ret_val = if sig.ret.is_unit() {

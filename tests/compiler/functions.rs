@@ -231,3 +231,13 @@ fn duplicate_definition_reports() {
 	"};
 	fail_with(src, "duplicate fn `t`");
 }
+
+#[test]
+fn unreached_fn_is_never_compiled() {
+	let src = indoc! {r#"
+		dead :: fn() { no_such_fn() }
+		live :: fn() { print("alive") }
+		live()
+	"#};
+	check(src, "alive");
+}

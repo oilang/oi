@@ -459,6 +459,7 @@ pub struct Compiler<M: Module = JITModule> {
 	generics: HashMap<String, GenericFnDef>,
 	mono: HashMap<String, FnSig>,
 	pending: Vec<Pending>,
+	wanted: Vec<FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	trait_impls: HashSet<(String, String)>,
 	core_traits: HashSet<String>,
@@ -475,6 +476,7 @@ pub struct Compiler<M: Module = JITModule> {
 	aot: bool,
 	pub(crate) include_tests: bool,
 	pub(crate) tests: Vec<(String, String, bool)>,
+	pub(crate) roots: Vec<String>,
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
 	pub timings: Vec<(&'static str, Duration)>,
@@ -614,6 +616,7 @@ impl<M: Module> Compiler<M> {
 			generics: HashMap::new(),
 			mono: HashMap::new(),
 			pending: Vec::new(),
+			wanted: Vec::new(),
 			printers: Vec::new(),
 			trait_impls: HashSet::new(),
 			core_traits: HashSet::new(),
@@ -630,6 +633,7 @@ impl<M: Module> Compiler<M> {
 			aot: false,
 			include_tests: false,
 			tests: Vec::new(),
+			roots: Vec::new(),
 			link_libs: Vec::new(),
 			exports: HashMap::new(),
 			timings: Vec::new(),
@@ -1218,11 +1222,10 @@ impl<M: Module> Compiler<M> {
 			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 				.with_consts(consts)
 				.with_scope(item.scope);
-			let params: Vec<FnParam> = item
-				.params
-				.iter()
-				.map(|p| Ok(FnParam::of(p, types.param(&p.typ, p.span)?)))
-				.collect::<Result<_, Diagnostic>>()?;
+			let resolved = types.resolve_params(&item.params)?;
+			let params: Vec<FnParam> = (item.params.iter().zip(&resolved))
+				.map(|(p, (_, t, _))| FnParam::of(p, t.clone()))
+				.collect();
 			let access: Vec<Access> = item.params.iter().map(|p| p.access).collect();
 			let ret = match &item.ret {
 				Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,
@@ -1333,32 +1336,20 @@ impl<M: Module> Compiler<M> {
 			funcs.insert(name.clone(), sig);
 		}
 
-		for item in &others {
-			let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
-			let mut aliases = aliases.clone();
-			if let Some(t) = self_type {
-				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
-			}
-			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(item.scope);
-			let (params, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
-			let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), (0..0).into())));
-			self.translate(
-				FnDef {
-					params: &params,
-					params_tuple: item.params_tuple,
-					ret,
-					body: item.body,
-					self_type,
-					foreign: funcs[&item.key].foreign,
-					pure: funcs[&item.key].pure,
-					..FnDef::default()
-				},
-				&funcs,
-				types,
-			)?;
-			self.finish_fn(&self.symbol(&item.key).0);
+		// lower bodies
+		let mut unlowered: HashMap<FuncId, usize> =
+			others.iter().enumerate().map(|(i, item)| (funcs[&item.key].id, i)).collect();
+		if self.aot {
+			self.wanted.extend(unlowered.keys().copied());
+		} else {
+			self.wanted.extend(
+				self.tests
+					.iter()
+					.map(|(key, ..)| key)
+					.chain(self.exports.keys())
+					.chain(self.roots.iter())
+					.filter_map(|key| funcs.get(key).map(|sig| sig.id)),
+			);
 		}
 
 		// a `str` wrapper per struct
@@ -1415,6 +1406,7 @@ impl<M: Module> Compiler<M> {
 			}
 			for (i, name) in methods.iter().enumerate() {
 				let id = funcs[&format!("{typ}.{name}")].id;
+				self.wanted.push(id);
 				let fref = self.module.declare_func_in_data(id, &mut desc);
 				desc.write_function_addr((i * 8) as u32, fref);
 			}
@@ -1464,8 +1456,39 @@ impl<M: Module> Compiler<M> {
 		let entry_id = self.finish_fn("oi_main");
 		let id = self.compile_entry(entry_id, typ, &funcs, types);
 
-		// drain generic instances queued by calls we've seen
-		while let Some((sym, def, subst)) = self.pending.pop().or_else(|| self.compile_printers(&funcs, types)) {
+		loop {
+			while let Some(id) = self.wanted.pop() {
+				let Some(i) = unlowered.remove(&id) else { continue };
+				let item = &others[i];
+				let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
+				let mut aliases = aliases.clone();
+				if let Some(t) = self_type {
+					aliases.insert("Self".into(), TypeExpr::Name(t.into()));
+				}
+				let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
+					.with_consts(consts)
+					.with_scope(item.scope);
+				let (params, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
+				let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), (0..0).into())));
+				self.translate(
+					FnDef {
+						params: &params,
+						params_tuple: item.params_tuple,
+						ret,
+						body: item.body,
+						self_type,
+						foreign: funcs[&item.key].foreign,
+						pure: funcs[&item.key].pure,
+						..FnDef::default()
+					},
+					&funcs,
+					types,
+				)?;
+				self.finish_fn(&self.symbol(&item.key).0);
+			}
+			let Some((sym, def, subst)) = self.pending.pop().or_else(|| self.compile_printers(&funcs, types)) else {
+				break;
+			};
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }];
 			let types = TypeCtx::new(&structs, &enums, &aliases, &subst, &generics, &traits)
 				.with_consts(consts)
@@ -1618,6 +1641,7 @@ impl<M: Module> Compiler<M> {
 			annotations: &self.annotations,
 			mono: &mut self.mono,
 			pending: &mut self.pending,
+			wanted: &mut self.wanted,
 			printers: &mut self.printers,
 			descs: &mut self.descs,
 			string_idx: &mut self.string_idx,

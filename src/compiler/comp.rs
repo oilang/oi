@@ -212,7 +212,10 @@ fn fold(
 		annotations,
 		roots: program.roots.clone(),
 	};
-	let mut compiler = Compiler::default();
+	let mut compiler = Compiler {
+		roots: vec!["__comp".into()],
+		..Default::default()
+	};
 	compiler.compile(&synthetic)?;
 	let f = compiler.module.get_finalized_function(compiler.hoisted["__comp"].id);
 	// SAFETY: fn takes no args and returns unit

@@ -113,6 +113,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.fn_object(sig.id), Typ::Fn(params, Box::new(sig.ret))));
 		}
 
+		self.wanted.push(sig.id);
 		let func_ref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let addr = self.b.ins().func_addr(self.int, func_ref);
 		let env = self.call_alloc_bytes(((1 + resolved.len()) * 8) as i64);

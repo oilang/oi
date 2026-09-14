@@ -255,7 +255,7 @@ fn scalar_mut_param_rejected() {
 
 #[test]
 fn callee_cannot_mutate_plain_param() {
-	fail_with("f :: fn(xs: []int) { xs << 1 }", "immutable");
+	fail_with(["f :: fn(xs: []int) { xs << 1 }", "f([1])"], "immutable");
 }
 
 #[test]

@@ -377,9 +377,12 @@ fn pure_fn_calls_pure_fn() {
 
 #[test]
 fn pure_fn_rejects_impure_calls() {
-	fail_with(["@pure", "f :: fn() { print(1) }"], "isn't allowed in a `@pure` fn");
 	fail_with(
-		["g :: fn() int { 1 }", "@pure", "f :: fn() int { g() }"],
+		["@pure", "f :: fn() { print(1) }", "f()"],
+		"isn't allowed in a `@pure` fn",
+	);
+	fail_with(
+		["g :: fn() int { 1 }", "@pure", "f :: fn() int { g() }", "f()"],
 		"isn't allowed in a `@pure` fn",
 	);
 }

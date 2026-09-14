@@ -657,6 +657,7 @@ fn quoted_struct_def_in_fn_body_errors() {
 		indoc! {r#"
 			mk! :: fn() Ast { `P :: struct { x: int }` }
 			f :: fn() { mk!() }
+			f()
 		"#},
 		"definitions are only allowed at the top level",
 	);
