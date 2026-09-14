@@ -530,6 +530,8 @@ where
 			None => (true, Some(typ), None),
 		});
 	// macro bindings
+	let hole_ident = just(Token::Percent).then_ignore(adjacent).ignore_then(ident()).map(|n| format!("%{n}"));
+	let def_name = ident().or(hole_ident.clone()).boxed();
 	let bind_name = just(Token::Percent)
 		.then_ignore(adjacent)
 		.ignore_then(
@@ -844,7 +846,7 @@ where
 		);
 
 		// struct literals
-		let struct_lit = ident()
+		let struct_lit = def_name.clone()
 			.then(call_type_args.clone().or_not())
 			.or_not()
 			.then_ignore(just(Token::Dot))
@@ -1171,8 +1173,8 @@ where
 			dot_tuple,
 			macro_call,
 			quote,
-			unquote.clone(),
 			leaf,
+			unquote.clone(),
 			enum_shorthand,
 			group,
 			tuple,
@@ -1419,7 +1421,7 @@ where
 	expr.define(definition);
 
 	// item bindings
-	let item_head = ident().then(type_params.clone()).then_ignore(just(Token::DoubleColon));
+	let item_head = def_name.clone().then(type_params.clone()).then_ignore(just(Token::DoubleColon));
 
 	// fn defs
 	let func = item_head
@@ -1543,7 +1545,7 @@ where
 				names,
 			}
 		});
-	let enum_def = ident()
+	let enum_def = def_name.clone()
 		.then(type_params.clone())
 		.then(backing)
 		.then_ignore(just(Token::Enum))
@@ -1691,7 +1693,7 @@ where
 		let names: Vec<_> = k.into_iter().chain([v]).map(|name| TypeParam { name, bound: None }).collect();
 		(if names.len() == 1 { "array" } else { "map" }.into(), names)
 	});
-	let head = ident().then(type_params.clone()).or(bracket_head).boxed();
+	let head = def_name.clone().then(type_params.clone()).or(bracket_head).boxed();
 	let claim = head
 		.clone()
 		.then_ignore(just(Token::Colon))
@@ -1728,7 +1730,6 @@ where
 		.or(claim)
 		.or(type_alias)
 		.boxed();
-	item.define(def.clone());
 	let module_decl = just(Token::Module)
 		.ignore_then(ident())
 		.map_with(|name, ex| (Expr::Module(name), ex.span()));
@@ -1746,7 +1747,9 @@ where
 		.boxed();
 	let public = just(Token::Pub)
 		.ignore_then(def.clone().or(use_decl.clone()).or(bind.clone()).or(macro_def))
-		.map_with(|d, ex| (Expr::Pub(Box::new(d)), ex.span()));
+		.map_with(|d, ex| (Expr::Pub(Box::new(d)), ex.span()))
+		.boxed();
+	item.define(public.clone().or(def.clone()));
 
 	// annotations
 	let annotated = annotations.then(just(Token::Pub).or_not()).then(def.clone().or(bind)).map_with(
@@ -1766,7 +1769,7 @@ where
 		.then_ignore(adjacent)
 		.then_ignore(just(Token::Not))
 		.then(spanned(adjacent.ignore_then(paren(loose_list(expr.clone())))).or_not())
-		.then(annotated.clone().or(def.clone()))
+		.then(annotated.clone().or(public.clone()).or(def.clone()))
 		.map_with(|((name, args), item), ex| {
 			let mut args_v = vec![item];
 			if let Some((elems, span)) = args {

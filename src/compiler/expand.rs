@@ -67,6 +67,20 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 	}
 }
 
+// The name bound by a definition.
+fn def_name(e: &mut Expr) -> Option<&mut String> {
+	match e {
+		Expr::Bind { name, .. }
+		| Expr::Fn { name, .. }
+		| Expr::StructDef { name, .. }
+		| Expr::EnumDef { name, .. }
+		| Expr::TypeAlias { name, .. }
+		| Expr::StructLit { name, .. }
+		| Expr::Claim { typ: name, .. } => Some(name),
+		_ => None,
+	}
+}
+
 // Resolve a bare macro name through scope.
 fn resolve_bare(name: &str, scope: &Scope) -> String {
 	scope.env.get(name).cloned().unwrap_or_else(|| name.to_string())
@@ -189,7 +203,7 @@ impl Expander {
 			publics: program.publics.clone(),
 			reexports: program.reexports.clone(),
 			consts: program.consts.clone(),
-			annotations: HashMap::new(),
+			annotations: program.annotations.clone(),
 			roots: program.roots.clone(),
 		};
 		let mut compiler = Compiler::default();
@@ -402,16 +416,19 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 			slots.push(slot);
 			*e = Expr::Unquote(key);
 		}
-		Expr::Bind { name, .. } if name.starts_with('%') => push_name(slots, &name[1..]),
 		Expr::UnquoteBind(binder, bind) => {
 			let placeholder = (Expr::Unquote(String::new()), (0..0).into());
-			if let Expr::Bind { name, .. } = &mut bind.0 {
+			if let Some(name) = def_name(&mut bind.0) {
 				*name = format!("%{}", slots.len());
 			}
 			slots.push(Slot::Expr(std::mem::replace(binder.as_mut(), placeholder)));
 			*e = std::mem::replace(&mut bind.0, Expr::Unquote(String::new()));
 		}
-		_ => {}
+		_ => {
+			if let Some(n) = def_name(e).and_then(|n| n.strip_prefix('%')) {
+				push_name(slots, n);
+			}
+		}
 	}
 	for_binders(e, &mut |n| {
 		bound.insert(n.clone());
@@ -484,7 +501,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}
 		_ => {}
 	}
-	if let Expr::Bind { name, .. } = &mut e.0
+	if let Some(name) = def_name(&mut e.0)
 		&& let Some(param) = name.strip_prefix('%')
 	{
 		match &args[param] {

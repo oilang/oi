@@ -793,14 +793,20 @@ impl<M: Module> Compiler<M> {
 		self.timings.push(("expand", t.elapsed()));
 		for m in &program.modules {
 			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
-				let Expr::Annotated(anns, inner) = &item.0 else {
-					continue;
-				};
-				if let Some(name) = inner.0.def_name() {
-					let anns = qualify_anns(&m.scope, anns);
-					self.annotations.entry(name.into()).or_default().extend(anns);
+				loop {
+					let (anns, inner) = match &item.0 {
+						Expr::Annotated(anns, inner) => (&anns[..], inner),
+						Expr::Pub(inner) => (&[][..], inner),
+						_ => break,
+					};
+					if let Some(name) = inner.0.def_name()
+						&& !anns.is_empty()
+					{
+						let anns = qualify_anns(&m.scope, anns);
+						self.annotations.entry(name.into()).or_default().extend(anns);
+					}
+					*item = (**inner).clone();
 				}
-				*item = (**inner).clone();
 			}
 		}
 		// fold `comp` expressions to literals

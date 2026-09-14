@@ -512,3 +512,49 @@ fn splat_spreads_match_patterns_and_arms() {
 		"low low mid high",
 	);
 }
+
+#[test]
+fn ident_names_generated_defs_and_literals() {
+	check(
+		indoc! {r#"
+			def! :: fn() Ast {
+				s := ident("P")
+				e := ident("E")
+				`%s :: struct { o: int }
+				%e :: enum { x, y }
+				%s :< { m :: fn(self) %s { %s.{ self.o + 1 } } }`
+			}
+			def!()
+			print(P.{ 1 }.m().o, E.y)
+		"#},
+		"2 y",
+	);
+}
+
+#[test]
+fn quoted_def_can_be_public() {
+	check(
+		indoc! {r"
+			def! :: fn() Ast { `pub P :: struct { o: int }` }
+			def!()
+			print(P.{ 1 }.o)
+		"},
+		"1",
+	);
+}
+
+#[test]
+fn attr_macro_wraps_a_public_module_def() {
+	Project::new()
+		.file("main.oi", ["module main", "use util", "print(util.api())"])
+		.file(
+			"util/lib.oi",
+			[
+				"module util",
+				"pub keep! :: fn(item: Ast, args: Ast) Ast { item }",
+				"@keep!(Node)",
+				"pub api :: fn() int { 1 }",
+			],
+		)
+		.check("1");
+}

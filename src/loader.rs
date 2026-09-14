@@ -159,6 +159,20 @@ fn const_fill(e: &Expr) -> Option<(&String, &Spanned<Expr>)> {
 	}
 }
 
+// The definition an attribute macro wraps, and whether it is public.
+fn wrapped_def(e: &mut Expr) -> Option<(bool, &mut String)> {
+	match e {
+		Expr::Pub(b) => wrapped_def(&mut b.0).map(|(_, n)| (true, n)),
+		Expr::Annotated(_, b) => wrapped_def(&mut b.0),
+		Expr::Fn { name, .. }
+		| Expr::StructDef { name, .. }
+		| Expr::EnumDef { name, .. }
+		| Expr::TypeAlias { name, .. }
+		| Expr::TraitDef { name, .. } => Some((false, name)),
+		_ => None,
+	}
+}
+
 // Unit and struct literals also count as const values.
 fn is_const_value(e: &Expr) -> bool {
 	match e {
@@ -367,6 +381,13 @@ impl Loader {
 				m.scope.env.remove(name.as_str());
 				self.annotations.remove(&prev);
 				self.publics.remove(&prev);
+			}
+			if let Expr::MacroCall { args, .. } = &mut item.0
+				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
+			{
+				self.define(m, name, !main, public || pubbed, span)?;
+				m.items.push(item);
+				continue;
 			}
 			match &mut item.0 {
 				Expr::Fn { name, .. }
