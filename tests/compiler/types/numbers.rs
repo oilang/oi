@@ -275,7 +275,8 @@ fn string_casts_honor_width() {
 			print(int.("3905245786"))
 			print(i8.("-128"))
 			print(u8.("-1"))
+			print(f32.("-2.5"))
 		"#},
-		["some(3905245786)", "none", "some(-128)", "none"],
+		["some(3905245786)", "none", "some(-128)", "none", "some(-2.5)"],
 	);
 }

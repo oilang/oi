@@ -137,38 +137,32 @@ is_space :: fn(x: u8) bool {
 ## Parse an integer of any width.
 pub parse_int[T] :: fn(s: string) ?T {
 	neg :: s.starts_with("-")
-	digits :: if neg { s[1..] } else { s }
-	if digits.len == 0 { return }
-	out: T = 0
-	loop c in digits {
-		d :: int.(c) - 48
-		if d < 0 || d > 9 { return }
-		n :: if neg { out * 10 - T.(d) } else { out * 10 + T.(d) }
-		if n / 10 != out { return }
-		out = n
-	}
-	out
+	digits[T](if neg { s[1..] } else { s }, neg)
 }
 
-## Parse a float.
-pub parse_float :: fn(s: string) ?float {
-	if s.starts_with("-") { return -parse_float(s[1..])? }
+## Parse a float of any width.
+pub parse_float[T] :: fn(s: string) ?T {
+	if s.starts_with("-") { return -parse_float[T](s[1..])? }
 	loop i in 0..s.len {
 		if s[i] == 46 {
 			frac :: s[(i + 1)..]
-			return float_digits(s[..i])? + float_digits(frac)? / 10.0 ** float.(frac.len)
+			return digits[T](s[..i], false)? + digits[T](frac, false)? / 10 ** T.(frac.len)
 		}
 	}
-	float_digits(s)
+	digits[T](s, false)
 }
 
-float_digits :: fn(s: string) ?float {
+## Accumulate decimal digits into `T`.
+digits[T] :: fn(s: string, neg: bool) ?T {
 	if s.len == 0 { return }
-	out := 0.0
+	wraps :: T.(1) / T.(2) == 0  # only ints wrap on overflow
+	out: T = 0
 	loop c in s {
 		d :: int.(c) - 48
 		if d < 0 || d > 9 { return }
-		out = out * 10.0 + float.(d)
+		n :: if neg { out * 10 - T.(d) } else { out * 10 + T.(d) }
+		if wraps && n / 10 != out { return }
+		out = n
 	}
 	out
 }

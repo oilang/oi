@@ -192,9 +192,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	fn parse_str(&mut self, val: Value, out: Typ) -> Result<TypedVal, Diagnostic> {
-		let def = self.generic_fns[role::PARSE_INT].clone();
+		let role = if matches!(out, Typ::Float(_)) { role::PARSE_FLOAT } else { role::PARSE_INT };
+		let def = self.generic_fns[role].clone();
 		let subst = HashMap::from([(def.type_params[0].name.clone(), out)]);
-		let sig = self.declare_instance(role::PARSE_INT, &def, subst)?;
+		let sig = self.declare_instance(role, &def, subst)?;
 		Ok(self.emit_call(&sig, &[val]))
 	}
 
@@ -380,9 +381,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label("not yet implemented"));
 			}
 			let (val, typ) = self.expr(&args[0])?;
-			if typ == Typ::Str && target == 64 {
-				let sig = self.funcs[role::PARSE_FLOAT].clone();
-				return Ok(Some(self.emit_call(&sig, &[val])));
+			if typ == Typ::Str {
+				return Ok(Some(self.parse_str(val, Typ::Float(target))?));
 			}
 			let target_cl = cl_type(&Typ::Float(target), self.int);
 			let out = match &typ {
