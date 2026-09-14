@@ -174,7 +174,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				ptr
 			}
-			Typ::Range | Typ::Any => {
+			Typ::Any => {
 				let ptr = self.call_alloc(2);
 				let z = self.b.ins().iconst(self.int, 0);
 				self.b.ins().store(MemFlags::new(), z, ptr, 0);
@@ -440,19 +440,74 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some((name.clone(), vi.payload[0].clone(), 8))
 	}
 
-	// Make `{start, end}` range on the heap.
-	pub(super) fn make_range(&mut self, start: Option<Value>, end: Value) -> Value {
-		let ptr = self.call_alloc(2);
-		let start = start.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
-		for (i, v) in [start, end].into_iter().enumerate() {
-			let v = if self.b.func.dfg.value_type(v) == self.int {
-				v
-			} else {
-				self.b.ins().sextend(self.int, v)
-			};
+	pub(super) fn make_range(
+		&mut self,
+		start: Value,
+		end: Option<Value>,
+		step: Value,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let typ = self.types().resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
+		let Typ::Struct(_, fields) = &typ else {
+			unreachable!("core `Range` is a struct")
+		};
+		let fields = fields.clone();
+		let ptr = self.struct_slot(&fields)?;
+		let end = end.map(|v| self.intcast(v, types::I32, true));
+		let end = self.make_option(&Typ::Int(32), end);
+		let start = self.intcast(start, types::I32, true);
+		let step = self.intcast(step, types::I32, true);
+		for (i, v) in [start, end, step].into_iter().enumerate() {
 			self.b.ins().store(MemFlags::new(), v, ptr, i as i32 * 8);
 		}
-		ptr
+		self.temp(ptr, &typ);
+		Ok((ptr, typ))
+	}
+
+	pub(super) fn range_value(
+		&mut self,
+		start: &Spanned<Expr>,
+		end: Option<&Spanned<Expr>>,
+		inclusive: bool,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let bad = |msg: &str, label: &str| Diagnostic::new(msg, start.1.into_range()).with_label(label);
+		let (start, second) = match &start.0 {
+			Expr::Range {
+				start: first,
+				end: Some(second),
+				inclusive: inner,
+			} => {
+				if *inner {
+					return Err(bad("`..=` goes on the last operator only", "not this one"));
+				}
+				if matches!(first.0, Expr::Range { .. }) {
+					return Err(bad("a range takes one step", "`a..step..b` is as deep as this nests"));
+				}
+				if let (Expr::Int(a), Expr::Int(b)) = (&first.0, &second.0)
+					&& a == b
+				{
+					return Err(bad("a range step of 0 never advances", "same as the first value"));
+				}
+				(&**first, Some(&**second))
+			}
+			_ => (start, None),
+		};
+		let start_val = self.int_value(start, "range start")?;
+		let step = match second {
+			Some(second) => {
+				let v = self.int_value(second, "range step")?;
+				self.b.ins().isub(v, start_val)
+			}
+			None => self.b.ins().iconst(types::I32, 1),
+		};
+		let end = end
+			.map(|e| {
+				let v = self.int_value(e, "range end")?;
+				Ok(if inclusive { self.b.ins().iadd(v, step) } else { v })
+			})
+			.transpose()?;
+		self.make_range(start_val, end, step, span)
 	}
 
 	pub(super) fn range_pattern(
@@ -466,20 +521,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("range patterns need an integer subject, got {st}");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("not an integer"));
 		};
-		let mut cond = self.b.ins().iconst(types::I8, 1);
-		let bounds = [
-			(start, IntCC::SignedGreaterThanOrEqual, 0),
-			(end, IntCC::SignedLessThan, inclusive as i64),
-		];
-		for (bound, cc, bump) in bounds {
-			if let Some(e) = bound {
-				let (bv, _) = self.check_expr(e, st)?;
-				let bv = self.b.ins().iadd_imm(bv, bump);
-				let c = self.b.ins().icmp(cc, sv, bv);
-				cond = self.b.ins().band(cond, c);
-			}
-		}
-		Ok(cond)
+		let zero = (Expr::Int(0), span);
+		let (range, _) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
+		let sv = self.intcast(sv, types::I32, true);
+		let hit = self.range_contains(range, sv, span)?;
+		Ok(self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0))
+	}
+
+	pub(super) fn range_contains(&mut self, range: Value, n: Value, span: Span) -> Result<Value, Diagnostic> {
+		let sig = self.funcs.get(role::RANGE_CONTAINS).cloned().ok_or_else(|| {
+			Diagnostic::new(format!("core is missing `{}`", role::RANGE_CONTAINS), span.into_range())
+				.with_label("required to test range membership")
+		})?;
+		Ok(self.emit_call(&sig, &[range, n]).0)
 	}
 
 	// Make and check enum variant.

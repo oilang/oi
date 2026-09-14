@@ -61,12 +61,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			start = i + 1;
 			let Some(inner) = inner else { break };
 			let (val, typ) = self.expr(inner)?;
-			// range literal
 			if let Typ::Int(_) = typ {
-				let val = self.make_range(None, val);
-				unify_elem(&mut elem, &Typ::Range, inner.1)?;
-				let (data, len) = self.heap_alloc(vec![val], &Typ::Range);
-				parts.push(self.make_array(data, len, &Typ::Array(Box::new(Typ::Range))));
+				let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+				let (val, rtyp) = self.make_range(zero, Some(val), one, inner.1)?;
+				unify_elem(&mut elem, &rtyp, inner.1)?;
+				let (data, len) = self.heap_alloc(vec![val], &rtyp);
+				parts.push(self.make_array(data, len, &Typ::Array(Box::new(rtyp))));
 				continue;
 			}
 			let (Typ::Array(t) | Typ::FixedArray(t, _)) = &typ else {
@@ -240,6 +240,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		len: Value,
 	) -> Result<(Value, Value), Diagnostic> {
 		let (start, end, inclusive) = range.and_then(|r| r.0.bounds()).unwrap_or_default();
+		if start.is_some_and(|e| matches!(e.0, Expr::Range { .. })) {
+			return Err(
+				Diagnostic::new("strided views aren't supported yet", start.unwrap().1.into_range())
+					.with_label("an array slice has no step"),
+			);
+		}
 		let lo = match start {
 			Some(e) => {
 				let v = self.int_value(e, "slice start")?;

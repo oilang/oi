@@ -551,12 +551,19 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(iter)?;
 		let zero = self.b.ins().iconst(self.int, 0);
+		let mut range = None;
 		let (start, limit, src, vals): (_, _, Option<TypedVal>, Option<TypedVal>) = match typ {
-			Typ::Range => {
+			t if is_range(&t) => {
 				let cl = cl_int_for_width(32);
 				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
-				let end = self.b.ins().load(cl, MemFlags::new(), val, 8);
-				(start, end, None, None)
+				let opt = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+				let step = self.b.ins().load(cl, MemFlags::new(), val, 16);
+				let opt_typ = Typ::Option(Box::new(Typ::Int(32)));
+				let tag = self.enum_tag(&opt_typ, opt);
+				let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
+				let end = self.opt_payload(opt, &opt_typ, &Typ::Int(32), 8);
+				range = Some((open, end, step));
+				(start, zero, None, None)
 			}
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 				let (data, len) = self.array_parts(val, &typ);
@@ -590,7 +597,16 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(header);
 		let iv = self.b.use_var(counter);
-		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
+		let more = match range {
+			Some((open, end, step)) => {
+				let up = self.b.ins().icmp_imm(IntCC::SignedGreaterThan, step, 0);
+				let below = self.b.ins().icmp(IntCC::SignedLessThan, iv, end);
+				let above = self.b.ins().icmp(IntCC::SignedGreaterThan, iv, end);
+				let within = self.b.ins().select(up, below, above);
+				self.b.ins().bor(within, open)
+			}
+			None => self.b.ins().icmp(IntCC::SignedLessThan, iv, limit),
+		};
 		self.b.ins().brif(more, body_block, &[], exit, &[]);
 		self.b.seal_block(body_block);
 
@@ -634,7 +650,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(latch);
 		let iv = self.b.use_var(counter);
-		let next = self.b.ins().iadd_imm(iv, 1);
+		let next = match range {
+			Some((_, _, step)) => self.b.ins().iadd(iv, step),
+			None => self.b.ins().iadd_imm(iv, 1),
+		};
 		self.b.def_var(counter, next);
 		self.b.ins().jump(header, &[]);
 		self.b.seal_block(header);

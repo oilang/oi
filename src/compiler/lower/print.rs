@@ -174,15 +174,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.call_variant(&typ.clone(), val, quote, sink);
 			}
 
-			Typ::Range => {
-				let cl = cl_int_for_width(32);
-				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
-				let end = self.b.ins().load(cl, MemFlags::new(), val, 8);
-				self.emit_print(start, &Typ::Int(32), false, sink);
-				self.write_lit("..", sink);
-				self.emit_print(end, &Typ::Int(32), false, sink);
-			}
-
 			Typ::Fn(..) | Typ::Closure(..) => self.write_lit("<fn>", sink),
 			Typ::Map(..) => self.write_lit("<map>", sink),
 			Typ::Ast => {
@@ -234,7 +225,6 @@ impl<'a, M: Module> Translator<'a, M> {
 					| Typ::Option(_)
 					| Typ::Result(..)
 					| Typ::Sum(..)
-					| Typ::Range
 					| Typ::Fn(..)
 					| Typ::Annotated(..)
 					| Typ::Closure(..)

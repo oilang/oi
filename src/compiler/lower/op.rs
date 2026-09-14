@@ -17,7 +17,6 @@ fn eq_slots(t: &Typ) -> Option<Vec<Typ>> {
 	match t {
 		Typ::Struct(_, fields) => Some(fields.iter().map(|f| f.typ.clone()).collect()),
 		Typ::Tuple(fields) | Typ::TupleStruct(_, fields) => Some(fields.iter().map(|(_, t)| t.clone()).collect()),
-		Typ::Range => Some(vec![Typ::ISize; 2]),
 		_ => None,
 	}
 }
@@ -520,11 +519,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(self.emit_call(&sig, &[rhs_val, lhs_val]));
 		}
 
+		if is_range(&rhs_typ) {
+			let n = self.int_value(lhs, "`in` value")?;
+			let n = self.intcast(n, types::I32, true);
+			let hit = self.range_contains(rhs_val, n, rhs.1)?;
+			return Ok((hit, Typ::Bool));
+		}
+
 		let elem = match rhs_typ {
 			Typ::Array(ref e) => (**e).clone(),
 			_ => {
 				return Err(Diagnostic::new(
-					format!("right side of `in` must be an array or Str, got {rhs_typ}"),
+					format!("right side of `in` must be an array, Str or Range, got {rhs_typ}"),
 					rhs.1.into_range(),
 				)
 				.with_label("not an array or string"));

@@ -24,6 +24,24 @@ fn ranges() {
 }
 
 #[test]
-fn stepped_not_lowered() {
-	fail_with("0..2..=10", "stepped ranges aren't lowered yet");
+fn stepped_ranges() {
+	let src = indoc! {"
+		loop i in 0..2..=4 { print(i) }
+		loop i in 3.. {
+			if i == 5 { break }
+			print(i)
+		}
+	"};
+	check(src, ["0", "2", "4", "3", "4"]);
+}
+
+#[test]
+fn stepped_pattern_and_membership() {
+	check(
+		[
+			"print(4 in 0..2..10, 5 in 0..2..10)",
+			r#"match 4 { 0..2..=4 => print("hit") }"#,
+		],
+		["true false", "hit"],
+	);
 }

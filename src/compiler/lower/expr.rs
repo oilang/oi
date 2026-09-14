@@ -727,29 +727,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.through_sum(hint, |t| matches!(t, Typ::Map(..))).as_ref(),
 			),
 
-			// range literal
-			Expr::Spread(inner) => match self.expr(inner)? {
-				(val, Typ::Int(_)) => Ok((self.make_range(None, val), Typ::Range)),
-				(_, typ) => Err(
-					Diagnostic::new(format!("cannot spread {typ} here"), expr.1.into_range())
-						.with_label("not a literal or call"),
-				),
-			},
-
-			Expr::Range { start, end, inclusive } => {
-				if let Expr::Range { .. } = start.0 {
-					return Err(Diagnostic::new(
-						"stepped ranges aren't lowered yet",
-						start.1.into_range(),
-					));
-				}
-				let no_end = || Diagnostic::new("a range needs an end to be a value", expr.1.into_range());
-				let end = end.as_ref().ok_or_else(no_end)?;
-				let start = self.int_value(start, "range start")?;
-				let end = self.int_value(end, "range end")?;
-				let end = self.b.ins().iadd_imm(end, *inclusive as i64);
-				Ok((self.make_range(Some(start), end), Typ::Range))
+			Expr::Spread(inner) => {
+				let (val, typ) = self.expr(inner)?;
+				let Typ::Int(_) = typ else {
+					return Err(
+						Diagnostic::new(format!("cannot spread {typ} here"), expr.1.into_range())
+							.with_label("`..` spreads only inside a literal or a call"),
+					);
+				};
+				let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+				self.make_range(zero, Some(val), one, expr.1)
 			}
+
+			Expr::Range { start, end, inclusive } => self.range_value(start, end.as_deref(), *inclusive, expr.1),
 
 			Expr::AnonFn {
 				captures,

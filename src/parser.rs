@@ -1298,13 +1298,13 @@ where
 				binop(6, Token::Plus, BinOp::Add),
 				binop(6, Token::Minus, BinOp::Sub),
 				// relational
-				binop(5, Token::Lt, BinOp::Lt),
-				binop(5, Token::Gt, BinOp::Gt),
-				binop(5, Token::Le, BinOp::Le),
-				binop(5, Token::Ge, BinOp::Ge),
+				binop(4, Token::Lt, BinOp::Lt),
+				binop(4, Token::Gt, BinOp::Gt),
+				binop(4, Token::Le, BinOp::Le),
+				binop(4, Token::Ge, BinOp::Ge),
 				// trait check
 				postfix(
-					5,
+					4,
 					just(Token::Is)
 						.ignore_then(just(Token::Ident("not".into())).or_not())
 						.then(ident()),
@@ -1320,24 +1320,24 @@ where
 					},
 				),
 				// equality | membership
-				binop(4, Token::Eq, BinOp::Eq),
-				binop(4, Token::Ne, BinOp::Ne),
-				binop(4, Token::In, BinOp::In),
+				binop(3, Token::Eq, BinOp::Eq),
+				binop(3, Token::Ne, BinOp::Ne),
+				binop(3, Token::In, BinOp::In),
 				// logical
-				binop(3, Token::AndAnd, BinOp::And),
-				binop(2, Token::OrOr, BinOp::Or),
+				binop(2, Token::AndAnd, BinOp::And),
+				binop(1, Token::OrOr, BinOp::Or),
 				// ranges
 				(
-					infix(left(1), just(Token::DotDot), |l, _, r, ex| {
+					infix(left(5), just(Token::DotDot), |l, _, r, ex| {
 						range(l, Some(r), false, ex.span())
 					}),
-					infix(left(1), just(Token::DotDotEq), |l, _, r, ex| {
+					infix(left(5), just(Token::DotDotEq), |l, _, r, ex| {
 						range(l, Some(r), true, ex.span())
 					}),
-					postfix(1, just(Token::DotDot).then_ignore(expr.clone().not()), |l, _, ex| {
+					postfix(5, just(Token::DotDot).then_ignore(expr.clone().not()), |l, _, ex| {
 						range(l, None, false, ex.span())
 					}),
-					prefix(1, just(Token::DotDot), |_, r, ex| {
+					prefix(5, just(Token::DotDot), |_, r, ex| {
 						(Expr::Spread(Box::new(r)), ex.span())
 					}),
 				),

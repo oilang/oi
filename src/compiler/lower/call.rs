@@ -243,9 +243,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					(Expr::Index { collection, index }, *at)
 				})),
 				Typ::Array(_) => out.push((Expr::Spread(ident()), *at)),
-				// range literal
 				Typ::Int(_) => {
-					(val, typ) = (self.make_range(None, val), Typ::Range);
+					let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+					(val, typ) = self.make_range(zero, Some(val), one, inner.1)?;
 					out.push(*ident());
 				}
 				_ => {

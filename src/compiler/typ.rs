@@ -6,6 +6,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use cranelift::prelude::*;
 
 use crate::ast::{Access, Annotation, Expr, Param, Spanned, TypeExpr};
+use crate::compiler::role;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Typ {
@@ -29,7 +30,6 @@ pub(crate) enum Typ {
 	Result(Box<Typ>, Box<Typ>),
 	Sum(String, Vec<VariantInfo>),
 	Error,
-	Range,
 	Fn(Vec<FnParam>, Box<Typ>),
 	Annotated(Vec<String>, Box<Typ>),
 	Closure(Vec<FnParam>, Box<Typ>, bool),
@@ -273,7 +273,6 @@ impl fmt::Display for Typ {
 				)
 			}
 			Typ::Error => write!(f, "Error"),
-			Typ::Range => write!(f, "range"),
 			Typ::Annotated(anns, t) => write!(f, "{}{t}", marks(anns)),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				write!(f, "fn(")?;
@@ -337,7 +336,6 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 		Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Bool | Typ::Str | Typ::CStr => {
 			TypeExpr::Name(typ.to_string())
 		}
-		Typ::Range => TypeExpr::Name("range".into()),
 		Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => named(n)?,
 		Typ::Array(e) => TypeExpr::Array(Box::new(type_expr(e)?)),
 		Typ::FixedArray(e, n) => {
@@ -449,6 +447,10 @@ impl VariantInfo {
 			backing: None,
 		}
 	}
+}
+
+pub(crate) fn is_range(t: &Typ) -> bool {
+	matches!(t, Typ::Struct(n, _) if n == role::RANGE)
 }
 
 // An enum is a tagged union if any variant has fields.
