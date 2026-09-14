@@ -263,6 +263,28 @@ fn splat_spreads_into_statements() {
 }
 
 #[test]
+fn splat_spreads_into_a_claim_body() {
+	check(
+		indoc! {r"
+			mk! :: fn() Ast {
+				defs := [`show :: fn(self) int { self.x }`, `bump :: fn(self) int { self.x + 1 }`]
+				`Point : Show < { %{..defs} }`
+			}
+			Point :: struct { x: int }
+			Show :: trait {
+				show : fn(self) int
+				bump : fn(self) int
+			}
+			mk!()
+			p := Point.{ x = 3 }
+			print(p.show())
+			print(p.bump())
+		"},
+		["3", "4"],
+	);
+}
+
+#[test]
 fn ident_compares_with_str() {
 	check(
 		indoc! {r#"

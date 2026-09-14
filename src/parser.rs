@@ -1677,7 +1677,7 @@ where
 	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 	let fill = just(Token::Pub)
 		.or_not()
-		.then(func.clone().or(bare_fill).or(const_fill))
+		.then(func.clone().or(unquote.clone()).or(bare_fill).or(const_fill))
 		.map_with(|(p, f), ex| match p {
 			Some(_) => (Expr::Pub(Box::new(f)), ex.span()),
 			None => f,
