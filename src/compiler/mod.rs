@@ -1021,6 +1021,10 @@ impl<M: Module> Compiler<M> {
 						let skip = matches!(lit("skip", 1), Some(Expr::Bool(true)));
 						self.tests.push((name.clone(), display, skip));
 					}
+					if others.iter().any(|f| f.key == *name) {
+						let msg = format!("duplicate fn `{}`", display_name(name));
+						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("already defined"));
+					}
 					others.push(FnItem {
 						key: name.clone(),
 						scope,

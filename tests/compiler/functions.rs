@@ -221,3 +221,13 @@ fn redefinition_shadows() {
 	"#};
 	check(src, "two");
 }
+
+#[test]
+fn duplicate_definition_reports() {
+	let src = indoc! {r"
+		def! :: fn() Ast { `t :: fn() int { 7 }` }
+		def!()
+		def!()
+	"};
+	fail_with(src, "duplicate fn `t`");
+}
