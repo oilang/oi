@@ -554,14 +554,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut range = None;
 		let (start, limit, src, vals): (_, _, Option<TypedVal>, Option<TypedVal>) = match typ {
 			t if is_range(&t) => {
-				let cl = cl_int_for_width(32);
-				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
-				let opt = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-				let step = self.b.ins().load(cl, MemFlags::new(), val, 16);
-				let opt_typ = Typ::Option(Box::new(Typ::Int(32)));
-				let tag = self.enum_tag(&opt_typ, opt);
-				let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
-				let end = self.opt_payload(opt, &opt_typ, &Typ::Int(32), 8);
+				let (start, end, step, open) = self.range_parts(val);
 				range = Some((open, end, step));
 				(start, zero, None, None)
 			}

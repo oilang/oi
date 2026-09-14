@@ -464,6 +464,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((ptr, typ))
 	}
 
+	// (start, end, step, open)
+	pub(super) fn range_parts(&mut self, range: Value) -> (Value, Value, Value, Value) {
+		let cl = cl_int_for_width(32);
+		let start = self.b.ins().load(cl, MemFlags::new(), range, 0);
+		let opt = self.b.ins().load(self.int, MemFlags::new(), range, 8);
+		let step = self.b.ins().load(cl, MemFlags::new(), range, 16);
+		let opt_typ = Typ::Option(Box::new(Typ::Int(32)));
+		let tag = self.enum_tag(&opt_typ, opt);
+		let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
+		let end = self.opt_payload(opt, &opt_typ, &Typ::Int(32), 8);
+		(start, end, step, open)
+	}
+
 	pub(super) fn range_value(
 		&mut self,
 		start: &Spanned<Expr>,

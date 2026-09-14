@@ -69,6 +69,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				parts.push(self.make_array(data, len, &Typ::Array(Box::new(rtyp))));
 				continue;
 			}
+			let (val, typ) = self.collect_spread((val, typ));
 			let (Typ::Array(t) | Typ::FixedArray(t, _)) = &typ else {
 				return Err(
 					Diagnostic::new(format!("cannot spread {typ}"), inner.1.into_range()).with_label("not an array")
@@ -93,6 +94,31 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.rt_call("array_extend", &[out, part, size]);
 		}
 		Ok((out, typ))
+	}
+
+	// Panic if `cond`.
+	pub(super) fn trap_if(&mut self, cond: Value, msg: &str) {
+		let (bad, ok) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().brif(cond, bad, &[], ok, &[]);
+		self.b.seal_block(bad);
+		self.b.seal_block(ok);
+
+		self.b.switch_to_block(bad);
+		let msg = self.str_const(msg);
+		self.rt_call("panic", &[msg]);
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+
+		self.b.switch_to_block(ok);
+	}
+
+	// Spreading a non-array collects it first, if its type knows how.
+	pub(super) fn collect_spread(&mut self, (val, typ): TypedVal) -> TypedVal {
+		let Some(sig) = self.funcs.get(&format!("{typ}.collect")).cloned() else { return (val, typ) };
+		if is_range(&typ) {
+			let (.., open) = self.range_parts(val);
+			self.trap_if(open, "cannot spread an open range");
+		}
+		self.emit_call(&sig, &[val])
 	}
 
 	// Copy each value into `base` at its stride-sized slot.
@@ -291,6 +317,34 @@ impl<'a, M: Module> Translator<'a, M> {
 		let stride = self.elem_stride(&elem);
 		let size = self.b.ins().iconst(self.int, stride);
 		Ok((self.rt_call("slice", &[ptr, lo, hi, size]).unwrap(), lo, elem))
+	}
+
+	pub(super) fn range_slice(
+		&mut self,
+		(ptr, typ): TypedVal,
+		range: Value,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		if !matches!(typ, Typ::Array(_) | Typ::Str) {
+			return Err(Diagnostic::new(format!("cannot slice {typ}"), span.into_range()).with_label("not an array"));
+		}
+		let (lo, end, step, open) = self.range_parts(range);
+		let strided = self.b.ins().icmp_imm(IntCC::NotEqual, step, 1);
+		self.trap_if(strided, "strided views aren't supported yet");
+		let lo = self.b.ins().sextend(self.int, lo);
+		let end = self.b.ins().sextend(self.int, end);
+		let len = self.array_len(ptr);
+		let hi = self.b.ins().select(open, len, end);
+		if typ == Typ::Str {
+			return Ok((self.rt_call("str_slice", &[ptr, lo, hi]).unwrap(), Typ::Str));
+		}
+		let elem = array_elem(&typ).clone();
+		let stride = self.elem_stride(&elem);
+		let size = self.b.ins().iconst(self.int, stride);
+		let out = self.rt_call("slice", &[ptr, lo, hi, size]).unwrap();
+		let typ = Typ::Array(Box::new(elem));
+		self.temp(out, &typ);
+		Ok((out, typ))
 	}
 
 	// (data pointer, length) for an array.

@@ -45,3 +45,36 @@ fn stepped_pattern_and_membership() {
 		["true false", "hit"],
 	);
 }
+
+#[test]
+fn spreads_into_an_array() {
+	check("[..(0..3), 7]", "[0, 1, 2, 7]");
+	check("[..(10..8..0)]", "[10, 8, 6, 4, 2]");
+}
+
+#[test]
+fn spreads_into_a_vararg() {
+	let src = indoc! {"
+		sum :: fn(xs: ..int) int {
+			t := 0
+			loop x in xs { t += x }
+			t
+		}
+		print(sum(..(1..=4)))
+	"};
+	check(src, "10");
+}
+
+#[test]
+fn subscripts_with_a_range_value() {
+	check(
+		["xs :: [1, 2, 3, 4]", "r := 1..3", "print(xs[r], xs[1..])"],
+		"[2, 3] [2, 3, 4]",
+	);
+}
+
+#[test]
+fn spread_rejections() {
+	fail_with("[..(3..)]", "open range");
+	fail_with(["xs :: [1, 2, 3, 4]", "r := 0..2..4", "print(xs[r])"], "strided");
+}

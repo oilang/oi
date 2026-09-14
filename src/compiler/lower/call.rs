@@ -231,6 +231,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				continue;
 			};
 			let (mut val, mut typ) = self.expr(inner)?;
+			(val, typ) = self.collect_spread((val, typ));
 			let name = format!("$spread{i}");
 			let ident = || Box::new((Expr::Ident(name.clone()), *at));
 			match &typ {

@@ -611,8 +611,18 @@ impl<'a, M: Module> Translator<'a, M> {
 						Ok((self.unmap_bits(raw, &v), v))
 					}
 					Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
+						let (idx, ityp) = self.expr(index)?;
+						if is_range(&ityp) {
+							return self.range_slice((ptr, typ), idx, collection.1);
+						}
+						let Typ::Int(_) = ityp else {
+							return Err(Diagnostic::new(
+								format!("index must be Int, got {ityp}"),
+								index.1.into_range(),
+							)
+							.with_label("not an Int"));
+						};
 						let elem = array_elem(&typ).clone();
-						let idx = self.int_value(index, "index")?;
 						let idx = self.b.ins().sextend(self.int, idx);
 						let (data, len) = self.array_parts(ptr, &typ);
 						Ok((self.load_index(data, len, &elem, idx), elem))

@@ -34,6 +34,12 @@ pub zero[T] :: fn() T { z: T; z }
 pub Range :: struct { start: int, end: ?int, step: int }
 
 Range :< {
+	pub collect :: fn(self) []int {
+		out: []int = []
+		loop n in self { out << n }
+		out
+	}
+
 	pub contains :: fn(self, n: int) bool {
 		offset :: n - self.start
 		if offset % self.step != 0 { return false }
