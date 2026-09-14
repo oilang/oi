@@ -247,6 +247,27 @@ fn attr_macro_over_annotated_def() {
 	);
 }
 
+// binds, struct fills and claim fills
+#[test]
+fn attr_macro_positions() {
+	check(
+		indoc! {"
+			keep! :: fn(input: Ast) Ast { `%input` }
+			Show :: trait { show : fn(self) int }
+			Point :: struct {
+				x: int
+				@keep! double :: fn(self) int { self.x * 2 }
+			}
+			Point : Show < {
+				@keep! show :: fn(self) int { self.x }
+			}
+			@keep! answer :: 5
+			print(Point.{ x = 7 }.show() + Point.{ x = 1 }.double() + answer)
+		"},
+		"14",
+	);
+}
+
 #[test]
 fn attr_macro_args_arrive_as_one_list() {
 	check(

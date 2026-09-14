@@ -175,6 +175,7 @@ where
 	let mut block = Recursive::declare();
 	let mut anon_fields = Recursive::declare();
 	let mut item = Recursive::declare();
+	let mut attr_macro = Recursive::declare();
 
 	let ident = || select! { Token::Ident(name) => name };
 
@@ -1499,6 +1500,7 @@ where
 				.clone()
 				.map(Member::Field)
 				.or(func.clone().map(Member::Fn))
+				.or(attr_macro.clone().map(Member::Fn))
 				.or(embedded.map(Member::Field)),
 		)))
 		.map_with(|((name, type_params), members), ex| {
@@ -1703,6 +1705,7 @@ where
 		Some(anns) => (Expr::Annotated(anns, Box::new(f)), ex.span()),
 		None => f,
 	});
+	let fill = attr_macro.clone().or(fill);
 	let fill_block = brace(
 		fill_docs
 			.clone()
@@ -1782,25 +1785,26 @@ where
 		.map_with(|d, ex| (Expr::Pub(Box::new(d)), ex.span()))
 		.boxed();
 	// annotations
-	let annotated = annotations.then(just(Token::Pub).or_not()).then(def.clone().or(bind)).map_with(
-		|((anns, public), item), ex| {
+	let annotated = annotations
+		.then(just(Token::Pub).or_not())
+		.then(def.clone().or(bind.clone()))
+		.map_with(|((anns, public), item), ex| {
 			let item = match public {
 				Some(_) => (Expr::Pub(Box::new(item)), ex.span()),
 				None => item,
 			};
 			(Expr::Annotated(anns, Box::new(item)), ex.span())
-		},
-	);
+		});
 	item.define(annotated.clone().or(public.clone()).or(def.clone()));
 
 	// annotation macros
-	let attr_macro = just(Token::At)
+	let attr = just(Token::At)
 		.then_ignore(adjacent)
 		.ignore_then(dotted_name)
 		.then_ignore(adjacent)
 		.then_ignore(just(Token::Not))
 		.then(spanned(adjacent.ignore_then(paren(loose_list(expr.clone())))).or_not())
-		.then(annotated.clone().or(public.clone()).or(def.clone()))
+		.then(item.clone().or(bind))
 		.map_with(|((name, args), item), ex| {
 			let mut args_v = vec![item];
 			if let Some((elems, span)) = args {
@@ -1808,6 +1812,7 @@ where
 			}
 			(Expr::MacroCall { name, args: args_v }, ex.span())
 		});
+	attr_macro.define(attr);
 
 	attr_macro
 		.or(annotated)
