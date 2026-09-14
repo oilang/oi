@@ -38,6 +38,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Rewrite `mod.T` to the canonical `module::T` ident, so every type path sees a plain name.
+	pub(super) fn dotted_type(&self, e: &Spanned<Expr>) -> Option<Spanned<Expr>> {
+		let Expr::Field { tuple, field } = &e.0 else {
+			return None;
+		};
+		let Expr::Ident(m) = &tuple.0 else { return None };
+		let vis = self.scope.visible.get(m).filter(|_| !self.vars.contains_key(m))?;
+		let t = match &vis.only {
+			None => field,
+			Some(only) => only.get(field)?,
+		};
+		let key = format!("{}::{t}", vis.module);
+		let known = self.structs.contains_key(&key)
+			|| self.enums.contains_key(&key)
+			|| self.generics.structs.contains_key(&key)
+			|| self.aliases.contains_key(&key);
+		known.then_some((Expr::Ident(key), e.1))
+	}
+
 	// Ensure that no private members are accessed from outside their module.
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = typ.split('[').next().unwrap(); // Box[int] -> Box

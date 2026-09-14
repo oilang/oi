@@ -421,6 +421,34 @@ fn qualified_type_in_signature() {
 }
 
 #[test]
+fn qualified_static_access() {
+	Project::new()
+		.file(
+			"main.oi",
+			indoc! {"
+				use shapes
+				p := shapes.Point.of(1, 2)
+				print(p.x + p.y)
+				print(shapes.Kind.circle.str())
+				print(shapes.Point.ORIGIN.x)
+			"},
+		)
+		.file(
+			"shapes.oi",
+			indoc! {"
+				module shapes
+				pub Point :: struct { pub x: int, pub y: int }
+				Point :< {
+					pub of :: fn(x: int, y: int) Point { Point.{ x = x, y = y } }
+					pub ORIGIN :: Point.{ x = 0, y = 0 }
+				}
+				pub Kind :: enum { circle, square }
+			"},
+		)
+		.check("3\ncircle\n0");
+}
+
+#[test]
 fn const_exprs() {
 	Project::new()
 		.file(

@@ -222,6 +222,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				type_args,
 				args,
 			} => {
+				let dotted = self.dotted_type(recv);
+				let recv = dotted.as_ref().unwrap_or(recv);
+
 				// access to an imported module's function
 				if let Expr::Ident(m) = &recv.0
 					&& !self.vars.contains_key(m)
@@ -322,7 +325,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						_ => {}
 					}
 				}
-				let recv_expr = bound.is_some().then(|| recv.as_ref());
+				let recv_expr = bound.is_some().then_some(recv);
 				self.check_member(&sname, method, expr.1)?;
 				let key = format!("{sname}.{method}");
 				let gkey = format!("{}.{method}", sname.split('[').next().unwrap());
@@ -397,6 +400,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Field { tuple, field } => {
+				let dotted = self.dotted_type(tuple);
+				let tuple = dotted.as_ref().unwrap_or(tuple);
+
 				// access an imported module's items
 				if let Expr::Ident(m) = &tuple.0
 					&& !self.vars.contains_key(m)
