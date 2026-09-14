@@ -757,13 +757,20 @@ where
 			)
 		});
 
+	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
+
 	let macro_stmt = dotted_name
 		.clone()
 		.then_ignore(adjacent)
 		.then_ignore(just(Token::Not))
 		.then_ignore(adjacent.then(just(Token::LParen)).not())
-		.then(expr.clone())
-		.map_with(|(name, arg), ex| (Expr::MacroCall { name, args: vec![arg] }, ex.span()));
+		.then(
+			expr.clone()
+				.then(same_line.ignore_then(block_ast.clone()).or_not())
+				.map(|(arg, body)| std::iter::once(arg).chain(body).collect::<Vec<_>>())
+				.or(block_ast.clone().map(|body| vec![body])),
+		)
+		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 	// statements
 	let stmt = doc
@@ -969,7 +976,7 @@ where
 			.then_ignore(adjacent)
 			.then_ignore(just(Token::Not))
 			.then_ignore(adjacent)
-			.then(paren(loose_list(expr.clone())))
+			.then(paren(loose_list(expr.clone().or(block_ast))))
 			.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 		// map literals

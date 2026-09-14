@@ -107,3 +107,23 @@ fn array_elem_juxt() {
 	"};
 	check(src, "1");
 }
+
+#[test]
+fn macro_stmt_arg_then_block() {
+	let src = indoc! {"
+		m! :: fn(n: Ast, b: Ast) Ast { `if %n { %{..b.items} }` }
+		m! true { print(1) }
+		m! false { print(9) }
+	"};
+	check(src, "1");
+}
+
+#[test]
+fn macro_block_arg() {
+	let src = indoc! {"
+		m! :: fn(b: Ast) Ast { `%{..b.items}` }
+		m! { print(2) }
+		m!({ print(3) })
+	"};
+	check(src, ["2", "3"]);
+}
