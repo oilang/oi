@@ -67,6 +67,12 @@ pub test :: struct {
 	skip: bool = false
 }
 
+## Expands to a `@test` fn right now.
+pub test! :: fn(name: Ast, body: Ast) Ast {
+	id := gensym("test")
+	`@test.{%name} %id :: fn() { %{..body.items} }`
+}
+
 pub link :: struct { lib: string = "", name: string = "" }
 pub export :: struct { name: string = "" }
 

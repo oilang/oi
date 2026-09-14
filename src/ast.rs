@@ -375,7 +375,6 @@ impl Expr {
 			| Expr::Spread(v)
 			| Expr::Ref(v)
 			| Expr::Pub(v)
-			| Expr::Annotated(_, v)
 			| Expr::Propagate(v)
 			| Expr::Negative(v)
 			| Expr::Not(v)
@@ -388,6 +387,10 @@ impl Expr {
 			| Expr::UnquoteSplat(v)
 			| Expr::Comp(v)
 			| Expr::Unsafe(v) => f(One(v)),
+			Expr::Annotated(anns, v) => {
+				f(List(anns));
+				f(One(v));
+			}
 			Expr::Index {
 				collection: a,
 				index: b,

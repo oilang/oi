@@ -26,6 +26,17 @@ fn test_runs_all_in_order() {
 }
 
 #[test]
+fn test_macro_runs_under_test_and_drops_under_run() {
+	let dir = project(indoc! {r#"
+		test! "leading literal" { assert! true }
+		main :: fn() { print("fine") }
+	"#});
+	let out = ok(oi(&["test"]).current_dir(&dir).run(None));
+	assert!(out.contains("leading literal ... ok") && out.contains("1 passed"));
+	assert_eq!(ok(oi(&["run"]).current_dir(&dir).run(None)), "fine");
+}
+
+#[test]
 fn test_payload_renames_and_skips() {
 	let dir = project(indoc! {r#"
 		@test.{"alt name"} first :: fn() { assert! true }

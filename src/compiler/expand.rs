@@ -197,13 +197,15 @@ impl Expander {
 				}
 			})
 			.collect();
+		let mut annotations = program.annotations.clone();
+		annotations.retain(|k, _| k.contains("::"));
 		let synthetic = Program {
 			map: program.map.clone(),
 			modules,
 			publics: program.publics.clone(),
 			reexports: program.reexports.clone(),
 			consts: program.consts.clone(),
-			annotations: program.annotations.clone(),
+			annotations,
 			roots: program.roots.clone(),
 		};
 		let mut compiler = Compiler::default();
@@ -351,7 +353,13 @@ pub fn expand(program: &Program) -> Result<HashMap<String, Vec<Spanned<Expr>>>, 
 		}
 		rest.insert(m.name.clone(), items);
 	}
-	if !ex.macros.is_empty() {
+	let called = program.modules.iter().any(|m| {
+		rest.get_mut(&m.name)
+			.unwrap()
+			.iter_mut()
+			.any(|it| ex.calls_macro(&mut it.0, &m.scope))
+	});
+	if called {
 		ex.compile_stage0(program, &mut rest)?;
 	}
 	for m in &program.modules {

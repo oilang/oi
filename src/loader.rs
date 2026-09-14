@@ -228,13 +228,15 @@ impl Loader {
 		name: &mut String,
 		qualify: bool,
 		public: bool,
-		span: Span,
+		span: Option<Span>,
 	) -> Result<(), Diagnostic> {
 		let bare = name.clone();
 		if qualify {
 			*name = format!("{}::{bare}", m.name);
 		}
-		if m.scope.env.insert(bare.clone(), name.clone()).is_some() {
+		if m.scope.env.insert(bare.clone(), name.clone()).is_some()
+			&& let Some(span) = span
+		{
 			let msg = format!("`{bare}` is defined twice in module `{}`", m.name);
 			return Err(err(msg, span, "duplicate definition"));
 		}
@@ -385,7 +387,7 @@ impl Loader {
 			if let Expr::MacroCall { args, .. } = &mut item.0
 				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
 			{
-				self.define(m, name, !main, public || pubbed, span)?;
+				self.define(m, name, !main, public || pubbed, Some(span))?;
 				m.items.push(item);
 				continue;
 			}
@@ -395,12 +397,12 @@ impl Loader {
 				| Expr::EnumDef { name, .. }
 				| Expr::TypeAlias { name, .. }
 				| Expr::TraitDef { name, .. } => {
-					self.define(m, name, !main, public, span)?;
+					self.define(m, name, !main, public, Some(span))?;
 					if !anns.is_empty() {
 						self.annotations.entry(name.clone()).or_default().extend(anns);
 					}
 				}
-				Expr::MacroDef { name, .. } => self.define(m, name, !main, public, span)?,
+				Expr::MacroDef { name, .. } => self.define(m, name, !main, public, None)?,
 				Expr::Bind {
 					mutable,
 					name,
@@ -416,7 +418,7 @@ impl Loader {
 						(true, ..) => Some(("a module-level binding must be a const", "use `::`")),
 						(_, _, Some(v)) if matches!(v.0, Expr::Foreign) => match typ {
 							Some((TypeExpr::Fn(..), _)) => {
-								self.define(m, name, !main, public, span)?;
+								self.define(m, name, !main, public, Some(span))?;
 								if !anns.is_empty() {
 									self.annotations.entry(name.clone()).or_default().extend(anns);
 								}
@@ -428,7 +430,7 @@ impl Loader {
 							Some(("type annotations on consts aren't supported yet", "drop the annotation"))
 						}
 						(_, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
-							self.define(m, name, true, public, span)?;
+							self.define(m, name, true, public, Some(span))?;
 							let mut v = v.clone();
 							if let Expr::StructLit { name: n, .. } = &mut v.0
 								&& !n.is_empty()
@@ -439,7 +441,7 @@ impl Loader {
 							continue;
 						}
 						(_, _, Some(v)) if TypeExpr::from_expr(&v.0).is_some() => {
-							self.define(m, name, true, public, span)?;
+							self.define(m, name, true, public, Some(span))?;
 							None
 						}
 						_ => Some(("cannot evaluate this at compile time", "not a const expression")),
