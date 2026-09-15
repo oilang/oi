@@ -14,7 +14,7 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::{Program, Scope, is_literal};
+use crate::loader::{Program, Scope, is_hook_trait, is_literal};
 use crate::runtime;
 
 mod comp;
@@ -972,7 +972,7 @@ impl<M: Module> Compiler<M> {
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
 					}
 					for tn in &claimed {
-						if !type_params.is_empty() && tn != "Drop" && tn != "Copy" {
+						if !type_params.is_empty() && !is_hook_trait(tn) {
 							let msg = "generic trait claims aren't supported yet".to_string();
 							return Err(
 								Diagnostic::new(msg, item.1.into_range()).with_label("remove the type parameters")
@@ -1430,7 +1430,7 @@ impl<M: Module> Compiler<M> {
 
 		// define vtables now that every concrete method has a FuncId
 		for (typ, tn) in self.trait_impls.clone() {
-			if tn == "Drop" || tn == "Copy" {
+			if is_hook_trait(&tn) {
 				continue;
 			}
 			let (_, tfields, tmethods) = traits[tn.as_str()];

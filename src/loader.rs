@@ -62,6 +62,16 @@ pub struct Scope {
 	pub module: String,
 }
 
+// Whether `name` is a reserved hook trait.
+pub(crate) fn is_hook_trait(name: &str) -> bool {
+	matches!(name, "Drop" | "Copy")
+}
+
+// The method a hook trait's fill defines.
+pub(crate) fn hook_method(name: &str) -> &'static str {
+	if name == "Copy" { "copy" } else { "drop" }
+}
+
 impl Scope {
 	// Resolve a bare name through this module's env, qualifying a miss into its own module.
 	pub(crate) fn qualify_name(&self, name: &str) -> String {
@@ -83,7 +93,7 @@ impl Scope {
 
 	// Resolve a bare trait name, leaving qualified names and the built-in hooks alone.
 	pub(crate) fn qualify_trait(&self, name: &str) -> String {
-		if name.contains("::") || matches!(name, "Drop" | "Copy") {
+		if name.contains("::") || is_hook_trait(name) {
 			return name.to_string();
 		}
 		self.qualify_name(name)

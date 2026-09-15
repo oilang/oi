@@ -1173,12 +1173,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().stack_addr(self.int, slot, 0)
 	}
 
-	pub(super) fn struct_copy(&mut self, src: Value, fields: &[FieldDef]) -> Value {
-		let dst = self.stack_slot((fields.len() * 8) as u32);
-		self.assign_fields(src, dst, fields, false);
-		dst
-	}
-
 	// Copy field slots between structs.
 	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
 		for (i, f) in fields.iter().enumerate() {

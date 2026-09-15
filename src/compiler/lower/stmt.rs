@@ -96,17 +96,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Typ::Struct(_, ref fields) = typ {
 						let fields = fields.clone();
 						let dst = self.read_local(&local);
-						let moved = self.handover(val, &typ);
 						if self.is_resource(&typ) {
 							self.release_value(dst, &typ);
 						}
-						if moved {
-							self.untemp(val);
-						}
 						self.assign_fields(val, dst, &fields, true);
-						if !moved {
-							self.copy_value(dst, &typ);
-						}
+						self.settle(val, dst, &typ);
 					} else {
 						let val = self.copy_in(val, &typ);
 						let old = self.read_local(&local);

@@ -73,12 +73,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Run Copy hook.
-	pub(super) fn copy_value(&mut self, val: Value, typ: &Typ) {
-		if let Typ::Struct(name, _) = typ
+	// Settle a struct copy.
+	pub(super) fn settle(&mut self, val: Value, dst: Value, typ: &Typ) {
+		if self.handover(val, typ) {
+			self.untemp(val);
+		} else if let Typ::Struct(name, _) = typ
 			&& self.is_copy(typ)
 		{
-			self.run_hook(val, typ, name, "copy");
+			self.run_hook(dst, typ, name, "copy");
 		}
 	}
 
@@ -285,8 +287,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		match typ {
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
-				let dst = self.struct_copy(val, &fields);
-				self.copy_value(dst, typ);
+				let dst = self.stack_slot((fields.len() * 8) as u32);
+				self.assign_fields(val, dst, &fields, false);
+				self.settle(val, dst, typ);
 				dst
 			}
 			_ => self.copy_in(val, typ),

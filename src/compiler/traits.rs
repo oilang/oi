@@ -1,7 +1,7 @@
 //! Trait declarations and impls checking.
 
 use super::*;
-use crate::loader::fold_const;
+use crate::loader::{fold_const, hook_method, is_hook_trait};
 
 // A trait's supertraits, fields, and methods.
 pub(crate) type TraitItem<'a> = (Vec<String>, &'a [Param], &'a [Spanned<Expr>]);
@@ -136,8 +136,8 @@ pub(super) fn check_impls<'p>(
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
 			}
 		}
-		if tn == "Drop" || tn == "Copy" {
-			let hook = tn.to_lowercase();
+		if is_hook_trait(&tn) {
+			let hook = hook_method(&tn);
 			let well_formed = methods.iter().any(|m| {
 				matches!(&m.0, Expr::Fn { name, params, .. }
 					if *name == hook && params.len() == 1 && params[0].name == "self" && params[0].access == Access::Mut)
