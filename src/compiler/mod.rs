@@ -141,6 +141,7 @@ struct FnDef<'a> {
 	body: &'a [Spanned<Expr>],
 	self_type: Option<&'a str>,
 	is_main: bool,
+	is_test: bool,
 	captures: &'a [(String, Typ, bool)],
 	self_fn: Option<(&'a str, &'a FnSig)>,
 	foreign: bool,
@@ -430,6 +431,7 @@ pub(crate) struct Local {
 	pub typ: Typ,
 	pub mutable: bool,
 	pub boxed: bool,
+	pub stat: bool,
 }
 
 impl Local {
@@ -439,6 +441,7 @@ impl Local {
 			typ,
 			mutable,
 			boxed: false,
+			stat: false,
 		}
 	}
 }
@@ -469,6 +472,8 @@ pub struct Compiler<M: Module = JITModule> {
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
 	consts: HashMap<String, Spanned<Expr>>,
+	statics: HashMap<String, (String, Typ)>,
+	static_inits: Vec<(String, Spanned<Expr>)>,
 	annotations: HashMap<String, Vec<Annotation>>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
@@ -481,6 +486,23 @@ pub struct Compiler<M: Module = JITModule> {
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
 	pub timings: Vec<(&'static str, Duration)>,
+}
+
+// Get a static's type from its literal.
+fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> {
+	match e {
+		Expr::Negative(v) => static_typ(&v.0, types, span),
+		Expr::Int(n) if i32::try_from(*n).is_ok() => Ok(Typ::Int(32)),
+		Expr::Int(_) => Ok(Typ::Int(64)),
+		Expr::Float(_) => Ok(Typ::Float(64)),
+		Expr::Bool(_) => Ok(Typ::Bool),
+		Expr::String(_) => Ok(Typ::Str),
+		Expr::StructLit { name, .. } if !name.is_empty() => types.resolve(&TypeExpr::Name(name.clone()), span),
+		_ => Err(
+			Diagnostic::new("cannot tell what type this static is", span.into_range())
+				.with_label("annotate it, or initialize it with a literal"),
+		),
+	}
 }
 
 fn comptime_only(e: &Expr) -> bool {
@@ -627,6 +649,8 @@ impl<M: Module> Compiler<M> {
 			privates: HashMap::new(),
 			reexports: HashMap::new(),
 			consts: HashMap::new(),
+			statics: HashMap::new(),
+			static_inits: vec![],
 			annotations: HashMap::new(),
 			module_scopes: HashMap::new(),
 			map: SourceMap::default(),
@@ -779,6 +803,7 @@ impl<M: Module> Compiler<M> {
 		let mut loose_refs: Vec<&Spanned<Expr>> = vec![];
 		let mut trait_bodies: Vec<TraitBody> = vec![];
 		let mut foreign_items: Vec<(String, TypeExpr, Span, &Scope)> = vec![];
+		let mut static_items = vec![];
 
 		self.publics = program.publics.clone();
 		self.reexports = program.reexports.clone();
@@ -828,6 +853,8 @@ impl<M: Module> Compiler<M> {
 				.iter()
 				.flat_map(|m| expanded[&m.name].iter().map(move |i| (&m.scope, i)))
 		};
+
+		let has_main = items().any(|(_, i)| matches!(&i.0, Expr::Fn { name, .. } if name == "main"));
 
 		let mut traits: HashMap<&str, TraitItem> = HashMap::new();
 		for (scope, (e, span)) in items() {
@@ -1052,6 +1079,15 @@ impl<M: Module> Compiler<M> {
 					..
 				} if matches!(v.0, Expr::Foreign) => {
 					foreign_items.push((name.clone(), t.clone(), item.1, scope));
+				}
+				// statics
+				Expr::Bind {
+					mutable: true,
+					name,
+					typ,
+					value: Some(v),
+				} if has_main || !scope.module.is_empty() => {
+					static_items.push((name.clone(), typ.clone(), (**v).clone(), scope, item.1));
 				}
 				Expr::Bind {
 					mutable: false,
@@ -1426,6 +1462,24 @@ impl<M: Module> Compiler<M> {
 			self.module.define_data(id, &desc).expect("define vtable");
 		}
 
+		// one zeroed cell per static
+		for (name, annot, init, scope, span) in static_items {
+			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
+				.with_consts(consts)
+				.with_scope(scope);
+			let typ = match &annot {
+				Some((t, s)) => types.resolve(t, *s)?,
+				None => static_typ(&init.0, &types, span)?,
+			};
+			let sym = oi_symbol(&format!("static_{name}"));
+			self.module
+				.declare_data(&sym, Linkage::Local, true, false)
+				.expect("declare static");
+			define_data(&mut self.module, &sym, vec![0; 8]);
+			self.statics.insert(name.clone(), (sym, typ));
+			self.static_inits.push((name, init));
+		}
+
 		// gather loose top-level statements
 		let loose: Vec<Spanned<Expr>>;
 		let entry: &[Spanned<Expr>] = match main_body {
@@ -1485,6 +1539,7 @@ impl<M: Module> Compiler<M> {
 						self_type,
 						foreign: funcs[&item.key].foreign,
 						pure: funcs[&item.key].pure,
+						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
 						..FnDef::default()
 					},
 					&funcs,
@@ -1645,6 +1700,7 @@ impl<M: Module> Compiler<M> {
 			privates: &self.privates,
 			reexports: &self.reexports,
 			consts: &self.consts,
+			statics: &self.statics,
 			annotations: &self.annotations,
 			mono: &mut self.mono,
 			pending: &mut self.pending,
@@ -1669,8 +1725,13 @@ impl<M: Module> Compiler<M> {
 
 	fn translate(&mut self, def: FnDef, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Result<Typ, Diagnostic> {
 		let decl_span = def.ret.as_ref().map(|(_, s)| *s);
+		let inits = match def.is_main || def.is_test {
+			true => self.static_inits.clone(),
+			false => vec![],
+		};
 		let (mut trans, block) = self.translator(&def, funcs, types);
 
+		trans.seed_statics(&inits)?;
 		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
 		for ((name, typ, access), &val) in def.params.iter().zip(param_vals.iter()) {
 			let val = if def.foreign && matches!(typ, Typ::Fn(..)) {
@@ -1690,6 +1751,7 @@ impl<M: Module> Compiler<M> {
 				typ: typ.clone(),
 				mutable,
 				boxed: mutable && name != "self",
+				stat: false,
 			};
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
@@ -1708,6 +1770,7 @@ impl<M: Module> Compiler<M> {
 					typ: typ.clone(),
 					mutable: *boxed,
 					boxed: *boxed,
+					stat: false,
 				};
 				trans.vars.insert(name.clone(), local);
 			}

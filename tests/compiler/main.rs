@@ -31,6 +31,7 @@ mod pipelines;
 mod references;
 mod resources;
 mod statements;
+mod statics;
 mod str_method;
 mod traits;
 mod types;

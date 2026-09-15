@@ -378,15 +378,10 @@ fn const_import() {
 
 #[test]
 fn const_import_fails() {
-	for (lib, expected) in [
-		("name :: 7", "private to module `foo`"),
-		("pub name := 7", "must be a const"),
-	] {
-		let p = Project::new()
-			.file("main.oi", ["module main", "use foo.{ name }", "print(name)"])
-			.file("foo/lib.oi", ["module foo", lib]);
-		p.fail_with(expected);
-	}
+	let p = Project::new()
+		.file("main.oi", ["module main", "use foo.{ name }", "print(name)"])
+		.file("foo/lib.oi", ["module foo", "name :: 7"]);
+	p.fail_with("private to module `foo`");
 }
 
 #[test]

@@ -427,13 +427,23 @@ impl Loader {
 					typ,
 					value,
 				} if !main || matches!(value.as_deref(), Some((Expr::Foreign, _))) => {
-					if let Some(v) = value.as_deref_mut()
-						&& let Some(f) = fold_const(&v.0, &self.consts, &m.scope)
-					{
-						v.0 = f;
+					if let Some(v) = value.as_deref_mut() {
+						if let Some(f) = fold_const(&v.0, &self.consts, &m.scope) {
+							v.0 = f;
+						}
+						if *mutable
+							&& let Expr::StructLit { name: n, .. } = &mut v.0
+							&& !n.is_empty()
+						{
+							*n = m.scope.qualify_name(n);
+						}
 					}
 					let bad = match (*mutable, typ.is_some(), value.as_deref()) {
-						(true, ..) => Some(("a module-level binding must be a const", "use `::`")),
+						(true, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
+							self.define(m, name, !main, public, span)?;
+							None
+						}
+						(true, ..) => Some(("a static needs a comptime initializer", "not a const expression")),
 						(_, _, Some(v)) if matches!(v.0, Expr::Foreign) => match typ {
 							Some((TypeExpr::Fn(..), _)) => {
 								self.define(m, name, !main, public, span)?;

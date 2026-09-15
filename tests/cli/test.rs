@@ -48,6 +48,17 @@ fn test_payload_renames_and_skips() {
 }
 
 #[test]
+fn each_test_starts_from_the_declared_statics() {
+	let dir = project(indoc! {r#"
+		main :: fn() {}
+		n := 0
+		@test first :: fn() { n = n + 1; assert!(n == 1) }
+		@test second :: fn() { n = n + 1; assert!(n == 1) }
+	"#});
+	assert!(ok(oi(&["test"]).current_dir(&dir).run(None)).contains("2 passed"));
+}
+
+#[test]
 fn failing_test_is_isolated() {
 	let dir = project(indoc! {r#"
 		@test first :: fn() { assert! false }

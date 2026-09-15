@@ -425,6 +425,15 @@ impl<'a, M: Module> Translator<'a, M> {
 					let module = vis.module.clone();
 					let key = format!("{module}::{target}");
 					let key = self.reexports.get(&key).cloned().unwrap_or(key);
+					if let Some(l) = self.vars.get(&key).cloned().filter(|l| l.stat) {
+						if !self.publics.contains(&key) {
+							let msg = format!("`{field}` is private to module `{module}`");
+							return Err(Diagnostic::new(msg, expr.1.into_range()).with_label("not public"));
+						}
+						self.require_pure(field, expr.1)?;
+						let val = self.read_local(&l);
+						return Ok((val, l.typ));
+					}
 					let (msg, label) = match self.consts.get(&key).cloned() {
 						Some(c) if self.publics.contains(&key) => return self.expr(&c),
 						Some(_) => (format!("`{field}` is private to module `{module}`"), "not public"),

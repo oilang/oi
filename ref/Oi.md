@@ -143,6 +143,8 @@ tags: []
 - [ ] incremental compilation
 - [ ] more types (`any`, `b\d+`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
 - [ ] load the `oi init` scaffolding from fs, to make them easier to maintain
+- [ ] swizzle `odin`
+- [ ] `if-do` `odin`
 ## consider
 - `nil`
 - C++20 uses `operator|`, a naked `|` for pipelines

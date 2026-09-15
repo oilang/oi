@@ -108,6 +108,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				d
 			}
 		})?;
+		if local.stat {
+			self.require_pure(name, span.clone())?;
+		}
 		if !local.mutable {
 			return Err(
 				Diagnostic::new(format!("cannot {immutable_verb} immutable `{name}`"), span)
@@ -120,9 +123,47 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Look up a variable.
 	pub(super) fn local(&self, name: &str, span: Range<usize>) -> Result<Local, Diagnostic> {
-		self.vars.get(name).cloned().ok_or_else(|| {
-			Diagnostic::new(format!("undefined variable `{name}`"), span).with_label("not found in scope")
-		})
+		let local = self.vars.get(name).cloned().ok_or_else(|| {
+			Diagnostic::new(format!("undefined variable `{name}`"), span.clone()).with_label("not found in scope")
+		})?;
+		if local.stat {
+			self.require_pure(name, span)?;
+		}
+		Ok(local)
+	}
+
+	// A static reads and writes through its cell.
+	pub fn seed_statics(&mut self, inits: &[(String, Spanned<Expr>)]) -> Result<(), Diagnostic> {
+		let cells: Vec<_> = self
+			.statics
+			.iter()
+			.map(|(k, (s, t))| (k.clone(), s.clone(), t.clone()))
+			.collect();
+		for (key, sym, typ) in cells {
+			let addr = self.data_addr(&sym);
+			let var = self.b.declare_var(self.int);
+			self.b.def_var(var, addr);
+			let local = Local {
+				var,
+				typ,
+				mutable: true,
+				boxed: true,
+				stat: true,
+			};
+			let bare = self.scope.env.iter().find(|(_, q)| **q == key).map(|(b, _)| b.clone());
+			if let Some(bare) = bare {
+				self.vars.insert(bare, local.clone());
+			}
+			self.vars.insert(key, local);
+		}
+		for (key, init) in inits {
+			let local = self.vars[key].clone();
+			let val = self.check_typed(init, &local.typ, "does not match the declared type")?;
+			// the cell outlives the frame that filled it
+			self.untemp(val);
+			self.write_local(&local, val);
+		}
+		Ok(())
 	}
 
 	// Promote a local to a heap-boxed cell.
@@ -147,6 +188,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				boxed: true,
 				mutable: true,
 				typ: local.typ.clone(),
+				stat: local.stat,
 			},
 		);
 		Ok(cell)

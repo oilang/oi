@@ -60,6 +60,8 @@ pub Foo :: struct { bar: bool }
 pub foo :: Foo.{ true }
 pub strange :: "dr strange love"
 
+# a module level `:=` is a static binding
+
 ## FFI
 
 # `foreign` binds a value that lives outside the program

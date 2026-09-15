@@ -66,6 +66,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub privates: &'a HashMap<String, HashSet<String>>,
 	pub reexports: &'a HashMap<String, String>,
 	pub consts: &'a HashMap<String, Spanned<Expr>>,
+	pub statics: &'a HashMap<String, (String, Typ)>,
 	pub annotations: &'a HashMap<String, Vec<Annotation>>,
 	pub mono: &'a mut HashMap<String, FnSig>,
 	pub pending: &'a mut Vec<Pending>,

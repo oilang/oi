@@ -1,5 +1,7 @@
 //! Marshalling Oi structs to/from C layout.
 
+use std::ops::Range;
+
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
@@ -17,10 +19,10 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	pub(super) fn require_pure(&self, what: &str, span: Span) -> Result<(), Diagnostic> {
+	pub(super) fn require_pure(&self, what: &str, span: impl Into<Range<usize>>) -> Result<(), Diagnostic> {
 		if self.pure {
 			let msg = format!("`{what}` isn't allowed in a `@pure` fn");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("not `@pure`"));
+			return Err(Diagnostic::new(msg, span.into()).with_label("not `@pure`"));
 		}
 		Ok(())
 	}
