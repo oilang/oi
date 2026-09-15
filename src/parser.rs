@@ -965,34 +965,6 @@ where
 			.ignore_then(paren(loose_list(expr.clone())))
 			.map_with(|elems, ex| (Expr::DotTuple(elems), ex.span()));
 
-		let option_init = just(Token::Question)
-			.ignore_then(type_expr.clone())
-			.then(paren(expr.clone()))
-			.map_with(|(elem, arg), ex| {
-				(
-					Expr::OptionInit {
-						inner: (elem, ex.span()),
-						arg: Box::new(arg),
-					},
-					ex.span(),
-				)
-			});
-
-		// result literals
-		let result_shape = type_expr
-			.clone()
-			.filter(|t| !matches!(t, TypeExpr::Name(_)))
-			.then(paren(expr.clone()));
-		let result_init = just(Token::Not).ignore_then(result_shape.clone()).map_with(|(elem, arg), ex| {
-			(
-				Expr::ResultInit {
-					inner: (elem, ex.span()),
-					arg: Box::new(arg),
-				},
-				ex.span(),
-			)
-		});
-
 		// inline macro calls
 		let macro_call = dotted_name
 			.clone()
@@ -1209,8 +1181,6 @@ where
 			enum_shorthand,
 			group,
 			tuple,
-			option_init,
-			result_init,
 			map,
 			array,
 			if_expr,
@@ -1306,11 +1276,13 @@ where
 				prefix(8, just(Token::Minus), |_, rhs, ex| {
 					(Expr::Negative(Box::new(rhs)), ex.span())
 				}),
-				prefix(
-					8,
-					just(Token::Not).then_ignore(result_shape.clone().not()),
-					|_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span()),
-				),
+				prefix(8, just(Token::Not), |_, rhs, ex| match rhs {
+					(Expr::Cast { target: (t, ts), args }, _) => {
+						let target = (TypeExpr::Result(Box::new(t), None), ts);
+						(Expr::Cast { target, args }, ex.span())
+					}
+					_ => (Expr::Not(Box::new(rhs)), ex.span()),
+				}),
 				// arithmetic
 				infix(right(8), just(Token::StarStar), |l, _, r, ex| {
 					(Expr::Binary(BinOp::Pow, Box::new(l), Box::new(r)), ex.span())

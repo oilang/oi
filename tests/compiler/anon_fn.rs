@@ -318,7 +318,7 @@ fn move_capture_inside_loop_of_outer_binding() {
 // FIX: broke by sandwiches
 fn implicit_capture_ignores_match_bound_name() {
 	let src = indoc! {r#"
-		r :: !int(7)
+		r :: !int.(7)
 		f :: fn () int {
 			match r {
 				.ok(n) => n * 2,

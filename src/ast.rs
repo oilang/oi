@@ -28,18 +28,6 @@ pub enum Expr {
 		value: Option<Box<Spanned<Expr>>>,
 	},
 
-	// `?T(value)`, `?T(none)`
-	OptionInit {
-		inner: Spanned<TypeExpr>,
-		arg: Box<Spanned<Expr>>,
-	},
-
-	// `!T(value)`, `!T(error)`
-	ResultInit {
-		inner: Spanned<TypeExpr>,
-		arg: Box<Spanned<Expr>>,
-	},
-
 	// `name = value`
 	Assign {
 		name: String,
@@ -368,9 +356,7 @@ impl Expr {
 				value.iter_mut().for_each(|v| f(One(v)));
 			}
 			Expr::Return(value) => value.iter_mut().for_each(|v| f(One(v))),
-			Expr::OptionInit { arg: v, .. }
-			| Expr::ResultInit { arg: v, .. }
-			| Expr::Assign { value: v, .. }
+			Expr::Assign { value: v, .. }
 			| Expr::PatBind { value: v, .. }
 			| Expr::ArgMod(_, v)
 			| Expr::Spread(v)

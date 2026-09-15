@@ -29,7 +29,7 @@ fn optional_ref_zero_value_assign_unwrap() {
 		indoc! {"
 			Node :: struct { value: int }
 			o: ?&Node
-			o = ?&Node(&Node.{ value = 7 })
+			o = ?&Node.(&Node.{ value = 7 })
 			match o {
 				.some(n) => n.value,
 				.none => -1,
@@ -65,7 +65,7 @@ fn linked_nodes() {
 		indoc! {r#"
 			Node :: struct { value: int, next: ?&Node }
 			tail :: &Node.{ value = 2 }
-			head :: &Node.{ value = 1, next = ?&Node(tail) }
+			head :: &Node.{ value = 1, next = ?&Node.(tail) }
 			match head.next {
 				.some(n) => print("{head.value} -> {n.value}"),
 				.none => print("lonely"),
@@ -79,7 +79,7 @@ fn linked_nodes() {
 fn interior_ref_frees_on_release() {
 	assert_clean(indoc! {"
 		Node :: struct { value: int, next: ?&Node }
-		head :: &Node.{ value = 1, next = ?&Node(&Node.{ value = 2 }) }
+		head :: &Node.{ value = 1, next = ?&Node.(&Node.{ value = 2 }) }
 		print(head.value)
 	"});
 }
@@ -89,7 +89,7 @@ fn shared_option_ref_stays_clean() {
 	assert_clean(indoc! {"
 		Node :: struct { value: int, next: ?&Node }
 		t :: &Node.{ value = 2 }
-		o :: ?&Node(t)
+		o :: ?&Node.(t)
 		a :: &Node.{ value = 1, next = o }
 		b :: &Node.{ value = 3, next = o }
 		print(t.value)
@@ -116,8 +116,8 @@ fn rebind_releases_old_target() {
 	assert_clean(indoc! {r#"
 		Node :: struct { value: int }
 		o: ?&Node
-		o = ?&Node(&Node.{ value = 1 })
-		o = ?&Node(&Node.{ value = 2 })
+		o = ?&Node.(&Node.{ value = 1 })
+		o = ?&Node.(&Node.{ value = 2 })
 		print("done")
 	"#});
 }
@@ -152,8 +152,8 @@ fn two_node_cycle_reclaimed() {
 	assert_clean(indoc! {r#"
 		Node :: struct { value: int, next: ?&Node }
 		a := &Node.{ value = 1 }
-		b :: &Node.{ value = 2, next = ?&Node(a) }
-		a.next = ?&Node(b)
+		b :: &Node.{ value = 2, next = ?&Node.(a) }
+		a.next = ?&Node.(b)
 		print(a.value)
 	"#});
 }
@@ -163,7 +163,7 @@ fn self_cycle_reclaimed() {
 	assert_clean(indoc! {r#"
 		Node :: struct { value: int, next: ?&Node }
 		n := &Node.{ value = 1 }
-		n.next = ?&Node(n)
+		n.next = ?&Node.(n)
 		print(n.value)
 	"#});
 }
@@ -173,9 +173,9 @@ fn cycle_with_acyclic_hangoff_reclaimed() {
 	assert_clean(indoc! {r#"
 		Leaf :: struct { v: int }
 		Node :: struct { value: int, leaf: ?&Leaf, next: ?&Node }
-		a := &Node.{ value = 1, leaf = ?&Leaf(&Leaf.{ v = 9 }) }
-		b :: &Node.{ value = 2, next = ?&Node(a) }
-		a.next = ?&Node(b)
+		a := &Node.{ value = 1, leaf = ?&Leaf.(&Leaf.{ v = 9 }) }
+		b :: &Node.{ value = 2, next = ?&Node.(a) }
+		a.next = ?&Node.(b)
 		print(a.value)
 	"#});
 }

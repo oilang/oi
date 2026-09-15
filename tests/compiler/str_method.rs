@@ -16,9 +16,9 @@ fn composites() {
 
 #[test]
 fn variants() {
-	check("Color :: enum { Red, Green }\nColor.Red.str()", "Red");
-	check("o :: ?int(none)\no.str()", "none");
-	check("r :: !int(42)\nr.str()", "ok(42)");
+	check(["Color :: enum { Red, Green }", "Color.Red.str()"], "Red");
+	check(["o :: ?int.(none)", "o.str()"], "none");
+	check(["r :: !int.(42)", "r.str()"], "ok(42)");
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn print_uses_user_str() {
 		print(m)
 		print([m, m])
 	"#};
-	check(src, "$5\n[$5, $5]");
+	check(src, ["$5", "[$5, $5]"]);
 }
 
 #[test]

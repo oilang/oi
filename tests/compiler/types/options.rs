@@ -3,12 +3,12 @@ use indoc::indoc;
 
 #[test]
 fn construct_some() {
-	check("?int(42)", "some(42)");
+	check("?int.(42)", "some(42)");
 }
 
 #[test]
 fn construct_none() {
-	check("?int(none)", "none");
+	check("?int.(none)", "none");
 }
 
 #[test]
@@ -23,46 +23,46 @@ fn bare_none_without_context_errors() {
 
 #[test]
 fn ord_gives_tag() {
-	check("ord(?int(42))", "1");
-	check("ord(?int(none))", "0");
+	check("ord(?int.(42))", "1");
+	check("ord(?int.(none))", "0");
 }
 
 #[test]
 fn int_cast_errors() {
-	fail_with("int.(?int(42))", "no backing value");
+	fail_with("int.(?int.(42))", "no backing value");
 }
 
 #[test]
 fn eq_same_some() {
-	check("?int(42) == ?int(42)", "true");
+	check("?int.(42) == ?int.(42)", "true");
 }
 
 #[test]
 fn eq_different_some() {
-	check("?int(42) == ?int(7)", "false");
+	check("?int.(42) == ?int.(7)", "false");
 }
 
 #[test]
 fn eq_none_vs_some() {
-	check("?int(none) == ?int(42)", "false");
-	check("?int(none) != ?int(42)", "true");
+	check("?int.(none) == ?int.(42)", "false");
+	check("?int.(none) != ?int.(42)", "true");
 }
 
 #[test]
 fn field_type_mismatch() {
-	fail_with("?int(3.0)", "expected int, got float");
+	fail_with("?int.(3.0)", "cannot cast float to ?int");
 }
 
 #[test]
 fn ordering_rejected() {
-	fail_with("?int(1) < ?int(2)", "only `==` and `!=`");
+	fail_with("?int.(1) < ?int.(2)", "only `==` and `!=`");
 }
 
 #[test]
 fn match_binds_some() {
 	check(
 		indoc! {r#"
-			o :: ?int(42)
+			o :: ?int.(42)
 			match o {
 				.some(n) => n,
 				.none => -1,
@@ -76,7 +76,7 @@ fn match_binds_some() {
 fn match_none_arm() {
 	check(
 		indoc! {r#"
-			o :: ?int(none)
+			o :: ?int.(none)
 			match o {
 				.some(n) => n,
 				.none => -1,
@@ -90,7 +90,7 @@ fn match_none_arm() {
 fn match_non_exhaustive_errors() {
 	fail_with(
 		indoc! {r"
-			o :: ?int(42)
+			o :: ?int.(42)
 			match o {
 				.some(n) => n,
 			}
@@ -103,7 +103,7 @@ fn match_non_exhaustive_errors() {
 fn struct_field_type() {
 	check(
 		"Box :: struct { val: ?int }
-		b :: Box.{ val = ?int(42) }
+		b :: Box.{ val = ?int.(42) }
 		b.val",
 		"some(42)",
 	);
@@ -118,7 +118,7 @@ fn fn_param_type() {
 				.none => fallback,
 			}
 		}
-		unwrap_or(?int(42), 0)
+		unwrap_or(?int.(42), 0)
 	"};
 	check(src, "42");
 }

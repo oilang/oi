@@ -3,5 +3,5 @@ use fs
 test! "read" {
 	assert! (fs.read("justfile") or { "" }).contains("cargo")
 	assert! (fs.read_bytes("justfile") or { [] })[0] == 109
-	assert! fs.read("nope.txt") == !string(error("cannot open nope.txt"))
+	assert! fs.read("nope.txt") == !string.(error("cannot open nope.txt"))
 }

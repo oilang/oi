@@ -153,6 +153,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
 		}
+		if let Typ::Result(ok, err) = target
+			&& **err == Typ::Error
+		{
+			return self.result_init((**ok).clone(), value);
+		}
 		let (val, typ) = self.check_expr(value, target)?;
 		if typ == *target {
 			return Ok((val, typ));

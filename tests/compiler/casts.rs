@@ -51,6 +51,13 @@ fn widening_casts() {
 }
 
 #[test]
+fn result_casts() {
+	check("!int.(7)", "ok(7)");
+	check(r#"!int.(error("oops"))"#, r#"err("oops")"#);
+	fail("?int(42)");
+}
+
+#[test]
 fn alias_cast() {
 	check(
 		indoc! {"

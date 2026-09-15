@@ -53,7 +53,7 @@ fn mutually_recursive_generics() {
 fn first_of_array() {
 	let src = indoc! {"
 		first[T] :: fn(xs: []T) ?T {
-			if xs.len == 0 { ?T(none) } else { ?T(xs[0]) }
+			if xs.len == 0 { ?T.(none) } else { ?T.(xs[0]) }
 		}
 		first([1, 2, 3])
 	"};
@@ -106,7 +106,7 @@ fn omitted_return_type_rejects_a_value() {
 fn explicit_type_arg_when_uninferable() {
 	let src = indoc! {"
 		none_of[T] :: fn() ?T {
-			?T(none)
+			?T.(none)
 		}
 		none_of[int]()
 	"};
@@ -201,7 +201,7 @@ fn unknown_bound_trait() {
 fn default_type_param_fills_when_uninferable() {
 	let src = indoc! {"
 		none_of[T = int] :: fn() ?T {
-			?T(none)
+			?T.(none)
 		}
 		none_of()
 	"};
@@ -212,7 +212,7 @@ fn default_type_param_fills_when_uninferable() {
 fn inference_and_explicit_args_beat_the_default() {
 	let src = indoc! {r#"
 		id[T = int] :: fn(x: T) T { x }
-		none_of[T = int] :: fn() ?T { ?T(none) }
+		none_of[T = int] :: fn() ?T { ?T.(none) }
 		print(id("a"))
 		print(none_of[string]())
 	"#};

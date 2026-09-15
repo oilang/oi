@@ -1395,10 +1395,10 @@ main :: fn() {
 	}
 
 	# creating option/result values directly
-	nope :: ?int(none)
-	maybe :: ?int(42)
-	ok :: !int(7)
-	broken :: !int(error("oops"))
+	nope :: ?int.(none)
+	maybe :: ?int.(42)
+	ok :: !int.(7)
+	broken :: !int.(error("oops"))
 
 	# ?T / !T wrap the whole tuple in multi-return
 	checked_divmod :: fn(a: int, b: int) !(int, int) {

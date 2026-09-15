@@ -2,23 +2,23 @@ use crate::helpers::*;
 
 #[test]
 fn fallback_on_none() {
-	check("?int(none) or { -1 }", "-1");
+	check("?int.(none) or { -1 }", "-1");
 }
 
 #[test]
 fn fallback_on_err() {
-	check(r#"!int(error("oops")) or { -1 }"#, "-1");
+	check(r#"!int.(error("oops")) or { -1 }"#, "-1");
 }
 
 #[test]
 fn unwraps_some() {
-	check("?int(42) or { -1 }", "42");
+	check("?int.(42) or { -1 }", "42");
 }
 
 #[test]
 fn skips_fallback_body_when_ok() {
 	let src = indoc! {r#"
-		!int(42) or {
+		!int.(42) or {
 			print("ran")
 			9
 		}
@@ -29,7 +29,7 @@ fn skips_fallback_body_when_ok() {
 #[test]
 fn dollar_is_error_message() {
 	let src = indoc! {r#"
-		!int(error("boom")) or {
+		!int.(error("boom")) or {
 			print($)
 			9
 		}
@@ -39,7 +39,7 @@ fn dollar_is_error_message() {
 
 #[test]
 fn as_binding() {
-	check(["x :: ?int(none) or { 99 }", "x"], "99");
+	check(["x :: ?int.(none) or { 99 }", "x"], "99");
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn fallback_can_diverge() {
 			v :: o or { return -1 }
 			v
 		}
-		unwrap_or_bail(?int(none))
+		unwrap_or_bail(?int.(none))
 	"};
 	check(src, "-1");
 
@@ -58,7 +58,7 @@ fn fallback_can_diverge() {
 			v :: o or { return -1 }
 			v
 		}
-		unwrap_or_bail(?int(42))
+		unwrap_or_bail(?int.(42))
 	"};
 	check(src, "42");
 }
@@ -66,7 +66,7 @@ fn fallback_can_diverge() {
 #[test]
 fn type_mismatch_errors() {
 	fail_with(
-		r#"?int(42) or { "wrong" }"#,
+		r#"?int.(42) or { "wrong" }"#,
 		"or` branches have mismatched types: int and str",
 	);
 }

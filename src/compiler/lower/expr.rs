@@ -51,26 +51,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			)
 			.with_label("not a module-level binding")),
 
-			Expr::OptionInit { inner: (te, span), arg } => {
-				let inner_typ = self.types().resolve(te, *span)?;
-				let val = if matches!(arg.0, Expr::None) {
-					self.make_option(&inner_typ, None)
-				} else {
-					let fv = self.check_typed(arg, &inner_typ, "type mismatch")?;
-					self.move_resource(arg, &inner_typ)?;
-					let fv = self.copy_in(fv, &inner_typ);
-					self.make_option(&inner_typ, Some(fv))
-				};
-				let typ = Typ::Option(Box::new(inner_typ));
-				self.temp(val, &typ);
-				Ok((val, typ))
-			}
-
-			Expr::ResultInit { inner: (te, span), arg } => {
-				let ok_typ = self.types().resolve(te, *span)?;
-				self.result_init(ok_typ, arg)
-			}
-
 			Expr::Ident(name) => match self.local(name, expr.1.into_range()) {
 				Ok(local) => {
 					let val = self.read_local(&local);
@@ -147,13 +127,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				BinOp::In => self.in_op(l, r),
 			},
 			Expr::Not(e) => {
-				if let Expr::Call { name, args, .. } = &e.0
-					&& let [arg] = &args[..]
-					&& !self.vars.contains_key(name)
-					&& let Ok(ok_typ) = self.types().resolve(&TypeExpr::Name(name.clone()), e.1)
-				{
-					return self.result_init(ok_typ, arg);
-				}
 				let (v, typ) = self.expr(e)?;
 				if typ != Typ::Bool {
 					return Err(
@@ -863,7 +836,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		})
 	}
 
-	fn result_init(&mut self, ok_typ: Typ, arg: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
+	pub(super) fn result_init(&mut self, ok_typ: Typ, arg: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let err_typ = Typ::Error;
 		let variants = result_variants(&ok_typ, &err_typ);
 		let (fv, at) = self.check_expr(arg, &ok_typ)?;

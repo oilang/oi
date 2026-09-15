@@ -3,12 +3,12 @@ use indoc::indoc;
 
 #[test]
 fn construct_ok() {
-	check("!int(42)", "ok(42)");
+	check("!int.(42)", "ok(42)");
 }
 
 #[test]
 fn construct_err() {
-	check(r#"!int(error("oops"))"#, r#"err("oops")"#);
+	check(r#"!int.(error("oops"))"#, r#"err("oops")"#);
 }
 
 #[test]
@@ -18,46 +18,46 @@ fn zero_value_is_ok() {
 
 #[test]
 fn ord_gives_tag() {
-	check("ord(!int(42))", "0");
-	check(r#"ord(!int(error("oops")))"#, "1");
+	check("ord(!int.(42))", "0");
+	check(r#"ord(!int.(error("oops")))"#, "1");
 }
 
 #[test]
 fn int_cast_errors() {
-	fail_with("int.(!int(42))", "no backing value");
+	fail_with("int.(!int.(42))", "no backing value");
 }
 
 #[test]
 fn eq_same_ok() {
-	check("!int(42) == !int(42)", "true");
+	check("!int.(42) == !int.(42)", "true");
 }
 
 #[test]
 fn eq_different_ok() {
-	check("!int(42) == !int(7)", "false");
+	check("!int.(42) == !int.(7)", "false");
 }
 
 #[test]
 fn eq_ok_vs_err() {
-	check(r#"!int(42) == !int(error("oops"))"#, "false");
-	check(r#"!int(42) != !int(error("oops"))"#, "true");
+	check(r#"!int.(42) == !int.(error("oops"))"#, "false");
+	check(r#"!int.(42) != !int.(error("oops"))"#, "true");
 }
 
 #[test]
 fn field_type_mismatch() {
-	fail_with("!int(3.0)", "expected int or Error, got float");
+	fail_with("!int.(3.0)", "expected int or Error, got float");
 }
 
 #[test]
 fn ordering_rejected() {
-	fail_with("!int(1) < !int(2)", "only `==` and `!=`");
+	fail_with("!int.(1) < !int.(2)", "only `==` and `!=`");
 }
 
 #[test]
 fn match_binds_ok() {
 	check(
 		indoc! {r#"
-			r :: !int(42)
+			r :: !int.(42)
 			match r {
 				.ok(n) => n,
 				.err(e) => -1,
@@ -71,7 +71,7 @@ fn match_binds_ok() {
 fn match_err_arm() {
 	check(
 		indoc! {r#"
-			r :: !int(error("oops"))
+			r :: !int.(error("oops"))
 			match r {
 				.ok(n) => n,
 				.err(e) => -1,
@@ -85,7 +85,7 @@ fn match_err_arm() {
 fn match_non_exhaustive_errors() {
 	fail_with(
 		indoc! {r"
-			r :: !int(42)
+			r :: !int.(42)
 			match r {
 				.ok(n) => n,
 			}
@@ -98,7 +98,7 @@ fn match_non_exhaustive_errors() {
 fn struct_field_type() {
 	check(
 		"Box :: struct { val: !int }
-		b :: Box.{ val = !int(42) }
+		b :: Box.{ val = !int.(42) }
 		b.val",
 		"ok(42)",
 	);
@@ -113,7 +113,7 @@ fn fn_param_type() {
 				.err(e) => fallback,
 			}
 		}
-		unwrap_or(!int(42), 0)
+		unwrap_or(!int.(42), 0)
 	"};
 	check(src, "42");
 }
@@ -148,7 +148,7 @@ fn error_message() {
 #[test]
 fn error_message_via_dollar() {
 	let src = indoc! {r#"
-		!int(error("boom")) or {
+		!int.(error("boom")) or {
 			print($.message())
 			0
 		}

@@ -10,15 +10,15 @@ test! "first and last" {
 	assert! xs.last() == none
 
 	ys := [1, 2, 3]
-	assert! ys.first() == ?int(1)
-	assert! ys.last() == ?int(3)
+	assert! ys.first() == ?int.(1)
+	assert! ys.last() == ?int.(3)
 }
 
 test! "searching" {
 	xs := [1, 2, 3]
 	assert! xs.contains(2)
 	assert! !xs.contains(9)
-	assert! xs.index(2) == ?int(1)
+	assert! xs.index(2) == ?int.(1)
 	assert! xs.index(9) == none
 }
 
