@@ -64,6 +64,20 @@ fn alias_cast() {
 }
 
 #[test]
+fn from_claim_converts() {
+	check(
+		indoc! {"
+			Celsius :: struct (float)
+			Fahrenheit :: struct (float)
+			Celsius : From[Fahrenheit] < { from :: fn(f: Fahrenheit) Self { Celsius((f.0 - 32.0) / 1.8) } }
+			c := Celsius.(Fahrenheit(212.0))
+			print(c.0)
+		"},
+		"100.0",
+	);
+}
+
+#[test]
 fn strings_do_not_parse() {
 	fail_with(r#"int.("42")"#, "cannot cast string to int");
 	fail_with(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");

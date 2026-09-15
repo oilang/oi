@@ -91,8 +91,7 @@ tags: []
 	- [x] make `atom` a usable type
 	- [x] loop over strings
 	- [x] make `fs.read*` return a `Result`
-	- [ ] revisit casts. I'm not sure I like the way I did it, where they parse int/float too, and return Options in those cases. Vet existing langs to see what works best for Oi.
-	- [ ] make `T.()` work for all types
+	- [x] make `T.()` work for all types
 	- [ ] make `T.[]` work for all types
 	- [ ] `T.()` doesn't work with tuples. Should it?
 		```oi

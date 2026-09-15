@@ -223,7 +223,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(out)
 	}
 
-	// Picks one of `key`'s numbered fills by the first arg's type, lowering that arg into a hidden temp.
+	// Picks one of key's numbered fills by the first arg's type, lowering that arg into a hidden temp.
 	pub(super) fn pick_fill(
 		&mut self,
 		key: &str,
@@ -231,15 +231,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 	) -> Result<Option<Picked>, Diagnostic> {
 		let tag = format!("{key}#");
-		let mut keys: Vec<String> = self.funcs.keys().filter(|k| k.starts_with(&tag)).cloned().collect();
-		if keys.is_empty() || args.is_empty() {
+		if args.is_empty() || !self.funcs.keys().any(|k| k.starts_with(&tag)) {
 			return Ok(None);
 		}
-		keys.sort();
 		let (val, typ) = self.expr(&args[0])?;
-		let hit =
-			(keys.into_iter()).find(|k| self.funcs[k].params.get(skip).is_some_and(|p| *access_peel(&p.typ) == typ));
-		let Some(hit) = hit else {
+		let Some(sig) = self.find_fill(key, skip, &typ) else {
 			let msg = format!("no claim fills `{}` for a `{typ}`", display_name(key));
 			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("no matching claim"));
 		};
@@ -249,7 +245,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.vars.insert(name.clone(), Local::plain(var, typ, false));
 		let mut args = args.to_vec();
 		args[0] = (Expr::Ident(name), args[0].1);
-		Ok(Some((self.funcs[&hit].clone(), args)))
+		Ok(Some((sig, args)))
+	}
+
+	// Find a fill whose parameter takes the given type.
+	pub(super) fn find_fill(&self, key: &str, skip: usize, typ: &Typ) -> Option<FnSig> {
+		let tag = format!("{key}#");
+		let mut keys: Vec<&String> = self.funcs.keys().filter(|k| k.starts_with(&tag)).collect();
+		keys.sort();
+		let hit =
+			(keys.into_iter()).find(|k| self.funcs[*k].params.get(skip).is_some_and(|p| access_peel(&p.typ) == typ))?;
+		Some(self.funcs[hit].clone())
 	}
 
 	// Swap each spread `..x` for reads of a hidden temp holding x.

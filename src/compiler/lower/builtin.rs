@@ -165,6 +165,13 @@ impl<'a, M: Module> Translator<'a, M> {
 				return Ok((val, target.clone()));
 			}
 		}
+		// support userland From claims
+		if self.claims(target, "core::From")
+			&& let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ)
+		{
+			let (out, _) = self.emit_call(&sig, &[val]);
+			return Ok((out, target.clone()));
+		}
 		Err(Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label("no conversion"))
 	}
 
