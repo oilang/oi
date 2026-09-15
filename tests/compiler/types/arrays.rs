@@ -520,6 +520,18 @@ fn typed_literal_empty_fails() {
 }
 
 #[test]
+fn array_type_literal_is_whole_type() {
+	check(["a := [2]int.[3, 4]", "a"], "[3, 4]");
+	check(["b := []int.[3, 4]", "b << 5", "b"], "[3, 4, 5]");
+	check("[]int.[]", "[]");
+}
+
+#[test]
+fn array_type_literal_count_mismatch() {
+	fail_with("[2]int.[3]", "expected 2 elements, got 1");
+}
+
+#[test]
 fn fixed_coerces_to_dynamic_binding() {
 	check(["a := i32.[1, 2]", "b: []i32 = a", "b << 3", "b"], "[1, 2, 3]");
 }
