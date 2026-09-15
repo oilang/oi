@@ -564,7 +564,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label("no such variant")
 		})?;
 		let (disc, payload, names) = (v.disc, v.payload.clone(), v.names.clone());
-		if !names.is_empty() {
+		let fields = if !names.is_empty() {
 			let [(Expr::Record(entries), _)] = args else {
 				let msg = format!("`{name}.{variant}` takes named fields");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("use `{ field: value }`"));
@@ -581,24 +581,29 @@ impl<'a, M: Module> Translator<'a, M> {
 						.with_label("no such field")
 				})?;
 				fields[idx] = self.check_typed(val, &payload[idx], "type mismatch")?;
+				self.move_resource(val, &payload[idx])?;
 			}
-			let val = self.make_enum(&variants, disc, &fields);
-			return Ok((val, Typ::Enum(name.to_string())));
-		}
-		if args.len() != payload.len() {
-			let msg = format!(
-				"`{name}.{variant}` takes {} field(s), got {}",
-				payload.len(),
-				args.len()
-			);
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields"));
-		}
-		let mut fields = Vec::with_capacity(args.len());
-		for (arg, ft) in args.iter().zip(&payload) {
-			fields.push(self.check_typed(arg, ft, "type mismatch")?);
-		}
+			fields
+		} else {
+			if args.len() != payload.len() {
+				let msg = format!(
+					"`{name}.{variant}` takes {} field(s), got {}",
+					payload.len(),
+					args.len()
+				);
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields"));
+			}
+			let mut fields = Vec::with_capacity(args.len());
+			for (arg, ft) in args.iter().zip(&payload) {
+				fields.push(self.check_typed(arg, ft, "type mismatch")?);
+				self.move_resource(arg, ft)?;
+			}
+			fields
+		};
 		let val = self.make_enum(&variants, disc, &fields);
-		Ok((val, Typ::Enum(name.to_string())))
+		let typ = Typ::Enum(name.to_string());
+		self.temp(val, &typ);
+		Ok((val, typ))
 	}
 
 	// Tuple struct constructor.

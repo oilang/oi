@@ -173,3 +173,30 @@ fn fixed_array_elements_drop_with_their_last_owner() {
 	check([FILE, a, "b :: a", r#"print("built")"#], ["built", "drop 1", "drop 2"]);
 	fail_with([FILE, a, "b :: a", "print(a[0].fd)"], "undefined variable");
 }
+
+#[test]
+fn boxed_payloads_drop_with_their_box() {
+	let v = "V :: enum { Empty, Held(File) }";
+	check(
+		[
+			FILE,
+			v,
+			"o: ?File = File.{fd = 1}",
+			"h :: V.Held(File.{fd = 2})",
+			r#"print("built")"#,
+		],
+		["built", "drop 2", "drop 1"],
+	);
+	fail_with(
+		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held(f)", "print(f)"],
+		"undefined variable",
+	);
+}
+
+#[test]
+fn tuple_payloads_drop_with_their_tuple() {
+	check(
+		[FILE, "t :: (File.{fd = 1}, 2)", r#"print("built")"#],
+		["built", "drop 1"],
+	);
+}

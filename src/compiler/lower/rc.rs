@@ -7,13 +7,27 @@ use super::*;
 impl<'a, M: Module> Translator<'a, M> {
 	// Check whether a struct has Drop, or owns something that does.
 	pub(super) fn is_resource(&self, typ: &Typ) -> bool {
+		self.is_resource_seen(typ, &mut Vec::new())
+	}
+
+	fn is_resource_seen(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
 		match typ {
 			Typ::Struct(name, fields) => {
 				self.trait_impls.contains(&(name.clone(), "Drop".into()))
-					|| fields.iter().any(|f| self.is_resource(&f.typ))
+					|| fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
-			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource(elem),
-			Typ::Map(_, val) => self.is_resource(val),
+			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
+			Typ::Map(_, val) => self.is_resource_seen(val, seen),
+			Typ::Tuple(fields) => fields.iter().any(|(_, t)| self.is_resource_seen(t, seen)),
+			Typ::Option(_) | Typ::Enum(_) => {
+				if let Typ::Enum(name) = typ {
+					if seen.contains(name) {
+						return false;
+					}
+					seen.push(name.clone());
+				}
+				self.variants_of(typ).iter().any(|v| v.payload.iter().any(|t| self.is_resource_seen(t, seen)))
+			}
 			_ => false,
 		}
 	}
@@ -76,12 +90,38 @@ impl<'a, M: Module> Translator<'a, M> {
 			{
 				self.emit_call(&sig, &[val]);
 			}
-			for (i, f) in fields.clone().iter().enumerate() {
-				if releasable(&f.typ) || self.is_resource(&f.typ) {
-					let cl = cl_type(&f.typ, self.int);
-					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-					self.release_value(fv, &f.typ);
+			self.release_slots(val, 0, &fields.iter().map(|f| f.typ.clone()).collect::<Vec<_>>());
+		} else if let Typ::Tuple(fields) = typ
+			&& self.is_resource(typ)
+		{
+			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
+		} else if matches!(typ, Typ::Option(_) | Typ::Enum(_)) && self.is_resource(typ) {
+			let tag = self.b.ins().load(self.int, MemFlags::new(), val, 0);
+			for v in self.variants_of(typ) {
+				if !v.payload.iter().any(|t| releasable(t) || self.is_resource(t)) {
+					continue;
 				}
+				// release payloads under their own tag
+				let (hit, next) = (self.b.create_block(), self.b.create_block());
+				let is = self.b.ins().icmp_imm(IntCC::Equal, tag, v.disc);
+				self.b.ins().brif(is, hit, &[], next, &[]);
+				self.b.seal_block(hit);
+				self.b.switch_to_block(hit);
+				self.release_slots(val, 8, &v.payload);
+				self.b.ins().jump(next, &[]);
+				self.b.seal_block(next);
+				self.b.switch_to_block(next);
+			}
+		}
+	}
+
+	// Release the owned slots of an aggregate type.
+	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
+		for (i, t) in types.iter().enumerate() {
+			if releasable(t) || self.is_resource(t) {
+				let cl = cl_type(t, self.int);
+				let fv = self.b.ins().load(cl, MemFlags::new(), val, base + (i * 8) as i32);
+				self.release_value(fv, t);
 			}
 		}
 	}

@@ -57,9 +57,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.make_option(&inner_typ, None)
 				} else {
 					let fv = self.check_typed(arg, &inner_typ, "type mismatch")?;
+					self.move_resource(arg, &inner_typ)?;
+					let fv = self.copy_in(fv, &inner_typ);
 					self.make_option(&inner_typ, Some(fv))
 				};
-				Ok((val, Typ::Option(Box::new(inner_typ))))
+				let typ = Typ::Option(Box::new(inner_typ));
+				self.temp(val, &typ);
+				Ok((val, typ))
 			}
 
 			Expr::ResultInit { inner: (te, span), arg } => {
@@ -392,11 +396,14 @@ impl<'a, M: Module> Translator<'a, M> {
 						Some(fs) => self.check_expr(value, &fs[i].1)?,
 						None => self.expr(value)?,
 					};
+					self.move_resource(value, &typ)?;
 					let val = self.copy_in(val, &typ);
 					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
 					fields.push((name.clone(), typ));
 				}
-				Ok((ptr, Typ::Tuple(fields)))
+				let typ = Typ::Tuple(fields);
+				self.temp(ptr, &typ);
+				Ok((ptr, typ))
 			}
 
 			Expr::Field { tuple, field } => {

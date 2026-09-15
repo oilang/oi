@@ -567,7 +567,7 @@ impl Loader {
 			r.join(name).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
 		};
 		let root = self.roots.iter().find(has).unwrap_or(&self.roots[0]);
-		let mut disk = (!from_core).then(|| walk_oi(&root.join(name))).unwrap_or_default();
+		let mut disk = if !from_core { walk_oi(&root.join(name)) } else { Vec::default() };
 		disk.sort();
 		let candidate = root.join(file);
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
