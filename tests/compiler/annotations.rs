@@ -309,6 +309,31 @@ fn qualified_attr_macro() {
 }
 
 #[test]
+fn qualified_field_annotation() {
+	crate::common::Project::new()
+		.file(
+			"main.oi",
+			[
+				"module main",
+				"use godot",
+				"read_export! :: fn(input: Ast) Ast {",
+				"	n := input.items[0].notes[0]",
+				"	print(n.items[0])",
+				"	print(n.items[1])",
+				"	`%input`",
+				"}",
+				"@read_export!",
+				"Thing :: struct { x: int @godot.export.{ lo = 0, hi = 10 } }",
+			],
+		)
+		.file(
+			"godot/lib.oi",
+			["module godot", "pub export :: struct { lo: int, hi: int }"],
+		)
+		.check(["0", "10"]);
+}
+
+#[test]
 fn export_rejects_non_c_repr_params() {
 	fail_with(
 		indoc! {r#"

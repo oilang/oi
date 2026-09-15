@@ -269,7 +269,8 @@ where
 		.map(AnnTail::Fields)
 		.or(paren(loose_list(expr.clone())).map(AnnTail::Args));
 	let ann_value = spanned(
-		ident()
+		dotted_name
+			.clone()
 			.then_ignore(adjacent.then(just(Token::Not)).not())
 			.then(adjacent.ignore_then(ann_tail).or_not())
 			.map(|(name, tail)| match tail {

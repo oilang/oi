@@ -65,6 +65,15 @@ pub struct Scope {
 impl Scope {
 	// Resolve a bare name through this module's env, qualifying a miss into its own module.
 	pub(crate) fn qualify_name(&self, name: &str) -> String {
+		if let Some((m, t)) = name.split_once('.') {
+			return match self.visible.get(m) {
+				Some(vis) => {
+					let t = vis.only.as_ref().and_then(|o| o.get(t)).map_or(t, String::as_str);
+					format!("{}::{t}", vis.module)
+				}
+				None => name.to_string(),
+			};
+		}
 		match self.env.get(name) {
 			Some(q) => q.clone(),
 			None if self.module.is_empty() => name.to_string(),
