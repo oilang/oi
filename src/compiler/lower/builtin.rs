@@ -1,60 +1,8 @@
-use crate::compiler::{comp, role};
+use crate::compiler::comp;
 
 use super::*;
 
-#[derive(Clone, Copy)]
-enum Sign {
-	Signed,
-	Unsigned,
-}
-
 impl<'a, M: Module> Translator<'a, M> {
-	// Widen/narrow integers.
-	// Sign-extend `val` to i64, clamp to `[low, hi]`.
-	fn clamp_to_width(
-		&mut self,
-		val: Value,
-		extend: Sign,
-		low: Option<(i64, Sign)>,
-		hi: i64,
-		hi_sign: Sign,
-		target_cl: types::Type,
-	) -> Value {
-		let src_cl = self.b.func.dfg.value_type(val);
-		let v64 = if src_cl == types::I64 {
-			val
-		} else {
-			match extend {
-				Sign::Signed => self.b.ins().sextend(types::I64, val),
-				Sign::Unsigned => self.b.ins().uextend(types::I64, val),
-			}
-		};
-		let v64 = match low {
-			Some((low, lo_sign)) => {
-				let lo_c = self.b.ins().iconst(types::I64, low);
-				let cc = match lo_sign {
-					Sign::Unsigned => IntCC::UnsignedLessThan,
-					Sign::Signed => IntCC::SignedLessThan,
-				};
-				let lt = self.b.ins().icmp(cc, v64, lo_c);
-				self.b.ins().select(lt, lo_c, v64)
-			}
-			None => v64,
-		};
-		let hi_c = self.b.ins().iconst(types::I64, hi);
-		let cc = match hi_sign {
-			Sign::Unsigned => IntCC::UnsignedGreaterThan,
-			Sign::Signed => IntCC::SignedGreaterThan,
-		};
-		let gt = self.b.ins().icmp(cc, v64, hi_c);
-		let v64 = self.b.ins().select(gt, hi_c, v64);
-		if target_cl == types::I64 {
-			v64
-		} else {
-			self.b.ins().ireduce(target_cl, v64)
-		}
-	}
-
 	// Dispatch a call to a compiler builtin.
 	pub(super) fn builtin_call(
 		&mut self,
@@ -191,220 +139,95 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(())
 	}
 
-	fn parse_str(&mut self, val: Value, out: Typ) -> Result<TypedVal, Diagnostic> {
-		let role = if matches!(out, Typ::Float(_)) {
-			role::PARSE_FLOAT
-		} else {
-			role::PARSE_INT
-		};
-		let def = self.generic_fns[role].clone();
-		let subst = HashMap::from([(def.type_params[0].name.clone(), out)]);
-		let sig = self.declare_instance(role, &def, subst)?;
-		Ok(self.emit_call(&sig, &[val]))
-	}
-
-	// A numeric cast builtin.
-	pub(super) fn cast_call(
-		&mut self,
-		name: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<Option<TypedVal>, Diagnostic> {
-		// `int` and `float` are aliases for the default-width casts
-		let name = match name {
-			"int" => "i32",
-			"float" => "f64",
-			other => other,
-		};
-
-		if name == "string" {
-			let (val, typ) = self.cast_operand(name, args, span)?;
-			let (val, typ) = self.enum_as_backing(val, typ, args[0].1)?;
-			if typ == Typ::Str {
-				return Ok(Some((val, Typ::Str)));
-			}
-			if let Typ::Array(ref e) = typ
-				&& **e == Typ::UInt(8)
-			{
-				return Ok(Some((self.rt_call("str_from_bytes", &[val]).unwrap(), Typ::Str)));
-			}
-			return Err(
-				Diagnostic::new(format!("cannot cast {typ} to string"), args[0].1.into_range())
-					.with_label("not castable to string"),
-			);
-		}
-
-		if matches!(name, "isize" | "usize") {
-			let signed = name == "isize";
-			let (val, typ) = self.cast_operand(name, args, span)?;
-			let out = match (&typ, signed) {
-				(Typ::ISize, true) | (Typ::USize, false) => val,
-				// isize -> usize: clamp negative to 0
-				(Typ::ISize, false) => {
-					let zero = self.b.ins().iconst(self.int, 0);
-					let lt = self.b.ins().icmp(IntCC::SignedLessThan, val, zero);
-					self.b.ins().select(lt, zero, val)
-				}
-				// usize -> isize: saturate at isize::MAX
-				(Typ::USize, true) => {
-					let max_v = self.b.ins().iconst(self.int, i64::MAX);
-					let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, val, max_v);
-					self.b.ins().select(gt, max_v, val)
-				}
-				// int -> isize: sign-extend
-				(Typ::Int(_), true) => {
-					let src_cl = cl_type(&typ, self.int);
-					if src_cl == self.int {
-						val
-					} else {
-						self.b.ins().sextend(self.int, val)
-					}
-				}
-				// uint -> usize: zero-extend
-				(Typ::UInt(_), false) => {
-					let src_cl = cl_type(&typ, self.int);
-					if src_cl == self.int {
-						val
-					} else {
-						self.b.ins().uextend(self.int, val)
-					}
-				}
-				// int -> usize: sign-extend then clamp negative to 0
-				(Typ::Int(_), false) => {
-					let src_cl = cl_type(&typ, self.int);
-					let v = if src_cl == self.int {
-						val
-					} else {
-						self.b.ins().sextend(self.int, val)
-					};
-					let zero = self.b.ins().iconst(self.int, 0);
-					let lt = self.b.ins().icmp(IntCC::SignedLessThan, v, zero);
-					self.b.ins().select(lt, zero, v)
-				}
-				// uint -> isize: zero-extend then saturate at isize::MAX
-				(Typ::UInt(_), true) => {
-					let src_cl = cl_type(&typ, self.int);
-					let v = if src_cl == self.int {
-						val
-					} else {
-						self.b.ins().uextend(self.int, val)
-					};
-					let max_v = self.b.ins().iconst(self.int, i64::MAX);
-					let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v, max_v);
-					self.b.ins().select(gt, max_v, v)
-				}
-				_ => {
-					return Err(
-						Diagnostic::new(format!("cannot cast {typ} to {name}"), args[0].1.into_range())
-							.with_label("not an integer"),
-					);
-				}
-			};
-			let out_typ = if signed { Typ::ISize } else { Typ::USize };
-			return Ok(Some((out, out_typ)));
-		}
-
-		if let Some(target) = int_cast_width('i', name) {
-			let (val, typ) = self.cast_operand(name, args, span)?;
-			if typ == Typ::Str {
-				return Ok(Some(self.parse_str(val, Typ::Int(target))?));
-			}
-			let (val, typ) = self.enum_as_backing(val, typ, args[0].1)?;
-			let target_cl = cl_type(&Typ::Int(target), self.int);
-			let out = match &typ {
-				Typ::Int(w) if *w == target => val,
-				Typ::Int(_) => self.clamp_to_width(
-					val,
-					Sign::Signed,
-					Some((int_min(target), Sign::Signed)),
-					int_max(target),
-					Sign::Signed,
-					target_cl,
-				),
-				Typ::UInt(_) => {
-					self.clamp_to_width(val, Sign::Unsigned, None, int_max(target), Sign::Unsigned, target_cl)
-				}
-				_ => {
-					return Err(
-						Diagnostic::new(format!("cannot cast {typ} to i{target}"), args[0].1.into_range())
-							.with_label("not an integer"),
-					);
-				}
-			};
-			return Ok(Some((out, Typ::Int(target))));
-		}
-
-		if let Some(target) = int_cast_width('u', name) {
-			let (val, typ) = self.cast_operand(name, args, span)?;
-			if typ == Typ::Str {
-				return Ok(Some(self.parse_str(val, Typ::UInt(target))?));
-			}
-			let (val, typ) = self.enum_as_backing(val, typ, args[0].1)?;
-			let target_cl = cl_type(&Typ::UInt(target), self.int);
-			let out = match &typ {
-				Typ::UInt(w) if *w == target => val,
-				Typ::UInt(_) => {
-					self.clamp_to_width(val, Sign::Unsigned, None, uint_max(target), Sign::Unsigned, target_cl)
-				}
-				Typ::Int(_) => self.clamp_to_width(
-					val,
-					Sign::Signed,
-					Some((0, Sign::Signed)),
-					uint_max(target),
-					Sign::Unsigned,
-					target_cl,
-				),
-				_ => {
-					return Err(
-						Diagnostic::new(format!("cannot cast {typ} to u{target}"), args[0].1.into_range())
-							.with_label("not an integer"),
-					);
-				}
-			};
-			return Ok(Some((out, Typ::UInt(target))));
-		}
-
-		if matches!(name, "f16" | "f32" | "f64" | "f128") {
-			let target: u16 = match name {
-				"f16" => 16,
-				"f32" => 32,
-				"f128" => 128,
-				_ => 64,
-			};
-			if args.len() != 1 {
+	// Casts and numeric conversions.
+	pub(super) fn cast_to(&mut self, target: &Typ, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
+		let [value] = args else {
+			let Typ::TupleStruct(name, _) = target else {
 				return Err(
-					Diagnostic::new(format!("`{name}` cast takes exactly 1 argument"), span.into_range())
+					Diagnostic::new(format!("`{target}` casts a single value"), span.into_range())
 						.with_label("wrong number of arguments"),
 				);
-			}
-			if target == 16 || target == 128 {
-				return Err(Diagnostic::new(
-					format!("f{target} casts are not yet supported by the JIT backend"),
-					span.into_range(),
-				)
-				.with_label("not yet implemented"));
-			}
-			let (val, typ) = self.expr(&args[0])?;
-			if typ == Typ::Str {
-				return Ok(Some(self.parse_str(val, Typ::Float(target))?));
-			}
-			let target_cl = cl_type(&Typ::Float(target), self.int);
-			let out = match &typ {
-				Typ::Float(w) if *w == target => val,
-				Typ::Float(_) if target == 64 => self.b.ins().fpromote(types::F64, val),
-				Typ::Float(_) => self.b.ins().fdemote(types::F32, val),
-				Typ::Int(_) => self.b.ins().fcvt_from_sint(target_cl, val),
-				_ => {
-					return Err(
-						Diagnostic::new(format!("cannot cast {typ} to f{target}"), args[0].1.into_range())
-							.with_label("not a number"),
-					);
-				}
 			};
-			return Ok(Some((out, Typ::Float(target))));
+			return self.construct_tuple_struct(name, args, span);
+		};
+		if let Some(out) = self.cast_prim(target, value, span)? {
+			return Ok(out);
 		}
+		let (val, typ) = self.check_expr(value, target)?;
+		if typ == *target {
+			return Ok((val, typ));
+		}
+		if let Typ::TupleStruct(_, fields) = target
+			&& let [(_, ft)] = &fields[..]
+		{
+			let (val, got) = self.coerce(val, &typ, ft, value.1)?;
+			if got == *ft {
+				return Ok((val, target.clone()));
+			}
+		}
+		Err(Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label("no conversion"))
+	}
 
-		Ok(None)
+	// Numeric and string casts.
+	fn cast_prim(&mut self, target: &Typ, value: &Spanned<Expr>, span: Span) -> Result<Option<TypedVal>, Diagnostic> {
+		use Typ::{Array, Float, ISize, Int, Str, UInt, USize};
+		if !matches!(target, Int(_) | UInt(_) | ISize | USize | Float(_) | Str) {
+			return Ok(None);
+		}
+		if let Float(w) = target
+			&& !matches!(w, 32 | 64)
+		{
+			return Err(Diagnostic::new(
+				format!("f{w} casts are not yet supported by the JIT backend"),
+				span.into_range(),
+			)
+			.with_label("not yet implemented"));
+		}
+		let (val, typ) = self.expr(value)?;
+		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
+		if typ == *target {
+			return Ok(Some((val, typ)));
+		}
+		let cl = cl_type(target, self.int);
+		let signed = matches!(typ, Int(_) | ISize);
+		let out = match (target, &typ) {
+			(Str, Array(e)) if **e == UInt(8) => self.rt_call("str_from_bytes", &[val]).unwrap(),
+			(Float(_), Float(64)) => self.b.ins().fdemote(cl, val),
+			(Float(_), Float(_)) => self.b.ins().fpromote(cl, val),
+			(Float(_), UInt(_) | USize) => self.b.ins().fcvt_from_uint(cl, val),
+			(Float(_), Int(_) | ISize) => self.b.ins().fcvt_from_sint(cl, val),
+			(_, Float(_)) => {
+				let to_signed = !matches!(target, UInt(_) | USize);
+				let wide = if to_signed {
+					self.b.ins().fcvt_to_sint_sat(self.int, val)
+				} else {
+					self.b.ins().fcvt_to_uint_sat(self.int, val)
+				};
+				self.truncate(wide, target, to_signed)
+			}
+			(_, Int(_) | UInt(_) | ISize | USize) => self.truncate(val, target, signed),
+			_ => {
+				let label = if typ == Str {
+					format!("`{target}.try_from(...)` parses strings")
+				} else {
+					"not castable".into()
+				};
+				return Err(
+					Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label(label),
+				);
+			}
+		};
+		Ok(Some((out, target.clone())))
+	}
+
+	// Fit an integer into `target`.
+	fn truncate(&mut self, val: Value, target: &Typ, signed: bool) -> Value {
+		let val = self.intcast(val, cl_type(target, self.int), signed);
+		match target {
+			Typ::Int(w) => self.reduce_int(val, *w),
+			Typ::UInt(w) => self.reduce_uint(val, *w),
+			_ => val,
+		}
 	}
 
 	// A fieldless enum casts as its backing value.

@@ -51,7 +51,7 @@ P :< {
 	num :: fn(mut self) !Json {
 		a :: self.i
 		loop self.at() != "" && "+-.eE0123456789".contains(self.at()) { self.i += 1 }
-		float.(self.s[a..self.i]) or { return error("invalid number at {a}") }
+		parse_float(self.s[a..self.i]) or { return error("invalid number at {a}") }
 	}
 
 	str :: fn(mut self) !string {

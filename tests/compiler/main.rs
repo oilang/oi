@@ -7,6 +7,7 @@ mod annotations;
 mod anon_fn;
 mod arithmetic;
 mod assertions;
+mod casts;
 mod comments;
 mod comp;
 mod comparisons;

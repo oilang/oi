@@ -13,7 +13,6 @@ use chumsky::{
 enum Dot {
 	Fields(Vec<String>),
 	Method(String, Vec<Spanned<TypeExpr>>, Vec<Spanned<Expr>>),
-	Cast(Spanned<Expr>),
 }
 
 // One entry of a struct/enum/trait body.
@@ -955,6 +954,12 @@ where
 			.then(bracket(loose_list(expr.clone())))
 			.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| (t, ex.span())), elems), ex.span()));
 
+		// casting
+		let cast = spanned(type_expr.clone())
+			.then_ignore(just(Token::Dot))
+			.then(paren(loose_list(expr.clone())))
+			.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
+
 		// dot tuple literals
 		let dot_tuple = just(Token::Dot)
 			.ignore_then(paren(loose_list(expr.clone())))
@@ -1195,6 +1200,7 @@ where
 		// atoms
 		let atom = choice((
 			dot_array,
+			cast,
 			dot_tuple,
 			macro_call,
 			quote,
@@ -1232,7 +1238,6 @@ where
 					Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),
 					None => Dot::Fields(vec![name]),
 				}),
-			paren(expr.clone()).map(Dot::Cast),
 		))
 		.boxed();
 
@@ -1265,13 +1270,6 @@ where
 							method,
 							type_args,
 							args,
-						},
-						ex.span(),
-					),
-					Dot::Cast(value) => (
-						Expr::Cast {
-							target: Box::new(lhs),
-							value: Box::new(value),
 						},
 						ex.span(),
 					),

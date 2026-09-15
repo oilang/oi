@@ -893,11 +893,10 @@ main :: fn() {
 	# cast with `T.(value)`, which works for any type
 	big_int := i64.(50_000)
 	small_unsigned_int := u8.(16)
+	Point.(p); Money.(500); ?int.(42)
 
-	# a string operand parses instead, so the cast is an option
-	# TODO: might revisit this
-	assert!(int.("42") == 42)
-	assert!(float.("nope") == none)
+	# narrowing truncates
+	assert!(u8.(300) == 44 && int.(2.9) == 2)
 
 	# ints can be automatically promoted to f64 or larger-width ints
 	assert!(2 + 1.0 == 3.0)

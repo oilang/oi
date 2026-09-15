@@ -90,13 +90,6 @@ pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
 	}
 }
 
-// The width of integer casts.
-pub(super) fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
-	name.strip_prefix(prefix)
-		.and_then(|w| w.parse::<u16>().ok())
-		.filter(|&w| w > 0 && w <= 64)
-}
-
 pub(super) fn uint_max(width: u16) -> i64 {
 	if width >= 64 {
 		u64::MAX as i64

@@ -200,17 +200,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 
-			Expr::Cast { target, value } => {
-				let cast = match &target.0 {
-					Expr::Ident(name) => {
-						let name = self.type_params.get(name).map_or(name.clone(), Typ::to_string);
-						self.cast_call(&name, std::slice::from_ref(&**value), expr.1)?
-					}
-					_ => None,
-				};
-				cast.ok_or_else(|| {
-					Diagnostic::new("not a cast target", target.1.into_range()).with_label("expected a type")
-				})
+			Expr::Cast { target, args } => {
+				let typ = self.types().resolve(&target.0, target.1)?;
+				self.cast_to(&typ, args, expr.1)
 			}
 
 			Expr::Apply { callee, args } => {

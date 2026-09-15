@@ -96,10 +96,10 @@ pub enum Expr {
 
 	Return(Option<Box<Spanned<Expr>>>),
 
-	// `Target.(value)`
+	// `Target.(args)`
 	Cast {
-		target: Box<Spanned<Expr>>,
-		value: Box<Spanned<Expr>>,
+		target: Spanned<TypeExpr>,
+		args: Vec<Spanned<Expr>>,
 	},
 
 	// macros
@@ -392,13 +392,16 @@ impl Expr {
 				f(List(anns));
 				f(One(v));
 			}
+			Expr::Cast { target, args } => {
+				target.0.holes(|e| f(One(e)));
+				f(List(args));
+			}
 			Expr::Index {
 				collection: a,
 				index: b,
 			}
 			| Expr::IndexAssign { index: a, value: b, .. }
 			| Expr::Pipe { value: a, step: b }
-			| Expr::Cast { target: a, value: b }
 			| Expr::UnquoteBind(a, b)
 			| Expr::Binary(_, a, b) => {
 				f(One(a));
