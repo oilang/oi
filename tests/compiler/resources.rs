@@ -200,3 +200,25 @@ fn tuple_payloads_drop_with_their_tuple() {
 		["built", "drop 1"],
 	);
 }
+
+#[test]
+fn a_generic_claim_drops_each_instance() {
+	check(
+		[
+			"Box[T] :: struct { val: T }",
+			r#"Box[T] : Drop < { drop :: fn(mut self) { print("drop", self.val) } }"#,
+			"a :: Box[int].{val = 1}",
+			r#"b :: Box[string].{val = "two"}"#,
+			r#"print("built")"#,
+		],
+		["built", "drop two", "drop 1"],
+	);
+	fail_with(
+		[
+			"Show :: trait { show : fn(self) }",
+			"Box[T] :: struct { val: T }",
+			"Box[T] : Show < { show :: fn(self) {} }",
+		],
+		"generic trait claims aren't supported yet",
+	);
+}

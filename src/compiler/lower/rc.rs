@@ -14,6 +14,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		match typ {
 			Typ::Struct(name, fields) => {
 				self.trait_impls.contains(&(name.clone(), "Drop".into()))
+					|| self.drop_generics.contains(base_name(name))
 					|| fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
@@ -86,7 +87,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.each_elem(val, typ, |s, _, ev| s.release_value(ev, &elem));
 		} else if let Typ::Struct(name, fields) = typ {
 			if self.is_resource(typ)
-				&& let Some(sig) = self.funcs.get(&format!("{name}.drop")).cloned()
+				&& let Some(sig) = self
+					.funcs
+					.get(&format!("{name}.drop"))
+					.cloned()
+					.or_else(|| self.recv_instance(&format!("{}.drop", base_name(name)), typ))
 			{
 				self.emit_call(&sig, &[val]);
 			}
@@ -251,6 +256,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => self.copy_in(val, typ),
 		}
 	}
+}
+
+// A generic instance's base name
+// ex: `Box[int]` -> `Box`.
+fn base_name(name: &str) -> &str {
+	name.split('[').next().unwrap_or(name)
 }
 
 pub(super) fn releasable(typ: &Typ) -> bool {

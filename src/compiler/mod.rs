@@ -462,6 +462,7 @@ pub struct Compiler<M: Module = JITModule> {
 	wanted: Vec<FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	trait_impls: HashSet<(String, String)>,
+	drop_generics: HashSet<String>,
 	core_traits: HashSet<String>,
 	descs: HashMap<String, DataId>,
 	publics: HashSet<String>,
@@ -619,6 +620,7 @@ impl<M: Module> Compiler<M> {
 			wanted: Vec::new(),
 			printers: Vec::new(),
 			trait_impls: HashSet::new(),
+			drop_generics: HashSet::new(),
 			core_traits: HashSet::new(),
 			descs: HashMap::new(),
 			publics: HashSet::new(),
@@ -943,7 +945,7 @@ impl<M: Module> Compiler<M> {
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
 					}
 					for tn in &claimed {
-						if !type_params.is_empty() {
+						if !type_params.is_empty() && tn != "Drop" {
 							let msg = "generic trait claims aren't supported yet".to_string();
 							return Err(
 								Diagnostic::new(msg, item.1.into_range()).with_label("remove the type parameters")
@@ -957,7 +959,11 @@ impl<M: Module> Compiler<M> {
 							methods: fills,
 							scope,
 						});
-						self.trait_impls.insert((typ.clone(), tn.clone()));
+						if type_params.is_empty() {
+							self.trait_impls.insert((typ.clone(), tn.clone()));
+						} else {
+							self.drop_generics.insert(typ.clone());
+						}
 					}
 					let decls: Vec<TraitFn> = claimed
 						.iter()
@@ -1630,6 +1636,7 @@ impl<M: Module> Compiler<M> {
 			traits: types.traits,
 			generic_fns: &self.generics,
 			trait_impls: &self.trait_impls,
+			drop_generics: &self.drop_generics,
 			core_traits: &self.core_traits,
 			scope: types.scope,
 			module_scopes: &self.module_scopes,
