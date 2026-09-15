@@ -39,9 +39,9 @@ fn trait_def_and_impl() {
 #[test]
 fn marker_impl() {
 	let src = indoc! {r#"
-		Copy :: trait {}
+		Marker :: trait {}
 		Dog :: struct { kind: string }
-		Dog :< Copy
+		Dog :< Marker
 		Dog.{ "Collie" }.kind
 	"#};
 	check(src, "Collie");

@@ -136,14 +136,16 @@ pub(super) fn check_impls<'p>(
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
 			}
 		}
-		if tn == "Drop" {
+		if tn == "Drop" || tn == "Copy" {
+			let hook = tn.to_lowercase();
 			let well_formed = methods.iter().any(|m| {
 				matches!(&m.0, Expr::Fn { name, params, .. }
-					if name == "drop" && params.len() == 1 && params[0].name == "self" && params[0].access == Access::Mut)
+					if *name == hook && params.len() == 1 && params[0].name == "self" && params[0].access == Access::Mut)
 			});
 			if !well_formed {
-				let msg = format!("`impl Drop for {typ}` must define `fn drop(mut self)`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("missing or wrong `drop` method"));
+				let msg = format!("`impl {tn} for {typ}` must define `fn {hook}(mut self)`");
+				let label = format!("missing or wrong `{hook}` method");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label(label));
 			}
 			continue;
 		}

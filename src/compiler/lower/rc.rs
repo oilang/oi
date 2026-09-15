@@ -12,10 +12,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	fn is_resource_seen(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
 		match typ {
-			Typ::Struct(name, fields) => {
-				self.trait_impls.contains(&(name.clone(), "Drop".into()))
-					|| self.drop_generics.contains(base_name(name))
-					|| fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
+			Typ::Struct(_, fields) => {
+				self.claims(typ, "Drop") || fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
 			Typ::Map(_, val) => self.is_resource_seen(val, seen),
@@ -33,11 +31,54 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Transfer ownership of a resource.
+	// Check whether a resource copies through its hook instead of moving.
+	pub(super) fn is_copy(&self, typ: &Typ) -> bool {
+		match typ {
+			Typ::Struct(_, fields) => {
+				self.claims(typ, "Copy")
+					|| (fields.iter().any(|f| self.is_copy(&f.typ)) && fields.iter().all(|f| !self.is_affine(&f.typ)))
+			}
+			Typ::Array(t) | Typ::Map(_, t) => self.is_copy(t),
+			_ => false,
+		}
+	}
+
+	// Whether a resource is move-only.
+	pub(super) fn is_affine(&self, typ: &Typ) -> bool {
+		self.is_resource(typ) && !self.is_copy(typ)
+	}
+
+	// Whether a value is a move.
+	pub(super) fn handover(&self, val: Value, typ: &Typ) -> bool {
+		self.is_affine(typ) || (self.is_copy(typ) && self.temps.contains_key(&val))
+	}
+
+	// Transfer ownership of a resource, if required.
 	pub fn move_resource(&mut self, e: &Spanned<Expr>, typ: &Typ) -> Result<(), Diagnostic> {
-		match self.is_resource(typ) {
+		match self.is_affine(typ) {
 			true => self.move_out(e, typ),
 			false => Ok(()),
+		}
+	}
+
+	// Run a type's Drop or Copy hook, if they exist.
+	fn run_hook(&mut self, val: Value, typ: &Typ, name: &str, hook: &str) {
+		if let Some(sig) = self
+			.funcs
+			.get(&format!("{name}.{hook}"))
+			.cloned()
+			.or_else(|| self.recv_instance(&format!("{}.{hook}", base_name(name)), typ))
+		{
+			self.emit_call(&sig, &[val]);
+		}
+	}
+
+	// Run Copy hook.
+	pub(super) fn copy_value(&mut self, val: Value, typ: &Typ) {
+		if let Typ::Struct(name, _) = typ
+			&& self.is_copy(typ)
+		{
+			self.run_hook(val, typ, name, "copy");
 		}
 	}
 
@@ -86,14 +127,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let elem = (**elem).clone();
 			self.each_elem(val, typ, |s, _, ev| s.release_value(ev, &elem));
 		} else if let Typ::Struct(name, fields) = typ {
-			if self.is_resource(typ)
-				&& let Some(sig) = self
-					.funcs
-					.get(&format!("{name}.drop"))
-					.cloned()
-					.or_else(|| self.recv_instance(&format!("{}.drop", base_name(name)), typ))
-			{
-				self.emit_call(&sig, &[val]);
+			if self.is_resource(typ) {
+				self.run_hook(val, typ, name, "drop");
 			}
 			self.release_slots(val, 0, &fields.iter().map(|f| f.typ.clone()).collect::<Vec<_>>());
 		} else if let Typ::Tuple(fields) = typ
@@ -242,16 +277,17 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A bind takes its own copy.
-	// Structs deep-copy and handles bump rc, while resources move.
 	pub(super) fn copy_bind(&mut self, val: Value, typ: &Typ) -> Value {
-		if self.is_resource(typ) {
+		if self.handover(val, typ) {
 			self.untemp(val);
 			return val;
 		}
 		match typ {
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
-				self.struct_copy(val, &fields)
+				let dst = self.struct_copy(val, &fields);
+				self.copy_value(dst, typ);
+				dst
 			}
 			_ => self.copy_in(val, typ),
 		}
@@ -260,7 +296,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 // A generic instance's base name
 // ex: `Box[int]` -> `Box`.
-fn base_name(name: &str) -> &str {
+pub(super) fn base_name(name: &str) -> &str {
 	name.split('[').next().unwrap_or(name)
 }
 

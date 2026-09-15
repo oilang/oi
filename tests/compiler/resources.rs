@@ -222,3 +222,64 @@ fn a_generic_claim_drops_each_instance() {
 		"generic trait claims aren't supported yet",
 	);
 }
+
+const REF: &str = indoc! {r#"
+	Ref :: struct { id: int }
+	Ref : Drop, Copy < {
+		drop :: fn(mut self) { print("drop", self.id) }
+		copy :: fn(mut self) { print("copy", self.id) }
+	}
+"#};
+
+#[test]
+fn a_copy_claim_binds_a_duplicate() {
+	check(
+		[REF, "a :: Ref.{id = 1}", "b :: a", r#"print("bound", a.id, b.id)"#],
+		["copy 1", "bound 1 1", "drop 1", "drop 1"],
+	);
+}
+
+#[test]
+fn a_move_skips_the_copy_hook() {
+	check(
+		[REF, "eat :: fn(move r: Ref) {}", "r :: Ref.{id = 1}", "eat(move r)", r#"print("after")"#],
+		["drop 1", "after"],
+	);
+}
+
+#[test]
+fn a_container_copies_what_it_owns() {
+	let owner = ["Box :: struct { r: Ref }", "b :: Box.{r = Ref.{id = 1}}", "c :: b"].join("\n");
+	check([REF, &owner, r#"print("held", c.r.id)"#], ["copy 1", "held 1", "drop 1", "drop 1"]);
+	check(
+		[REF, "a :: [Ref.{id = 2}]", "g :: a[0]", r#"print("held", g.id)"#],
+		["copy 2", "held 2", "drop 2", "drop 2"],
+	);
+}
+
+#[test]
+fn a_generic_claim_copies_each_instance() {
+	check(
+		[
+			"Box[T] :: struct { val: T }",
+			indoc! {r#"
+				Box[T] : Drop, Copy < {
+					drop :: fn(mut self) { print("drop", self.val) }
+					copy :: fn(mut self) { print("copy", self.val) }
+				}
+			"#},
+			"a :: Box[int].{val = 1}",
+			"b :: a",
+			r#"print("built", b.val)"#,
+		],
+		["copy 1", "built 1", "drop 1", "drop 1"],
+	);
+}
+
+#[test]
+fn copy_without_drop_is_rejected() {
+	fail_with(
+		["Plain :: struct { n: int }", "Plain : Copy < { copy :: fn(mut self) {} }"],
+		"claims `Copy` without `Drop`",
+	);
+}

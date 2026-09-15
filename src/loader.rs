@@ -81,9 +81,9 @@ impl Scope {
 		}
 	}
 
-	// Resolve a bare trait name, leaving qualified names and `Drop` alone.
+	// Resolve a bare trait name, leaving qualified names and the built-in hooks alone.
 	pub(crate) fn qualify_trait(&self, name: &str) -> String {
-		if name.contains("::") || name == "Drop" {
+		if name.contains("::") || matches!(name, "Drop" | "Copy") {
 			return name.to_string();
 		}
 		self.qualify_name(name)

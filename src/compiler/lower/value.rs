@@ -864,6 +864,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			closure_escape(&vt, value.1.into_range(), "stored in a map")?;
 			self.move_resource(value, &vt)?;
+			let val = if self.is_copy(&vt) { self.copy_in(val, &vt) } else { val };
 			self.untemp(val);
 			val_typ.get_or_insert(vt);
 			let bits = self.map_bits(val);

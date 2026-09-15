@@ -235,17 +235,21 @@ impl<'a, M: Module> Translator<'a, M> {
 	// RC bump.
 	// The underlying buffer clone waits for a write.
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
-		// whatever copies a resource in becomes its owner
-		if self.is_resource(typ) {
+		// move resource to new owner
+		let moved = self.handover(val, typ);
+		if moved {
 			self.untemp(val);
 		}
 		if let Typ::Struct(_, fields) = typ {
 			let fields = fields.clone();
 			let heap = self.call_alloc(fields.len());
 			self.assign_fields(val, heap, &fields, false);
+			if !moved {
+				self.copy_value(heap, typ);
+			}
 			return heap;
 		}
-		if self.is_resource(typ) {
+		if self.is_affine(typ) {
 			return val;
 		}
 		let Some((share, _)) = rc::handle_fns(typ) else {

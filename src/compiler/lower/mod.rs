@@ -57,7 +57,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub traits: &'a HashMap<&'a str, TraitItem<'a>>,
 	pub generic_fns: &'a HashMap<String, GenericFnDef>,
 	pub trait_impls: &'a HashSet<(String, String)>,
-	pub drop_generics: &'a HashSet<String>,
+	pub generic_claims: &'a HashSet<(String, String)>,
 	pub core_traits: &'a HashSet<String>,
 	pub scope: &'a Scope,
 	pub module_scopes: &'a HashMap<String, Scope>,

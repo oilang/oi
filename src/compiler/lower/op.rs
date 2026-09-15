@@ -119,7 +119,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether `typ` claims `tn`.
 	pub(super) fn claims(&self, typ: &Typ, tn: &str) -> bool {
-		self.trait_impls.contains(&(typ.key(), tn.to_string()))
+		let key = typ.key();
+		self.trait_impls.contains(&(key.clone(), tn.to_string()))
+			|| self.generic_claims.contains(&(rc::base_name(&key).to_string(), tn.to_string()))
 			|| (self.core_traits.contains(tn) && builtin_claim(typ, tn))
 	}
 

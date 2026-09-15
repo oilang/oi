@@ -465,7 +465,7 @@ pub struct Compiler<M: Module = JITModule> {
 	wanted: Vec<FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	trait_impls: HashSet<(String, String)>,
-	drop_generics: HashSet<String>,
+	generic_claims: HashSet<(String, String)>,
 	core_traits: HashSet<String>,
 	descs: HashMap<String, DataId>,
 	publics: HashSet<String>,
@@ -642,7 +642,7 @@ impl<M: Module> Compiler<M> {
 			wanted: Vec::new(),
 			printers: Vec::new(),
 			trait_impls: HashSet::new(),
-			drop_generics: HashSet::new(),
+			generic_claims: HashSet::new(),
 			core_traits: HashSet::new(),
 			descs: HashMap::new(),
 			publics: HashSet::new(),
@@ -972,7 +972,7 @@ impl<M: Module> Compiler<M> {
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
 					}
 					for tn in &claimed {
-						if !type_params.is_empty() && tn != "Drop" {
+						if !type_params.is_empty() && tn != "Drop" && tn != "Copy" {
 							let msg = "generic trait claims aren't supported yet".to_string();
 							return Err(
 								Diagnostic::new(msg, item.1.into_range()).with_label("remove the type parameters")
@@ -986,11 +986,10 @@ impl<M: Module> Compiler<M> {
 							methods: fills,
 							scope,
 						});
-						if type_params.is_empty() {
-							self.trait_impls.insert((typ.clone(), tn.clone()));
-						} else {
-							self.drop_generics.insert(typ.clone());
-						}
+						match type_params.is_empty() {
+							true => self.trait_impls.insert((typ.clone(), tn.clone())),
+							false => self.generic_claims.insert((typ.clone(), tn.clone())),
+						};
 					}
 					let decls: Vec<TraitFn> = claimed
 						.iter()
@@ -1195,16 +1194,19 @@ impl<M: Module> Compiler<M> {
 
 		let field_types =
 			TypeCtx::new(&structs, &enum_names, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
+
 		// implicit traits
 		for (tn, anns) in &self.annotations {
 			if !traits.contains_key(tn.as_str()) || !anns.iter().any(|a| ann(a, role::IMPLICIT).is_some()) {
 				continue;
 			}
+
 			for typ in structs.keys() {
 				let pair = (typ.clone(), tn.clone());
 				if self.trait_impls.contains(&pair) {
 					continue;
 				}
+
 				let mark = others.len();
 				let body = TraitBody {
 					span: Span::default(),
@@ -1230,6 +1232,16 @@ impl<M: Module> Compiler<M> {
 				}
 			}
 		}
+
+		for b in trait_bodies.iter().filter(|b| b.trait_name == "Copy") {
+			let drops = |set: &HashSet<(String, String)>| set.contains(&(b.typ.to_string(), "Drop".into()));
+			if drops(&self.trait_impls) || drops(&self.generic_claims) {
+				continue;
+			}
+			let msg = format!("`{}` claims `Copy` without `Drop`, so nothing runs the hook", b.typ);
+			return Err(Diagnostic::new(msg, b.span.into_range()).with_label("claim `Drop` too"));
+		}
+
 		check_impls(
 			trait_bodies,
 			&traits,
@@ -1418,7 +1430,7 @@ impl<M: Module> Compiler<M> {
 
 		// define vtables now that every concrete method has a FuncId
 		for (typ, tn) in self.trait_impls.clone() {
-			if tn == "Drop" {
+			if tn == "Drop" || tn == "Copy" {
 				continue;
 			}
 			let (_, tfields, tmethods) = traits[tn.as_str()];
@@ -1691,7 +1703,7 @@ impl<M: Module> Compiler<M> {
 			traits: types.traits,
 			generic_fns: &self.generics,
 			trait_impls: &self.trait_impls,
-			drop_generics: &self.drop_generics,
+			generic_claims: &self.generic_claims,
 			core_traits: &self.core_traits,
 			scope: types.scope,
 			module_scopes: &self.module_scopes,
