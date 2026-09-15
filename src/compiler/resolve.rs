@@ -516,7 +516,7 @@ impl TypeCtx<'_> {
 					.with_label(format!("try `{name}[...]`")),
 			);
 		}
-		if let Some((_, _, tmethods)) = self.traits.get(name) {
+		if let Some((.., tmethods)) = self.traits.get(name) {
 			// dyn dispatch erases the concrete type, so `Self` only works as the receiver
 			for (m, ps, ret) in trait_fns(tmethods) {
 				let in_ret = matches!(ret, Some((te, _)) if mentions(te, "Self"));

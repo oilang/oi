@@ -166,3 +166,15 @@ digits[T] :: fn(s: string, neg: bool) ?T {
 	}
 	out
 }
+
+int : TryFrom[string] < {
+	try_from :: fn(s: string) !int {
+		parse_int[Self](s) or { return error("`{s}` is not an int") }
+	}
+}
+
+float : TryFrom[string] < {
+	try_from :: fn(s: string) !float {
+		parse_float[Self](s) or { return error("`{s}` is not a float") }
+	}
+}

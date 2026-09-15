@@ -4,7 +4,7 @@ use super::*;
 use crate::loader::{fold_const, hook_method, is_hook_trait};
 
 // A trait's supertraits, fields, and methods.
-pub(crate) type TraitItem<'a> = (Vec<String>, &'a [Param], &'a [Spanned<Expr>]);
+pub(crate) type TraitItem<'a> = (Vec<String>, &'a [TypeParam], &'a [Param], &'a [Spanned<Expr>]);
 
 // A trait method's name, params, and return annotation.
 pub(crate) type TraitFn<'a> = (&'a str, &'a [Param], &'a Option<Spanned<TypeExpr>>);
@@ -17,6 +17,7 @@ pub(crate) struct TraitBody<'a> {
 	pub span: Span,
 	pub typ: &'a str,
 	pub trait_name: String,
+	pub args: &'a [Spanned<TypeExpr>],
 	pub via: Option<&'a str>,
 	pub methods: &'a [Spanned<Expr>],
 	pub scope: &'a Scope,
@@ -116,6 +117,7 @@ pub(super) fn check_impls<'p>(
 		span,
 		typ,
 		trait_name: tn,
+		args,
 		via,
 		methods,
 		scope,
@@ -149,9 +151,13 @@ pub(super) fn check_impls<'p>(
 			}
 			continue;
 		}
-		let Some((supers, tfields, tmethods)) = traits.get(tn.as_str()) else {
+		let Some((supers, tparams, tfields, tmethods)) = traits.get(tn.as_str()) else {
 			return Err(Diagnostic::new(format!("unknown trait `{tn}`"), span.into_range()).with_label("no such trait"));
 		};
+		if args.len() != tparams.len() {
+			let msg = format!("trait `{tn}` takes {} type argument(s), got {}", tparams.len(), args.len());
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of type arguments"));
+		}
 		for s in supers {
 			if !trait_impls.contains(&(typ.to_string(), s.clone())) {
 				let msg = format!("`{typ}` must also implement `{s}`, the supertrait of `{tn}`");
@@ -196,11 +202,15 @@ pub(super) fn check_impls<'p>(
 		}
 		let mut sig_aliases = types.aliases.clone();
 		sig_aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
+		let mut sig_params = types.type_params.clone();
+		for (p, (te, sp)) in tparams.iter().zip(args) {
+			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(te, *sp)?);
+		}
 		let sig_types = TypeCtx::new(
 			types.structs,
 			types.enums,
 			&sig_aliases,
-			types.type_params,
+			&sig_params,
 			types.generics,
 			types.traits,
 		)

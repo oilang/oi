@@ -43,6 +43,13 @@ struct FnItem<'a> {
 
 type EnumItem<'a> = (&'a str, Option<&'a Spanned<TypeExpr>>, &'a [EnumVariant]);
 
+// A claim's fill types.
+#[derive(Default, Clone, Copy)]
+struct Fills<'a, 'b> {
+	decls: &'b [TraitFn<'a>],
+	generic: bool,
+}
+
 #[derive(Clone)]
 pub(crate) struct FnSig {
 	pub id: FuncId,
@@ -674,7 +681,7 @@ impl<M: Module> Compiler<M> {
 		fills: &'a [Spanned<Expr>],
 		scope: &'a Scope,
 		others: &mut Vec<FnItem<'a>>,
-		decls: &[TraitFn],
+		claim: Fills,
 	) -> Result<(), Diagnostic> {
 		for m in fills {
 			let (anns, m) = match &m.0 {
@@ -696,14 +703,17 @@ impl<M: Module> Compiler<M> {
 			else {
 				continue;
 			};
-			// one fill per name
-			let key = format!("{typ}.{name}");
+			// key claims by type+name to handle generics
+			let key = match claim.generic {
+				true => format!("{typ}.{name}#{}", others.len()),
+				false => format!("{typ}.{name}"),
+			};
 			self.annotations
 				.entry(key.clone())
 				.or_default()
 				.extend(qualify_anns(scope, anns));
 			// visibility
-			if !public && decls.is_empty() && typ.contains("::") {
+			if !public && claim.decls.is_empty() && typ.contains("::") {
 				self.privates.entry(typ.to_string()).or_default().insert(name.clone());
 			}
 			if others.iter().any(|f| f.key == key) || self.generics.contains_key(&key) {
@@ -711,7 +721,7 @@ impl<M: Module> Compiler<M> {
 				return Err(Diagnostic::new(msg, m.1.into_range()).with_label("one fill per name"));
 			}
 			if type_params.is_empty() && mtp.is_empty() {
-				let (params, params_tuple, ret) = match decls.iter().find(|(n, ..)| *n == name) {
+				let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
 					Some(decl) => fill_from_decl(params, *params_tuple, ret, *decl, m.1)?,
 					None if params.is_empty() && !params_tuple => {
 						let msg = format!("no trait method `{name}` supplies a signature");
@@ -860,6 +870,7 @@ impl<M: Module> Compiler<M> {
 		for (scope, (e, span)) in items() {
 			let Expr::TraitDef {
 				name,
+				type_params,
 				supers,
 				fields,
 				methods,
@@ -868,7 +879,7 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			let supers = supers.iter().map(|s| scope.qualify_trait(s)).collect();
-			let item = (supers, fields.as_slice(), methods.as_slice());
+			let item = (supers, type_params.as_slice(), fields.as_slice(), methods.as_slice());
 			if traits.insert(name.as_str(), item).is_some() {
 				let msg = format!("duplicate trait `{name}`");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("already defined"));
@@ -893,14 +904,14 @@ impl<M: Module> Compiler<M> {
 						},
 					);
 					self.note_privates(name, fields);
-					self.register_fills(name, type_params, fills, scope, &mut others, &[])?;
+					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::StructDef {
 					name, fields, fills, ..
 				} => {
 					struct_items.push((name.as_str(), fields.as_slice()));
 					self.note_privates(name, fields);
-					self.register_fills(name, &[], fills, scope, &mut others, &[])?;
+					self.register_fills(name, &[], fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::EnumDef {
 					name,
@@ -916,7 +927,7 @@ impl<M: Module> Compiler<M> {
 							variants: variants.clone(),
 						},
 					);
-					self.register_fills(name, type_params, fills, scope, &mut others, &[])?;
+					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::EnumDef {
 					name,
@@ -926,7 +937,7 @@ impl<M: Module> Compiler<M> {
 					..
 				} => {
 					enum_items.push((name.as_str(), backing.as_ref(), variants.as_slice()));
-					self.register_fills(name, &[], fills, scope, &mut others, &[])?;
+					self.register_fills(name, &[], fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::TypeAlias { name, typ } => {
 					if matches!(typ, TypeExpr::TupleStruct(..)) && TypeCtx::builtin_type(name) {
@@ -955,7 +966,7 @@ impl<M: Module> Compiler<M> {
 					&& type_params.is_empty()
 					&& via.is_none()
 					&& !typ.contains("::")
-					&& matches!(ts.as_slice(), [t] if !traits.contains_key(scope.qualify_trait(t).as_str())) =>
+					&& matches!(ts.as_slice(), [(t, a)] if a.is_empty() && !traits.contains_key(scope.qualify_trait(t).as_str())) =>
 				{
 					loose_refs.push(item)
 				}
@@ -966,12 +977,14 @@ impl<M: Module> Compiler<M> {
 					via,
 					fills,
 				} => {
-					let claimed: Vec<String> = claimed.iter().map(|tn| scope.qualify_trait(tn)).collect();
+					let claimed: Vec<(String, &[Spanned<TypeExpr>])> =
+						(claimed.iter()).map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice())).collect();
 					if claimed.is_empty() && TypeCtx::builtin_type(typ) && scope.module != "core" {
 						let msg = format!("`{typ}` is a builtin type and can only be amended in core");
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
 					}
-					for tn in &claimed {
+					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
+					for (tn, args) in &claimed {
 						if !type_params.is_empty() && !is_hook_trait(tn) {
 							let msg = "generic trait claims aren't supported yet".to_string();
 							return Err(
@@ -982,6 +995,7 @@ impl<M: Module> Compiler<M> {
 							span: item.1,
 							typ,
 							trait_name: tn.clone(),
+							args,
 							via: via.as_deref(),
 							methods: fills,
 							scope,
@@ -993,10 +1007,11 @@ impl<M: Module> Compiler<M> {
 					}
 					let decls: Vec<TraitFn> = claimed
 						.iter()
-						.filter_map(|tn| traits.get(tn.as_str()))
-						.flat_map(|(_, _, ms)| trait_fns(ms))
+						.filter_map(|(tn, _)| traits.get(tn.as_str()))
+						.flat_map(|(.., ms)| trait_fns(ms))
 						.collect();
-					self.register_fills(typ, type_params, fills, scope, &mut others, &decls)?;
+					let claim = Fills { decls: &decls, generic };
+					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
 				Expr::Fn {
@@ -1212,6 +1227,7 @@ impl<M: Module> Compiler<M> {
 					span: Span::default(),
 					typ,
 					trait_name: tn.clone(),
+					args: &[],
 					via: None,
 					methods: &[],
 					scope: scope_of(typ),
@@ -1433,7 +1449,10 @@ impl<M: Module> Compiler<M> {
 			if is_hook_trait(&tn) {
 				continue;
 			}
-			let (_, tfields, tmethods) = traits[tn.as_str()];
+			let (_, tparams, tfields, tmethods) = traits[tn.as_str()];
+			if !tparams.is_empty() {
+				continue;
+			}
 			let methods: Vec<&str> = trait_fns(tmethods).map(|(n, ..)| n).collect();
 			let m = methods.len();
 			let f = tfields.len();

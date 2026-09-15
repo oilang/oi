@@ -15,7 +15,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let zeroed;
 			let stmt = match &stmt.0 {
 				Expr::Claim { typ, traits, .. } => {
-					let annot = Some((TypeExpr::Name(traits[0].clone()), stmt.1));
+					let annot = Some((TypeExpr::Name(traits[0].0.clone()), stmt.1));
 					zeroed = (
 						Expr::Bind {
 							mutable: true,

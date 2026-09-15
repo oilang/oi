@@ -15,6 +15,11 @@ pub Div :: trait { div: fn(self, other: Self) Self }
 pub Mod :: trait { mod: fn(self, other: Self) Self }
 pub Pow :: trait { pow: fn(self, other: Self) Self }
 
+# conversions
+
+pub From[T] :: trait { from: fn(v: T) Self }
+pub TryFrom[T] :: trait { try_from: fn(v: T) !Self }
+
 # errors
 
 pub Error :: trait {

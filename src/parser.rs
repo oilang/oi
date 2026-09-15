@@ -1653,6 +1653,7 @@ where
 		.to(vec![])
 		.or(just(Token::Colon).ignore_then(list(ident())).then_ignore(just(Token::Colon)));
 	let trait_def = ident()
+		.then(type_params.clone())
 		.then(supers)
 		.then_ignore(just(Token::Trait))
 		.then(brace(loose_list(choice((
@@ -1660,11 +1661,12 @@ where
 			struct_field.clone().map(Member::Field),
 			func.clone().map(Member::Fn),
 		)))))
-		.map_with(|((name, supers), members), ex| {
+		.map_with(|(((name, type_params), supers), members), ex| {
 			let (fields, methods, _) = split_members(members);
 			(
 				Expr::TraitDef {
 					name,
+					type_params,
 					supers,
 					fields,
 					methods,
@@ -1716,6 +1718,9 @@ where
 			.then_ignore(fill_docs),
 	);
 	let via = just(Token::Via).ignore_then(ident()).or_not();
+	let trait_ref = ident()
+		.then(bracket(list(spanned(type_expr.clone()))).or_not())
+		.map(|(name, args)| (name, args.unwrap_or_default()));
 	// arrays and maps
 	let bracket_head = bracket(ident().or_not()).then(ident()).map(|(k, v)| {
 		let names: Vec<_> = k
@@ -1733,14 +1738,14 @@ where
 	let claim = head
 		.clone()
 		.then_ignore(just(Token::Colon))
-		.then(list(ident()))
+		.then(list(trait_ref.clone()))
 		.then(via.clone())
 		.then_ignore(just(Token::Lt))
 		.then(fill_block)
 		.or(head
 			.then_ignore(just(Token::Colon))
 			.then_ignore(just(Token::Lt))
-			.then(ident().separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>())
+			.then(trait_ref.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>())
 			.then(via)
 			.map(|(head, via)| ((head, via), vec![])))
 		.map_with(|((((typ, type_params), traits), via), fills), ex| {

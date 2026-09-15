@@ -580,3 +580,15 @@ fn rejects_wrong_type_fill() {
 		"missing field",
 	);
 }
+
+#[test]
+fn a_trait_takes_type_arguments() {
+	let src = indoc! {r#"
+		Money :: struct { cents: int }
+		Money : From[int] < { from :: fn(n: int) Self { Money.{ n * 100 } } }
+		Money : From[string] < { from :: fn(s: string) Self { Money.{ int.try_from(s) or 0 } } }
+		print(Money.from(5).cents)
+		print(Money.from("7").cents)
+	"#};
+	check(src, ["500", "7"]);
+}

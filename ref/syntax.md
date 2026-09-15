@@ -700,6 +700,17 @@ i8 : Bounded < {
 	max :: 127
 }
 
+## conversions
+
+# traits can have type params too
+From[T] :: trait { from: fn(v: T) Self }
+TryFrom[T] :: trait { try_from: fn(v: T) !Self }
+
+Money :: struct { cents: int }
+Money : From[int] < { from :: fn(n: int) Self { Money.{ n } } }
+Money : From[string] < { from :: fn(s: string) Self { Money.{ int.try_from(s) or 0 } } }
+assert!(Money.from(5).cents == Money.from("5").cents)
+
 ## blanket claims
 
 # claim a trait for every type that already meets a bound

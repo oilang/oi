@@ -252,7 +252,7 @@ pub enum Expr {
 	Claim {
 		typ: String,
 		type_params: Vec<TypeParam>,
-		traits: Vec<String>,
+		traits: Vec<TraitRef>,
 		via: Option<String>,
 		fills: Vec<Spanned<Expr>>,
 	},
@@ -260,6 +260,7 @@ pub enum Expr {
 	// `trait Name {}`
 	TraitDef {
 		name: String,
+		type_params: Vec<TypeParam>,
 		supers: Vec<String>,
 		fields: Vec<Param>,
 		methods: Vec<Spanned<Expr>>,
@@ -705,6 +706,9 @@ pub enum Capture {
 	Mut(String),
 	Move(String),
 }
+
+// A claimed trait and its type arguments.
+pub type TraitRef = (String, Vec<Spanned<TypeExpr>>);
 
 // Generic type parameter.
 #[derive(Debug, Clone)]

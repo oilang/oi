@@ -47,4 +47,6 @@ test! "parsing" {
 	assert! parse_float("-2.05") == -2.05
 	assert! parse_float("2.") == none
 	assert! parse_float[f32]("-2.5") == f32.(-2.5)
+	assert! (int.try_from("42") or 0) == 42
+	assert! (float.try_from("nope") or 1.5) == 1.5
 }

@@ -340,6 +340,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(def) = self.generic_fns.get(&gkey).cloned() {
 					return self.call_generic(&gkey, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
+				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args)? {
+					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, &args, expr.1);
+				}
 				if method == "str"
 					&& args.is_empty()
 					&& let Some((v, t)) = &bound

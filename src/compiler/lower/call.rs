@@ -1,6 +1,9 @@
 use super::*;
 use crate::compiler::role;
 
+// A chosen fill and the args to call it on.
+type Picked = (FnSig, Vec<Spanned<Expr>>);
+
 // Unwrap a marked call arg.
 pub(super) fn arg_inner(arg: &Spanned<Expr>) -> &Spanned<Expr> {
 	match &arg.0 {
@@ -218,6 +221,35 @@ impl<'a, M: Module> Translator<'a, M> {
 		let out = self.emit_call(&sig, &vals);
 		self.reload_lent(&lent);
 		Ok(out)
+	}
+
+	// Picks one of `key`'s numbered fills by the first arg's type, lowering that arg into a hidden temp.
+	pub(super) fn pick_fill(
+		&mut self,
+		key: &str,
+		skip: usize,
+		args: &[Spanned<Expr>],
+	) -> Result<Option<Picked>, Diagnostic> {
+		let tag = format!("{key}#");
+		let mut keys: Vec<String> = self.funcs.keys().filter(|k| k.starts_with(&tag)).cloned().collect();
+		if keys.is_empty() || args.is_empty() {
+			return Ok(None);
+		}
+		keys.sort();
+		let (val, typ) = self.expr(&args[0])?;
+		let hit =
+			(keys.into_iter()).find(|k| self.funcs[k].params.get(skip).is_some_and(|p| *access_peel(&p.typ) == typ));
+		let Some(hit) = hit else {
+			let msg = format!("no claim fills `{}` for a `{typ}`", display_name(key));
+			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("no matching claim"));
+		};
+		let name = format!("$fill{}", self.vars.len());
+		let var = self.b.declare_var(self.b.func.dfg.value_type(val));
+		self.b.def_var(var, val);
+		self.vars.insert(name.clone(), Local::plain(var, typ, false));
+		let mut args = args.to_vec();
+		args[0] = (Expr::Ident(name), args[0].1);
+		Ok(Some((self.funcs[&hit].clone(), args)))
 	}
 
 	// Swap each spread `..x` for reads of a hidden temp holding x.
@@ -668,7 +700,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, _, tmethods) = self.traits[tn];
+		let (.., tmethods) = self.traits[tn];
 		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
 			let msg = format!("trait `{tn}` has no method `{method}`");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such method"));
@@ -712,7 +744,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		field: &str,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, tfields, tmethods) = self.traits[tn];
+		let (_, _, tfields, tmethods) = self.traits[tn];
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
 			let msg = format!("trait `{tn}` has no field `{field}`");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
