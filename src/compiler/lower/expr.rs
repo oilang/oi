@@ -323,16 +323,12 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				// instance calls pierce embedded structs
 				if let Some((recv_val, Typ::Struct(_, sfields))) = &bound {
-					let mut hits =
-						embeds(sfields).filter(|(_, sn, _)| self.funcs.contains_key(&format!("{sn}.{method}")));
-					if let Some((outer, esn, _)) = hits.next() {
-						if let Some((other, ..)) = hits.next() {
-							return Err(ambiguous(method, &sfields[outer].name, &sfields[other].name, expr.1));
-						}
-						self.check_member(esn, method, expr.1)?;
-						let key = format!("{esn}.{method}");
-						let sig = self.funcs[&key].clone();
-						let embed = self.b.ins().load(self.int, MemFlags::new(), *recv_val, (outer * 8) as i32);
+					let owner = |sn: &str, _: &[FieldDef]| {
+						let key = format!("{sn}.{method}");
+						self.funcs.get(&key).map(|sig| (key, sig.clone()))
+					};
+					if let Some((path, (key, sig))) = self.pierce(sfields, method, expr.1, owner)? {
+						let embed = self.follow(*recv_val, &path);
 						return self.call_sig(&key, sig, Some(embed), recv_expr, args, expr.1);
 					}
 				}
@@ -495,9 +491,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.check_member(sname, field, expr.1)?;
 					// promote fields from embedded structs if applicable
 					if !sfields.iter().any(|f| f.name == *field)
-						&& let Some((outer, inner, ftyp)) = self.promoted(sfields, field, expr.1)?
+						&& let Some((path, inner, ftyp)) = self.promoted(sfields, field, expr.1)?
 					{
-						let embed = self.b.ins().load(self.int, MemFlags::new(), ptr, (outer * 8) as i32);
+						let embed = self.follow(ptr, &path);
 						let v = self
 							.b
 							.ins()

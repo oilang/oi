@@ -38,7 +38,6 @@ pub(crate) mod value;
 
 use self::anon::AnonSig;
 use self::call::Callee;
-use self::core::ambiguous;
 use self::helpers::*;
 
 pub(super) struct Translator<'a, M: Module> {

@@ -68,25 +68,55 @@ impl<'a, M: Module> Translator<'a, M> {
 		Err(Diagnostic::new(msg, span.into_range()).with_label("not public"))
 	}
 
-	// Find `wanted` through an embedded struct.
+	// Search embedded structs for `wanted`.
+	// Returns the embed slot path.
+	pub(super) fn pierce<T>(
+		&self,
+		fields: &[FieldDef],
+		wanted: &str,
+		span: Span,
+		find: impl Fn(&str, &[FieldDef]) -> Option<T>,
+	) -> Result<Option<(Vec<usize>, T)>, Diagnostic> {
+		let mut level = vec![(Vec::new(), fields)];
+		while !level.is_empty() {
+			let (mut hits, mut next) = (Vec::new(), Vec::new());
+			for (path, fs) in level {
+				for (o, sn, inner) in embeds(fs) {
+					let path = [path.as_slice(), &[o]].concat();
+					match find(sn, inner) {
+						Some(t) => hits.push((path, sn, t)),
+						None => next.push((path, inner)),
+					}
+				}
+			}
+			if let [(a, ..), (b, ..), ..] = &hits[..] {
+				return Err(ambiguous(wanted, &fields[a[0]].name, &fields[b[0]].name, span));
+			}
+			if let Some((path, sn, t)) = hits.pop() {
+				self.check_member(sn, wanted, span)?;
+				return Ok(Some((path, t)));
+			}
+			level = next;
+		}
+		Ok(None)
+	}
+
+	// Find `wanted` as a field of an embedded struct.
 	pub(super) fn promoted(
 		&self,
 		fields: &[FieldDef],
 		wanted: &str,
 		span: Span,
-	) -> Result<Option<(usize, usize, Typ)>, Diagnostic> {
-		let mut hit: Option<(usize, usize, Typ)> = None;
-		for (o, sname, inner) in embeds(fields) {
-			let Some(i) = inner.iter().position(|f| f.name == wanted) else {
-				continue;
-			};
-			if let Some((prev, ..)) = hit {
-				return Err(ambiguous(wanted, &fields[prev].name, &fields[o].name, span));
-			}
-			self.check_member(sname, wanted, span)?;
-			hit = Some((o, i, inner[i].typ.clone()));
-		}
-		Ok(hit)
+	) -> Result<Option<(Vec<usize>, usize, Typ)>, Diagnostic> {
+		let find = |_: &str, f: &[FieldDef]| f.iter().position(|f| f.name == wanted).map(|i| (i, f[i].typ.clone()));
+		Ok(self.pierce(fields, wanted, span, find)?.map(|(p, (i, t))| (p, i, t)))
+	}
+
+	// Look through a chain of embed slots to the innermost struct pointer.
+	pub(super) fn follow(&mut self, ptr: Value, path: &[usize]) -> Value {
+		path.iter().fold(ptr, |p, o| {
+			self.b.ins().load(self.int, MemFlags::new(), p, (o * 8) as i32)
+		})
 	}
 
 	// Look up the binding that a mutation targets.
@@ -251,7 +281,7 @@ impl<'a, M: Module> Translator<'a, M> {
 }
 
 // Two embeds both supply `wanted`.
-pub(super) fn ambiguous(wanted: &str, a: &str, b: &str, span: Span) -> Diagnostic {
+fn ambiguous(wanted: &str, a: &str, b: &str, span: Span) -> Diagnostic {
 	Diagnostic::new(
 		format!("`{wanted}` is ambiguous, found in embedded `{a}` and `{b}`"),
 		span.into_range(),

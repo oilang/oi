@@ -291,11 +291,11 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 						}
 					};
-					// writes fall through one embed level
-					let (outer, idx, ftyp) = match fields.iter().position(|f| &f.name == field) {
-						Some(i) => (None, i, fields[i].typ.clone()),
+					// writes fall through embeds
+					let (path, idx, ftyp) = match fields.iter().position(|f| &f.name == field) {
+						Some(i) => (Vec::new(), i, fields[i].typ.clone()),
 						None => match self.promoted(&fields, field, stmt.1)? {
-							Some((o, i, t)) => (Some(o), i, t),
+							Some((p, i, t)) => (p, i, t),
 							None => {
 								return Err(Diagnostic::new(
 									format!("struct has no field `{field}`"),
@@ -315,10 +315,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					closure_escape(&vtyp, value.1.into_range(), "stored in a field")?;
 					let val = self.copy_in(val, &vtyp);
-					let mut ptr = self.read_local(&local);
-					if let Some(o) = outer {
-						ptr = self.b.ins().load(self.int, MemFlags::new(), ptr, (o * 8) as i32);
-					}
+					let base = self.read_local(&local);
+					let ptr = self.follow(base, &path);
 					if rc::releasable(&vtyp) {
 						let cl = self.b.func.dfg.value_type(val);
 						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);

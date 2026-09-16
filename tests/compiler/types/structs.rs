@@ -511,6 +511,22 @@ fn embedded_method_promotion() {
 }
 
 #[test]
+fn embedded_two_levels() {
+	let src = indoc! {"
+		A :: struct { x: int }
+		A :< { hi :: fn(self) int { self.x + 1 } }
+		B :: struct { A, y: int }
+		C :: struct { B, z: int }
+		c := C.{ x = 1, y = 2, z = 3 }
+		print(c.x)
+		print(c.hi())
+		c.x = 5
+		c.hi()
+	"};
+	check(src, ["1", "2", "6"]);
+}
+
+#[test]
 fn embedded_via_alias() {
 	let src = indoc! {"
 		Widget :: struct { x: int = 3 }

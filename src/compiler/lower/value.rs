@@ -1005,10 +1005,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						(idx, struct_fields[idx].typ.clone(), ptr)
 					}
 					None => match self.promoted(&struct_fields, fname, value.1)? {
-						Some((outer, inner, ftyp)) => {
-							let embed = self.b.ins().load(self.int, MemFlags::new(), ptr, (outer * 8) as i32);
-							(inner, ftyp, embed)
-						}
+						Some((path, inner, ftyp)) => (inner, ftyp, self.follow(ptr, &path)),
 						None => {
 							return Err(Diagnostic::new(
 								format!("`{name}` has no field `{fname}`"),
