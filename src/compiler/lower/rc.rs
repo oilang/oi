@@ -25,7 +25,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					seen.push(name.clone());
 				}
-				self.variants_of(typ).iter().any(|v| v.payload.iter().any(|t| self.is_resource_seen(t, seen)))
+				self.variants_of(typ)
+					.iter()
+					.any(|v| v.payload.iter().any(|t| self.is_resource_seen(t, seen)))
 			}
 			_ => false,
 		}

@@ -160,6 +160,20 @@ fn default_param() {
 }
 
 #[test]
+fn immutable_default_param() {
+	let src = indoc! {"
+		add :: fn(x: int, y: int : 10, z :: 100) int { x + y + z }
+		print(add(1))
+	"};
+	check(src, ["111"]);
+	let src = indoc! {"
+		f :: fn(a :: 2) { a = 3 }
+		f()
+	"};
+	fail_with(src, "immutably bound");
+}
+
+#[test]
 fn default_param_refs_earlier_param() {
 	let src = indoc! {r#"
 		Wrapper :: struct { s: string }

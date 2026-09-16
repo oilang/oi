@@ -242,7 +242,13 @@ fn a_copy_claim_binds_a_duplicate() {
 #[test]
 fn a_move_skips_the_copy_hook() {
 	check(
-		[REF, "eat :: fn(move r: Ref) {}", "r :: Ref.{id = 1}", "eat(move r)", r#"print("after")"#],
+		[
+			REF,
+			"eat :: fn(move r: Ref) {}",
+			"r :: Ref.{id = 1}",
+			"eat(move r)",
+			r#"print("after")"#,
+		],
 		["drop 1", "after"],
 	);
 }
@@ -250,7 +256,10 @@ fn a_move_skips_the_copy_hook() {
 #[test]
 fn a_container_copies_what_it_owns() {
 	let owner = ["Box :: struct { r: Ref }", "b :: Box.{r = Ref.{id = 1}}", "c :: b"].join("\n");
-	check([REF, &owner, r#"print("held", c.r.id)"#], ["copy 1", "held 1", "drop 1", "drop 1"]);
+	check(
+		[REF, &owner, r#"print("held", c.r.id)"#],
+		["copy 1", "held 1", "drop 1", "drop 1"],
+	);
 	check(
 		[REF, "a :: [Ref.{id = 2}]", "g :: a[0]", r#"print("held", g.id)"#],
 		["copy 2", "held 2", "drop 2", "drop 2"],
@@ -279,7 +288,10 @@ fn a_generic_claim_copies_each_instance() {
 #[test]
 fn copy_without_drop_is_rejected() {
 	fail_with(
-		["Plain :: struct { n: int }", "Plain : Copy < { copy :: fn(mut self) {} }"],
+		[
+			"Plain :: struct { n: int }",
+			"Plain : Copy < { copy :: fn(mut self) {} }",
+		],
 		"claims `Copy` without `Drop`",
 	);
 }

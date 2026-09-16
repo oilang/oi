@@ -416,19 +416,20 @@ where
 	.boxed();
 
 	// defaults
-	let bind_default = just(Token::Bind)
-		.ignore_then(expr.clone())
+	let default_value = expr
+		.clone()
 		.try_map(|(value, span), _| {
 			let typ = literal_typ(&value)
-				.ok_or_else(|| Rich::custom(span, "a `:=` default must be a literal, or name the type"))?;
+				.ok_or_else(|| Rich::custom(span, "an inferred default must be a literal, or name the type"))?;
 			Ok((TypeExpr::Name(typ.into()), Some((value, span))))
 		})
 		.boxed();
+	let bind_default = just(Token::Bind).ignore_then(default_value.clone()).boxed();
 
 	let param_type = just(Token::Colon)
 		.ignore_then(type_expr.clone())
-		.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
-		.or(bind_default.clone())
+		.then(one_of([Token::Assign, Token::Colon]).ignore_then(expr.clone()).or_not())
+		.or(one_of([Token::Bind, Token::DoubleColon]).ignore_then(default_value))
 		.boxed();
 	let param = access
 		.clone()

@@ -155,7 +155,11 @@ pub(super) fn check_impls<'p>(
 			return Err(Diagnostic::new(format!("unknown trait `{tn}`"), span.into_range()).with_label("no such trait"));
 		};
 		if args.len() != tparams.len() {
-			let msg = format!("trait `{tn}` takes {} type argument(s), got {}", tparams.len(), args.len());
+			let msg = format!(
+				"trait `{tn}` takes {} type argument(s), got {}",
+				tparams.len(),
+				args.len()
+			);
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of type arguments"));
 		}
 		for s in supers {

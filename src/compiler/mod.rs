@@ -977,8 +977,9 @@ impl<M: Module> Compiler<M> {
 					via,
 					fills,
 				} => {
-					let claimed: Vec<(String, &[Spanned<TypeExpr>])> =
-						(claimed.iter()).map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice())).collect();
+					let claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
+						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
+						.collect();
 					if claimed.is_empty() && TypeCtx::builtin_type(typ) && scope.module != "core" {
 						let msg = format!("`{typ}` is a builtin type and can only be amended in core");
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
