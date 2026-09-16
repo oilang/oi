@@ -76,7 +76,8 @@ impl FnSig {
 fn check_param_defaults(params: &[Param]) -> Result<(), Diagnostic> {
 	if let Some(p) = params.iter().find(|p| p.access == Access::Mut && p.default.is_some()) {
 		let msg = format!("`{}` is `mut` so it can't have a default value", p.name);
-		return Err(Diagnostic::new(msg, p.span.into_range()).with_label("remove `mut` or the default"));
+		return Err(Diagnostic::new(msg, p.span.into_range())
+			.with_label("`mut` lends the caller's binding, there is none when the arg is omitted"));
 	}
 	let tail = params.iter().skip_while(|p| p.default.is_none());
 	if let Some(p) = tail.skip(1).find(|p| p.default.is_none()) {

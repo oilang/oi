@@ -734,6 +734,7 @@ pub struct Param {
 	pub span: Span,
 	pub default: Option<Spanned<Expr>>,
 	pub access: Access,
+	pub mutable: bool,
 	pub public: bool,
 	pub annotations: Vec<Annotation>,
 }

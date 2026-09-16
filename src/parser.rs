@@ -106,6 +106,21 @@ fn bind_return((e, span): &mut Spanned<Expr>, name: &str) {
 	});
 }
 
+// Params using `:=`/`=` are mutable copies, treated as `x := x` shadows.
+fn shadow_params(params: &[Param], mut body: Vec<Spanned<Expr>>) -> Vec<Spanned<Expr>> {
+	let copies = params.iter().filter(|p| p.mutable).map(|p| {
+		let decl = Expr::Bind {
+			mutable: true,
+			name: p.name.clone(),
+			typ: None,
+			value: Some(Box::new((Expr::Ident(p.name.clone()), p.span))),
+		};
+		(decl, p.span)
+	});
+	body.splice(0..0, copies);
+	body
+}
+
 // Assemble a fn item.
 fn fn_def(
 	(name, mut type_params): (String, Vec<TypeParam>),
@@ -126,11 +141,13 @@ fn fn_def(
 			span,
 			default: None,
 			access: Access::Read,
+			mutable: false,
 			public: false,
 			annotations: vec![],
 		};
 		(vec![param], false)
 	});
+	let body = shadow_params(&params, body);
 	(
 		Expr::Fn {
 			name,
@@ -428,8 +445,14 @@ where
 
 	let param_type = just(Token::Colon)
 		.ignore_then(type_expr.clone())
-		.then(one_of([Token::Assign, Token::Colon]).ignore_then(expr.clone()).or_not())
-		.or(one_of([Token::Bind, Token::DoubleColon]).ignore_then(default_value))
+		.then(one_of([Token::Assign, Token::Colon]).then(expr.clone()).or_not())
+		.map(|(typ, def)| match def {
+			Some((tok, e)) => (typ, Some(e), tok == Token::Assign),
+			None => (typ, None, false),
+		})
+		.or(one_of([Token::Bind, Token::DoubleColon])
+			.then(default_value)
+			.map(|(tok, (typ, default))| (typ, default, tok == Token::Bind)))
 		.boxed();
 	let param = access
 		.clone()
@@ -437,13 +460,17 @@ where
 		.then(ident())
 		.then(param_type.clone().or_not())
 		.map_with(|((access, name), typed), ex| {
-			let (typ, default) = typed.unzip();
+			let (typ, default, mutable) = match typed {
+				Some((t, d, m)) => (Some(t), d, m),
+				None => (None, None, false),
+			};
 			Param {
 				typ: typ.unwrap_or_else(|| TypeExpr::Name(if name == "self" { "Self" } else { "$?" }.into())),
 				name,
 				span: ex.span(),
-				default: default.flatten(),
+				default,
 				access: access.unwrap_or_default(),
+				mutable,
 				public: false,
 				annotations: vec![],
 			}
@@ -454,6 +481,7 @@ where
 		span: ex.span(),
 		default: None,
 		access: Access::Read,
+		mutable: false,
 		public: false,
 		annotations: vec![],
 	});
@@ -461,12 +489,13 @@ where
 		.then_ignore(adjacent)
 		.ignore_then(brace(ident()))
 		.then(param_type)
-		.map_with(|(name, (typ, default)), ex| Param {
+		.map_with(|(name, (typ, default, mutable)), ex| Param {
 			name: format!("%{name}"),
 			typ,
 			span: ex.span(),
 			default,
 			access: Access::Read,
+			mutable,
 			public: false,
 			annotations: vec![],
 		});
@@ -1155,6 +1184,7 @@ where
 			.then(block.clone())
 			.map_with(|(((captures, params), ret), body), ex| {
 				let (params, tuple) = params.unwrap_or((vec![], true));
+				let body = shadow_params(&params, body);
 				(
 					Expr::AnonFn {
 						captures,
@@ -1446,6 +1476,7 @@ where
 			span: ex.span(),
 			default,
 			access: Access::Read,
+			mutable: false,
 			public: public.is_some(),
 			annotations,
 		})
@@ -1459,6 +1490,7 @@ where
 		span: ex.span(),
 		default: None,
 		access: Access::Read,
+		mutable: false,
 		public: public.is_some(),
 		annotations: vec![],
 	});

@@ -174,6 +174,22 @@ fn immutable_default_param() {
 }
 
 #[test]
+fn mutable_default_param() {
+	let src = indoc! {"
+		f :: fn(a := 2) int { a = a + 1; a }
+		print(f())
+	"};
+	check(src, "3");
+	let src = indoc! {"
+		g :: fn(xs: []int = [0]) { xs[0] = 9 }
+		a := [1]
+		g(a)
+		print(a)
+	"};
+	check(src, "[1]");
+}
+
+#[test]
 fn default_param_refs_earlier_param() {
 	let src = indoc! {r#"
 		Wrapper :: struct { s: string }
