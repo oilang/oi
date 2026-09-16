@@ -832,7 +832,8 @@ where
 		.boxed();
 
 	// blocks
-	block.define(brace(stmt.clone().repeated().collect::<Vec<_>>()));
+	let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
+	block.define(brace(stmt.clone().repeated().collect::<Vec<_>>()).or(do_body));
 
 	let definition = {
 		let literal = select! {
@@ -1018,15 +1019,13 @@ where
 
 		let array = bracket(loose_list(expr.clone())).map_with(|elems, ex| (Expr::Array(elems), ex.span()));
 
-		let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
-
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
 				.ignore_then(header_expr.clone())
-				.then(block.clone().or(do_body.clone()))
+				.then(block.clone())
 				.then(
 					just(Token::Else)
-						.ignore_then(if_expr.map(|e| vec![e]).or(block.clone()).or(do_body.clone()))
+						.ignore_then(if_expr.map(|e| vec![e]).or(block.clone()))
 						.or_not(),
 				)
 				.map_with(|((cond, then), els), ex| {

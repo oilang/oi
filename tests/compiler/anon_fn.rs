@@ -529,3 +529,12 @@ fn ret_less_fn_type_ends_its_line() {
 	"};
 	check(src, "1");
 }
+
+#[test]
+fn do_body() {
+	let src = indoc! {"
+		triple := fn(x: int) int do x * 3
+		triple(4)
+	"};
+	check(src, "12");
+}

@@ -243,3 +243,14 @@ fn for_each_string_bytes_and_map_entries() {
 	"#};
 	check(src, ["104", "105", "5"]);
 }
+
+#[test]
+fn do_bodies() {
+	let src = indoc! {"
+		i := 0
+		loop i < 3 do i += 1
+		loop n in 0..2 do print(n)
+		i
+	"};
+	check(src, ["0", "1", "3"]);
+}

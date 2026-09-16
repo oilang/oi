@@ -271,3 +271,13 @@ fn unreached_fn_is_never_compiled() {
 	"#};
 	check(src, "alive");
 }
+
+#[test]
+fn do_body() {
+	let src = indoc! {"
+		double :: fn(x: int) int do x * 2
+		square :: fn(x: int) int do x * x
+		double(square(3))
+	"};
+	check(src, "18");
+}

@@ -1237,9 +1237,12 @@ main :: fn() {
 		print("idk")
 	}
 
-	# `do` takes a single statement instead of a block
+	# `do` takes a single statement instead of a block, anywhere a block is expected
 	if i == 2 do print("two")
 	if i > 0 do print("positive") else do print("nope")
+	loop i < 9 do i += 1
+	loop n in 0..3 do print(n)
+	triple :: fn(n: int) int do n * 3
 
 	## matching
 
