@@ -40,6 +40,9 @@ impl<M: Module> Translator<'_, M> {
 		match (read, recv, type_args, args) {
 			(true, Some(c), [(te, ts)], []) => {
 				let typ = self.types().resolve(te, *ts)?;
+				if self.oi_fields(&typ).is_some() {
+					return Ok((self.copy_in(c, &typ), typ));
+				}
 				let Some(fields) = self.c_fields(&typ, *ts)? else {
 					return Ok((self.c_load(&typ, c, 0), typ));
 				};
@@ -49,9 +52,12 @@ impl<M: Module> Translator<'_, M> {
 			}
 			(false, Some(c), [], [value]) => {
 				let (oi, typ) = self.expr(value)?;
-				match self.c_fields(&typ, value.1)? {
-					Some(fields) => self.copy_fields(oi, c, 0, &fields, true),
-					None => self.c_store(&typ, oi, c, 0),
+				if let Some(fields) = self.oi_fields(&typ) {
+					self.assign_fields(oi, c, fields, false);
+				} else if let Some(fields) = self.c_fields(&typ, value.1)? {
+					self.copy_fields(oi, c, 0, &fields, true);
+				} else {
+					self.c_store(&typ, oi, c, 0);
 				}
 				Ok(self.unit_value())
 			}
@@ -117,12 +123,19 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
+	fn oi_fields<'t>(&self, typ: &'t Typ) -> Option<&'t [FieldDef]> {
+		match typ {
+			Typ::Struct(name, fields) if !is_c_struct(self.annotations, name) => Some(fields),
+			_ => None,
+		}
+	}
+
 	fn c_fields(&self, typ: &Typ, span: Span) -> Result<Option<Vec<FieldDef>>, Diagnostic> {
 		match typ {
 			Typ::Struct(name, fields) if is_c_struct(self.annotations, name) => Ok(Some(fields.clone())),
 			t if t.is_c_repr() && !matches!(t, Typ::Fn(..)) => Ok(None),
 			_ => Err(Diagnostic::new(format!("`{typ}` has no C layout"), span.into_range())
-				.with_label("only a `@c` struct or C scalar crosses a `ptr`")),
+				.with_label("only a struct or C scalar crosses a `ptr`")),
 		}
 	}
 

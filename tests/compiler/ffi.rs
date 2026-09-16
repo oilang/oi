@@ -25,3 +25,16 @@ fn fn_casts_to_ptr() {
 	"};
 	check(src, "42 true");
 }
+
+#[test]
+fn struct_place_behind_ptr() {
+	let src = indoc! {"
+		S :: struct { n: int }
+		S :< { bump :: fn(mut self) { self.n = self.n + 1 } }
+		buf: []u8 = .[0, 0, 0, 0, 0, 0, 0, 0]
+		unsafe buf.ptr.write(S.{n = 1})
+		unsafe S.(buf.ptr).bump()
+		print(unsafe buf.ptr.read[S]().n)
+	"};
+	check(src, "2");
+}

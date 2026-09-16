@@ -1,4 +1,4 @@
-use crate::compiler::comp;
+use crate::compiler::{comp, role};
 
 use super::*;
 
@@ -156,6 +156,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (val, typ) = self.check_expr(value, target)?;
 		if typ == *target {
 			return Ok((val, typ));
+		}
+		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
+			&& p == role::PTR
+		{
+			// a raw address is a place
+			self.require_unsafe(&format!("{target} cast"), span)?;
+			if is_c_struct(self.annotations, name) {
+				let msg = format!("`{target}` is a `@c` struct, C layout behind a `ptr`");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("copy it with `p.read[T]()`"));
+			}
+			return Ok((val, target.clone()));
 		}
 		if let (Typ::Array(e), Typ::Str) = (target, &typ)
 			&& **e == Typ::UInt(8)

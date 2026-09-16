@@ -488,6 +488,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<(), Diagnostic> {
 		if let Some(re) = recv
 			&& access[0] == Access::Mut
+			&& !matches!(re.0, Expr::Cast { .. })
 		{
 			self.mut_place(re, "calling a `mut self` method needs a `mut` binding")?;
 		}

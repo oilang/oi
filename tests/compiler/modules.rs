@@ -360,12 +360,11 @@ fn c_struct_rejects_missing_c_repr() {
 		["@c Wide :: struct { flags: [4]bool }"],
 		"`Wide.flags` has no C representation",
 	);
-	let src = indoc! {"
-		P :: struct { x: int }
+	let src = indoc! {r#"
 		buf: []u8 = .[0]
-		unsafe { buf.ptr.write(P.{ x = 1 }) }
-	"};
-	fail_with(src, "`P` has no C layout");
+		unsafe { buf.ptr.write("hi") }
+	"#};
+	fail_with(src, "`string` has no C layout");
 }
 
 #[test]
