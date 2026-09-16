@@ -153,7 +153,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.cow_array(ptr, &elem);
 					}
 					let idx = self.int_value(index, "array index")?;
-					let idx = self.b.ins().sextend(self.int, idx);
+					let idx = self.intcast(idx, self.int, true);
 					let (val, vtyp) = self.check_expr(value, &elem)?;
 					if vtyp != elem {
 						return Err(Diagnostic::new(

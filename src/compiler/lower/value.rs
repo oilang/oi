@@ -454,10 +454,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let fields = fields.clone();
 		let ptr = self.struct_slot(&fields)?;
-		let end = end.map(|v| self.intcast(v, types::I32, true));
-		let end = self.make_option(&Typ::Int(32), end);
-		let start = self.intcast(start, types::I32, true);
-		let step = self.intcast(step, types::I32, true);
+		let end = end.map(|v| self.intcast(v, types::I64, true));
+		let end = self.make_option(&Typ::Int(64), end);
+		let start = self.intcast(start, types::I64, true);
+		let step = self.intcast(step, types::I64, true);
 		for (i, v) in [start, end, step].into_iter().enumerate() {
 			self.b.ins().store(MemFlags::new(), v, ptr, i as i32 * 8);
 		}
@@ -467,14 +467,14 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// (start, end, step, open)
 	pub(super) fn range_parts(&mut self, range: Value) -> (Value, Value, Value, Value) {
-		let cl = cl_int_for_width(32);
+		let cl = cl_int_for_width(64);
 		let start = self.b.ins().load(cl, MemFlags::new(), range, 0);
 		let opt = self.b.ins().load(self.int, MemFlags::new(), range, 8);
 		let step = self.b.ins().load(cl, MemFlags::new(), range, 16);
-		let opt_typ = Typ::Option(Box::new(Typ::Int(32)));
+		let opt_typ = Typ::Option(Box::new(Typ::Int(64)));
 		let tag = self.enum_tag(&opt_typ, opt);
 		let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
-		let end = self.opt_payload(opt, &opt_typ, &Typ::Int(32), 8);
+		let end = self.opt_payload(opt, &opt_typ, &Typ::Int(64), 8);
 		(start, end, step, open)
 	}
 
@@ -513,7 +513,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let v = self.int_value(second, "range step")?;
 				self.b.ins().isub(v, start_val)
 			}
-			None => self.b.ins().iconst(types::I32, 1),
+			None => self.b.ins().iconst(types::I64, 1),
 		};
 		let end = end
 			.map(|e| {
@@ -537,7 +537,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let zero = (Expr::Int(0), span);
 		let (range, _) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
-		let sv = self.intcast(sv, types::I32, true);
+		let sv = self.intcast(sv, types::I64, true);
 		let hit = self.range_contains(range, sv, span)?;
 		Ok(self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0))
 	}

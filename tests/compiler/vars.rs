@@ -94,8 +94,8 @@ fn annotation_type_mismatch() {
 
 #[test]
 fn annotation_pins_width() {
-	// the literal fits an i32, but the annotation widens it to i64
-	check(["big : i64 : 50_000", "big"], "50000");
+	// the literal defaults to int, but the annotation narrows it to i16
+	check(["small : i16 : 5_000", "small"], "5000");
 }
 
 #[test]

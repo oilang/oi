@@ -1,8 +1,8 @@
 module fs
 
 fopen : fn(path: cstr, mode: cstr) ptr : foreign
-fgetc : fn(stream: ptr) int : foreign
-fclose : fn(stream: ptr) int : foreign
+fgetc : fn(stream: ptr) i32 : foreign
+fclose : fn(stream: ptr) i32 : foreign
 
 ## Read a file's contents as raw bytes.
 pub read_bytes :: fn(path: string) ![]u8 {

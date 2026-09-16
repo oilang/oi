@@ -262,7 +262,7 @@ pub unsafe extern "C" fn cstr_str(ptr: i64) -> *const StrHeader {
 /// # Safety
 /// `data` must be null or point to at least `len` readable bytes.
 #[unsafe(export_name = "oi_ptr_string")]
-pub unsafe extern "C" fn ptr_string(data: i64, len: i32) -> *const StrHeader {
+pub unsafe extern "C" fn ptr_string(data: i64, len: i64) -> *const StrHeader {
 	if data == 0 || len <= 0 {
 		return str_new(&[]);
 	}

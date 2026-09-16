@@ -234,8 +234,9 @@ impl Typ {
 impl fmt::Display for Typ {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Typ::Int(32) => write!(f, "int"),
+			Typ::Int(64) => write!(f, "int"),
 			Typ::Int(w) => write!(f, "i{w}"),
+			Typ::UInt(64) => write!(f, "uint"),
 			Typ::UInt(w) => write!(f, "u{w}"),
 			Typ::ISize => write!(f, "isize"),
 			Typ::USize => write!(f, "usize"),

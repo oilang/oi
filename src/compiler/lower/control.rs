@@ -613,7 +613,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		});
 		let flow = self.scoped(|s| {
 			let (item, typ) = match &src {
-				None => (iv, Typ::Int(32)),
+				None => (iv, Typ::Int(64)),
 				Some((data, elem)) => (s.load_nth(*data, iv, elem), elem.clone()),
 			};
 			match (&vals, &pat.0) {

@@ -1,5 +1,7 @@
 use crate::helpers::*;
 
+// TODO: move most of these to oi land
+
 #[test]
 fn int() {
 	check("123", "123");
@@ -29,18 +31,18 @@ fn octal() {
 }
 
 #[test]
+fn aliases() {
+	check("int.max == i64.max", "true");
+	check("uint.max == u64.max", "true");
+	check("float.max == f64.max", "true");
+}
+
+#[test]
 fn int_cast() {
 	check("i32.(50_000)", "50000");
 	check("i32.(2_000_000_000)", "2000000000");
 	check("i32.(10000000000)", "1410065408");
 	check("10_000 == i32.(10_000)", "true");
-}
-
-#[test]
-fn int_alias() {
-	check("int.(50_000)", "50000");
-	check("int.(10000000000)", "1410065408");
-	check("10_000 == int.(10_000)", "true");
 }
 
 #[test]
@@ -71,12 +73,6 @@ fn float_exp() {
 fn f32() {
 	check("f32.(123.0)", "123.0");
 	check("f32.(123.0) == f32.(123.0)", "true");
-}
-
-#[test]
-fn float_alias() {
-	check("float.(1.5)", "1.5");
-	check("float.(1.5) == f64.(1.5)", "true");
 }
 
 #[test]

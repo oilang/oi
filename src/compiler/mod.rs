@@ -500,7 +500,6 @@ pub struct Compiler<M: Module = JITModule> {
 fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> {
 	match e {
 		Expr::Negative(v) => static_typ(&v.0, types, span),
-		Expr::Int(n) if i32::try_from(*n).is_ok() => Ok(Typ::Int(32)),
 		Expr::Int(_) => Ok(Typ::Int(64)),
 		Expr::Float(_) => Ok(Typ::Float(64)),
 		Expr::Bool(_) => Ok(Typ::Bool),

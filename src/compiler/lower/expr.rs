@@ -14,13 +14,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((v, t.clone()));
 		}
 		match &expr.0 {
-			Expr::Int(n) => {
-				if (i32::MIN as i64..=i32::MAX as i64).contains(n) {
-					Ok((self.b.ins().iconst(types::I32, *n), Typ::Int(32)))
-				} else {
-					Ok((self.b.ins().iconst(types::I64, *n), Typ::Int(64)))
-				}
-			}
+			Expr::Int(n) => Ok((self.b.ins().iconst(types::I64, *n), Typ::Int(64))),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float(64))),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
@@ -251,7 +245,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let recv_typ = self.peeled(&recv_typ);
 					if recv_typ == Typ::Ast && method == "int" && args.is_empty() {
 						let raw = self.ast_method(recv_val, method, None);
-						return Ok((self.b.ins().ireduce(types::I32, raw), Typ::Int(32)));
+						return Ok((self.intcast(raw, types::I64, true), Typ::Int(64)));
 					}
 					let has_str_impl = matches!(
 						recv_typ,
@@ -464,8 +458,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = array_elem(&typ).clone();
 					let (data, len) = self.array_parts(ptr, &typ);
 					if field == "len" {
-						let len = self.b.ins().ireduce(types::I32, len);
-						return Ok((len, Typ::Int(32)));
+						return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 					}
 					if field == "ptr" {
 						let typ = self.types().resolve(&TypeExpr::Name(role::PTR.into()), expr.1)?;
@@ -487,7 +480,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Typ::Map(k, v) = &typ {
 					if field == "len" {
 						let len = self.rt_call("map_len", &[ptr]).unwrap();
-						return Ok((self.b.ins().ireduce(types::I32, len), Typ::Int(32)));
+						return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 					}
 					if field == "keys" || field == "values" {
 						let elem = if field == "keys" { k } else { v };
@@ -619,7 +612,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							.with_label("not an Int"));
 						};
 						let elem = array_elem(&typ).clone();
-						let idx = self.b.ins().sextend(self.int, idx);
+						let idx = self.intcast(idx, self.int, true);
 						let (data, len) = self.array_parts(ptr, &typ);
 						Ok((self.load_index(data, len, &elem, idx), elem))
 					}
@@ -741,7 +734,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							.with_label("`..` spreads only inside a literal or a call"),
 					);
 				};
-				let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+				let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
 				self.make_range(zero, Some(val), one, expr.1)
 			}
 

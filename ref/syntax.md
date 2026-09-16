@@ -870,8 +870,8 @@ main :: fn() {
 
 	# numbers
 
-	# number litarals are `int` (`i32`) and `float` (`f64`) unless otherwise indicated
-	i := 55 # int AKA i32
+	# number litarals are `int` (`i64`) and `float` (`f64`) unless otherwise indicated
+	i := 55 # int AKA i64
 	f := 55.55 # float AKA f64
 	e_notation_float := 10e2 # 1000.0
 

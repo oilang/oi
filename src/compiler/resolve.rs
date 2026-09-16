@@ -452,7 +452,8 @@ impl TypeCtx<'_> {
 			return self.named(&format!("{}::{t}", vis.module), span);
 		}
 		match name {
-			"int" => return Ok(Typ::Int(32)),
+			"int" => return Ok(Typ::Int(64)),
+			"uint" => return Ok(Typ::UInt(64)),
 			"isize" => return Ok(Typ::ISize),
 			"usize" => return Ok(Typ::USize),
 			"float" => return Ok(Typ::Float(64)),

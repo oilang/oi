@@ -402,7 +402,7 @@ fn annotated_types_are_checked() {
 	);
 	fail_with(
 		["f :: fn(cb: @stdcall fn(x: i32)) {}"],
-		"`@stdcall fn(int) ()` isn't a type",
+		"`@stdcall fn(i32) ()` isn't a type",
 	);
 	fail_with(["x := @c 5"], "`@c int` isn't a type");
 }

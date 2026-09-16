@@ -284,7 +284,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				})),
 				Typ::Array(_) => out.push((Expr::Spread(ident()), *at)),
 				Typ::Int(_) => {
-					let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+					let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
 					(val, typ) = self.make_range(zero, Some(val), one, inner.1)?;
 					out.push(*ident());
 				}

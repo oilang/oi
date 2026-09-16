@@ -62,7 +62,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let Some(inner) = inner else { break };
 			let (val, typ) = self.expr(inner)?;
 			if let Typ::Int(_) = typ {
-				let (zero, one) = (self.b.ins().iconst(types::I32, 0), self.b.ins().iconst(types::I32, 1));
+				let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
 				let (val, rtyp) = self.make_range(zero, Some(val), one, inner.1)?;
 				unify_elem(&mut elem, &rtyp, inner.1)?;
 				let (data, len) = self.heap_alloc(vec![val], &rtyp);
@@ -160,7 +160,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let elem = self.types().resolve(te, *te_span)?;
 		let n = self.int_value(count, "length")?;
-		let n = self.b.ins().sextend(self.int, n);
+		let n = self.intcast(n, self.int, true);
 		let stride = self.elem_stride(&elem);
 		let bytes = self.b.ins().imul_imm(n, stride);
 		let data = self.rt_call("ptr_buffer", &[ptr, bytes]).unwrap();
@@ -278,14 +278,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		let lo = match start {
 			Some(e) => {
 				let v = self.int_value(e, "slice start")?;
-				self.b.ins().sextend(self.int, v)
+				self.intcast(v, self.int, true)
 			}
 			None => self.b.ins().iconst(self.int, 0),
 		};
 		let hi = match end {
 			Some(e) => {
 				let v = self.int_value(e, "slice end")?;
-				let v = self.b.ins().sextend(self.int, v);
+				let v = self.intcast(v, self.int, true);
 				self.b.ins().iadd_imm(v, inclusive as i64)
 			}
 			None => len,
@@ -334,8 +334,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (lo, end, step, open) = self.range_parts(range);
 		let strided = self.b.ins().icmp_imm(IntCC::NotEqual, step, 1);
 		self.trap_if(strided, "strided views aren't supported yet");
-		let lo = self.b.ins().sextend(self.int, lo);
-		let end = self.b.ins().sextend(self.int, end);
+		let lo = self.intcast(lo, self.int, true);
+		let end = self.intcast(end, self.int, true);
 		let len = self.array_len(ptr);
 		let hi = self.b.ins().select(open, len, end);
 		if typ == Typ::Str {

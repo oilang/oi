@@ -72,12 +72,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					);
 				}
 				let tag = self.enum_tag(&typ, val);
-				let out = if self.int == types::I32 {
-					tag
-				} else {
-					self.b.ins().ireduce(types::I32, tag)
-				};
-				Ok(Some((out, Typ::Int(32))))
+				Ok(Some((self.intcast(tag, types::I64, true), Typ::Int(64))))
 			}
 
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal

@@ -1,6 +1,6 @@
 test! "bounds" {
-	assert! int.max == 2147483647
-	assert! int.min == -2147483648
+	assert! int.max == 9223372036854775807
+	assert! int.min == -int.max - 1
 	assert! float.max > 0.0
 	assert! float.min < 0.0
 	assert! float.epsilon > 0.0

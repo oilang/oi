@@ -523,7 +523,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if is_range(&rhs_typ) {
 			let n = self.int_value(lhs, "`in` value")?;
-			let n = self.intcast(n, types::I32, true);
+			let n = self.intcast(n, types::I64, true);
 			let hit = self.range_contains(rhs_val, n, rhs.1)?;
 			return Ok((hit, Typ::Bool));
 		}
