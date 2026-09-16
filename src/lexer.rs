@@ -87,6 +87,8 @@ pub enum Token {
 	If,
 	#[token("else")]
 	Else,
+	#[token("do")]
+	Do,
 	#[token("loop")]
 	Loop,
 	#[token("break")]
@@ -251,6 +253,7 @@ impl fmt::Display for Token {
 			Token::Comp => write!(f, "comp"),
 			Token::Unsafe => write!(f, "unsafe"),
 			Token::If => write!(f, "if"),
+			Token::Do => write!(f, "do"),
 			Token::Else => write!(f, "else"),
 			Token::Loop => write!(f, "loop"),
 			Token::Break => write!(f, "break"),

@@ -1237,6 +1237,10 @@ main :: fn() {
 		print("idk")
 	}
 
+	# `do` takes a single statement instead of a block
+	if i == 2 do print("two")
+	if i > 0 do print("positive") else do print("nope")
+
 	## matching
 
 	# arms are `pattern => expr,` (last comma optional) or `pattern => { block }`

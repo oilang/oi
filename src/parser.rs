@@ -968,7 +968,7 @@ where
 		let bad = select! { Token::Error(text) => text }
 			.try_map(|text, span| Err(Rich::custom(span, format!("unexpected character `{text}`"))));
 
-		// grouping before tuple rule to avoid making 1ples, which are instead made with `(expr,)`
+		// grouping before tuple rule to avoid making 1ples
 		let group = paren(expr.clone());
 
 		// tuple literals
@@ -1018,13 +1018,15 @@ where
 
 		let array = bracket(loose_list(expr.clone())).map_with(|elems, ex| (Expr::Array(elems), ex.span()));
 
+		let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
+
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
 				.ignore_then(header_expr.clone())
-				.then(block.clone())
+				.then(block.clone().or(do_body.clone()))
 				.then(
 					just(Token::Else)
-						.ignore_then(if_expr.map(|e| vec![e]).or(block.clone()))
+						.ignore_then(if_expr.map(|e| vec![e]).or(block.clone()).or(do_body.clone()))
 						.or_not(),
 				)
 				.map_with(|((cond, then), els), ex| {

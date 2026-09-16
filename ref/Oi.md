@@ -92,7 +92,7 @@ tags: []
 	- [x] loop over strings
 	- [x] make `fs.read*` return a `Result`
 	- [x] make `T.()` work for all types
-	- [ ] make `T.[]` work for all types
+	- [x] make `T.[]` work for all types
 	- [ ] `T.()` doesn't work with tuples. Should it?
 		```oi
 		T :: (int, string, float)
@@ -100,7 +100,7 @@ tags: []
 		t :: T.(2 "ciea" 2) # no
 		t :: T.((2 "ciea" 2)) # no
 		```
-	- [ ] `::` in fn params should make immutable defaults for consistency
+	- [x] `::` in fn params should make immutable defaults for consistency
 - [ ] `comp assert`
 - [x] pipeline examples with `!` postfix collide with macros
 - [x] revisit needing `print`, `assert`, et al to be macros
@@ -127,7 +127,7 @@ tags: []
 - [ ] `@noinit` `v`
 - [ ] `@nozero`
 - [x] ownership / memory model
-- [ ] casting `capy`
+- [x] casting `capy`
 - [ ] `discard` and/or `pass`
 - [x] sum types
 - [ ] async
@@ -143,7 +143,7 @@ tags: []
 - [ ] more types (`any`, `b\d+`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
 - [ ] load the `oi init` scaffolding from fs, to make them easier to maintain
 - [ ] swizzle `odin`
-- [ ] `if-do` `odin`
+- [x] `if-do` `odin`
 ## consider
 - `nil`
 - C++20 uses `operator|`, a naked `|` for pipelines

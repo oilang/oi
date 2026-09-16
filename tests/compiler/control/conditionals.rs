@@ -119,3 +119,29 @@ fn condition_must_be_bool() {
 fn mismatched_branches() {
 	fail_with(r#"if true { 1 } else { "x" }"#, "mismatched types");
 }
+
+#[test]
+fn do_body() {
+	check(r#"if 2 > 1 do "yes" else do "no""#, "yes");
+}
+
+#[test]
+fn do_else_if_chain() {
+	let src = indoc! {r#"
+		i :: 1
+		if i == 0 do "zero" else if i == 1 do "one" else do "idk"
+	"#};
+	check(src, "one");
+}
+
+#[test]
+fn do_guard_return() {
+	let src = indoc! {"
+		abs :: fn(x: int) int {
+			if x < 0 do return -x
+			x
+		}
+		abs(-5)
+	"};
+	check(src, "5");
+}
