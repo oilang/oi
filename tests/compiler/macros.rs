@@ -632,3 +632,21 @@ fn gensym_names_let_a_def_macro_expand_twice() {
 		"1",
 	);
 }
+
+#[test]
+fn attr_macro_sees_fills() {
+	check(
+		indoc! {r#"
+			mark! :: fn(input: Ast, args: Ast) Ast {
+				loop f in input.fills { print(f.name) }
+				print(input.items.len)
+				input
+			}
+			@mark!(Node)
+			P :: struct { x: int, f :: fn(self) int { 2 } }
+			@mark!(Node)
+			P :< { pub g :: fn(self) int { 3 } }
+		"#},
+		["f", "1", "g", "1"],
+	);
+}

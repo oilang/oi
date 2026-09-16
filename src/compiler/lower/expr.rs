@@ -437,7 +437,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if typ == Typ::Ast {
 					let ret = match field.as_str() {
 						"name" | "typ" => Some(Typ::Ast),
-						"items" | "notes" => Some(Typ::Array(Box::new(Typ::Ast))),
+						"items" | "notes" | "fills" => Some(Typ::Array(Box::new(Typ::Ast))),
 						_ => None,
 					};
 					if let Some(ret) = ret {

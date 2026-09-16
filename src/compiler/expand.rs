@@ -581,10 +581,11 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	}
 }
 
-// Split off annotations.
+// Strip off metadata.
 fn peel(e: &Expr) -> (&[Spanned<Expr>], &Expr) {
 	match e {
 		Expr::Annotated(notes, inner) => (notes, &inner.0),
+		Expr::Pub(inner) => peel(&inner.0),
 		e => (&[], e),
 	}
 }
@@ -883,6 +884,13 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		}
 		(b"items", _) => {
 			flag("this Ast has no items");
+			list(vec![])
+		}
+		(b"fills", Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } | Expr::Claim { fills, .. }) => {
+			list(fills.iter().map(|e| Box::into_raw(Box::new(e.clone())) as i64).collect())
+		}
+		(b"fills", _) => {
+			flag("this Ast has no fills");
 			list(vec![])
 		}
 		(b"==", Expr::Ident(n)) => {
