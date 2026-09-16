@@ -127,3 +127,23 @@ fn macro_block_arg() {
 	"};
 	check(src, ["2", "3"]);
 }
+
+#[test]
+fn juxt_enum_shorthand_arg() {
+	let src = indoc! {"
+		Phase :: enum { startup }
+		hook :: fn(p: Phase, f: fn() int) int { print(p) f() }
+		print(hook .startup { 21 })
+	"};
+	check(src, ["startup", "21"]);
+}
+
+// a `.` after a newline is still a method chain, not a juxt arg
+#[test]
+fn newline_led_dot_stays_access() {
+	let src = indoc! {r#"
+		"ab"
+			.len
+	"#};
+	check(src, "2");
+}

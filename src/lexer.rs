@@ -197,6 +197,7 @@ pub enum Token {
 	DotDot,
 	#[token(".")]
 	Dot,
+	SpaceDot,
 	#[token(":")]
 	Colon,
 	#[token(",")]
@@ -268,7 +269,7 @@ impl fmt::Display for Token {
 			Token::Via => write!(f, "via"),
 			Token::DotDotEq => write!(f, "..="),
 			Token::DotDot => write!(f, ".."),
-			Token::Dot => write!(f, "."),
+			Token::Dot | Token::SpaceDot => write!(f, "."),
 			Token::Colon => write!(f, ":"),
 			Token::Plus => write!(f, "+"),
 			Token::Minus => write!(f, "-"),
@@ -413,6 +414,11 @@ pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 			}
 		}
 		match tok {
+			Token::Dot if i > 0 => {
+				let gap = &src[raw[i - 1].1.end..span.start];
+				let spaced = !gap.is_empty() && !gap.contains('\n');
+				out.push((if spaced { Token::SpaceDot } else { Token::Dot }, *span));
+			}
 			Token::String(s) => out.extend(expand_string(s, *span, src)),
 			Token::RawString(s) => out.push((Token::String(s.clone()), *span)),
 			_ => out.push((tok.clone(), *span)),

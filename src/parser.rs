@@ -166,9 +166,6 @@ where
 	'src: 'token,
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
-	// `expr` and the statement/block parsers are mutually recursive
-	// `if` is an expression, but its branches are statement blocks.
-	// Declare `expr` up front so the statement parsers can reference it before it is defined.
 	let mut expr = Recursive::declare();
 	let mut header_expr = Recursive::declare();
 	let mut block = Recursive::declare();
@@ -177,6 +174,7 @@ where
 	let mut attr_macro = Recursive::declare();
 
 	let ident = || select! { Token::Ident(name) => name };
+	let dot = || just(Token::Dot).or(just(Token::SpaceDot));
 
 	// param access modifiers
 	let access = choice((just(Token::Mut).to(Access::Mut), just(Token::Move).to(Access::Move))).boxed();
@@ -873,7 +871,7 @@ where
 			.clone()
 			.then(call_type_args.clone().or_not())
 			.or_not()
-			.then_ignore(just(Token::Dot))
+			.then_ignore(dot())
 			.then(struct_body)
 			.map(|(head, fields)| {
 				let (name, type_args) = head.unwrap_or_default();
@@ -927,7 +925,7 @@ where
 		let record_arg = brace(record_entries.clone()).map_with(|es, ex| vec![(Expr::Record(es), ex.span())]);
 
 		// enum shorthand
-		let enum_shorthand = just(Token::Dot)
+		let enum_shorthand = dot()
 			.ignore_then(select! { Token::Ident(v) => v, Token::None => "none".to_string() })
 			.then(args.clone().or(record_arg.clone()).or_not())
 			.map_with(|(variant, args), ex| {
@@ -950,7 +948,7 @@ where
 		let dot_array = type_expr
 			.clone()
 			.or_not()
-			.then_ignore(just(Token::Dot))
+			.then_ignore(dot())
 			.then(bracket(loose_list(expr.clone())))
 			.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| (t, ex.span())), elems), ex.span()));
 
@@ -961,7 +959,7 @@ where
 			.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
 
 		// dot tuple literals
-		let dot_tuple = just(Token::Dot)
+		let dot_tuple = dot()
 			.ignore_then(paren(loose_list(expr.clone())))
 			.map_with(|elems, ex| (Expr::DotTuple(elems), ex.span()));
 
@@ -1063,7 +1061,7 @@ where
 			.then_ignore(just(Token::Comma).or_not())
 			.or(expr.clone().map(|e| vec![e]).then_ignore(arm_end));
 		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
-		let struct_pat = just(Token::Dot)
+		let struct_pat = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
 			.then(brace(loose_list(keyed.clone().or(bind))))
 			.map_with(|(variant, es), ex| {
@@ -1178,7 +1176,7 @@ where
 			quote,
 			leaf,
 			unquote.clone(),
-			enum_shorthand,
+			enum_shorthand.clone(),
 			group,
 			tuple,
 			map,
@@ -1345,7 +1343,7 @@ where
 
 		// juxts (leading literals and trailing functions)
 		let trailing = anon_fn.clone().or(block_lit.clone());
-		let lit_arg = spanned(literal);
+		let lit_arg = spanned(literal).or(enum_shorthand);
 		let juxt = choice((
 			lit_arg.then(trailing.clone().or_not()).map(|(l, t)| (Some(l), t)),
 			trailing.map(|t| (None, Some(t))),
@@ -1601,6 +1599,7 @@ where
 				Token::LParen,
 				Token::LBracket,
 				Token::Dot,
+				Token::SpaceDot,
 				Token::DotDot,
 				Token::Question,
 				Token::Pipeline,
