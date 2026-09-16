@@ -162,6 +162,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		if typ == *target {
 			return Ok((val, typ));
 		}
+		if let (Typ::Array(e), Typ::Str) = (target, &typ)
+			&& **e == Typ::UInt(8)
+		{
+			let (data, len) = self.array_parts(val, &typ);
+			let data = self.rt_call("ptr_buffer", &[data, len]).unwrap();
+			return Ok((self.make_array(data, len, target), target.clone()));
+		}
 		if let Typ::TupleStruct(_, fields) = target
 			&& let [(_, ft)] = &fields[..]
 		{

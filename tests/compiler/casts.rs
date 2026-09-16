@@ -85,6 +85,19 @@ fn from_claim_converts() {
 }
 
 #[test]
+fn string_to_bytes_copies() {
+	check(
+		indoc! {r#"
+			s :: "hi"
+			b := []u8.(s)
+			b << 33
+			print(s, b)
+		"#},
+		"hi [104, 105, 33]",
+	);
+}
+
+#[test]
 fn strings_do_not_parse() {
 	fail_with(r#"int.("42")"#, "cannot cast string to int");
 	fail_with(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");
