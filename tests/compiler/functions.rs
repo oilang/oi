@@ -114,6 +114,19 @@ fn fn_return_short_circuits() {
 }
 
 #[test]
+fn fn_return_ends_the_line() {
+	let src = indoc! {"
+		go :: fn() {
+			if true do return
+			print(2)
+		}
+		go()
+		print(9)
+	"};
+	check(src, "9");
+}
+
+#[test]
 fn fn_return_bare() {
 	let src = indoc! {"
 		z :: fn() int { return }

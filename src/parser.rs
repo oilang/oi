@@ -633,9 +633,11 @@ where
 		});
 
 	// return statements
-	let ret_stmt = just(Token::Return)
-		.ignore_then(expr.clone().or_not())
-		.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
+	let ret_stmt = choice((
+		just(Token::Return).ignore_then(expr.clone().or_not()),
+		just(Token::BareReturn).to(None),
+	))
+	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
 	// index assignment
 	let index_assign = ident()

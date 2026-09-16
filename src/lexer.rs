@@ -63,6 +63,7 @@ pub enum Token {
 	Enum,
 	#[token("return")]
 	Return,
+	BareReturn,
 	#[token("match")]
 	Match,
 	#[token("trait")]
@@ -242,7 +243,7 @@ impl fmt::Display for Token {
 			Token::Fn => write!(f, "fn"),
 			Token::Struct => write!(f, "struct"),
 			Token::Enum => write!(f, "enum"),
-			Token::Return => write!(f, "return"),
+			Token::Return | Token::BareReturn => write!(f, "return"),
 			Token::Match => write!(f, "match"),
 			Token::Trait => write!(f, "trait"),
 			Token::Is => write!(f, "is"),
@@ -417,6 +418,9 @@ pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 			}
 		}
 		match tok {
+			Token::Return if raw.get(i + 1).is_some_and(|(_, next)| src[span.end..next.start].contains('\n')) => {
+				out.push((Token::BareReturn, *span))
+			}
 			Token::Dot if i > 0 => {
 				let gap = &src[raw[i - 1].1.end..span.start];
 				let spaced = !gap.is_empty() && !gap.contains('\n');
