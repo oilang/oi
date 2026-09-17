@@ -7,7 +7,10 @@ const FILE: &str = indoc! {r#"
 
 #[test]
 fn reverse_drop_order() {
-	check([FILE, "a :: File.{fd = 1}", "b :: File.{fd = 2}"], ["drop 2", "drop 1"]);
+	check(
+		[FILE, "a :: File.{fd = 1}", "b :: File.{fd = 2}"],
+		["File.{fd = 2}", "drop 2", "drop 1"],
+	);
 }
 
 #[test]

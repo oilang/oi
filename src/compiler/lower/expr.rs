@@ -764,10 +764,18 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok((addr, Typ::Annotated(names, Box::new(typ))))
 			}
 
-			Expr::Bind { .. } => unreachable!("bind in expression position"),
-			Expr::Assign { .. } => unreachable!("assign in expression position"),
-			Expr::PatBind { .. } => unreachable!("destructuring in expression position"),
-			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
+			Expr::Bind { .. }
+			| Expr::Assign { .. }
+			| Expr::PatBind { .. }
+			| Expr::IndexAssign { .. }
+			| Expr::FieldAssign { .. }
+			| Expr::Append { .. }
+			| Expr::MapDelete { .. } => {
+				// a place in expression position is a one-statement block
+				Ok(self
+					.block_tail(std::slice::from_ref(expr), hint)?
+					.expect("a place never diverges"))
+			}
 			Expr::Fn { .. }
 			| Expr::StructDef { .. }
 			| Expr::EnumDef { .. }
@@ -778,11 +786,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
 			Expr::TypePat(_) => unreachable!("type pattern in expression position"),
-			Expr::FieldAssign { .. } => unreachable!("field assign in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break | Expr::Continue => unreachable!("break/continue in expression position"),
-			Expr::Append { .. } => unreachable!("append in expression position"),
-			Expr::MapDelete { .. } => unreachable!("map delete in expression position"),
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(_) => {
 				unreachable!("not an expression")
 			}

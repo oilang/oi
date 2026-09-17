@@ -79,6 +79,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				// pattern bindings
 				Expr::PatBind { pat, value, mutable } => {
 					let (ptr, typ) = self.expr(value)?;
+					if i + 1 == stmts.len() {
+						last = (ptr, typ.clone());
+					}
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 
@@ -371,6 +374,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 		}
+
+		// trailing places
+		if let Some(read) = stmts.last().and_then(place_read) {
+			last = match tail {
+				Some(t) if t.is_unit() || fallible(t) => self.unit_value(),
+				Some(t) => self.check_expr(&read, t)?,
+				None => self.expr(&read)?,
+			};
+		}
+
 		Ok(Some(last))
 	}
 
@@ -407,6 +420,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The first return fixes the fn's type, and later returns must agree.
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
+		if self.is_main && !typ.is_unit() && !fallible(&typ) {
+			self.emit_print(val, &typ, false, runtime::Sink::Out);
+			self.write_lit("\n", runtime::Sink::Out);
+			let (val, typ) = self.unit_value();
+			return self.emit_return(val, typ, span);
+		}
 		closure_escape(&typ, span.into_range(), "returned")?;
 		if let Some((declared, _)) = &self.ret
 			&& &typ != declared
@@ -453,4 +472,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		Ok(())
 	}
+}
+
+// Expression left behind by a place statement.
+fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
+	let name = |n: &String| Box::new((Expr::Ident(n.clone()), stmt.1));
+	let read = match &stmt.0 {
+		Expr::Bind { name, .. }
+		| Expr::Assign { name, .. }
+		| Expr::Append { name, .. }
+		| Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
+		Expr::IndexAssign { name: n, index, .. } => Expr::Index {
+			collection: name(n),
+			index: index.clone(),
+		},
+		Expr::FieldAssign { name: n, field, .. } => Expr::Field {
+			tuple: name(n),
+			field: field.clone(),
+		},
+		_ => return None,
+	};
+	Some((read, stmt.1))
 }

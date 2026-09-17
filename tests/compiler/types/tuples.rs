@@ -59,12 +59,12 @@ fn nested_tuple() {
 
 #[test]
 fn field_by_index() {
-	check("t :: (10, 20)\nt.1", "20");
+	check(["t :: (10, 20)", "t.1"], "20");
 }
 
 #[test]
 fn field_by_name() {
-	check("t :: (a = 1, b = 2)\nt.b", "2");
+	check(["t :: (a = 1, b = 2)", "t.b"], "2");
 }
 
 #[test]
@@ -74,12 +74,12 @@ fn named_and_positional_agree() {
 
 #[test]
 fn field_float_load() {
-	check("t :: (1.5, 2.5)\nt.0", "1.5");
+	check(["t :: (1.5, 2.5)", "t.0"], "1.5");
 }
 
 #[test]
 fn field_arithmetic() {
-	check("t :: (3, 4)\nt.0 * t.1", "12");
+	check(["t :: (3, 4)", "t.0 * t.1"], "12");
 }
 
 #[test]
@@ -89,17 +89,17 @@ fn tuple_in_var_prints() {
 
 #[test]
 fn index_out_of_range() {
-	fail_with("t :: (1, 2)\nt.5", "out of range");
+	fail_with(["t :: (1, 2)", "t.5"], "out of range");
 }
 
 #[test]
 fn unknown_named_field() {
-	fail_with("t :: (a = 1)\nt.z", "no field `z`");
+	fail_with(["t :: (a = 1,)", "t.z"], "no field `z`");
 }
 
 #[test]
 fn field_of_non_tuple() {
-	fail_with("x :: 5\nx.0", "cannot access a field");
+	fail_with(["x :: 5", "x.0"], "cannot access a field");
 }
 
 #[test]

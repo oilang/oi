@@ -99,7 +99,7 @@ fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 }
 
 // Whether fn specifies a Result.
-fn fallible(typ: &Typ) -> bool {
+pub(crate) fn fallible(typ: &Typ) -> bool {
 	matches!(typ, Typ::Result(ok, _) if ok.is_unit())
 }
 
@@ -1698,13 +1698,7 @@ impl<M: Module> Compiler<M> {
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
 		let call = trans.b.ins().call(callee, &[]);
 		if let Some(val) = trans.b.inst_results(call).first().copied() {
-			match fallible(&typ) {
-				true => trans.emit_fail(val, &typ),
-				false => {
-					trans.emit_print(val, &typ, false, runtime::Sink::Out);
-					trans.write_lit("\n", runtime::Sink::Out);
-				}
-			}
+			trans.emit_fail(val, &typ);
 		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();

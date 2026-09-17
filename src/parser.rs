@@ -618,19 +618,22 @@ where
 	};
 
 	// assignment
-	let assign = ident()
-		.then(assign_op.clone())
-		.then(expr.clone().or(block_lit.clone()))
-		.map_with(move |((name, op), value), ex| {
-			let value = fold(op, Expr::Ident(name.clone()), value, ex.span());
-			(
-				Expr::Assign {
-					name,
-					value: Box::new(value),
-				},
-				ex.span(),
-			)
-		});
+	let mut assign = Recursive::declare();
+	assign.define(
+		ident()
+			.then(assign_op.clone())
+			.then(assign.clone().or(expr.clone()).or(block_lit.clone()))
+			.map_with(move |((name, op), value), ex| {
+				let value = fold(op, Expr::Ident(name.clone()), value, ex.span());
+				(
+					Expr::Assign {
+						name,
+						value: Box::new(value),
+					},
+					ex.span(),
+				)
+			}),
+	);
 
 	// return statements
 	let ret_stmt = choice((
@@ -663,16 +666,30 @@ where
 
 	// array appending
 	let append = ident()
-		.then_ignore(just(Token::LtLt))
-		.then(expr.clone().or(block_lit.clone()))
-		.map_with(|(name, value), ex| {
-			(
-				Expr::Append {
-					name,
-					value: Box::new(value),
-				},
-				ex.span(),
-			)
+		.then(
+			just(Token::LtLt)
+				.ignore_then(expr.clone().or(block_lit.clone()))
+				.repeated()
+				.at_least(1)
+				.collect::<Vec<_>>(),
+		)
+		.map_with(|(name, values), ex| {
+			let mut stmts: Vec<_> = values
+				.into_iter()
+				.map(|value| {
+					(
+						Expr::Append {
+							name: name.clone(),
+							value: Box::new(value),
+						},
+						ex.span(),
+					)
+				})
+				.collect();
+			match stmts.len() {
+				1 => stmts.pop().unwrap(),
+				_ => (Expr::Block(stmts), ex.span()),
+			}
 		});
 
 	// map deletion
@@ -818,16 +835,20 @@ where
 		)
 		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
-	// statements
-	let stmt = doc
-		.or(ret_stmt)
-		.or(destructure)
+	// statements that leave a place behind
+	let place = destructure
 		.or(bind.clone())
 		.or(field_assign)
-		.or(assign)
+		.or(assign.clone())
 		.or(index_assign)
 		.or(map_delete)
 		.or(append)
+		.boxed();
+
+	// statements
+	let stmt = doc
+		.or(ret_stmt)
+		.or(place.clone())
 		.or(macro_def.clone())
 		.or(macro_stmt)
 		.or(expr.clone())
@@ -972,7 +993,7 @@ where
 			.try_map(|text, span| Err(Rich::custom(span, format!("unexpected character `{text}`"))));
 
 		// grouping before tuple rule to avoid making 1ples
-		let group = paren(expr.clone());
+		let group = paren(place.clone().or(expr.clone()));
 
 		// tuple literals
 		let tuple = paren(loose_list(struct_field_entry)).map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
