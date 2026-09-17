@@ -5,7 +5,7 @@ use cranelift::codegen;
 use cranelift::codegen::ir::immediates::{Ieee16, Ieee128};
 use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
 use cranelift::prelude::*;
-use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module};
+use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleError};
 
 use super::{
 	Consts, FieldDef, FnParam, FnSig, GenericFnDef, GenericStructDef, Generics, Local, LoopFrame, Pending, TraitItem,

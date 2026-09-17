@@ -27,7 +27,7 @@ mod typ;
 
 use expand::expand;
 use lower::Translator;
-use lower::value::{define_data, define_ptr_data};
+use lower::value::{define_data, define_once, define_ptr_data};
 pub(crate) use resolve::*;
 pub(crate) use traits::*;
 pub(crate) use typ::*;
@@ -481,6 +481,7 @@ pub struct Compiler<M: Module = JITModule> {
 	generic_claims: HashSet<(String, String)>,
 	core_traits: HashSet<String>,
 	descs: HashMap<String, DataId>,
+	defined: HashSet<FuncId>,
 	publics: HashSet<String>,
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
@@ -657,6 +658,7 @@ impl<M: Module> Compiler<M> {
 			generic_claims: HashSet::new(),
 			core_traits: HashSet::new(),
 			descs: HashMap::new(),
+			defined: HashSet::new(),
 			publics: HashSet::new(),
 			privates: HashMap::new(),
 			reexports: HashMap::new(),
@@ -821,6 +823,17 @@ impl<M: Module> Compiler<M> {
 		let mut foreign_items: Vec<(String, TypeExpr, Span, &Scope)> = vec![];
 		let mut static_items = vec![];
 
+		// stage 0 cleanup
+		self.generics.clear();
+		self.trait_impls.clear();
+		self.generic_claims.clear();
+		self.static_inits.clear();
+		self.tests.clear();
+		self.wanted.clear();
+		self.pending.clear();
+		self.module.clear_context(&mut self.ctx);
+		self.builder_ctx = FunctionBuilderContext::new();
+
 		self.publics = program.publics.clone();
 		self.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
@@ -836,7 +849,7 @@ impl<M: Module> Compiler<M> {
 
 		// expand user macros to AST
 		let t = Instant::now();
-		let mut expanded = expand(program)?;
+		let (mut expanded, mut stage0) = expand(program)?;
 		self.timings.push(("expand", t.elapsed()));
 		for m in &program.modules {
 			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
@@ -858,7 +871,13 @@ impl<M: Module> Compiler<M> {
 		}
 		// fold `comp` expressions to literals
 		let t = Instant::now();
-		comp::eval(&mut expanded, &mut self.annotations, &mut self.consts, program)?;
+		comp::eval(
+			&mut expanded,
+			&mut self.annotations,
+			&mut self.consts,
+			program,
+			&mut stage0,
+		)?;
 		self.timings.push(("comp", t.elapsed()));
 		if self.aot {
 			expanded.values_mut().for_each(|items| items.retain(|(e, _)| !comptime_only(e)));
@@ -1417,8 +1436,12 @@ impl<M: Module> Compiler<M> {
 		}
 
 		// lower bodies
-		let mut unlowered: HashMap<FuncId, usize> =
-			others.iter().enumerate().map(|(i, item)| (funcs[&item.key].id, i)).collect();
+		let mut unlowered: HashMap<FuncId, usize> = others
+			.iter()
+			.enumerate()
+			.map(|(i, item)| (funcs[&item.key].id, i))
+			.filter(|(id, _)| !self.defined.contains(id))
+			.collect();
 		if self.aot {
 			self.wanted.extend(unlowered.keys().copied());
 		} else {
@@ -1500,7 +1523,7 @@ impl<M: Module> Compiler<M> {
 				.module
 				.declare_data(&sym, Linkage::Local, false, false)
 				.expect("declare vtable");
-			self.module.define_data(id, &desc).expect("define vtable");
+			define_once(&mut self.module, id, &desc);
 		}
 
 		// one zeroed cell per static
@@ -1708,7 +1731,9 @@ impl<M: Module> Compiler<M> {
 			.module
 			.declare_function(name, Linkage::Local, &self.ctx.func.signature)
 			.expect("declare function");
-		self.module.define_function(id, &mut self.ctx).expect("define function");
+		if self.defined.insert(id) {
+			self.module.define_function(id, &mut self.ctx).expect("define function");
+		}
 		self.module.clear_context(&mut self.ctx);
 		id
 	}

@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, Expr, Span, Spanned};
 use crate::diagnostics::Diagnostic;
@@ -25,6 +26,8 @@ enum Entry {
 	Scalar(i64, i64),
 	Struct(String, usize),
 }
+
+static SITE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
@@ -136,11 +139,12 @@ fn fold(
 	expanded: &mut HashMap<String, Vec<Spanned<Expr>>>,
 	consts: &HashMap<String, Spanned<Expr>>,
 	program: &Program,
+	stage0: &mut Option<Compiler>,
 ) -> Result<Expr, Diagnostic> {
 	// conditional compilation
 	while let Expr::If { cond, then, els } = inner.0 {
 		let span = cond.1;
-		let mut arm = match fold(*cond, target, expanded, consts, program)? {
+		let mut arm = match fold(*cond, target, expanded, consts, program, stage0)? {
 			Expr::Bool(true) => then,
 			Expr::Bool(false) if matches!(els.as_deref(), Some([(Expr::If { .. }, _)])) => {
 				inner = els.expect("guard matched").remove(0);
@@ -156,9 +160,11 @@ fn fold(
 		});
 	}
 	let span = inner.1;
+	// every needs its own name
+	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (
 		Expr::Fn {
-			name: "__comp".into(),
+			name: name.clone(),
 			type_params: vec![],
 			params: vec![],
 			params_tuple: true,
@@ -212,12 +218,10 @@ fn fold(
 		annotations,
 		roots: program.roots.clone(),
 	};
-	let mut compiler = Compiler {
-		roots: vec!["__comp".into()],
-		..Default::default()
-	};
+	let compiler = stage0.get_or_insert_with(Compiler::default);
+	compiler.roots = vec![name.clone()];
 	compiler.compile(&synthetic)?;
-	let f = compiler.module.get_finalized_function(compiler.hoisted["__comp"].id);
+	let f = compiler.module.get_finalized_function(compiler.hoisted[&name].id);
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(f)() };
 	Ok(reify(span))
@@ -229,6 +233,7 @@ pub(crate) fn eval(
 	annotations: &mut HashMap<String, Vec<Annotation>>,
 	consts: &mut HashMap<String, Spanned<Expr>>,
 	program: &Program,
+	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
 	// push order is importer-first, so folding in reverse handles dependencies first
 	for m in program.modules.iter().rev() {
@@ -246,7 +251,7 @@ pub(crate) fn eval(
 				let (Expr::Comp(inner), span) = consts[k].clone() else {
 					unreachable!()
 				};
-				match fold(*inner, &m.name, expanded, consts, program) {
+				match fold(*inner, &m.name, expanded, consts, program, stage0) {
 					Ok(lit) => {
 						consts.insert(k.clone(), (lit, span));
 						false
@@ -262,14 +267,14 @@ pub(crate) fn eval(
 			}
 		}
 		while let Some(inner) = first_comp(expanded.get_mut(&m.name).expect("every module is expanded")) {
-			let lit = fold(inner, &m.name, expanded, consts, program)?;
+			let lit = fold(inner, &m.name, expanded, consts, program, stage0)?;
 			patch_first(expanded.get_mut(&m.name).expect("every module is expanded"), lit);
 		}
 	}
 	// an annotation call is implicitly comptime
 	for a in annotations.iter_mut().filter(|(k, _)| !k.contains("::")).flat_map(|(_, v)| v) {
 		if matches!(a.0, Expr::Call { .. }) {
-			a.0 = fold(a.clone(), "main", expanded, consts, program)?;
+			a.0 = fold(a.clone(), "main", expanded, consts, program, stage0)?;
 		}
 	}
 	Ok(())

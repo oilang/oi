@@ -132,7 +132,7 @@ tags: []
 - [x] sum types
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
-- [ ] FFI
+- [x] FFI
 - [x] some sort of `todo`/`unimplemented` macros `rust`
 - [x] a way to type a var without declaring it, like `var` in Go `go`
 - [ ] `loop match {...}` `revo`
@@ -146,10 +146,6 @@ tags: []
 - [x] `if-do` `odin`
 ## consider
 - `nil`
-- C++20 uses `operator|`, a naked `|` for pipelines
-	- back on the table now that `|x|` lambda fences are gone
-	- that said, `|>` has grown on me
-- mutable `$` by default or opt-in?
 - [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
 - `let-else` `rust`
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
@@ -179,6 +175,7 @@ tags: []
 - callable structs, which has a lot more precedent than struct projection above and would do the same thing for me `lua`
 - ~~reconsider multiple returns now that Oi has solidified~~
 - lua's `tbl.method(self)` vs `tbl:method()` or things in that kind of space
+- jai-like `() ret {}` fns. I hate typing `->` though
 # stdlib
 - `os`
 - `fs`

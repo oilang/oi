@@ -28,13 +28,21 @@ fn check_required(
 	Ok(())
 }
 
+// Give a symbol its bytes.
+pub(crate) fn define_once<M: Module>(m: &mut M, id: DataId, desc: &DataDescription) {
+	match m.define_data(id, desc) {
+		Ok(()) | Err(ModuleError::DuplicateDefinition(_)) => {}
+		Err(e) => panic!("define data: {e}"),
+	}
+}
+
 // A data symbol holding raw bytes, 8-aligned.
 pub(crate) fn define_data<M: Module>(m: &mut M, sym: &str, bytes: Vec<u8>) -> DataId {
 	let id = m.declare_data(sym, Linkage::Local, false, false).unwrap();
 	let mut desc = DataDescription::new();
 	desc.set_align(8);
 	desc.define(bytes.into_boxed_slice());
-	m.define_data(id, &desc).unwrap();
+	define_once(m, id, &desc);
 	id
 }
 
@@ -47,7 +55,7 @@ pub(crate) fn define_ptr_data<M: Module>(m: &mut M, sym: &str, target: DataId, t
 	let gv = m.declare_data_in_data(target, &mut desc);
 	desc.write_data_addr(0, gv, 0);
 	let id = m.declare_data(sym, Linkage::Local, false, false).unwrap();
-	m.define_data(id, &desc).unwrap();
+	define_once(m, id, &desc);
 	id
 }
 

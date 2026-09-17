@@ -170,3 +170,15 @@ fn fns_claims_and_notes_are_typed_asts() {
 		["export spd", "Foo ready 1 int", "1"],
 	);
 }
+
+#[test]
+fn macros_and_comp_share_one_stage0() {
+	let src = indoc! {"
+		twice! :: fn(e: Ast) Ast { `%e + %e` }
+		SEED :: 21
+		print(twice!(SEED))
+		print(comp SEED * 2)
+		print(comp SEED - 1)
+	"};
+	check(src, ["42", "42", "20"]);
+}

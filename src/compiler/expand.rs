@@ -212,15 +212,12 @@ impl Expander {
 			annotations,
 			roots: program.roots.clone(),
 		};
-		let mut compiler = Compiler {
-			roots: self.macros.keys().cloned().collect(),
-			..Default::default()
-		};
+		let compiler = self.stage0.get_or_insert_with(Compiler::default);
+		compiler.roots = self.macros.keys().cloned().collect();
 		compiler.compile(&synthetic)?;
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);
 		}
-		self.stage0 = Some(compiler);
 		Ok(())
 	}
 
@@ -338,8 +335,11 @@ impl Expander {
 	}
 }
 
+// Each module's items with macros expanded, and the stage-0 JIT that expanded them.
+type Expansion = (HashMap<String, Vec<Spanned<Expr>>>, Option<Compiler>);
+
 // Expand all macro calls across a program's modules.
-pub fn expand(program: &Program) -> Result<HashMap<String, Vec<Spanned<Expr>>>, Diagnostic> {
+pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
 	let mut ex = Expander {
 		publics: program.publics.clone(),
 		..Default::default()
@@ -373,7 +373,7 @@ pub fn expand(program: &Program) -> Result<HashMap<String, Vec<Spanned<Expr>>>, 
 		let items = rest.get_mut(&m.name).expect("every module was seeded above");
 		ex.expand(List(items), &m.scope, 0)?;
 	}
-	Ok(rest)
+	Ok((rest, ex.stage0))
 }
 
 // A quote template.
