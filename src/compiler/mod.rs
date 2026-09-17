@@ -96,6 +96,11 @@ fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 	Err(Diagnostic::new(msg, p.span.into_range()).with_label("second vararg"))
 }
 
+// Whether fn specifies a Result.
+fn fallible(typ: &Typ) -> bool {
+	matches!(typ, Typ::Result(ok, _) if ok.is_unit())
+}
+
 // Check that every param and return are C friendly.
 pub(crate) fn check_c_sig(name: &str, params: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
 	match (params.iter().map(|p| &p.typ))
@@ -809,6 +814,7 @@ impl<M: Module> Compiler<M> {
 		let mut alias_items: Vec<(&str, TypeExpr)> = vec![];
 		let mut soft_aliases: Vec<(String, TypeExpr)> = vec![];
 		let mut main_body: Option<&[Spanned<Expr>]> = None;
+		let mut main_ret: Option<&Spanned<TypeExpr>> = None;
 		let mut others: Vec<FnItem> = vec![];
 		let mut loose_refs: Vec<&Spanned<Expr>> = vec![];
 		let mut trait_bodies: Vec<TraitBody> = vec![];
@@ -1014,7 +1020,10 @@ impl<M: Module> Compiler<M> {
 					let claim = Fills { decls: &decls, generic };
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
-				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
+				Expr::Fn { name, body, ret, .. } if name == "main" => {
+					main_body = Some(body);
+					main_ret = ret.as_ref();
+				}
 				Expr::Fn {
 					name,
 					type_params,
@@ -1535,11 +1544,22 @@ impl<M: Module> Compiler<M> {
 		let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 			.with_consts(consts)
 			.with_scope(scopes["main"]);
+		let ret = match main_ret {
+			Some((te, span)) => Some((types.resolve(te, *span)?, *span)),
+			None => None,
+		};
+		if let Some((typ, span)) = &ret
+			&& !fallible(typ)
+		{
+			let msg = format!("`main` cannot return `{typ}`");
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("`main` returns nothing or `!`"));
+		}
 		let typ = self.translate(
 			FnDef {
 				params_tuple: true,
 				body: entry,
 				is_main: true,
+				ret,
 				..FnDef::default()
 			},
 			&funcs,
@@ -1616,8 +1636,13 @@ impl<M: Module> Compiler<M> {
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
 		let call = trans.b.ins().call(callee, &[]);
 		if let Some(val) = trans.b.inst_results(call).first().copied() {
-			trans.emit_print(val, &typ, false, runtime::Sink::Out);
-			trans.write_lit("\n", runtime::Sink::Out);
+			match fallible(&typ) {
+				true => trans.emit_fail(val, &typ),
+				false => {
+					trans.emit_print(val, &typ, false, runtime::Sink::Out);
+					trans.write_lit("\n", runtime::Sink::Out);
+				}
+			}
 		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();

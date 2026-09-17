@@ -359,8 +359,8 @@ where
 				.map(|t| TypeExpr::Variadic(Box::new(t)));
 			// results
 			let result = just(Token::Not)
-				.ignore_then(base.clone())
-				.map(|t| TypeExpr::Result(Box::new(t), None));
+				.ignore_then(base.clone().or_not())
+				.map(|t| TypeExpr::Result(Box::new(t.unwrap_or(TypeExpr::Tuple(vec![]))), None));
 			// shared refs
 			let ref_type = just(Token::Amp).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
 			// atom(s)

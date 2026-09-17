@@ -48,5 +48,6 @@ pub oi_trait_field : fn(data: ptr, off: isize) isize : foreign
 pub oi_pow_int : fn(base: isize, exp: isize) isize : foreign
 pub oi_pow_float : fn(base: float, exp: float) float : foreign
 pub oi_panic : fn(msg: string) : foreign
+pub oi_fail : fn(msg: string) : foreign
 pub oi_panic_oob : fn(index: isize, len: isize) : foreign
 pub oi_assert_fail : fn(msg: string) : foreign

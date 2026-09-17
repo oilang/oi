@@ -1390,7 +1390,6 @@ main :: fn() {
 	}
 
 	# postfix `?` propagates up to the caller: error out of a !T fn, none out of a ?T fn
-	# panics if used in main()
 	load_config :: fn(path: string) !Config {
 		raw := fs.read(path)?
 		parse(raw)?
@@ -2137,6 +2136,10 @@ main :: fn() {
 		}
 	}
 }
+
+# main may also specify any of these return types: (), !, E!
+# main :: fn() ! { serve(load_config("app.oi")?) }
+
 
 ## std
 

@@ -196,6 +196,16 @@ pub unsafe extern "C" fn panic(msg: *const StrHeader) {
 	unsafe { abort_with("panic: ", msg) }
 }
 
+/// Report main's error and exit 1.
+/// # Safety
+/// `msg` must be a valid string handle.
+#[unsafe(export_name = "oi_fail")]
+pub unsafe extern "C" fn fail(msg: *const StrHeader) {
+	eprintln!("error: {}", unsafe { str_lossy(msg) });
+	let _ = std::io::Write::flush(&mut std::io::stdout());
+	std::process::exit(1);
+}
+
 /// Copy a c-string's bytes into a fresh string handle.
 /// # Safety
 /// `header` must point to a valid array header.

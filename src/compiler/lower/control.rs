@@ -445,6 +445,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((payload, inner))
 	}
 
+	// Report the error and exit 1 (main's sad path).
+	pub(crate) fn emit_fail(&mut self, val: Value, typ: &Typ) {
+		let Typ::Result(_, err) = typ else { return };
+		let tag = self.enum_tag(typ, val);
+		let (sad, done) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().brif(tag, sad, &[], done, &[]);
+		self.b.seal_block(sad);
+		self.b.seal_block(done);
+		self.b.switch_to_block(sad);
+		let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+		let msg = self.derived_str(e, err);
+		self.rt_call("fail", &[msg]);
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+		self.b.switch_to_block(done);
+	}
+
 	// `Enum.from(v)`.
 	pub(super) fn enum_from(&mut self, name: &str, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {

@@ -108,7 +108,7 @@ tags: []
 	- maybe I can do away with the `!` macros postfix entirely, solving the clash with `Result`
 - [ ] implicit context `jai`
 - [ ] computed values `swift gdscript`
-- [ ] `main` return types (unit, uint, bool, ?int, ?atom) `capy`
+- [x] `main` return types
 - [x] V-like modules that don't _need_ a `mod` file, everything adds to the module its in
 - [ ] thread version through repl and cli and docs and everything
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them

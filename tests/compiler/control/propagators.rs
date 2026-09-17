@@ -69,7 +69,7 @@ fn bang_propagates_error() {
 
 #[test]
 fn requires_option_or_result() {
-	fail_with("f :: fn() int { 42? }\nf()", "`?` needs a `?T` or `!T` value");
+	fail_with(["f :: fn() int { 42? }", "f()"], "`?` needs a `?T` or `!T` value");
 }
 
 #[test]
@@ -94,6 +94,17 @@ fn result_panics_in_main() {
 		load("nope")?
 	"#};
 	fail_with(src, "panic: missing");
+}
+
+#[test]
+fn bang_main() {
+	check(["load :: fn() !int { 42 }", "main :: fn() ! { print(load()?) }"], "42");
+	let bad = indoc! {r#"
+		load :: fn() !int { return error("missing") }
+		main :: fn() ! { print(load()?) }
+	"#};
+	fail_with(bad, "error: missing");
+	fail_with("main :: fn() int { 5 }", "`main` cannot return `int`");
 }
 
 #[test]
