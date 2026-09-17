@@ -11,6 +11,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleReloc};
 use cranelift_object::{ObjectBuilder, ObjectModule};
+use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
@@ -647,9 +648,14 @@ impl Compiler<ObjectModule> {
 		self.module.clear_context(&mut self.ctx);
 		if self.lib {
 			// seed statics because libs don't have a `main` fn entrypoint
+			let (seg, sec, flags) = match self.module.isa().triple().binary_format {
+				BinaryFormat::Macho => ("__DATA", "__mod_init_func", 0x9),
+				BinaryFormat::Coff => ("", ".CRT$XCU", 0),
+				_ => ("", ".init_array", 0),
+			};
 			let mut desc = DataDescription::new();
 			desc.set_align(8);
-			desc.set_segment_section("", ".init_array", 0);
+			desc.set_segment_section(seg, sec, flags);
 			desc.define(vec![0; 8].into_boxed_slice());
 			let f = self.module.declare_func_in_data(id, &mut desc);
 			desc.write_function_addr(0, f);

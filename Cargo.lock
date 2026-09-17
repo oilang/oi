@@ -963,6 +963,7 @@ dependencies = [
  "oi-runtime",
  "pretty_assertions",
  "reedline",
+ "target-lexicon",
 ]
 
 [[package]]
