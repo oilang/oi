@@ -90,6 +90,17 @@ fn empty_main_prints_nothing() {
 }
 
 #[test]
+fn main_discards_its_tail_value() {
+	let src = indoc! {"
+		main :: fn() {
+			print(1)
+			2 + 3
+		}
+	"};
+	check(src, "1");
+}
+
+#[test]
 fn print_unit() {
 	let src = indoc! {"
 		print(())

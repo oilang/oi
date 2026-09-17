@@ -421,8 +421,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !fallible(&typ) {
-			self.emit_print(val, &typ, false, runtime::Sink::Out);
-			self.write_lit("\n", runtime::Sink::Out);
+			if self.script {
+				self.emit_print(val, &typ, false, runtime::Sink::Out);
+				self.write_lit("\n", runtime::Sink::Out);
+			}
 			let (val, typ) = self.unit_value();
 			return self.emit_return(val, typ, span);
 		}

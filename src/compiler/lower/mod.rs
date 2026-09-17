@@ -82,6 +82,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub temps: HashMap<Value, Variable>,
 	pub self_type: Option<String>,
 	pub is_main: bool,
+	pub script: bool,
 	pub self_name: Option<String>,
 	pub pure: bool,
 }

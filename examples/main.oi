@@ -29,5 +29,5 @@ main :: fn() {
 	bull = false
 	str = "string"
 
-	2.0 + 1.2
+	print(2.0 + 1.2)
 }

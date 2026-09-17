@@ -156,6 +156,7 @@ struct FnDef<'a> {
 	body: &'a [Spanned<Expr>],
 	self_type: Option<&'a str>,
 	is_main: bool,
+	script: bool,
 	is_test: bool,
 	captures: &'a [(String, Typ, bool)],
 	self_fn: Option<(&'a str, &'a FnSig)>,
@@ -1621,6 +1622,7 @@ impl<M: Module> Compiler<M> {
 				params_tuple: true,
 				body: entry,
 				is_main: true,
+				script: main_body.is_none(),
 				ret,
 				..FnDef::default()
 			},
@@ -1848,6 +1850,7 @@ impl<M: Module> Compiler<M> {
 			temps: HashMap::new(),
 			self_type: def.self_type.map(str::to_owned),
 			is_main: def.is_main,
+			script: def.script,
 			pure: def.pure,
 			self_name: None,
 		};
