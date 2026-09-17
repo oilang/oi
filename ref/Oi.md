@@ -139,7 +139,7 @@ tags: []
 - [ ] `Contains` trait that lets any type be used with `in` operator
 - [x] Algebraic Data Types (ADT) `rust`
 - [x] c-strings primitive (`c"foo"`?)
-- [ ] incremental compilation
+- [x] incremental compilation
 - [ ] more types (`any`, `b\d+`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
 - [ ] load the `oi init` scaffolding from fs, to make them easier to maintain
 - [ ] swizzle `odin`
