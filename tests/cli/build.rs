@@ -95,16 +95,17 @@ fn export_annotation_marks_c_abi_fns() {
 	"#};
 	let cext = indoc! {r#"
 		module cext
+		Cfg :: struct { pub scale: int }
+		cfg := Cfg.{ 3 }
 		@export
-		pub triple :: fn(n: int) int { n * 3 }
+		pub triple :: fn(n: int) int { n * cfg.scale }
 	"#};
 	let caller = indoc! {r#"
 		#include <stdio.h>
-		extern void oi_init(void);
 		extern long add(long, long);
 		extern long mul2(long, long);
 		extern long triple(long);
-		int main(void) { oi_init(); printf("%ld %ld %ld\n", add(2, 3), mul2(2, 3), triple(3)); return 0; }
+		int main(void) { printf("%ld %ld %ld\n", add(2, 3), mul2(2, 3), triple(3)); return 0; }
 	"#};
 	let dir = Project::new()
 		.file("main.oi", src)

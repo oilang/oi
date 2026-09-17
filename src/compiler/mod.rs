@@ -638,13 +638,24 @@ impl Compiler<ObjectModule> {
 		};
 		b.ins().return_(&ret);
 		b.finalize();
-		let name = if self.lib { "oi_init" } else { "main" };
-		let id = self
-			.module
-			.declare_function(name, Linkage::Export, &self.ctx.func.signature)
-			.unwrap();
+		let (name, linkage) = match self.lib {
+			true => ("oi_init", Linkage::Local),
+			false => ("main", Linkage::Export),
+		};
+		let id = self.module.declare_function(name, linkage, &self.ctx.func.signature).unwrap();
 		self.module.define_function(id, &mut self.ctx).unwrap();
 		self.module.clear_context(&mut self.ctx);
+		if self.lib {
+			// seed statics because libs don't have a `main` fn entrypoint
+			let mut desc = DataDescription::new();
+			desc.set_align(8);
+			desc.set_segment_section("", ".init_array", 0);
+			desc.define(vec![0; 8].into_boxed_slice());
+			let f = self.module.declare_func_in_data(id, &mut desc);
+			desc.write_function_addr(0, f);
+			let arr = self.module.declare_data("oi_init_array", Linkage::Local, true, false).unwrap();
+			self.module.define_data(arr, &desc).unwrap();
+		}
 	}
 }
 

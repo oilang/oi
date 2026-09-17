@@ -190,6 +190,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let local = self.vars[key].clone();
 			let val = self.check_typed(init, &local.typ, "does not match the declared type")?;
 			// the cell outlives the frame that filled it
+			let val = match &local.typ {
+				Typ::Struct(..) => self.copy_in(val, &local.typ),
+				_ => val,
+			};
 			self.untemp(val);
 			self.write_local(&local, val);
 		}
