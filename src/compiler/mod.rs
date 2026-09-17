@@ -604,9 +604,14 @@ impl Compiler<ObjectModule> {
 		compiler
 	}
 
-	pub fn compile_object(mut self, program: &Program) -> Result<(Vec<u8>, Vec<String>), Diagnostic> {
+	pub fn compile_object(mut self, program: &Program, timings: bool) -> Result<(Vec<u8>, Vec<String>), Diagnostic> {
+		let (t, n) = (Instant::now(), self.timings.len());
 		let entry = self.build(program)?;
+		self.time_codegen(t, n);
 		self.emit_entry(entry);
+		if timings {
+			self.report_timings();
+		}
 		Ok((self.module.finish().emit().expect("emit object"), self.link_libs))
 	}
 
@@ -680,6 +685,19 @@ impl<M: Module> Compiler<M> {
 			exports: HashMap::new(),
 			cache: None,
 			timings: Vec::new(),
+		}
+	}
+
+	// Time codegen phase.
+	fn time_codegen(&mut self, t: Instant, n: usize) {
+		let inner: Duration = self.timings[n..].iter().map(|(_, d)| *d).sum();
+		self.timings.push(("codegen", t.elapsed().saturating_sub(inner)));
+	}
+
+	/// Print each phase's time to stderr.
+	pub fn report_timings(&self) {
+		for (phase, dur) in &self.timings {
+			eprintln!("{phase}  {dur:.1?}");
 		}
 	}
 
@@ -1908,8 +1926,7 @@ impl Compiler {
 		let (t, n) = (Instant::now(), self.timings.len());
 		let id = self.build(program)?;
 		self.module.finalize_definitions().expect("finalize definitions");
-		let inner: Duration = self.timings[n..].iter().map(|(_, d)| *d).sum();
-		self.timings.push(("codegen", t.elapsed().saturating_sub(inner)));
+		self.time_codegen(t, n);
 		Ok(self.module.get_finalized_function(id))
 	}
 

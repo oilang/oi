@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 
 use oi::Reported;
-use oi::driver::build_source;
+use oi::driver::{DebugOpts, build_source};
 use oi::loader::home;
 
 use crate::commands::run;
@@ -24,8 +24,9 @@ pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result
 	} else if link && dest.is_dir() {
 		fs::remove_dir_all(&dest).map_err(at(&dest))?;
 	}
+	let opts = DebugOpts::default();
 	match entry {
-		Some(e) => build_source(run::files(&e)?, run::root(&e), &run::stem(&e), &dest, false)?,
+		Some(e) => build_source(run::files(&e)?, run::root(&e), &run::stem(&e), &dest, false, opts)?,
 		None if src.is_file() => fs::copy(&src, &dest).map(drop).map_err(at(&src))?,
 		None if link => std::os::unix::fs::symlink(&src, &dest).map_err(at(&dest))?,
 		None => copy(&src, &dest).map_err(at(&src))?,

@@ -23,13 +23,14 @@ pub fn run(file: &Path, timings: bool) -> Result<(), Reported> {
 }
 
 /// Compile a source file to a native executable or shared library.
-pub fn build(file: &Path, out: Option<&Path>, lib: bool) -> Result<(), Reported> {
+pub fn build(file: &Path, out: Option<&Path>, lib: bool, timings: bool) -> Result<(), Reported> {
 	let stem = stem(file);
 	let default = match lib {
 		true => format!("{}{stem}{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX).into(),
 		false => PathBuf::from(&stem),
 	};
-	build_source(files(file)?, root(file), &stem, out.unwrap_or(&default), lib)
+	let opts = DebugOpts { timings };
+	build_source(files(file)?, root(file), &stem, out.unwrap_or(&default), lib, opts)
 }
 
 /// Compile a source file and call its `@test` fns.

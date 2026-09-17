@@ -44,6 +44,10 @@ pub enum Command {
 		/// Build a shared library instead of an executable.
 		#[arg(long)]
 		lib: bool,
+
+		/// Print phase timings to stderr.
+		#[arg(long)]
+		timings: bool,
 	},
 
 	/// Compile and run an Oi script.

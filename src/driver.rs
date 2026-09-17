@@ -34,9 +34,7 @@ pub fn run_source(entry: Entry, root: &Path, opts: DebugOpts) -> Result<(), Repo
 	f();
 	compiler.timings.push(("run", t.elapsed()));
 	if opts.timings {
-		for (phase, dur) in &compiler.timings {
-			eprintln!("{phase}  {dur:.1?}");
-		}
+		compiler.report_timings();
 	}
 	crate::runtime::epilogue();
 	Ok(())
@@ -64,9 +62,19 @@ const LIBS: &[&str] = &[
 ];
 
 /// Compile a program to a native executable at `out`, linked against the static runtime.
-pub fn build_source(entry: Entry, root: &Path, stem: &str, out: &Path, lib: bool) -> Result<(), Reported> {
+pub fn build_source(
+	entry: Entry,
+	root: &Path,
+	stem: &str,
+	out: &Path,
+	lib: bool,
+	opts: DebugOpts,
+) -> Result<(), Reported> {
+	let mut compiler = Compiler::object(stem, lib);
+	let t = Instant::now();
 	let program = loader::load(entry, root)?;
-	let (obj, link_libs) = Compiler::object(stem, lib).compile_object(&program).map_err(|e| {
+	compiler.timings.push(("load", t.elapsed()));
+	let (obj, link_libs) = compiler.compile_object(&program, opts.timings).map_err(|e| {
 		e.report_mapped(&program.map);
 		Reported
 	})?;
