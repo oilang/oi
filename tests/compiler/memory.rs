@@ -48,6 +48,19 @@ fn loop_temp_per_iteration() {
 }
 
 #[test]
+fn logical_short_circuit_skips_allocating_rhs() {
+	assert_clean(indoc! {r#"
+		names :: fn() []string { ["a", "b"] }
+		i := 0
+		loop i < 5 {
+			x :: i > 2
+			if !x && ("q" in names()) { }
+			i = i + 1
+		}
+	"#});
+}
+
+#[test]
 fn early_return() {
 	assert_clean(indoc! {"
 		f :: fn(n: int) int {

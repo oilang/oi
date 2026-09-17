@@ -576,7 +576,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(rhs_block);
 		self.b.seal_block(rhs_block);
-		let (rv, rt) = self.expr(r)?;
+		// scoped, so a temp the rhs allocates is released here
+		let (rv, rt) = self.block_expr(std::slice::from_ref(r), r.1)?;
 		if rt != Typ::Bool {
 			return Err(Diagnostic::new(format!("expected Bool, got {rt}"), r.1.into_range())
 				.with_label("logical operators need Bool operands"));
