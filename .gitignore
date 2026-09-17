@@ -1,6 +1,9 @@
 # rust
 /target/
 
+# oi
+.oi/
+
 # docs
 /ref/
 /www/content/examples.md

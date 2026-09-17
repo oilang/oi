@@ -2,6 +2,7 @@
 mod common;
 
 mod build;
+mod cache;
 mod exec;
 mod init;
 mod install;

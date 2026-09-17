@@ -11,6 +11,7 @@ ariadne = "0.6.0"
 chumsky = { version = "0.13.0", features = ["pratt"] }
 clap = { version = "4.6", features = ["derive"] }
 cranelift = "0.132.1"
+cranelift-codegen = { version = "0.132.1", features = ["incremental-cache"] }
 cranelift-jit = "0.132.1"
 cranelift-module = "0.132.1"
 cranelift-native = "0.132.1"

@@ -37,12 +37,7 @@ fn scaffold(dir: &Path) -> Result<(), Reported> {
 	write(&entry, MAIN)?;
 	let ignore = dir.join(".gitignore");
 	if !ignore.exists() {
-		write(
-			&ignore,
-			indoc! {"
-				# TODO: I'll populate this when I get a feel for what needs ignored
-		"},
-		)?;
+		write(&ignore, ".oi/\n")?;
 	}
 	if !dir.canonicalize().is_ok_and(|p| p.ancestors().any(|a| a.join(".git").exists())) {
 		Command::new("git").args(["init", "--quiet"]).arg(dir).status().ok();

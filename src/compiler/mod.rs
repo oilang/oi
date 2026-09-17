@@ -9,7 +9,7 @@ use cranelift::codegen;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module};
+use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleReloc};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
@@ -17,6 +17,7 @@ use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, Scope, is_hook_trait, is_literal};
 use crate::runtime;
 
+mod cache;
 mod comp;
 mod expand;
 mod lower;
@@ -499,6 +500,7 @@ pub struct Compiler<M: Module = JITModule> {
 	pub(crate) roots: Vec<String>,
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
+	cache: Option<cache::Store>,
 	pub timings: Vec<(&'static str, Duration)>,
 }
 
@@ -676,6 +678,7 @@ impl<M: Module> Compiler<M> {
 			roots: Vec::new(),
 			link_libs: Vec::new(),
 			exports: HashMap::new(),
+			cache: None,
 			timings: Vec::new(),
 		}
 	}
@@ -834,6 +837,7 @@ impl<M: Module> Compiler<M> {
 		self.module.clear_context(&mut self.ctx);
 		self.builder_ctx = FunctionBuilderContext::new();
 
+		self.cache = cache::Store::open(&program.roots[0]);
 		self.publics = program.publics.clone();
 		self.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
@@ -1732,7 +1736,24 @@ impl<M: Module> Compiler<M> {
 			.declare_function(name, Linkage::Local, &self.ctx.func.signature)
 			.expect("declare function");
 		if self.defined.insert(id) {
-			self.module.define_function(id, &mut self.ctx).expect("define function");
+			match &mut self.cache {
+				None => self.module.define_function(id, &mut self.ctx).expect("define function"),
+				Some(store) => {
+					self.ctx
+						.compile_with_cache(self.module.isa(), store, &mut Default::default())
+						.expect("compile function");
+					let code = self.ctx.compiled_code().expect("just compiled");
+					let relocs: Vec<_> = code
+						.buffer
+						.relocs()
+						.iter()
+						.map(|r| ModuleReloc::from_mach_reloc(r, &self.ctx.func, id))
+						.collect();
+					self.module
+						.define_function_bytes(id, code.buffer.alignment as u64, code.code_buffer(), &relocs)
+						.expect("define function");
+				}
+			}
 		}
 		self.module.clear_context(&mut self.ctx);
 		id
