@@ -1870,7 +1870,8 @@ main :: fn() {
 		f.close()
 	}
 
-	# defer gets the return values if relevant
+	# defer gets the return values as `$` where applicable
+	# a defer body can't `return`, propagate with `?`, or `break`/`continue` an outer loop
 	do_stuff :: fn() bool {
 		defer {
 			if !$ {
@@ -1881,8 +1882,13 @@ main :: fn() {
 		return true
 	}
 
-	# defer/err only runs if an error was raised
-	defer/err eprint()
+	# `defer or` only runs if the fn returned an error or none
+	# `$` is the error payload
+	# dropped silently on any exit that isn't a return
+	defer or eprint($)
+	defer or {
+		log.error($)
+	}
 
 	# defers in loops run at the end of each iteration
 	loop {

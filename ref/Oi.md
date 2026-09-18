@@ -148,6 +148,8 @@ tags: []
 - `nil`
 - [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
 - `let-else` `rust`
+- submodules `use raylib.math`
+- explicit core access `core.print` or `use core.{ print }` or something
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
 - `loop <expr>` rather than any special case dispatch

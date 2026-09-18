@@ -4,6 +4,14 @@ use super::*;
 // Every ref has one owner: a named binding, a container slot, or the scope that produced it.
 // Owned values register in the innermost scope and release when it exits.
 
+// A `defer` body, re-lowered at every exit of its scope.
+#[derive(Clone)]
+pub(crate) struct Defer {
+	pub(crate) body: Spanned<Expr>,
+	pub(crate) vars: HashMap<String, Local>,
+	pub(crate) on_err: bool,
+}
+
 impl<'a, M: Module> Translator<'a, M> {
 	// Check whether a struct has Drop, or owns something that does.
 	pub(super) fn is_resource(&self, typ: &Typ) -> bool {
@@ -244,19 +252,75 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Emit releases for every scope deeper than `depth`.
-	pub(super) fn release_scopes(&mut self, depth: usize) {
+	// Emit releases for every scope deeper than `depth`, running its defers first.
+	pub(super) fn release_scopes(&mut self, depth: usize, ret: Option<TypedVal>) -> Result<(), Diagnostic> {
 		for s in (depth..self.scopes.len()).rev() {
+			for i in (0..self.defers[s].len()).rev() {
+				let d = self.defers[s][i].clone();
+				self.run_defer(d, ret.as_ref())?;
+			}
 			for i in (0..self.scopes[s].len()).rev() {
 				let (var, t) = self.scopes[s][i].clone();
 				let v = self.b.use_var(var);
 				self.release_value(v, &t);
 			}
 		}
+		Ok(())
+	}
+
+	// `$` is the returned value / error.
+	fn run_defer(&mut self, d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
+		let mut dollar = ret.cloned();
+		let mut join = None;
+		if d.on_err {
+			let Some((val, typ)) = ret else { return Ok(()) };
+			let (happy, err) = match typ {
+				Typ::Option(_) => (1, None),
+				Typ::Result(_, e) => (0, Some((**e).clone())),
+				_ => {
+					return Err(
+						Diagnostic::new("`defer or` needs a fn returning `?T`/`!T`", d.body.1.into_range())
+							.with_label("this fn cannot fail"),
+					);
+				}
+			};
+			let tag = self.enum_tag(typ, *val);
+			let happy = self.b.ins().iconst(self.int, happy);
+			let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy);
+			let (sad, after) = (self.b.create_block(), self.b.create_block());
+			self.b.ins().brif(is_happy, after, &[], sad, &[]);
+			self.b.seal_block(sad);
+			self.b.switch_to_block(sad);
+			dollar = Some(match err {
+				Some(e) => (self.b.ins().load(cl_type(&e, self.int), MemFlags::new(), *val, 8), e),
+				None => self.unit_value(),
+			});
+			join = Some(after);
+		}
+		let dollar = dollar.or_else(|| self.dollar.clone());
+		let saved = (
+			std::mem::replace(&mut self.vars, d.vars),
+			std::mem::take(&mut self.loops), // `break` must not reach an enclosing loop
+			std::mem::replace(&mut self.deferring, true),
+			std::mem::replace(&mut self.dollar, dollar),
+		);
+		let out = self.scoped(|s| s.block_tail(std::slice::from_ref(&d.body), None).map(|_| Some(s.unit_value())));
+		(self.vars, self.loops, self.deferring, self.dollar) = saved;
+		if let Some(after) = join {
+			self.b.ins().jump(after, &[]);
+			self.b.seal_block(after);
+			self.b.switch_to_block(after);
+		}
+		out.map(drop)
 	}
 
 	// Transfer ownership of a local binding.
 	pub fn move_local(&mut self, name: &str, local: &Local, span: Range<usize>) -> Result<Value, Diagnostic> {
+		if self.deferring {
+			return Err(
+				Diagnostic::new("cannot move a local out of a defer body", span).with_label("runs on every exit")
+			);
+		}
 		if releasable(&local.typ) || self.is_resource(&local.typ) {
 			let depth = self
 				.scopes

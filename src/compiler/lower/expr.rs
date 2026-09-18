@@ -792,6 +792,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1.into_range(),
 			)
 			.with_label("this diverges")),
+			Expr::Defer { .. } => Err(
+				Diagnostic::new("`defer` is only allowed as a statement", expr.1.into_range())
+					.with_label("not a value"),
+			),
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(_) => {
 				unreachable!("not an expression")
 			}

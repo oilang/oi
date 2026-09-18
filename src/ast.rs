@@ -84,6 +84,12 @@ pub enum Expr {
 
 	Return(Option<Box<Spanned<Expr>>>),
 
+	// `defer [or] expr`
+	Defer {
+		body: Box<Spanned<Expr>>,
+		on_err: bool,
+	},
+
 	// `Target.(args)`
 	Cast {
 		target: Spanned<TypeExpr>,
@@ -356,6 +362,7 @@ impl Expr {
 				value.iter_mut().for_each(|v| f(One(v)));
 			}
 			Expr::Return(value) => value.iter_mut().for_each(|v| f(One(v))),
+			Expr::Defer { body, .. } => f(One(body)),
 			Expr::Assign { value: v, .. }
 			| Expr::PatBind { value: v, .. }
 			| Expr::ArgMod(_, v)

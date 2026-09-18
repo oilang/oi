@@ -358,7 +358,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						None => self.unit_value(),
 					};
-					self.release_scopes(depth);
+					self.release_scopes(depth, None)?;
 					let mut result = self.loops.last_mut().unwrap().result.take();
 					self.contribute("break", (v, t), &mut result, exit, stmt.1)?;
 					self.loops.last_mut().unwrap().result = result;
@@ -373,12 +373,18 @@ impl<'a, M: Module> Translator<'a, M> {
 								.with_label("not inside a loop"));
 						}
 					};
-					self.release_scopes(depth);
+					self.release_scopes(depth, None)?;
 					self.b.ins().jump(top, &[]);
 					return Ok(None);
 				}
 
 				Expr::Doc(_) => {}
+
+				Expr::Defer { body, on_err } => self.defers.last_mut().expect("scope").push(rc::Defer {
+					body: (**body).clone(),
+					vars: self.vars.clone(),
+					on_err: *on_err,
+				}),
 
 				_ => {
 					last = match stmt_target {
@@ -433,6 +439,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The first return fixes the fn's type, and later returns must agree.
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
+		if self.deferring {
+			return Err(Diagnostic::new("cannot return from a defer body", span.into_range())
+				.with_label("every exit path already runs this deferred body"));
+		}
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !fallible(&typ) {
 			if self.script {
@@ -453,7 +463,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.with_label("wrong return type"));
 		}
 		if typ.is_unit() {
-			self.release_scopes(0);
+			self.release_scopes(0, Some((val, typ.clone())))?;
 			self.b.ins().return_(&[]);
 			if self.ret.is_none() {
 				self.ret = Some((typ, span));
@@ -477,7 +487,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => val,
 		};
 		// the bumped return value survives the walk over everything this fn owned
-		self.release_scopes(0);
+		self.release_scopes(0, Some((final_val, typ.clone())))?;
 		// the cranelift signature takes its return type from the first return
 		if self.b.func.signature.returns.is_empty() {
 			self.b.func.signature.returns.push(AbiParam::new(cl_type(&typ, self.int)));

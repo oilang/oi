@@ -79,6 +79,8 @@ pub(super) struct Translator<'a, M: Module> {
 	pub loops: Vec<LoopFrame>,
 	pub unsafely: usize,
 	pub scopes: Vec<Vec<(Variable, Typ)>>,
+	pub defers: Vec<Vec<rc::Defer>>,
+	pub deferring: bool,
 	pub temps: HashMap<Value, Variable>,
 	pub self_type: Option<String>,
 	pub is_main: bool,

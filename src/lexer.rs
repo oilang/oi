@@ -64,6 +64,8 @@ pub enum Token {
 	#[token("return")]
 	Return,
 	BareReturn,
+	#[token("defer")]
+	Defer,
 	#[token("match")]
 	Match,
 	#[token("trait")]
@@ -244,6 +246,7 @@ impl fmt::Display for Token {
 			Token::Struct => write!(f, "struct"),
 			Token::Enum => write!(f, "enum"),
 			Token::Return | Token::BareReturn => write!(f, "return"),
+			Token::Defer => write!(f, "defer"),
 			Token::Match => write!(f, "match"),
 			Token::Trait => write!(f, "trait"),
 			Token::Is => write!(f, "is"),

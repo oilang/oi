@@ -1848,6 +1848,8 @@ impl<M: Module> Compiler<M> {
 			loops: vec![],
 			unsafely: 0,
 			scopes: vec![vec![]],
+			defers: vec![vec![]],
+			deferring: false,
 			temps: HashMap::new(),
 			self_type: def.self_type.map(str::to_owned),
 			is_main: def.is_main,

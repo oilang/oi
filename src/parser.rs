@@ -822,6 +822,19 @@ where
 
 	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
 
+	let defer_stmt = just(Token::Defer)
+		.ignore_then(just(Token::Or).or_not())
+		.then(block_ast.clone().or(expr.clone()))
+		.map_with(|(or, body), ex| {
+			(
+				Expr::Defer {
+					body: Box::new(body),
+					on_err: or.is_some(),
+				},
+				ex.span(),
+			)
+		});
+
 	let macro_stmt = dotted_name
 		.clone()
 		.then_ignore(adjacent)
@@ -848,6 +861,7 @@ where
 	// statements
 	let stmt = doc
 		.or(ret_stmt)
+		.or(defer_stmt)
 		.or(place.clone())
 		.or(macro_def.clone())
 		.or(macro_stmt)

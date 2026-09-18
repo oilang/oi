@@ -56,23 +56,25 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Evaluate `f` in a child scope.
-	fn scoped(
+	pub(super) fn scoped(
 		&mut self,
 		f: impl FnOnce(&mut Self) -> Result<Option<TypedVal>, Diagnostic>,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		let saved = self.vars.clone();
 		self.scopes.push(vec![]);
+		self.defers.push(vec![]);
 		let flow = f(self);
 		self.vars = saved;
 		let out = match flow? {
 			Some((v, t)) => {
 				let v = self.copy_bind(v, &t);
-				self.release_scopes(self.scopes.len() - 1);
+				self.release_scopes(self.scopes.len() - 1, None)?;
 				Some((v, t))
 			}
 			None => None,
 		};
 		self.scopes.pop();
+		self.defers.pop();
 		Ok(out)
 	}
 
