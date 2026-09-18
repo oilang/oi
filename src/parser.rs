@@ -1099,7 +1099,9 @@ where
 				)
 			})
 			.boxed();
-		let break_expr = just(Token::Break).map_with(|_, ex| (Expr::Break, ex.span()));
+		let break_expr = just(Token::Break)
+			.ignore_then(expr.clone().or_not())
+			.map_with(|v, ex| (Expr::Break(v.map(Box::new)), ex.span()));
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 		// match expression

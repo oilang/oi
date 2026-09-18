@@ -787,7 +787,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
 			Expr::TypePat(_) => unreachable!("type pattern in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
-			Expr::Break | Expr::Continue => unreachable!("break/continue in expression position"),
+			Expr::Break(_) | Expr::Continue => Err(Diagnostic::new(
+				"`break` and `continue` never produce a value",
+				expr.1.into_range(),
+			)
+			.with_label("this diverges")),
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(_) => {
 				unreachable!("not an expression")
 			}

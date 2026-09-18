@@ -515,8 +515,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
 
-		// a conditional loop branches at the top: into the body or out to exit
-		let exit = match cond {
+		// a conditional loop branches, into the body or out through `fallthrough`
+		let (exit, fallthrough) = match cond {
 			Some(cond) => {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
@@ -527,17 +527,24 @@ impl<'a, M: Module> Translator<'a, M> {
 					.with_label("not a Bool"));
 				}
 				let body_block = self.b.create_block();
-				let exit = self.b.create_block();
-				self.b.ins().brif(cv, body_block, &[], exit, &[]);
+				let (exit, fallthrough) = (self.b.create_block(), self.b.create_block());
+				self.b.ins().brif(cv, body_block, &[], fallthrough, &[]);
 				self.b.seal_block(body_block);
+				self.b.seal_block(fallthrough);
 				self.b.switch_to_block(body_block);
-				Some(exit)
+				(Some(exit), Some(fallthrough))
 			}
-			None => None,
+			None => (None, None),
 		};
 
 		let depth = self.scopes.len();
-		self.loops.push(LoopFrame { top, exit, depth });
+		self.loops.push(LoopFrame {
+			top,
+			exit,
+			depth,
+			result: None,
+			fallthrough,
+		});
 		let flow = self.scoped(|s| s.block(body))?;
 		let frame = self.loops.pop().expect("loop frame");
 
@@ -549,13 +556,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(top);
 
 		match frame.exit {
-			Some(exit) => {
-				self.b.switch_to_block(exit);
-				self.b.seal_block(exit);
-				Ok(Some(self.unit_value()))
-			}
+			Some(exit) => Ok(Some(self.loop_end(frame, exit))),
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
+		}
+	}
+
+	// Merge at `exit` and take the loop's value.
+	fn loop_end(&mut self, frame: LoopFrame, exit: Block) -> TypedVal {
+		if let Some(fallthrough) = frame.fallthrough {
+			self.b.switch_to_block(fallthrough);
+			if let Some((var, t)) = &frame.result {
+				let v = match t {
+					Typ::Option(inner) => self.make_option(inner, None),
+					_ => self.unit_value().0,
+				};
+				self.b.def_var(*var, v);
+			}
+			self.b.ins().jump(exit, &[]);
+		}
+		self.b.seal_block(exit);
+		self.b.switch_to_block(exit);
+		match frame.result {
+			Some((var, t)) => (self.b.use_var(var), t),
+			None => self.unit_value(),
 		}
 	}
 
@@ -596,7 +620,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let counter = self.b.declare_var(self.b.func.dfg.value_type(start));
 		self.b.def_var(counter, start);
 
-		let (header, body_block, latch, exit) = (
+		let (header, body_block, latch, fallthrough, exit) = (
+			self.b.create_block(),
 			self.b.create_block(),
 			self.b.create_block(),
 			self.b.create_block(),
@@ -616,8 +641,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			None => self.b.ins().icmp(IntCC::SignedLessThan, iv, limit),
 		};
-		self.b.ins().brif(more, body_block, &[], exit, &[]);
+		self.b.ins().brif(more, body_block, &[], fallthrough, &[]);
 		self.b.seal_block(body_block);
+		self.b.seal_block(fallthrough);
 
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
@@ -626,6 +652,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			top: latch,
 			exit: Some(exit),
 			depth,
+			result: None,
+			fallthrough: Some(fallthrough),
 		});
 		let flow = self.scoped(|s| {
 			let (item, typ) = match &src {
@@ -648,14 +676,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			s.block(body)
 		})?;
-		self.loops.pop().expect("loop frame");
+		let frame = self.loops.pop().expect("loop frame");
 
 		if let Some((v, t)) = flow {
 			self.release_value(v, &t);
 			self.b.ins().jump(latch, &[]);
 		}
 		self.b.seal_block(latch);
-		self.b.seal_block(exit);
 
 		self.b.switch_to_block(latch);
 		let iv = self.b.use_var(counter);
@@ -667,8 +694,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().jump(header, &[]);
 		self.b.seal_block(header);
 
-		self.b.switch_to_block(exit);
-		Ok(self.unit_value())
+		Ok(self.loop_end(frame, exit))
 	}
 
 	// Bind or assign a pattern's names against a value.

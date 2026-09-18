@@ -244,6 +244,43 @@ fn for_each_string_bytes_and_map_entries() {
 	check(src, ["104", "105", "5"]);
 }
 
+// breaks with values
+
+#[test]
+fn infinite_loop_break_value() {
+	let src = indoc! {"
+		i := 0
+		n := loop {
+			i += 1
+			if i == 3 { break i * 2 }
+		}
+		n
+	"};
+	check(src, "6");
+}
+
+#[test]
+fn for_loop_break_value_or_else() {
+	let hit = indoc! {"
+		xs := [1, 5, 20]
+		loop x in xs { if x > 9 do break x } or -1
+	"};
+	check(hit, "20");
+
+	let miss = indoc! {"
+		xs := [1, 5, 9]
+		loop x in xs { if x > 9 do break x } or -1
+	"};
+	check(miss, "-1");
+}
+
+#[test]
+fn break_value_errors() {
+	fail_with("x := break", "never produce a value");
+	fail_with("loop { x := continue }", "never produce a value");
+	fail_with("loop { if true { break 1 } else { break } }", "mismatched types");
+}
+
 #[test]
 fn do_bodies() {
 	let src = indoc! {"

@@ -462,11 +462,12 @@ impl Local {
 	}
 }
 
-// `continue` jumps to `top`, `break` jumps to `exit`
 pub(crate) struct LoopFrame {
 	pub top: Block,
 	pub exit: Option<Block>,
 	pub depth: usize,
+	pub result: Option<(Variable, Typ)>,
+	pub fallthrough: Option<Block>,
 }
 
 pub struct Compiler<M: Module = JITModule> {

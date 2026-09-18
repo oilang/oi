@@ -138,7 +138,7 @@ pub enum Expr {
 		iter: Box<Spanned<Expr>>,
 		body: Vec<Spanned<Expr>>,
 	},
-	Break,
+	Break(Option<Box<Spanned<Expr>>>),
 	Continue,
 
 	// structures
@@ -428,6 +428,7 @@ impl Expr {
 				cond.iter_mut().for_each(|c| f(One(c)));
 				f(List(body));
 			}
+			Expr::Break(value) => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::For { iter: v, body, .. } | Expr::OrElse { value: v, body } => {
 				f(One(v));
 				f(List(body));
@@ -466,7 +467,6 @@ impl Expr {
 			| Expr::Dollar
 			| Expr::None
 			| Expr::Foreign
-			| Expr::Break
 			| Expr::Continue
 			| Expr::Unquote(_)
 			| Expr::TypeAlias { .. }

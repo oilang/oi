@@ -328,26 +328,39 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
 				}
 
-				Expr::Break => {
-					let exit = match self.loops.last() {
-						Some(frame) => frame.exit,
-						None => {
-							return Err(Diagnostic::new("`break` outside of a loop", stmt.1.into_range())
-								.with_label("not inside a loop"));
-						}
+				Expr::Break(payload) => {
+					let Some(&LoopFrame {
+						depth,
+						exit,
+						fallthrough,
+						..
+					}) = self.loops.last()
+					else {
+						return Err(Diagnostic::new("`break` outside of a loop", stmt.1.into_range())
+							.with_label("not inside a loop"));
 					};
 					// the first `break` creates the exit block
-					let exit = match exit {
-						Some(exit) => exit,
-						None => {
-							let exit = self.b.create_block();
-							self.loops.last_mut().unwrap().exit = Some(exit);
-							exit
+					let exit = exit.unwrap_or_else(|| {
+						let exit = self.b.create_block();
+						self.loops.last_mut().unwrap().exit = Some(exit);
+						exit
+					});
+					// a bare `break` yields unit, so mixing it with a break-with-value is a type mismatch
+					let (v, t) = match payload {
+						Some(e) => {
+							let (v, t) = self.expr(e)?;
+							match fallthrough {
+								// a loop that can end without breaking yields an Option
+								Some(_) => (self.make_option(&t, Some(v)), Typ::Option(Box::new(t))),
+								None => (self.copy_in(v, &t), t),
+							}
 						}
+						None => self.unit_value(),
 					};
-					let depth = self.loops.last().unwrap().depth;
 					self.release_scopes(depth);
-					self.b.ins().jump(exit, &[]);
+					let mut result = self.loops.last_mut().unwrap().result.take();
+					self.contribute("break", (v, t), &mut result, exit, stmt.1)?;
+					self.loops.last_mut().unwrap().result = result;
 					return Ok(None);
 				}
 
