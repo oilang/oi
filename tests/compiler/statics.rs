@@ -61,6 +61,14 @@ fn pub_static_crosses_modules() {
 }
 
 #[test]
+fn static_is_read_only_outside_its_module() {
+	Project::new()
+		.file("main.oi", ["use mem", "main :: fn() { mem.used = 9 }"])
+		.file("mem.oi", ["module mem", "pub used := 0"])
+		.fail_with("cannot assign to `mem.used` outside module `mem`");
+}
+
+#[test]
 fn static_needs_a_comptime_initializer() {
 	Project::new()
 		.file("main.oi", ["use thing", "main :: fn() { print(thing.n) }"])

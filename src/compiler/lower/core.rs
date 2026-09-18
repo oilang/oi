@@ -57,6 +57,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		known.then_some((Expr::Ident(key), e.1))
 	}
 
+	// Ensure that a static is only written to from within its own module.
+	pub(super) fn check_static_write(&self, m: &str, field: &str, span: Span) -> Result<(), Diagnostic> {
+		let Some(vis) = self.scope.visible.get(m).filter(|_| !self.vars.contains_key(m)) else {
+			return Ok(());
+		};
+		let key = format!("{}::{field}", vis.module);
+		if !self.vars.get(&key).is_some_and(|l| l.stat) {
+			return Ok(());
+		}
+		let msg = format!("cannot assign to `{m}.{field}` outside module `{}`", vis.module);
+		Err(Diagnostic::new(msg, span.into_range()).with_label("read-only here"))
+	}
+
 	// Ensure that no private members are accessed from outside their module.
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = typ.split('[').next().unwrap(); // Box[int] -> Box

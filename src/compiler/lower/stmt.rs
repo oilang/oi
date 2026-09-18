@@ -281,6 +281,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body)?,
 
 				Expr::FieldAssign { name, field, value } => {
+					self.check_static_write(name, field, stmt.1)?;
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
 					let fields = match self.peeled(&local.typ) {
 						Typ::Struct(sname, fields) => {

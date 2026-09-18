@@ -49,7 +49,7 @@ mysha256 :: use hash.sha256
 
 # visibility
 
-# any immutable expression can be made public with a `pub` modifier
+# expressions can be made public with a `pub` modifier
 
 # re-export modules
 pub use math
@@ -61,6 +61,9 @@ pub foo :: Foo.{ true }
 pub strange :: "dr strange love"
 
 # a module level `:=` is a static binding
+count := 0
+# a public static is readable outside its module, but only writable within
+pub tally := 0
 
 ## FFI
 
@@ -1317,19 +1320,59 @@ main :: fn() {
 		print("{k}={v}")
 	}
 
+	# `break` can carry a value out of the loop
+	# an infinite loop always breaks to get out, so it yields `T`
+	i = 0
+	n := loop {
+		i += 1
+		if i == 3 { break i * 2 }
+	}
+	assert! n == 6
+
+	# a loop that can finish without breaking yields `?T`
+	first_big :: loop x in [ 1 5 20 ] { if x > 9 do break x }
+	no_way :: loop x in [ 1 5 9 ] { if x > 9 do break x }
+	assert! first_big == ?int.(20)
+	assert! first_big or -1 == 20
+	assert! no_way == none
+	assert! no_way or -1 == -1
+
+	# a loop with no valued `break` yields `()`
+	# mixing `break` and `break <value>` in one loop is an error
+
 	# TODO: custom iterators
 
-	## [almost?] everything is an expression
+	## everything is an expression
 
 	# ternary (`if` is an expression)
 	foo := if true { "yes" } else { "no" }
+	bar := if true do "yes" else do "no"
 
-	# if no else, uses default value from the if body
-	# TODO: or should it be `none` and make the var `?T`?
+	# if no else, uses the zero value of the if body's type
 	str := if false { "idk" }
-	num := if false { 42 }
-	assert!(str == "")
-	assert!(num == 0)
+	num := if false do 42
+	assert! str == ""
+	assert! num == 0
+
+	# bindings and assignments yield the place they wrote, read back after the write
+	x := 1
+	assert! (x = 3) + 1 == 4
+	assert! (x : f64 = 3.0) * 2.0 == 6.0
+	user := User.{ name = "ann" }
+	assert! (user.name = "bob") == "bob"
+
+	# appends and deletes yield the collection
+	xs := [1]
+	xs << 2 << 3
+	assert! (xs == [1 2 3])
+	assert! (xs[0] = 9) == 9
+
+	# a destructuring bind yields the whole rhs
+	v := ((a, b) := (1, 2))
+	assert! v == (1, 2)
+
+	# assignment chains right-to-left
+	a = b = 3
 
 	# built-in functions
 	result := assert!(check()) |> next
