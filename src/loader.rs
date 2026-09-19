@@ -139,27 +139,52 @@ pub(crate) fn is_literal(e: &Expr) -> bool {
 	}
 }
 
+// min/max of a builtin int type, by name.
+fn numeric_bound(name: &str, hi: bool) -> Option<i64> {
+	let width = match name {
+		"int" | "isize" | "uint" | "usize" => 64,
+		_ => name.strip_prefix(['i', 'u'])?.parse::<u16>().ok()?,
+	};
+	if width == 0 || width > 64 {
+		return None;
+	}
+	let shift = 64 - width;
+	Some(match (name.starts_with('u'), hi) {
+		(true, true) => (u64::MAX >> shift) as i64,
+		(true, false) => 0,
+		(false, true) => i64::MAX >> shift,
+		(false, false) => i64::MIN >> shift,
+	})
+}
+
 // Fold a const initializer down to a literal, so simple arithmetic doesn't need `comp`.
 pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) -> Option<Expr> {
 	let fold = |e: &Spanned<Expr>| fold_const(&e.0, consts, scope);
 	Some(match e {
 		Expr::Negative(v) => match fold(v)? {
-			Expr::Int(n) => Expr::Int(n.checked_neg()?),
+			Expr::Int(n) => Expr::Int(n.wrapping_neg()),
 			Expr::Float(f) => Expr::Float(-f),
 			_ => return None,
 		},
 		Expr::Ident(n) => fold_const(&consts.get(&scope.qualify_name(n))?.0, consts, scope)?,
+		Expr::Field { tuple, field } => match (&tuple.0, field.as_str()) {
+			(Expr::Ident(n), "min") => Expr::Int(numeric_bound(n, false)?),
+			(Expr::Ident(n), "max") => Expr::Int(numeric_bound(n, true)?),
+			_ => return None,
+		},
 		Expr::Binary(op, a, b) => match (op, fold(a)?, fold(b)?) {
-			(BinOp::Add, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_add(b)?),
-			(BinOp::Sub, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_sub(b)?),
-			(BinOp::Mul, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_mul(b)?),
+			(BinOp::Add, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_add(b)),
+			(BinOp::Sub, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_sub(b)),
+			(BinOp::Mul, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_mul(b)),
 			(BinOp::Div, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_div(b)?),
+			(BinOp::Mod, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_rem(b)?),
+			(BinOp::Pow, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_pow(u32::try_from(b).ok()?)),
 			(BinOp::Add, Expr::Float(a), Expr::Float(b)) => Expr::Float(a + b),
 			(BinOp::Sub, Expr::Float(a), Expr::Float(b)) => Expr::Float(a - b),
 			(BinOp::Mul, Expr::Float(a), Expr::Float(b)) => Expr::Float(a * b),
 			(BinOp::Div, Expr::Float(a), Expr::Float(b)) => Expr::Float(a / b),
-			(BinOp::Pow, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_pow(u32::try_from(b).ok()?)?),
 			(BinOp::Pow, Expr::Float(a), Expr::Float(b)) => Expr::Float(a.powf(b)),
+			(BinOp::Add, Expr::String(a), Expr::String(b)) => Expr::String(a + &b),
 			_ => return None,
 		},
 		_ if is_literal(e) => e.clone(),

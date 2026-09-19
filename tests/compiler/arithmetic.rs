@@ -63,3 +63,11 @@ fn pow() {
 	check("2.0 ** -1.0", "0.5");
 	fail_with("2 ** -1", "negative exponent");
 }
+
+#[test]
+fn const_folding() {
+	check(["A :: int.min", "A"], "-9223372036854775808");
+	check(["A :: u8.max", "A"], "255");
+	check([r#"A :: "a" + "b""#, "A"], "ab");
+	check(["A := 2 ** 63", "A"], "-9223372036854775808");
+}
