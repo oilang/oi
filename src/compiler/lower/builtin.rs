@@ -13,17 +13,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		match name {
 			"print" | "write" | "eprint" | "ewrite" => {
 				self.require_pure(name, span)?;
-				if args.is_empty() {
-					return Err(
-						Diagnostic::new(format!("`{name}` takes at least 1 argument"), span.into_range())
-							.with_label("missing argument"),
-					);
-				}
 				let sink = match name {
 					"eprint" | "ewrite" => runtime::Sink::Err,
 					_ => runtime::Sink::Out,
 				};
 				let newline = matches!(name, "print" | "eprint");
+				if newline && args.is_empty() {
+					self.write_lit("\n", sink);
+				}
 				for (i, arg) in args.iter().enumerate() {
 					if i > 0 {
 						self.write_lit(" ", sink);
@@ -31,7 +28,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (val, typ) = self.expr(arg)?;
 					self.emit_print(val, &typ, false, sink);
 				}
-				if newline {
+				if newline && !args.is_empty() {
 					self.write_lit("\n", sink);
 				}
 				Ok(Some(self.unit_value()))
