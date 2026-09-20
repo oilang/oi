@@ -101,6 +101,7 @@ tags: []
 		t :: T.((2 "ciea" 2)) # no
 		```
 	- [x] `::` in fn params should make immutable defaults for consistency
+	- [ ] zero enum values `none`?
 - [ ] `comp assert`
 - [x] pipeline examples with `!` postfix collide with macros
 - [x] revisit needing `print`, `assert`, et al to be macros
@@ -136,12 +137,14 @@ tags: []
 - [x] some sort of `todo`/`unimplemented` macros `rust`
 - [x] a way to type a var without declaring it, like `var` in Go `go`
 - [ ] `loop match {...}` `revo`
-- [ ] `Contains` trait that lets any type be used with `in` operator
+- [ ] traits
+	- [ ] `Contains`, lets type be used with `in` operator
+	- [ ] `Iterable`
 - [x] Algebraic Data Types (ADT) `rust`
 - [x] c-strings primitive (`c"foo"`?)
 - [x] incremental compilation
-- [ ] more types (`any`, `b\d+`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
-- [ ] load the `oi init` scaffolding from fs, to make them easier to maintain
+- [ ] more types (`any`, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
+- [x] load the `oi init` scaffolding from fs, to make them easier to maintain
 - [ ] swizzle `odin`
 - [x] `if-do` `odin`
 ## consider

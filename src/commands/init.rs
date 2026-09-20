@@ -1,16 +1,12 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-
-use indoc::indoc;
 
 use oi::Reported;
 
-const MAIN: &str = indoc! {r#"
-	main :: fn() {
-		who :: "Mom"
-		print("Hi {who}!")
-	}
-"#};
+fn template_path(p: &str) -> PathBuf {
+	Path::new(env!("CARGO_MANIFEST_DIR")).join("templates").join(p)
+}
 
 /// Scaffold a project in the current directory.
 pub fn init() -> Result<(), Reported> {
@@ -34,10 +30,18 @@ fn scaffold(dir: &Path) -> Result<(), Reported> {
 		return Err(Reported);
 	}
 
-	write(&entry, MAIN)?;
+	let main_content = fs::read_to_string(template_path("src/main.oi")).map_err(|e| {
+		eprintln!("oi: cannot read scaffold: {e}");
+		Reported
+	})?;
+	write(&entry, &main_content)?;
 	let ignore = dir.join(".gitignore");
 	if !ignore.exists() {
-		write(&ignore, ".oi/\n")?;
+		let ignore_content = fs::read_to_string(template_path(".gitignore")).map_err(|e| {
+			eprintln!("oi: cannot read .gitignore scaffold: {e}");
+			Reported
+		})?;
+		write(&ignore, &ignore_content)?;
 	}
 	if !dir.canonicalize().is_ok_and(|p| p.ancestors().any(|a| a.join(".git").exists())) {
 		Command::new("git").args(["init", "--quiet"]).arg(dir).status().ok();
