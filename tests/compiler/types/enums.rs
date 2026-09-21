@@ -487,18 +487,18 @@ fn struct_form_omitted_field_zeroes() {
 }
 
 #[test]
-fn struct_form_positional_rejected() {
-	fail_with(
-		["S :: enum { circle { radius: f64 } }", "S.circle(1.0)"],
-		"takes named fields",
+fn struct_form_takes_positional() {
+	check(
+		["S :: enum { circle { radius: f64 } }", "print(S.circle.{ 1.0 })"],
+		"circle{radius = 1.0}",
 	);
 }
 
 #[test]
 fn tuple_form_record_rejected() {
 	fail_with(
-		["S :: enum { tri(f64, f64) }", "S.tri { a = 1.0 }"],
-		"takes 2 field(s), got 1",
+		["S :: enum { tri(f64, f64) }", "S.tri.{ a = 1.0 }"],
+		"takes positional fields",
 	);
 }
 

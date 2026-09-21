@@ -1,5 +1,6 @@
 use crate::ast::{
 	Access, BinOp, Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam, UseItem,
+	record_args,
 };
 use crate::lexer::Token;
 
@@ -576,6 +577,8 @@ where
 		.ignore_then(ident())
 		.map(|n| format!("%{n}"));
 	let def_name = ident().or(hole_ident.clone()).boxed();
+	let path = ident().separated_by(just(Token::Dot)).at_least(1).collect::<Vec<_>>();
+	let lit_path = path.map(|p| p.join(".")).or(hole_ident.clone()).boxed();
 	let bind_name = just(Token::Percent)
 		.then_ignore(adjacent)
 		.ignore_then(
@@ -934,12 +937,12 @@ where
 		);
 
 		// struct literals
-		let struct_lit = def_name
+		let struct_lit = lit_path
 			.clone()
 			.then(call_type_args.clone().or_not())
 			.or_not()
 			.then_ignore(dot())
-			.then(struct_body)
+			.then(struct_body.clone())
 			.map(|(head, fields)| {
 				let (name, type_args) = head.unwrap_or_default();
 				Expr::StructLit {
@@ -989,12 +992,18 @@ where
 				rest
 			})
 			.boxed();
-		let record_arg = brace(record_entries.clone()).map_with(|es, ex| vec![(Expr::Record(es), ex.span())]);
+		let record_arg = brace(record_entries).map_with(|es, ex| vec![(Expr::Record(es), ex.span())]);
 
 		// enum shorthand
+		let brace_payload = struct_body.clone().map_with(|fs, ex| record_args(fs, ex.span()));
+		let payload = dot()
+			.ignore_then(args.clone().or(brace_payload))
+			.or(args.clone())
+			.or(record_arg.clone())
+			.boxed();
 		let enum_shorthand = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
-			.then(args.clone().or(record_arg.clone()).or_not())
+			.then(payload.clone().or_not())
 			.map_with(|(variant, args), ex| {
 				let args = args.unwrap_or_default();
 				(Expr::EnumShorthand { variant, args }, ex.span())
@@ -1132,6 +1141,7 @@ where
 		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
 		let struct_pat = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
+			.then_ignore(dot().or_not())
 			.then(brace(loose_list(keyed.clone().or(bind))))
 			.map_with(|(variant, es), ex| {
 				let args = vec![(Expr::Record(es), ex.span())];

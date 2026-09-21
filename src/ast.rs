@@ -683,6 +683,17 @@ impl UseItem {
 	}
 }
 
+pub fn record_args(fields: Vec<(Option<String>, Spanned<Expr>)>, span: Span) -> Vec<Spanned<Expr>> {
+	if fields.iter().all(|(n, _)| n.is_none()) {
+		return fields.into_iter().map(|(_, v)| v).collect();
+	}
+	let entries = fields
+		.into_iter()
+		.map(|(n, v)| ((Expr::Ident(n.unwrap_or_default()), v.1), v))
+		.collect();
+	vec![(Expr::Record(entries), span)]
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct EnumVariant {
 	pub name: String,

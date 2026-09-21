@@ -1,5 +1,6 @@
 use super::generic::unify;
 use super::*;
+use crate::ast::record_args;
 use crate::compiler::role;
 
 // Error when a `@required` field isn't fulfilled.
@@ -256,7 +257,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.make_enum(&variants, v.disc, &[])
 			}
-			(Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant), Typ::Result(ok, err)) => {
+			(
+				Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant),
+				Typ::Result(ok, err),
+			) => {
 				let has =
 					|t: &Typ| matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant));
 				let Some((disc, side)) = [ok, err].into_iter().enumerate().find(|(_, t)| has(t)) else {
@@ -558,6 +562,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.emit_call(&sig, &[range, n]).0)
 	}
 
+	// Split `Enum.variant` into its enum and variant.
+	pub(super) fn variant_path(&self, path: &str, span: Span) -> Option<(String, String)> {
+		let (head, variant) = path.rsplit_once('.')?;
+		let Ok(Typ::Enum(name)) = self.types().named(head, span) else {
+			return None;
+		};
+		self.enum_variants(&name)
+			.iter()
+			.any(|v| v.name == variant)
+			.then(|| (name, variant.to_string()))
+	}
+
 	// Make and check enum variant.
 	pub(super) fn construct_variant(
 		&mut self,
@@ -572,11 +588,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label("no such variant")
 		})?;
 		let (disc, payload, names) = (v.disc, v.payload.clone(), v.names.clone());
-		let fields = if !names.is_empty() {
-			let [(Expr::Record(entries), _)] = args else {
-				let msg = format!("`{name}.{variant}` takes named fields");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("use `{ field: value }`"));
-			};
+		let fields = if let [(Expr::Record(entries), _)] = args {
+			if names.is_empty() {
+				let msg = format!("`{name}.{variant}` takes positional fields");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("use `.( … )`"));
+			}
 			let mut fields: Vec<Value> = payload.iter().map(|t| self.zero(t)).collect();
 			for (k, val) in entries {
 				let Expr::Ident(key) = &k.0 else {
@@ -894,6 +910,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		target: Option<&Typ>,
 	) -> Result<TypedVal, Diagnostic> {
+		if let Some((ename, variant)) = self.variant_path(name, span) {
+			let args = record_args(fields.to_vec(), span);
+			return self.construct_variant(&ename, &variant, &args, span);
+		}
 		for (i, (fname, value)) in fields.iter().enumerate() {
 			// ensure no duplicate named fields
 			if let Some(fname) = fname

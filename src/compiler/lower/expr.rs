@@ -162,6 +162,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Cast { target, args } => {
+				if let TypeExpr::Name(path) = &target.0
+					&& let Some((name, variant)) = self.variant_path(path, target.1)
+				{
+					return self.construct_variant(&name, &variant, args, expr.1);
+				}
 				let typ = self.types().resolve(&target.0, target.1)?;
 				self.cast_to(&typ, args, expr.1)
 			}
