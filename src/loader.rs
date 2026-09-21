@@ -192,6 +192,15 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 	})
 }
 
+// The int const a sum member names, if any.
+fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) -> Option<i64> {
+	let TypeExpr::Name(n) = t else { return None };
+	match fold_const(&Expr::Ident(n.clone()), consts, scope)? {
+		Expr::Int(v) => Some(v),
+		_ => None,
+	}
+}
+
 // Fill an associated const fill.
 fn const_fill(e: &Expr) -> Option<(&String, &Spanned<Expr>)> {
 	match e {
@@ -439,6 +448,18 @@ impl Loader {
 			{
 				self.define(m, name, !main, public || pubbed, span)?;
 				m.items.push(item);
+				continue;
+			}
+			if let Expr::TypeAlias {
+				name,
+				typ: TypeExpr::Sum(members),
+			} = &mut item.0
+				&& let Some(v) = members
+					.iter()
+					.try_fold(0, |acc, t| Some(acc | flag(t, &self.consts, &m.scope)?))
+			{
+				self.define(m, name, true, public, span)?;
+				self.consts.insert(name.clone(), (Expr::Int(v), span));
 				continue;
 			}
 			match &mut item.0 {

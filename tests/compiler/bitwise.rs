@@ -94,3 +94,17 @@ fn overloads() {
 		["8 14 6 48 3 -13"],
 	);
 }
+
+#[test]
+fn flag_sums() {
+	check(
+		indoc! {"
+			READ :: 0b100
+			WRITE :: 0b010
+			EXEC :: 0b001
+			ALL :: READ | WRITE | EXEC
+			print(ALL, ALL & READ)
+		"},
+		["7 4"],
+	);
+}
