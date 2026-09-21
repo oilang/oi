@@ -166,6 +166,10 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 			Expr::Float(f) => Expr::Float(-f),
 			_ => return None,
 		},
+		Expr::Not(v) => match fold(v)? {
+			Expr::Int(n) => Expr::Int(!n),
+			_ => return None,
+		},
 		Expr::Ident(n) => fold_const(&consts.get(&scope.qualify_name(n))?.0, consts, scope)?,
 		Expr::Field { tuple, field } => match (&tuple.0, field.as_str()) {
 			(Expr::Ident(n), "min") => Expr::Int(numeric_bound(n, false)?),
@@ -179,6 +183,11 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 			(BinOp::Div, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_div(b)?),
 			(BinOp::Mod, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_rem(b)?),
 			(BinOp::Pow, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_pow(u32::try_from(b).ok()?)),
+			(BinOp::BitAnd, Expr::Int(a), Expr::Int(b)) => Expr::Int(a & b),
+			(BinOp::BitOr, Expr::Int(a), Expr::Int(b)) => Expr::Int(a | b),
+			(BinOp::BitXor, Expr::Int(a), Expr::Int(b)) => Expr::Int(a ^ b),
+			(BinOp::Shl, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_shl(u32::try_from(b).ok()?)),
+			(BinOp::Shr, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_shr(u32::try_from(b).ok()?)),
 			(BinOp::Add, Expr::Float(a), Expr::Float(b)) => Expr::Float(a + b),
 			(BinOp::Sub, Expr::Float(a), Expr::Float(b)) => Expr::Float(a - b),
 			(BinOp::Mul, Expr::Float(a), Expr::Float(b)) => Expr::Float(a * b),

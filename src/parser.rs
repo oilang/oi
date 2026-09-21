@@ -1537,11 +1537,10 @@ where
 		.boxed();
 
 	// enum defs
-	let disc_int = just(Token::Minus)
-		.or_not()
-		.then(select! { Token::Int(n) => n })
-		.map(|(neg, n)| (Some(if neg.is_some() { -n } else { n }), None));
-	let disc = just(Token::Assign).ignore_then(disc_int.or(select! { Token::String(s) => (None, Some(s)) }));
+	let disc = just(Token::Assign).ignore_then(expr.clone()).map(|e| match e {
+		(Expr::String(s), _) => (None, Some(s)),
+		e => (Some(e), None),
+	});
 	let fields = brace(loose_list(ident().then_ignore(just(Token::Colon)).then(annot.clone())));
 	let backing = just(Token::DoubleColon).to(None).or(just(Token::Colon)
 		.ignore_then(annot.clone())
@@ -1556,11 +1555,12 @@ where
 				.or_not(),
 		)
 		.then(disc.or_not())
-		.map(|((name, body), assign)| {
+		.map_with(|((name, body), assign), ex| {
 			let (names, payload) = body.unwrap_or_default();
 			let (disc, raw) = assign.unwrap_or((None, None));
 			EnumVariant {
 				name,
+				span: ex.span(),
 				disc,
 				raw,
 				payload,
@@ -1580,17 +1580,6 @@ where
 		)))
 		.validate(|(((name, type_params), backing), members), ex, emitter| {
 			let (_, fills, variants) = split_members(members);
-			let mut next = 0;
-			let mut seen = Vec::new();
-			for v in &variants {
-				let d = v.disc.unwrap_or(next);
-				if seen.contains(&d) {
-					let msg = format!("discriminant value `{d}` assigned more than once");
-					emitter.emit(Rich::custom(ex.span(), msg));
-				}
-				seen.push(d);
-				next = d + 1;
-			}
 			if backing.is_none() && variants.iter().any(|v| v.raw.is_some()) {
 				emitter.emit(Rich::custom(ex.span(), "a raw value needs a string backing"));
 			}

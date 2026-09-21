@@ -707,7 +707,8 @@ pub fn record_args(fields: Vec<(Option<String>, Spanned<Expr>)>, span: Span) -> 
 #[derive(Debug, Clone, Default)]
 pub struct EnumVariant {
 	pub name: String,
-	pub disc: Option<i64>,
+	pub span: Span,
+	pub disc: Option<Spanned<Expr>>,
 	pub raw: Option<String>,
 	pub payload: Vec<Spanned<TypeExpr>>,
 	pub names: Vec<String>,

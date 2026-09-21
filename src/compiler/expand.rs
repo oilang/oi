@@ -655,7 +655,7 @@ fn fill_sig(params: &mut Vec<Param>, ret: Option<&mut Spanned<TypeExpr>>, args: 
 }
 
 // A `Name` or `Name(Type)` Ast spliced into an enum body.
-fn to_variant((e, _): Spanned<Expr>) -> EnumVariant {
+fn to_variant((e, span): Spanned<Expr>) -> EnumVariant {
 	let (name, args) = match e {
 		Expr::Call { name, args, .. } => (name, args),
 		Expr::Ident(name) => (name, vec![]),
@@ -667,6 +667,7 @@ fn to_variant((e, _): Spanned<Expr>) -> EnumVariant {
 	}
 	EnumVariant {
 		name,
+		span,
 		payload,
 		..Default::default()
 	}

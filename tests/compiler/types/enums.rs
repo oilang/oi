@@ -239,6 +239,18 @@ fn auto_increment_from_explicit() {
 }
 
 #[test]
+fn const_expr_disc() {
+	check(
+		[
+			"SHIFT :: 2",
+			"Perm :: enum { ayy = 0 << SHIFT, bee = 1 << SHIFT, cee = (1 << SHIFT) | 1 }",
+			r#""{ord(Perm.bee)} {ord(Perm.cee)}""#,
+		],
+		"4 5",
+	);
+}
+
+#[test]
 fn payload_construct() {
 	check(
 		[

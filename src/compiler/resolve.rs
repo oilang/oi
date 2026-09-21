@@ -9,10 +9,26 @@ type ParamsRet = (Vec<(String, Typ, Access)>, Option<(Typ, Span)>);
 // Assign discriminants and resolve payload types against `types`.
 pub(super) fn build_variants(variants: &[EnumVariant], types: TypeCtx) -> Result<Vec<VariantInfo>, Diagnostic> {
 	let mut next = 0;
+	let mut seen = HashSet::new();
 	variants
 		.iter()
 		.map(|v| {
-			let disc = v.disc.unwrap_or(next);
+			let disc = match &v.disc {
+				Some((e, span)) => match fold_const(e, types.consts.map, types.scope) {
+					Some(Expr::Int(n)) => n,
+					_ => {
+						return Err(
+							Diagnostic::new("a discriminant must be a constant int", span.into_range())
+								.with_label("not a constant int"),
+						);
+					}
+				},
+				None => next,
+			};
+			if !seen.insert(disc) {
+				let msg = format!("discriminant value `{disc}` assigned more than once");
+				return Err(Diagnostic::new(msg, v.span.into_range()).with_label("already taken"));
+			}
 			next = disc + 1;
 			let payload = v
 				.payload
