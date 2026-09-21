@@ -3,6 +3,24 @@ use crate::compiler::expand;
 use super::*;
 
 impl<'a, M: Module> Translator<'a, M> {
+	// Lower branching control flow constructs.
+	pub(super) fn branching(
+		&mut self,
+		expr: &Spanned<Expr>,
+		hint: Option<&Typ>,
+	) -> Result<Option<TypedVal>, Diagnostic> {
+		match &expr.0 {
+			Expr::If { cond, then, els } => self.conditional(cond, then, els.as_deref(), hint, expr.1),
+			Expr::Match {
+				subject,
+				arms,
+				else_body,
+			} => self.match_expr(subject, arms, else_body.as_deref(), hint, expr.1),
+			Expr::Loop { cond, body } => self.loop_expr(cond.as_deref(), body),
+			_ => unreachable!(),
+		}
+	}
+
 	// `if`/`else` lowered to branch&merge, yielding value of the chosen branch.
 	// A diverging branch contributes nothing to the merge.
 	// If all branches diverge, returns None.
@@ -38,21 +56,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = if let Some(els) = els {
-			self.scoped(|s| s.block_tail(els, target))?
-		} else {
-			let t = result
-				.as_ref()
-				.map(|(_, t)| t.clone())
-				.or_else(|| target.cloned())
-				.unwrap_or(Typ::unit());
-			self.scoped(|s| Ok(Some((s.zero(&t), t.clone()))))?
-		};
+		let else_flow = self.else_default(els, &result, target)?;
 		if let Some(vt) = else_flow {
 			self.contribute("if", vt, &mut result, merge, span)?;
 		}
 
 		Ok(self.finish_merge(merge, result))
+	}
+
+	// The else arm.
+	fn else_default(
+		&mut self,
+		els: Option<&[Spanned<Expr>]>,
+		result: &Option<(Variable, Typ)>,
+		target: Option<&Typ>,
+	) -> Result<Option<TypedVal>, Diagnostic> {
+		let Some(els) = els else {
+			let t = result
+				.as_ref()
+				.map(|(_, t)| t.clone())
+				.or_else(|| target.cloned())
+				.unwrap_or(Typ::unit());
+			return self.scoped(|s| Ok(Some((s.zero(&t), t.clone()))));
+		};
+		self.scoped(|s| s.block_tail(els, target))
 	}
 
 	// Evaluate `f` in a child scope.
@@ -264,15 +291,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(else_blk);
 		self.b.seal_block(else_blk);
-		let else_flow = if let Some(els) = else_body {
-			self.scoped(|s| s.block_tail(els, target))?
-		} else {
-			let t = match &result {
-				Some((_, t)) => t.clone(),
-				None => target.cloned().unwrap_or(Typ::unit()),
-			};
-			self.scoped(|s| Ok(Some((s.zero(&t), t.clone()))))?
-		};
+		let else_flow = self.else_default(else_body, &result, target)?;
 		if let Some(vt) = else_flow {
 			self.contribute("match", vt, &mut result, merge, span)?;
 		}
@@ -539,16 +558,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => (None, None),
 		};
 
-		let depth = self.scopes.len();
-		self.loops.push(LoopFrame {
-			top,
-			exit,
-			depth,
-			result: None,
-			fallthrough,
-		});
-		let flow = self.scoped(|s| s.block(body))?;
-		let frame = self.loops.pop().expect("loop frame");
+		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| s.block(body))?;
 
 		if let Some((v, t)) = flow {
 			// a discarded body value is released here, once per iteration
@@ -562,6 +572,26 @@ impl<'a, M: Module> Translator<'a, M> {
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
 		}
+	}
+
+	// Push a loop frame, run `body` in a child scope, then pop the frame.
+	fn in_loop(
+		&mut self,
+		top: Block,
+		exit: Option<Block>,
+		fallthrough: Option<Block>,
+		body: impl FnOnce(&mut Self) -> Result<Option<TypedVal>, Diagnostic>,
+	) -> Result<(LoopFrame, Option<TypedVal>), Diagnostic> {
+		let depth = self.scopes.len();
+		self.loops.push(LoopFrame {
+			top,
+			exit,
+			depth,
+			result: None,
+			fallthrough,
+		});
+		let flow = self.scoped(body)?;
+		Ok((self.loops.pop().expect("loop frame"), flow))
 	}
 
 	// Merge at `exit` and take the loop's value.
@@ -649,15 +679,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
-		let depth = self.scopes.len();
-		self.loops.push(LoopFrame {
-			top: latch,
-			exit: Some(exit),
-			depth,
-			result: None,
-			fallthrough: Some(fallthrough),
-		});
-		let flow = self.scoped(|s| {
+		let (frame, flow) = self.in_loop(latch, Some(exit), Some(fallthrough), |s| {
 			let (item, typ) = match &src {
 				None => (iv, Typ::Int(64)),
 				Some((data, elem)) => (s.load_nth(*data, iv, elem), elem.clone()),
@@ -678,7 +700,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			s.block(body)
 		})?;
-		let frame = self.loops.pop().expect("loop frame");
 
 		if let Some((v, t)) = flow {
 			self.release_value(v, &t);

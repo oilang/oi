@@ -668,36 +668,25 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok((out, typ))
 			}
 
-			Expr::If { cond, then, els } => match self.conditional(cond, then, els.as_deref(), hint, expr.1)? {
-				Some((v, t)) => Ok((v, t)),
-				None => Err(Diagnostic::new("this `if` never produces a value", expr.1.into_range())
-					.with_label("every branch returns, but a value is needed here")),
-			},
-
-			Expr::Match {
-				subject,
-				arms,
-				else_body,
-			} => match self.match_expr(subject, arms, else_body.as_deref(), hint, expr.1)? {
-				Some((v, t)) => Ok((v, t)),
-				None => Err(
-					Diagnostic::new("this `match` never produces a value", expr.1.into_range())
-						.with_label("every arm returns, but a value is needed here"),
-				),
+			Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => match self.branching(expr, hint)? {
+				Some(vt) => Ok(vt),
+				None => {
+					let (kw, why) = match &expr.0 {
+						Expr::If { .. } => ("if", "every branch returns, but a value is needed here"),
+						Expr::Match { .. } => ("match", "every arm returns, but a value is needed here"),
+						_ => ("loop", "an infinite loop with no `break` yields nothing"),
+					};
+					Err(
+						Diagnostic::new(format!("this `{kw}` never produces a value"), expr.1.into_range())
+							.with_label(why),
+					)
+				}
 			},
 
 			Expr::Pipe { value, step } => self.pipe(value, step, expr.1),
 
 			Expr::OrElse { value, body } => self.or_else(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
-
-			Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
-				Some(vt) => Ok(vt),
-				None => Err(
-					Diagnostic::new("this `loop` never produces a value", expr.1.into_range())
-						.with_label("an infinite loop with no `break` yields nothing"),
-				),
-			},
 
 			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body),
 

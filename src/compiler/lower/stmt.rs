@@ -256,23 +256,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
-				Expr::If { cond, then, els } => {
-					match self.conditional(cond, then, els.as_deref(), stmt_target, stmt.1)? {
-						Some((v, t)) => last = (v, t),
-						None => return Ok(None),
-					}
-				}
-
-				Expr::Match {
-					subject,
-					arms,
-					else_body,
-				} => match self.match_expr(subject, arms, else_body.as_deref(), stmt_target, stmt.1)? {
-					Some((v, t)) => last = (v, t),
-					None => return Ok(None),
-				},
-
-				Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
+				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => match self.branching(stmt, stmt_target)? {
 					Some((v, t)) => last = (v, t),
 					None => return Ok(None),
 				},
