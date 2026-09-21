@@ -226,13 +226,18 @@ fn append_slice_copies_buffer() {
 }
 
 #[test]
+fn append_in_expression_position() {
+	check(["a := [1]", "(a << 2 << 3).len"], "3");
+}
+
+#[test]
 fn append_immutable_error() {
 	fail_with(["a :: [1, 2]", "a << 3"], "immutable");
 }
 
 #[test]
 fn append_non_array_error() {
-	fail_with(["x := 5", "x << 1"], "not an array");
+	fail_with([r#"x := "hi""#, "x << 1"], "cannot apply `<<`");
 }
 
 #[test]

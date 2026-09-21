@@ -40,6 +40,20 @@ fn precedence() {
 }
 
 #[test]
+fn shifts() {
+	check(
+		indoc! {"
+			print(1 << 4)
+			print(-8 >> 1)
+			print(u8.(0b1000_0000) >> 1)
+			print(1 << 3 - 1)
+			print(1 << 4 | 3)
+		"},
+		["16", "-4", "64", "4", "19"],
+	);
+}
+
+#[test]
 fn rejects_floats() {
 	fail_with("1.5 & 2.0", "bitwise operators need integer operands");
 }

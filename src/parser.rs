@@ -667,34 +667,6 @@ where
 			)
 		});
 
-	// array appending
-	let append = ident()
-		.then(
-			just(Token::LtLt)
-				.ignore_then(expr.clone().or(block_lit.clone()))
-				.repeated()
-				.at_least(1)
-				.collect::<Vec<_>>(),
-		)
-		.map_with(|(name, values), ex| {
-			let mut stmts: Vec<_> = values
-				.into_iter()
-				.map(|value| {
-					(
-						Expr::Append {
-							name: name.clone(),
-							value: Box::new(value),
-						},
-						ex.span(),
-					)
-				})
-				.collect();
-			match stmts.len() {
-				1 => stmts.pop().unwrap(),
-				_ => (Expr::Block(stmts), ex.span()),
-			}
-		});
-
 	// map deletion
 	let map_delete = ident()
 		.then_ignore(just(Token::Dot))
@@ -858,7 +830,6 @@ where
 		.or(assign.clone())
 		.or(index_assign)
 		.or(map_delete)
-		.or(append)
 		.boxed();
 
 	// statements
@@ -1359,6 +1330,8 @@ where
 				binop(10, Token::Minus, BinOp::Sub),
 				// bitwise
 				(
+					binop(9, Token::LtLt, BinOp::Shl),
+					binop(9, Token::GtGt, BinOp::Shr),
 					binop(8, Token::Amp, BinOp::BitAnd),
 					binop(7, Token::Tilde, BinOp::BitXor),
 					binop(6, Token::Pipe, BinOp::BitOr),

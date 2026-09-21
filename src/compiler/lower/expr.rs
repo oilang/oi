@@ -7,6 +7,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.lower(expr, None)
 	}
 
+	// Get the array name for an append operation, if any.
+	fn append_target(&self, l: &Spanned<Expr>) -> Option<String> {
+		match &l.0 {
+			Expr::Ident(n) => matches!(self.vars.get(n)?.typ, Typ::Array(_)).then(|| n.clone()),
+			Expr::Binary(BinOp::Shl, l, _) => self.append_target(l),
+			_ => None,
+		}
+	}
+
 	pub(super) fn lower(&mut self, expr: &Spanned<Expr>, hint: Option<&Typ>) -> Result<TypedVal, Diagnostic> {
 		if let Some(t) = hint
 			&& let Some(v) = self.coerce_lit(expr, t)?
@@ -110,6 +119,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				BinOp::And => self.logical(true, l, r),
 				BinOp::Or => self.logical(false, l, r),
 				BinOp::In => self.in_op(l, r),
+				BinOp::Shl => match self.append_target(l) {
+					// arrays append, ints shift
+					Some(name) => {
+						self.expr(l)?;
+						let value = r.clone();
+						self.lower(&(Expr::Append { name, value }, expr.1), hint)
+					}
+					None => self.binop(*op, l, r, expr.1),
+				},
 				_ => self.binop(*op, l, r, expr.1),
 			},
 			Expr::Not(e) => {
