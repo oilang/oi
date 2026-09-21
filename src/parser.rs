@@ -1287,7 +1287,7 @@ where
 		let core = atom
 			.pratt((
 				// field/tuple/method access
-				postfix(9, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
+				postfix(13, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
 					Dot::Fields(parts) => parts.into_iter().fold(lhs, |cur, field| {
 						(
 							Expr::Field {
@@ -1308,7 +1308,7 @@ where
 					),
 				}),
 				// indexing and slicing
-				postfix(9, subscript, |lhs, sub: Option<Spanned<Expr>>, ex| {
+				postfix(13, subscript, |lhs, sub: Option<Spanned<Expr>>, ex| {
 					let collection = Box::new(lhs);
 					let e = match sub {
 						Some(index) if index.0.bounds().is_none() => Expr::Index {
@@ -1323,23 +1323,23 @@ where
 					(e, ex.span())
 				}),
 				// applying a fn value
-				postfix(9, adjacent.ignore_then(args.clone()), |lhs, args, ex| {
+				postfix(13, adjacent.ignore_then(args.clone()), |lhs, args, ex| {
 					let callee = Box::new(lhs);
 					(Expr::Apply { callee, args }, ex.span())
 				}),
 				// propagator
-				postfix(9, just(Token::Question), |lhs, _, ex| {
+				postfix(13, just(Token::Question), |lhs, _, ex| {
 					(Expr::Propagate(Box::new(lhs)), ex.span())
 				}),
 				// expression annotations
-				prefix(8, annotation.clone(), |a, rhs, ex| {
+				prefix(12, annotation.clone(), |a, rhs, ex| {
 					(Expr::Annotated(vec![a], Box::new(rhs)), ex.span())
 				}),
 				// unary
-				prefix(8, just(Token::Minus), |_, rhs, ex| {
+				prefix(12, just(Token::Minus), |_, rhs, ex| {
 					(Expr::Negative(Box::new(rhs)), ex.span())
 				}),
-				prefix(8, just(Token::Not), |_, rhs, ex| match rhs {
+				prefix(12, just(Token::Not), |_, rhs, ex| match rhs {
 					(Expr::Cast { target: (t, ts), args }, _) => {
 						let target = (TypeExpr::Result(Box::new(t), None), ts);
 						(Expr::Cast { target, args }, ex.span())
@@ -1347,16 +1347,22 @@ where
 					_ => (Expr::Not(Box::new(rhs)), ex.span()),
 				}),
 				// arithmetic
-				infix(right(8), just(Token::StarStar), |l, _, r, ex| {
+				infix(right(12), just(Token::StarStar), |l, _, r, ex| {
 					(Expr::Binary(BinOp::Pow, Box::new(l), Box::new(r)), ex.span())
 				}),
-				binop(7, Token::Asterisk, BinOp::Mul),
-				binop(7, Token::Slash, BinOp::Div),
-				infix(left(7), same_line.ignore_then(just(Token::Percent)), |l, _, r, ex| {
+				binop(11, Token::Asterisk, BinOp::Mul),
+				binop(11, Token::Slash, BinOp::Div),
+				infix(left(11), same_line.ignore_then(just(Token::Percent)), |l, _, r, ex| {
 					(Expr::Binary(BinOp::Mod, Box::new(l), Box::new(r)), ex.span())
 				}),
-				binop(6, Token::Plus, BinOp::Add),
-				binop(6, Token::Minus, BinOp::Sub),
+				binop(10, Token::Plus, BinOp::Add),
+				binop(10, Token::Minus, BinOp::Sub),
+				// bitwise
+				(
+					binop(8, Token::Amp, BinOp::BitAnd),
+					binop(7, Token::Tilde, BinOp::BitXor),
+					binop(6, Token::Pipe, BinOp::BitOr),
+				),
 				// relational
 				binop(4, Token::Lt, BinOp::Lt),
 				binop(4, Token::Gt, BinOp::Gt),

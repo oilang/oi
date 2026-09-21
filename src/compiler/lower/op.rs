@@ -232,6 +232,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().band(val, mask_v)
 	}
 
+	// Wrap `val` back to its declared bit width.
+	pub(super) fn narrow(&mut self, val: Value, typ: &Typ) -> Value {
+		match typ {
+			Typ::Int(w) => self.reduce_int(val, *w),
+			Typ::UInt(w) => self.reduce_uint(val, *w),
+			_ => val,
+		}
+	}
+
 	// Promote ints to larger-width ints and floats.
 	fn promote(&mut self, lv: Value, lt: Typ, rv: Value, rt: Typ) -> (Value, Typ, Value, Typ) {
 		let ints = |t: &Typ| matches!(t, Typ::Int(_) | Typ::ISize | Typ::UInt(_) | Typ::USize);
@@ -291,6 +300,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			BinOp::Div => (role::DIV, "div"),
 			BinOp::Mod => (role::MOD, "mod"),
 			BinOp::Pow => (role::POW, "pow"),
+			BinOp::BitAnd => (role::BIT_AND, "bitand"),
+			BinOp::BitOr => (role::BIT_OR, "bitor"),
+			BinOp::BitXor => (role::BIT_XOR, "bitxor"),
+			BinOp::Shl => (role::SHL, "shl"),
+			BinOp::Shr => (role::SHR, "shr"),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| match lt {
@@ -360,6 +374,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					.with_label("only integer operands"),
 			);
 		}
+		if let NumKind::Float = kind
+			&& matches!(
+				op,
+				BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr
+			) {
+			return Err(
+				Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range())
+					.with_label("bitwise operators need integer operands"),
+			);
+		}
 		// cranelift apparently has no pow instruction, so `**` widens to 64 bits and calls into the runtime
 		let pow = matches!(op, BinOp::Pow).then(|| {
 			let (name, wide, t) = match kind {
@@ -389,14 +413,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			(BinOp::Mod, NumKind::Float) => unreachable!("float `%` rejected above"),
 			(BinOp::Mod, NumKind::UInt) => b.urem(lv, rv),
 			(BinOp::Mod, NumKind::Int) => b.srem(lv, rv),
+			(BinOp::BitAnd, _) => b.band(lv, rv),
+			(BinOp::BitOr, _) => b.bor(lv, rv),
+			(BinOp::BitXor, _) => b.bxor(lv, rv),
+			(BinOp::Shl, _) => b.ishl(lv, rv),
+			(BinOp::Shr, NumKind::UInt) => b.ushr(lv, rv),
+			(BinOp::Shr, _) => b.sshr(lv, rv),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
-		// For non-standard widths, wrap the result back to the declared bit width.
-		let out = match &lt {
-			Typ::Int(w) if cl_type(&Typ::Int(*w), self.int).bits() as u16 != *w => self.reduce_int(out, *w),
-			Typ::UInt(w) if cl_type(&Typ::UInt(*w), self.int).bits() as u16 != *w => self.reduce_uint(out, *w),
-			_ => out,
-		};
+		let out = self.narrow(out, &lt);
 		Ok((out, lt))
 	}
 

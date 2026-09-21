@@ -46,6 +46,6 @@ fn and_requires_bool() {
 }
 
 #[test]
-fn not_requires_bool() {
-	fail_with("!1", "expected Bool");
+fn not_requires_bool_or_int() {
+	fail_with(r#"!"hi""#, "expected Bool or an integer");
 }

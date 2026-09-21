@@ -245,11 +245,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Fit an integer into `target`.
 	fn truncate(&mut self, val: Value, target: &Typ, signed: bool) -> Value {
 		let val = self.intcast(val, cl_type(target, self.int), signed);
-		match target {
-			Typ::Int(w) => self.reduce_int(val, *w),
-			Typ::UInt(w) => self.reduce_uint(val, *w),
-			_ => val,
-		}
+		self.narrow(val, target)
 	}
 
 	// A fieldless enum casts as its backing value.

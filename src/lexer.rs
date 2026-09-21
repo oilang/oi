@@ -152,8 +152,6 @@ pub enum Token {
 	Eq,
 	#[token("!=")]
 	Ne,
-	#[token("<<")]
-	LtLt,
 	#[token("<")]
 	Lt,
 	#[token(">")]
@@ -162,6 +160,14 @@ pub enum Token {
 	Le,
 	#[token(">=")]
 	Ge,
+
+	// bitwise operators
+	#[token("<<")]
+	LtLt,
+	#[token(">>")]
+	GtGt,
+	#[token("~")]
+	Tilde,
 
 	// logical operators
 	#[token("&&")]
@@ -289,11 +295,13 @@ impl fmt::Display for Token {
 			Token::Percent => write!(f, "%"),
 			Token::Eq => write!(f, "=="),
 			Token::Ne => write!(f, "!="),
-			Token::LtLt => write!(f, "<<"),
 			Token::Lt => write!(f, "<"),
 			Token::Gt => write!(f, ">"),
 			Token::Le => write!(f, "<="),
 			Token::Ge => write!(f, ">="),
+			Token::LtLt => write!(f, "<<"),
+			Token::GtGt => write!(f, ">>"),
+			Token::Tilde => write!(f, "~"),
 			Token::AndAnd => write!(f, "&&"),
 			Token::Amp => write!(f, "&"),
 			Token::OrOr => write!(f, "||"),

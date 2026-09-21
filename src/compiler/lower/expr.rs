@@ -103,9 +103,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Binary(op, l, r) => match op {
-				BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod | BinOp::Pow => {
-					self.binop(*op, l, r, expr.1)
-				}
 				BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
 					let (icc, fcc) = cmp_cc(*op);
 					self.cmp(icc, fcc, l, r, expr.1)
@@ -113,16 +110,25 @@ impl<'a, M: Module> Translator<'a, M> {
 				BinOp::And => self.logical(true, l, r),
 				BinOp::Or => self.logical(false, l, r),
 				BinOp::In => self.in_op(l, r),
+				_ => self.binop(*op, l, r, expr.1),
 			},
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
-				if typ != Typ::Bool {
-					return Err(
-						Diagnostic::new(format!("expected Bool, got {typ}"), expr.1.into_range())
-							.with_label("`!` needs a Bool operand"),
-					);
-				}
-				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
+				let out = match &typ {
+					Typ::Bool => self.b.ins().bxor_imm(v, 1),
+					Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize => {
+						let v = self.b.ins().bnot(v);
+						self.narrow(v, &typ)
+					}
+					_ => {
+						return Err(Diagnostic::new(
+							format!("expected Bool or an integer, got {typ}"),
+							expr.1.into_range(),
+						)
+						.with_label("`!` needs a Bool or integer operand"));
+					}
+				};
+				Ok((out, typ))
 			}
 
 			Expr::Call { name, type_args, args } => {

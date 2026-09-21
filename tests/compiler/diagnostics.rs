@@ -67,7 +67,7 @@ fn unexpected_token() {
 
 #[test]
 fn invalid_token() {
-	fail_with("~", "unexpected character `~`");
+	fail_with(r"\", r"unexpected character `\`");
 }
 
 #[test]

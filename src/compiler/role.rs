@@ -10,6 +10,11 @@ pub(crate) const MUL: &str = "core::Mul";
 pub(crate) const DIV: &str = "core::Div";
 pub(crate) const MOD: &str = "core::Mod";
 pub(crate) const POW: &str = "core::Pow";
+pub(crate) const BIT_AND: &str = "core::BitAnd";
+pub(crate) const BIT_OR: &str = "core::BitOr";
+pub(crate) const BIT_XOR: &str = "core::BitXor";
+pub(crate) const SHL: &str = "core::Shl";
+pub(crate) const SHR: &str = "core::Shr";
 pub(crate) const ERROR: &str = "core::Error";
 
 // types
