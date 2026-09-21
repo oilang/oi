@@ -167,7 +167,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Look up a variable.
 	pub(super) fn local(&self, name: &str, span: Range<usize>) -> Result<Local, Diagnostic> {
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
-			Diagnostic::new(format!("undefined variable `{name}`"), span.clone()).with_label("not found in scope")
+			if name == "none" {
+				Diagnostic::new("cannot infer the type", span.clone()).with_label("`none` needs type context")
+			} else {
+				Diagnostic::new(format!("undefined variable `{name}`"), span.clone()).with_label("not found in scope")
+			}
 		})?;
 		if local.stat {
 			self.require_pure(name, span)?;

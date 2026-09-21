@@ -880,7 +880,6 @@ where
 			Token::String(s) => Expr::String(s),
 			Token::Atom(name) => Expr::Atom(name),
 			Token::Dollar => Expr::Dollar,
-			Token::None => Expr::None,
 		};
 
 		// arg mods
@@ -994,7 +993,7 @@ where
 
 		// enum shorthand
 		let enum_shorthand = dot()
-			.ignore_then(select! { Token::Ident(v) => v, Token::None => "none".to_string() })
+			.ignore_then(select! { Token::Ident(v) => v })
 			.then(args.clone().or(record_arg.clone()).or_not())
 			.map_with(|(variant, args), ex| {
 				let args = args.unwrap_or_default();

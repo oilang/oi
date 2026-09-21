@@ -17,7 +17,6 @@ pub enum Expr {
 	Atom(String),
 	Ident(String),
 	Dollar,
-	None,
 	Foreign,
 
 	// `[mods] name [type] := value`
@@ -472,7 +471,6 @@ impl Expr {
 			| Expr::Atom(_)
 			| Expr::Ident(_)
 			| Expr::Dollar
-			| Expr::None
 			| Expr::Foreign
 			| Expr::Continue
 			| Expr::Unquote(_)
@@ -527,7 +525,6 @@ impl Expr {
 			Expr::Int(_)
 			| Expr::Float(_)
 			| Expr::Atom(_)
-			| Expr::None
 			| Expr::EnumShorthand { .. }
 			| Expr::DotArray(None, _)
 			| Expr::DotTuple(_)

@@ -238,7 +238,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Expr::EnumShorthand { variant, args }, Typ::Enum(typ)) => {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
-			(Expr::None, Typ::Option(inner)) => self.make_option(inner, None),
 			(Expr::String(s), Typ::CStr) => {
 				let mut bytes = s.as_bytes().to_vec();
 				bytes.push(0);
@@ -257,7 +256,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.make_enum(&variants, v.disc, &[])
 			}
-			(Expr::EnumShorthand { variant, .. } | Expr::Atom(variant), Typ::Result(ok, err)) => {
+			(Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant), Typ::Result(ok, err)) => {
 				let has =
 					|t: &Typ| matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant));
 				let Some((disc, side)) = [ok, err].into_iter().enumerate().find(|(_, t)| has(t)) else {
@@ -268,6 +267,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => return Ok(None),
 				}
 			}
+			(Expr::Ident(name), Typ::Option(inner)) if name == "none" => self.make_option(inner, None),
 			(_, Typ::Option(inner)) => match self.coerce_lit(value, inner)? {
 				Some(v) => self.make_option(inner, Some(v)),
 				None => return Ok(None),

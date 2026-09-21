@@ -1,6 +1,30 @@
 use crate::helpers::*;
 
 #[test]
+fn user_enum_with_common_variants() {
+	check(
+		indoc! {r#"
+			MyOption :: enum { none some }
+			MyOption.none
+		"#},
+		"none",
+	);
+	check(
+		indoc! {r#"
+			MyResult :: enum { ok err }
+			MyResult.ok
+		"#},
+		"ok",
+	);
+}
+
+#[test]
+fn builtins_still_work() {
+	check("?int.(none)", "none");
+	check("!int.(42)", "ok(42)");
+}
+
+#[test]
 fn qualified_access() {
 	check(["Color :: enum { red green blue }", "Color.red"], "red");
 	check(["Color :: enum { red green blue }", "Color.blue"], "blue");

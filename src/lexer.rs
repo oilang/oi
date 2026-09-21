@@ -106,8 +106,6 @@ pub enum Token {
 	Mut,
 	#[token("move")]
 	Move,
-	#[token("none")]
-	None,
 	#[token("or")]
 	Or,
 	#[regex(r"[\p{XID_Start}_]\p{XID_Continue}*", |lex| lex.slice().to_string())]
@@ -265,7 +263,6 @@ impl fmt::Display for Token {
 			Token::In => write!(f, "in"),
 			Token::Mut => write!(f, "mut"),
 			Token::Move => write!(f, "move"),
-			Token::None => write!(f, "none"),
 			Token::Or => write!(f, "or"),
 			Token::Ident(name) => write!(f, "{name}"),
 			Token::Bind => write!(f, ":="),
