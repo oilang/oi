@@ -277,6 +277,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => return Ok(None),
 				},
 
+				Expr::Block(body) if stmt_target.is_none() => match self.scoped(|s| s.block_tail(body, None))? {
+					Some((v, t)) => last = (v, t),
+					None => return Ok(None),
+				},
+
 				// TODO: revisit after adding the Iterator trait
 				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body)?,
 

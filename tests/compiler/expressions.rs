@@ -22,6 +22,14 @@ fn semicolon_terminator() {
 }
 
 #[test]
+fn blocks_are_expressions() {
+	check(
+		["a := { print(3); 5 }", "print(a + { 1 })", "x := 1", "{ x = 7 }", "x"],
+		["3", "6", "7"],
+	);
+}
+
+#[test]
 fn trailing_assign_yields_the_place() {
 	check(["x := 1", "5", "x = 3"], "3");
 }

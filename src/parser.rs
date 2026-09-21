@@ -529,22 +529,7 @@ where
 		.map(|((name, bound), default)| TypeParam { name, bound, default });
 	let type_params = bracket(list(type_param)).or_not().map(Option::unwrap_or_default).boxed();
 
-	// a bare block is a fn literal wherever a fn type is expected
-	let block_lit = block
-		.clone()
-		.map_with(|body, ex| {
-			(
-				Expr::AnonFn {
-					captures: None,
-					params: vec![],
-					params_tuple: true,
-					ret: None,
-					body,
-				},
-				ex.span(),
-			)
-		})
-		.boxed();
+	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
 
 	// bindings
 	let annot = spanned(type_expr.clone());
@@ -564,7 +549,7 @@ where
 			just(Token::Assign)
 				.to(true)
 				.or(just(Token::Colon).to(false))
-				.then(expr.clone().or(block_lit.clone()))
+				.then(expr.clone())
 				.or_not(),
 		)
 		.map(|(typ, tail)| match tail {
@@ -628,10 +613,8 @@ where
 	// assignment
 	let mut assign = Recursive::declare();
 	assign.define(
-		ident()
-			.then(assign_op.clone())
-			.then(assign.clone().or(expr.clone()).or(block_lit.clone()))
-			.map_with(move |((name, op), value), ex| {
+		ident().then(assign_op.clone()).then(assign.clone().or(expr.clone())).map_with(
+			move |((name, op), value), ex| {
 				let value = fold(op, Expr::Ident(name.clone()), value, ex.span());
 				(
 					Expr::Assign {
@@ -640,7 +623,8 @@ where
 					},
 					ex.span(),
 				)
-			}),
+			},
+		),
 	);
 
 	// return statements
@@ -800,11 +784,9 @@ where
 			)
 		});
 
-	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
-
 	let defer_stmt = just(Token::Defer)
 		.ignore_then(just(Token::Or).or_not())
-		.then(block_ast.clone().or(expr.clone()))
+		.then(expr.clone())
 		.map_with(|(or, body), ex| {
 			(
 				Expr::Defer {
@@ -875,7 +857,7 @@ where
 		// variable vs. call vs. struct literal
 		let args = paren(
 			named_arg
-				.or((mod_arg.or(expr.clone()).or(block_lit.clone())).map(|e| (None, e)))
+				.or(mod_arg.or(expr.clone()).map(|e| (None, e)))
 				.separated_by(just(Token::Comma))
 				.allow_trailing()
 				.collect::<Vec<_>>(),
@@ -898,10 +880,7 @@ where
 		.boxed();
 
 		// named or positional field entry
-		let struct_field_entry = ident()
-			.then_ignore(just(Token::Assign))
-			.or_not()
-			.then(expr.clone().or(block_lit.clone()));
+		let struct_field_entry = ident().then_ignore(just(Token::Assign)).or_not().then(expr.clone());
 		let struct_body = brace(loose_list(struct_field_entry.clone()));
 
 		// explicit generic types
@@ -958,7 +937,7 @@ where
 			Token::String(s) => Expr::String(s),
 			Token::Atom(a) => Expr::Atom(a),
 		};
-		let keyed = spanned(key).then(just(Token::Assign).ignore_then(expr.clone().or(block_lit.clone())));
+		let keyed = spanned(key).then(just(Token::Assign).ignore_then(expr.clone()));
 		// enum shorthand
 		let brace_payload = struct_body.clone().map_with(|fs, ex| record_args(fs, ex.span()));
 		let payload = dot().ignore_then(args.clone().or(brace_payload)).boxed();
@@ -1006,14 +985,11 @@ where
 			.then_ignore(adjacent)
 			.then_ignore(just(Token::Not))
 			.then_ignore(adjacent)
-			.then(paren(loose_list(expr.clone().or(block_ast))))
+			.then(paren(loose_list(expr.clone())))
 			.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 		// map literals
-		let map_entry = expr
-			.clone()
-			.then_ignore(just(Token::Assign))
-			.then(expr.clone().or(block_lit.clone()));
+		let map_entry = expr.clone().then_ignore(just(Token::Assign)).then(expr.clone());
 		let map = bracket(
 			map_entry
 				.separated_by(just(Token::Comma).or_not())
@@ -1168,14 +1144,12 @@ where
 			.delimited_by(just(Token::Backtick), just(Token::Backtick))
 			.map_with(|stmts, ex| (Expr::Quote(stmts), ex.span()));
 
-		// `comp`/`unsafe` take a braced block or a bare expression
-		let kw_block = block.clone().map_with(|stmts, ex| (Expr::Block(stmts), ex.span()));
 		let comp_expr = just(Token::Comp)
-			.ignore_then(kw_block.clone().or(expr.clone()))
+			.ignore_then(expr.clone())
 			.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 			.boxed();
 		let unsafe_expr = just(Token::Unsafe)
-			.ignore_then(kw_block.or(expr.clone()))
+			.ignore_then(expr.clone())
 			.map_with(|inner, ex| (Expr::Unsafe(Box::new(inner)), ex.span()))
 			.boxed();
 
@@ -1222,6 +1196,7 @@ where
 			tuple,
 			map,
 			array,
+			block_ast.clone(),
 			if_expr,
 			match_expr,
 			comp_expr,
@@ -1372,14 +1347,16 @@ where
 				binop(1, Token::OrOr, BinOp::Or),
 				// ranges
 				(
+					postfix(
+						5,
+						just(Token::DotDot).then_ignore(just(Token::LBrace).not().then(expr.clone()).not()),
+						|l, _, ex| range(l, None, false, ex.span()),
+					),
 					infix(left(5), just(Token::DotDot), |l, _, r, ex| {
 						range(l, Some(r), false, ex.span())
 					}),
 					infix(left(5), just(Token::DotDotEq), |l, _, r, ex| {
 						range(l, Some(r), true, ex.span())
-					}),
-					postfix(5, just(Token::DotDot).then_ignore(expr.clone().not()), |l, _, ex| {
-						range(l, None, false, ex.span())
 					}),
 					prefix(5, just(Token::DotDot), |_, r, ex| {
 						(Expr::Spread(Box::new(r)), ex.span())
@@ -1391,7 +1368,7 @@ where
 			.boxed();
 
 		// juxts (leading literals and trailing functions)
-		let trailing = anon_fn.clone().or(block_lit.clone());
+		let trailing = anon_fn.clone().or(block_ast.clone());
 		let lit_arg = spanned(literal).or(enum_shorthand);
 		let juxt = choice((
 			lit_arg.then(trailing.clone().or_not()).map(|(l, t)| (Some(l), t)),
@@ -1482,7 +1459,7 @@ where
 	// struct defs
 	let field_typed = just(Token::Colon)
 		.ignore_then(type_expr.clone())
-		.then(just(Token::Assign).ignore_then(expr.clone().or(block_lit.clone())).or_not());
+		.then(just(Token::Assign).ignore_then(expr.clone()).or_not());
 	let struct_field = just(Token::Pub)
 		.or_not()
 		.then(ident())

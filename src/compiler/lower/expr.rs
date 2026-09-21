@@ -701,7 +701,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body),
 
-			Expr::Block(body) => self.block_expr(body, expr.1),
+			Expr::Block(body) => match hint {
+				// bare blocks are treated as fn literals when they match an expected/inferred fn type
+				Some(t @ Typ::Fn(..)) => {
+					self.declare_anon_fn(&None, &[], true, AnonSig::Inferred(t.clone()), body, expr.1)
+				}
+				_ => self.block_expr(body, expr.1),
+			},
 
 			Expr::StructLit {
 				name,
