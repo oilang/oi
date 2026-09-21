@@ -57,7 +57,7 @@ fn first_of_array() {
 		}
 		first([1, 2, 3])
 	"};
-	check(src, "some(1)");
+	check(src, "some.(1)");
 }
 
 #[test]

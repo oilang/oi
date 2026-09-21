@@ -21,7 +21,7 @@ fn user_enum_with_common_variants() {
 #[test]
 fn builtins_still_work() {
 	check("?int.(none)", "none");
-	check("!int.(42)", "ok(42)");
+	check("!int.(42)", "ok.(42)");
 }
 
 #[test]
@@ -243,9 +243,9 @@ fn payload_construct() {
 	check(
 		[
 			"Shape :: enum { point triangle(f64, f64, f64) }",
-			"Shape.triangle(3.0, 4.0, 5.0)",
+			"Shape.triangle.(3.0, 4.0, 5.0)",
 		],
-		"triangle(3.0, 4.0, 5.0)",
+		"triangle.(3.0, 4.0, 5.0)",
 	);
 }
 
@@ -268,7 +268,7 @@ fn payload_empty_literal_is_default() {
 #[test]
 fn payload_int_cast_errors() {
 	fail_with(
-		["Opt :: enum { nope some(int) }", "int.(Opt.some(1))"],
+		["Opt :: enum { nope some(int) }", "int.(Opt.some.(1))"],
 		"no backing value",
 	);
 }
@@ -276,7 +276,7 @@ fn payload_int_cast_errors() {
 #[test]
 fn payload_field_type_mismatch() {
 	fail_with(
-		["Opt :: enum { nope some(int) }", "Opt.some(3.0)"],
+		["Opt :: enum { nope some(int) }", "Opt.some.(3.0)"],
 		"expected int, got float",
 	);
 }
@@ -284,7 +284,7 @@ fn payload_field_type_mismatch() {
 #[test]
 fn payload_wrong_arity() {
 	fail_with(
-		["Opt :: enum { nope some(int) }", "Opt.some()"],
+		["Opt :: enum { nope some(int) }", "Opt.some.()"],
 		"takes 1 field(s), got 0",
 	);
 }
@@ -294,9 +294,9 @@ fn payload_match_binds_fields() {
 	check(
 		indoc! {r#"
 			Opt :: enum { nope some(int) }
-			o :: Opt.some(7)
+			o :: Opt.some.(7)
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 				.nope => -1,
 			}
 		"#},
@@ -311,7 +311,7 @@ fn payload_match_fieldless_arm() {
 			Opt :: enum { nope some(int) }
 			o : Opt : .nope
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 				.nope => -1,
 			}
 		"#},
@@ -324,10 +324,10 @@ fn payload_match_multiple_fields() {
 	check(
 		indoc! {r#"
 			Shape :: enum { rect(int, int) tri(int, int, int) }
-			s :: Shape.rect(3, 4)
+			s :: Shape.rect.(3, 4)
 			match s {
-				.rect(w, h) => w * h,
-				.tri(a, b, c) => a + b + c,
+				.rect.(w, h) => w * h,
+				.tri.(a, b, c) => a + b + c,
 			}
 		"#},
 		"12",
@@ -339,8 +339,8 @@ fn shorthand_payload_construct() {
 	check(
 		[
 			"Opt :: enum { nope some(int) }",
-			"o : Opt : .some(5)",
-			"match o { .some(n) => n, .nope => 0 }",
+			"o : Opt : .some.(5)",
+			"match o { .some.(n) => n, .nope => 0 }",
 		],
 		"5",
 	);
@@ -348,13 +348,16 @@ fn shorthand_payload_construct() {
 
 #[test]
 fn payload_eq() {
-	check(["Opt :: enum { nope some(int) }", "Opt.some(1) == Opt.some(1)"], "true");
 	check(
-		["Opt :: enum { nope some(int) }", "Opt.some(1) == Opt.some(2)"],
+		["Opt :: enum { nope some(int) }", "Opt.some.(1) == Opt.some.(1)"],
+		"true",
+	);
+	check(
+		["Opt :: enum { nope some(int) }", "Opt.some.(1) == Opt.some.(2)"],
 		"false",
 	);
-	check(["Opt :: enum { nope some(int) }", "Opt.nope == Opt.some(1)"], "false");
-	check(["Opt :: enum { nope some(int) }", "Opt.nope != Opt.some(1)"], "true");
+	check(["Opt :: enum { nope some(int) }", "Opt.nope == Opt.some.(1)"], "false");
+	check(["Opt :: enum { nope some(int) }", "Opt.nope != Opt.some.(1)"], "true");
 }
 
 #[test]
@@ -362,14 +365,14 @@ fn payload_eq_string_field() {
 	check(
 		indoc! {r#"
 			Msg :: enum { quit say(string) }
-			Msg.say("hi") == Msg.say("hi")
+			Msg.say.("hi") == Msg.say.("hi")
 		"#},
 		"true",
 	);
 	check(
 		indoc! {r#"
 			Msg :: enum { quit say(string) }
-			Msg.say("hi") == Msg.say("bye")
+			Msg.say.("hi") == Msg.say.("bye")
 		"#},
 		"false",
 	);
@@ -378,7 +381,7 @@ fn payload_eq_string_field() {
 #[test]
 fn payload_ordering_rejected() {
 	fail_with(
-		["Opt :: enum { nope some(int) }", "Opt.some(1) < Opt.some(2)"],
+		["Opt :: enum { nope some(int) }", "Opt.some.(1) < Opt.some.(2)"],
 		"claim `Ord` for `Opt` to define ordering",
 	);
 }
@@ -389,9 +392,9 @@ fn struct_payload() {
 		indoc! {r#"
 			Point :: struct { x: int, y: int }
 			Shape :: enum { dot rect(Point) }
-			s :: Shape.rect(Point.{ x = 3, y = 4 })
+			s :: Shape.rect.(Point.{ x = 3, y = 4 })
 			match s {
-				.rect(p) => print(p),
+				.rect.(p) => print(p),
 				.dot => {}
 			}
 		"#},
@@ -405,9 +408,9 @@ fn enum_payload() {
 		indoc! {r#"
 			A :: enum { one two }
 			B :: enum { wrap(A) empty }
-			b :: B.wrap(A.two)
+			b :: B.wrap.(A.two)
 			match b {
-				.wrap(a) => match a {
+				.wrap.(a) => match a {
 					.one => "one",
 					.two => "two",
 				},
@@ -428,11 +431,11 @@ fn struct_form_construct_and_match() {
 				triangle(f64, f64, f64)
 				point
 			}
-			s :: Shape.circle { radius = 5.0 }
+			s :: Shape.circle.{ radius = 5.0 }
 			match s {
-				.circle { radius } => radius * 2.0,
-				.rectangle { width, height } => width * height,
-				.triangle(a, b, c) => a + b + c,
+				.circle.{ radius } => radius * 2.0,
+				.rectangle.{ width, height } => width * height,
+				.triangle.(a, b, c) => a + b + c,
 				.point => 0.0,
 			}
 		"#},
@@ -445,9 +448,9 @@ fn struct_form_shorthand_and_rename() {
 	check(
 		indoc! {r#"
 			Shape :: enum { circle { radius: f64 } rectangle { width: f64, height: f64 } }
-			mk :: fn() Shape { .rectangle { width = 3.0, height = 4.0 } }
+			mk :: fn() Shape { .rectangle.{ width = 3.0, height = 4.0 } }
 			match mk() {
-				.rectangle { width = w, height } => w * height,
+				.rectangle.{ width = w, height } => w * height,
 				else => 0.0,
 			}
 		"#},
@@ -460,7 +463,7 @@ fn struct_form_zero_is_first_variant() {
 	check(
 		indoc! {r#"
 			Shape :: enum { circle { radius: f64 } rectangle { width: f64, height: f64 } }
-			match Shape.{} { .circle { radius } => radius, else => -1.0 }
+			match Shape.{} { .circle.{ radius } => radius, else => -1.0 }
 		"#},
 		"0.0",
 	);
@@ -469,7 +472,7 @@ fn struct_form_zero_is_first_variant() {
 #[test]
 fn struct_form_unknown_field() {
 	fail_with(
-		["S :: enum { circle { radius: f64 } }", "S.circle { r = 1.0 }"],
+		["S :: enum { circle { radius: f64 } }", "S.circle.{ r = 1.0 }"],
 		"no field `r`",
 	);
 }
@@ -479,8 +482,8 @@ fn struct_form_omitted_field_zeroes() {
 	check(
 		indoc! {r#"
 			S :: enum { rect { w: f64, h: f64 } }
-			s :: S.rect { h = 2.0 }
-			match s { .rect { w, h } => w + h }
+			s :: S.rect.{ h = 2.0 }
+			match s { .rect.{ w, h } => w + h }
 		"#},
 		"2.0",
 	);
@@ -490,7 +493,7 @@ fn struct_form_omitted_field_zeroes() {
 fn struct_form_takes_positional() {
 	check(
 		["S :: enum { circle { radius: f64 } }", "print(S.circle.{ 1.0 })"],
-		"circle{radius = 1.0}",
+		"circle.{radius = 1.0}",
 	);
 }
 
@@ -508,9 +511,9 @@ fn alias_payload() {
 		indoc! {"
 			Meters :: f64
 			Dist :: enum { unknown known(Meters) }
-			d :: Dist.known(5.0)
+			d :: Dist.known.(5.0)
 			match d {
-				.known(m) => m,
+				.known.(m) => m,
 				.unknown => 0.0,
 			}
 		"},
@@ -613,7 +616,7 @@ fn ord_gives_discriminant() {
 
 #[test]
 fn ord_on_payload_variant() {
-	check(["Opt :: enum { nope some(int) }", "ord(Opt.some(1))"], "1");
+	check(["Opt :: enum { nope some(int) }", "ord(Opt.some.(1))"], "1");
 }
 
 #[test]
@@ -712,7 +715,7 @@ fn from_payload_zero_fills() {
 			"Shape :: enum { point triangle(f64, f64, f64) }",
 			"Shape.from(1) or { Shape.point }",
 		],
-		"triangle(0.0, 0.0, 0.0)",
+		"triangle.(0.0, 0.0, 0.0)",
 	);
 }
 
@@ -817,10 +820,10 @@ fn print_payloads() {
 				triangle(f64, f64, f64)
 			}
 			print(Shape.point)
-			print(Shape.circle { radius = 5.0 })
-			print(Shape.triangle(3.0, 4.0, 5.0))
+			print(Shape.circle.{ radius = 5.0 })
+			print(Shape.triangle.(3.0, 4.0, 5.0))
 		"},
-		["point", "circle{radius = 5.0}", "triangle(3.0, 4.0, 5.0)"],
+		["point", "circle.{radius = 5.0}", "triangle.(3.0, 4.0, 5.0)"],
 	);
 }
 
@@ -930,12 +933,12 @@ fn method_on_payload_enum() {
 			Shape :< {
 				perimeter :: fn(self) f64 {
 					match self {
-						.triangle(a, b, c) => a + b + c,
+						.triangle.(a, b, c) => a + b + c,
 						.point => 0.0,
 					}
 				}
 			}
-			Shape.triangle(2.0, 3.0, 4.0).perimeter()
+			Shape.triangle.(2.0, 3.0, 4.0).perimeter()
 		"#},
 		"9.0",
 	);
@@ -976,7 +979,7 @@ fn variant_holes_from_a_macro() {
 			}
 			def!()
 			print(E.A)
-			print(match E.B(7) { .A => 0, .B(n) => n })
+			print(match E.B.(7) { .A => 0, .B.(n) => n })
 		"},
 		["A", "7"],
 	);

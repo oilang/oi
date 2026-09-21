@@ -667,8 +667,8 @@ Range : Iterator < {
 	Item :: int
 	next :: fn(mut self) ?int {
 		done := match self.end {
-			some(e) => (self.step > 0 && self.start >= e) || (self.step < 0 && self.start <= e),
-			none => false, # no end means unbounded
+			.some.(e) => (self.step > 0 && self.start >= e) || (self.step < 0 && self.start <= e),
+			.none => false, # no end means unbounded
 		}
 		if done { return none }
 		defer self.start += self.step
@@ -1532,16 +1532,16 @@ main :: fn() {
 		triangle(f64, f64, f64)
 		point
 	}
-	s := Shape.circle { radius = 5.0 }
-	s := .circle { radius = 5.0 }
-	s := Shape.triangle(3.0, 4.0, 5.0)
+	s := Shape.circle.{ radius = 5.0 }
+	s := .circle.{ radius = 5.0 }
+	s := Shape.triangle.(3.0, 4.0, 5.0)
 	s := Shape.point
 
 	# pattern matching (exhaustive)
 	area := match s {
-		.circle { radius } => PI * radius * radius,
-		.rectangle { width, height } => width * height,
-		.triangle(a, b, c) => heron(a, b, c),
+		.circle.{ radius } => PI * radius * radius,
+		.rectangle.{ width, height } => width * height,
+		.triangle.(a, b, c) => heron(a, b, c),
 		.point => 0.0,
 	}
 
@@ -1593,7 +1593,7 @@ main :: fn() {
 
 	# first value is default
 	c: Color # .red
-	s: Shape # .circle { radius = 0.0 }
+	s: Shape # .circle.{ radius = 0.0 }
 
 	# methods
 

@@ -36,7 +36,7 @@ fn struct_casts() {
 
 #[test]
 fn widening_casts() {
-	check("?int.(42)", "some(42)");
+	check("?int.(42)", "some.(42)");
 	check(["Handle :: int | string", "print(Handle.(5))"], "5");
 	check(
 		indoc! {"
@@ -52,8 +52,8 @@ fn widening_casts() {
 
 #[test]
 fn result_casts() {
-	check("!int.(7)", "ok(7)");
-	check(r#"!int.(error("oops"))"#, r#"err("oops")"#);
+	check("!int.(7)", "ok.(7)");
+	check(r#"!int.(error("oops"))"#, r#"err.("oops")"#);
 	fail("?int(42)");
 }
 

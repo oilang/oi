@@ -3,17 +3,17 @@ use indoc::indoc;
 
 #[test]
 fn construct_ok() {
-	check("!int.(42)", "ok(42)");
+	check("!int.(42)", "ok.(42)");
 }
 
 #[test]
 fn construct_err() {
-	check(r#"!int.(error("oops"))"#, r#"err("oops")"#);
+	check(r#"!int.(error("oops"))"#, r#"err.("oops")"#);
 }
 
 #[test]
 fn zero_value_is_ok() {
-	check("r: !int; r", "ok(0)");
+	check("r: !int; r", "ok.(0)");
 }
 
 #[test]
@@ -59,8 +59,8 @@ fn match_binds_ok() {
 		indoc! {r#"
 			r :: !int.(42)
 			match r {
-				.ok(n) => n,
-				.err(e) => -1,
+				.ok.(n) => n,
+				.err.(e) => -1,
 			}
 		"#},
 		"42",
@@ -73,8 +73,8 @@ fn match_err_arm() {
 		indoc! {r#"
 			r :: !int.(error("oops"))
 			match r {
-				.ok(n) => n,
-				.err(e) => -1,
+				.ok.(n) => n,
+				.err.(e) => -1,
 			}
 		"#},
 		"-1",
@@ -87,7 +87,7 @@ fn match_non_exhaustive_errors() {
 		indoc! {r"
 			r :: !int.(42)
 			match r {
-				.ok(n) => n,
+				.ok.(n) => n,
 			}
 		"},
 		"non-exhaustive match, missing: err",
@@ -100,7 +100,7 @@ fn struct_field_type() {
 		"Box :: struct { val: !int }
 		b :: Box.{ val = !int.(42) }
 		b.val",
-		"ok(42)",
+		"ok.(42)",
 	);
 }
 
@@ -109,8 +109,8 @@ fn fn_param_type() {
 	let src = indoc! {"
 		unwrap_or :: fn(r: !int, fallback: int) int {
 			match r {
-				.ok(n) => n,
-				.err(e) => fallback,
+				.ok.(n) => n,
+				.err.(e) => fallback,
 			}
 		}
 		unwrap_or(!int.(42), 0)
@@ -126,7 +126,7 @@ fn bare_value_return_wraps_ok() {
 		}
 		find(5)
 	"};
-	check(src, "ok(5)");
+	check(src, "ok.(5)");
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn bare_error_return_wraps_err() {
 		}
 		find(5)
 	"#};
-	check(src, r#"err("not found")"#);
+	check(src, r#"err.("not found")"#);
 }
 
 #[test]

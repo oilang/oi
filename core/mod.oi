@@ -50,14 +50,14 @@ Range :< {
 		if offset % self.step != 0 { return false }
 		if (self.step > 0 && offset < 0) || (self.step < 0 && offset > 0) { return false }
 		match self.end {
-			.some(e) => if self.step > 0 { n < e } else { n > e },
+			.some.(e) => if self.step > 0 { n < e } else { n > e },
 			.none => true,
 		}
 	}
 
 	str :: fn(self) string {
 		second :: if self.step == 1 { "" } else { (self.start + self.step).str() + ".." }
-		last :: match self.end { .some(e) => e.str(), .none => "" }
+		last :: match self.end { .some.(e) => e.str(), .none => "" }
 		self.start.str() + ".." + second + last
 	}
 }

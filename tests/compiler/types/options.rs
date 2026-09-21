@@ -3,7 +3,7 @@ use indoc::indoc;
 
 #[test]
 fn construct_some() {
-	check("?int.(42)", "some(42)");
+	check("?int.(42)", "some.(42)");
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn match_binds_some() {
 		indoc! {r#"
 			o :: ?int.(42)
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 				.none => -1,
 			}
 		"#},
@@ -78,7 +78,7 @@ fn match_none_arm() {
 		indoc! {r#"
 			o :: ?int.(none)
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 				.none => -1,
 			}
 		"#},
@@ -92,7 +92,7 @@ fn match_non_exhaustive_errors() {
 		indoc! {r"
 			o :: ?int.(42)
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 			}
 		"},
 		"non-exhaustive match, missing: none",
@@ -105,7 +105,7 @@ fn struct_field_type() {
 		"Box :: struct { val: ?int }
 		b :: Box.{ val = ?int.(42) }
 		b.val",
-		"some(42)",
+		"some.(42)",
 	);
 }
 
@@ -114,7 +114,7 @@ fn fn_param_type() {
 	let src = indoc! {"
 		unwrap_or :: fn(o: ?int, fallback: int) int {
 			match o {
-				.some(n) => n,
+				.some.(n) => n,
 				.none => fallback,
 			}
 		}
@@ -131,7 +131,7 @@ fn bare_value_return_wraps_some() {
 		}
 		find(5)
 	"};
-	check(src, "some(5)");
+	check(src, "some.(5)");
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn array_payload_is_independent_copy() {
 		a := [1]
 		o :: wrap(a)
 		a << 2
-		match o { .some(v) => v, .none => [0] }
+		match o { .some.(v) => v, .none => [0] }
 	"};
 	check(src, "[1]");
 }

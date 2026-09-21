@@ -983,24 +983,9 @@ where
 			Token::Atom(a) => Expr::Atom(a),
 		};
 		let keyed = spanned(key).then(just(Token::Assign).ignore_then(expr.clone().or(block_lit.clone())));
-		let record_entries = keyed
-			.clone()
-			.then_ignore(just(Token::Comma).or_not())
-			.then(loose_list(keyed.clone()))
-			.map(|(first, mut rest)| {
-				rest.insert(0, first);
-				rest
-			})
-			.boxed();
-		let record_arg = brace(record_entries).map_with(|es, ex| vec![(Expr::Record(es), ex.span())]);
-
 		// enum shorthand
 		let brace_payload = struct_body.clone().map_with(|fs, ex| record_args(fs, ex.span()));
-		let payload = dot()
-			.ignore_then(args.clone().or(brace_payload))
-			.or(args.clone())
-			.or(record_arg.clone())
-			.boxed();
+		let payload = dot().ignore_then(args.clone().or(brace_payload)).boxed();
 		let enum_shorthand = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
 			.then(payload.clone().or_not())
@@ -1141,7 +1126,7 @@ where
 		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
 		let struct_pat = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
-			.then_ignore(dot().or_not())
+			.then_ignore(dot())
 			.then(brace(loose_list(keyed.clone().or(bind))))
 			.map_with(|(variant, es), ex| {
 				let args = vec![(Expr::Record(es), ex.span())];
@@ -1281,7 +1266,7 @@ where
 			select! { Token::Float(s) => Dot::Fields(s.split('.').map(String::from).collect()) },
 			// `[T]` is type args or subscript, based on whether a call follows
 			ident()
-				.then(call_type_args.or_not().then(args.clone().or(record_arg.clone())).or_not())
+				.then(call_type_args.or_not().then(args.clone()).or_not())
 				.map(|(name, call)| match call {
 					Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),
 					None => Dot::Fields(vec![name]),

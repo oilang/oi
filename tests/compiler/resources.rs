@@ -185,13 +185,13 @@ fn boxed_payloads_drop_with_their_box() {
 			FILE,
 			v,
 			"o: ?File = File.{fd = 1}",
-			"h :: V.Held(File.{fd = 2})",
+			"h :: V.Held.(File.{fd = 2})",
 			r#"print("built")"#,
 		],
 		["built", "drop 2", "drop 1"],
 	);
 	fail_with(
-		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held(f)", "print(f)"],
+		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held.(f)", "print(f)"],
 		"undefined variable",
 	);
 }

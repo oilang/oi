@@ -213,9 +213,12 @@ impl<'a, M: Module> Translator<'a, M> {
 					if method == "from" {
 						return self.enum_from(&name, args, expr.1);
 					}
-					let key = format!("{name}.{method}");
-					if !self.funcs.contains_key(&key) || self.enum_variants(&name).iter().any(|v| v.name == *method) {
-						return self.construct_variant(&name, method, args, expr.1);
+					if !self.funcs.contains_key(&format!("{name}.{method}"))
+						&& self.enum_variants(&name).iter().any(|v| v.name == *method)
+					{
+						let msg = format!("`{name}.{method}` is a variant, not a method");
+						return Err(Diagnostic::new(msg, expr.1.into_range())
+							.with_label(format!("write `{name}.{method}.( … )` or `.{{ … }}`")));
 					}
 				}
 

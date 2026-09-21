@@ -127,9 +127,9 @@ fn structs_traits_and_generics_reach_the_linker() {
 		Dog :: struct { name: string }
 		Dog : Animal < { speak :: fn(self) string { self.name + " woofs" } }
 		Opt[T] :: enum { nope, some(T) }
-		wrap[T] :: fn(v: T) Opt[T] { .some(v) }
+		wrap[T] :: fn(v: T) Opt[T] { .some.(v) }
 		match wrap(Dog.{ "Rex" }) {
-			.some(d) => print(d.speak()),
+			.some.(d) => print(d.speak()),
 			.nope => print("none"),
 		}
 	"#};

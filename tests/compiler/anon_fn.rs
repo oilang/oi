@@ -321,8 +321,8 @@ fn implicit_capture_ignores_match_bound_name() {
 		r :: !int.(7)
 		f :: fn () int {
 			match r {
-				.ok(n) => n * 2,
-				.err(e) => -1,
+				.ok.(n) => n * 2,
+				.err.(e) => -1,
 			}
 		}
 		f()

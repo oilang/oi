@@ -7,29 +7,29 @@ Shape :: enum {
 
 area :: fn(s: Shape) f64 {
 	match s {
-		.circle(r) => 3.14159 * r ** 2,
-		.rect(w, h) => w * h,
+		.circle.(r) => 3.14159 * r ** 2,
+		.rect.(w, h) => w * h,
 		else => 0.0,
 	}
 }
 
-Shape.rect(w = 3.0, h = 4.0)
+Shape.rect.{ 3.0, 4.0 }
 	|> area
 	|> assert!($ == 12.0)
 
-shape := Shape.triangle(3.0, 4.0, 5.0)
+shape := Shape.triangle.(3.0, 4.0, 5.0)
 
 match shape {
 	.point => {
 		print("origin: {()}")
 	}
-	.circle(r) => {
+	.circle.(r) => {
 		print("circle: {(r,)}")
 	}
-	.rect(w, h) => {
+	.rect.(w, h) => {
 		print("rect: {(w h)}")
 	}
-	t @ .triangle(a, b, c) => {
+	t @ .triangle.(a, b, c) => {
 		print(t)
 	}
 }

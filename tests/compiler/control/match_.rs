@@ -230,14 +230,14 @@ fn match_arm_chain_across_lines() {
 fn payload_bind_is_independent_copy() {
 	let src = indoc! {"
 		Box :: enum { empty has([]int) }
-		b :: Box.has([1])
+		b :: Box.has.([1])
 		v := match b {
-			.has(x) => x,
+			.has.(x) => x,
 			.empty => [0],
 		}
 		v << 99
 		match b {
-			.has(x) => x,
+			.has.(x) => x,
 			.empty => [0],
 		}
 	"};

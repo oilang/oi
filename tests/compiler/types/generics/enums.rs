@@ -4,9 +4,9 @@ use crate::helpers::*;
 fn shorthand_round_trip() {
 	let src = indoc! {"
 		Opt[T] :: enum { nope, some(T) }
-		get :: fn() Opt[int] { .some(5) }
+		get :: fn() Opt[int] { .some.(5) }
 		match get() {
-			.some(n) => n,
+			.some.(n) => n,
 			.nope => -1,
 		}
 	"};
@@ -19,7 +19,7 @@ fn nope_arm() {
 		Opt[T] :: enum { nope, some(T) }
 		get :: fn() Opt[int] { .nope }
 		match get() {
-			.some(n) => n,
+			.some.(n) => n,
 			.nope => -1,
 		}
 	"};
@@ -30,9 +30,9 @@ fn nope_arm() {
 fn generic_fn_round_trip() {
 	let src = indoc! {"
 		Opt[T] :: enum { nope, some(T) }
-		wrap[T] :: fn(v: T) Opt[T] { .some(v) }
+		wrap[T] :: fn(v: T) Opt[T] { .some.(v) }
 		match wrap(9) {
-			.some(n) => n,
+			.some.(n) => n,
 			.nope => -1,
 		}
 	"};
@@ -43,10 +43,10 @@ fn generic_fn_round_trip() {
 fn two_instances_coexist() {
 	let src = indoc! {r#"
 		Opt[T] :: enum { nope, some(T) }
-		geti :: fn() Opt[int] { .some(1) }
-		gets :: fn() Opt[string] { .some("hi") }
-		match geti() { .some(n) => print(n), .nope => {} }
-		match gets() { .some(s) => print(s), .nope => {} }
+		geti :: fn() Opt[int] { .some.(1) }
+		gets :: fn() Opt[string] { .some.("hi") }
+		match geti() { .some.(n) => print(n), .nope => {} }
+		match gets() { .some.(s) => print(s), .nope => {} }
 	"#};
 	check(src, "1\nhi");
 }
@@ -79,10 +79,10 @@ fn wrong_arity() {
 fn recursive_payload() {
 	let src = indoc! {"
 		Tree[T] :: enum { leaf(T), node(Tree[T]) }
-		f :: fn() Tree[int] { .node(.leaf(5)) }
+		f :: fn() Tree[int] { .node.(.leaf.(5)) }
 		match f() {
-			.leaf(v) => v,
-			.node(inner) => match inner { .leaf(v) => v, .node(x) => -1, },
+			.leaf.(v) => v,
+			.node.(inner) => match inner { .leaf.(v) => v, .node.(x) => -1, },
 		}
 	"};
 	check(src, "5");

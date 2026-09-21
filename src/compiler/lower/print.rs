@@ -75,7 +75,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else {
 				self.write_lit(&v.name, sink);
 				let braced = !v.names.is_empty();
-				self.write_lit(if braced { "{" } else { "(" }, sink);
+				self.write_lit(if braced { ".{" } else { ".(" }, sink);
 				for (i, pt) in v.payload.iter().enumerate() {
 					if i > 0 {
 						self.write_lit(", ", sink);

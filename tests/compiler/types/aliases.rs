@@ -101,7 +101,7 @@ fn alias_of_result_long_form() {
 		}
 		find(5)
 	"#};
-	check(src, "ok(5)");
+	check(src, "ok.(5)");
 }
 
 #[test]

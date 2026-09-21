@@ -157,7 +157,7 @@ fn enum_payloads_compare_structurally() {
 	let src = indoc! {"
 		P :: struct { x: int }
 		E :: enum { a(P), b }
-		print(E.a(P.{1}) == E.a(P.{1}), E.a(P.{1}) == E.a(P.{2}))
+		print(E.a.(P.{1}) == E.a.(P.{1}), E.a.(P.{1}) == E.a.(P.{2}))
 	"};
 	check(src, "true false");
 }

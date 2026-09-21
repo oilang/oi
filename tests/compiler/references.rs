@@ -31,7 +31,7 @@ fn optional_ref_zero_value_assign_unwrap() {
 			o: ?&Node
 			o = ?&Node.(&Node.{ value = 7 })
 			match o {
-				.some(n) => n.value,
+				.some.(n) => n.value,
 				.none => -1,
 			}
 		"},
@@ -67,7 +67,7 @@ fn linked_nodes() {
 			tail :: &Node.{ value = 2 }
 			head :: &Node.{ value = 1, next = ?&Node.(tail) }
 			match head.next {
-				.some(n) => print("{head.value} -> {n.value}"),
+				.some.(n) => print("{head.value} -> {n.value}"),
 				.none => print("lonely"),
 			}
 		"#},
@@ -103,7 +103,7 @@ fn returned_box_keeps_zeroed_field() {
 		make :: fn() &Node { &Node.{ value = 1 } }
 		n :: make()
 		match n.next {
-			.some(x) => print(x.value),
+			.some.(x) => print(x.value),
 			.none => print("ok"),
 		}
 	"#};
@@ -128,14 +128,14 @@ fn user_enum_with_ref_payload_stays_boxed() {
 		indoc! {r#"
 			Node :: struct { value: int }
 			E :: enum { empty, full(&Node) }
-			e :: E.full(&Node.{ value = 7 })
+			e :: E.full.(&Node.{ value = 7 })
 			print(e)
 			match e {
-				.full(n) => print(n.value),
+				.full.(n) => print(n.value),
 				.empty => print("no"),
 			}
 		"#},
-		["full(Node.{value = 7})", "7"],
+		["full.(Node.{value = 7})", "7"],
 	);
 }
 
