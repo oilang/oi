@@ -29,7 +29,7 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	match typ {
 		Int(_) => true,
 		UInt(_) | ISize | USize => tn != role::NEG,
-		Float(_) => tn != role::MOD,
+		Float(_) => tn != role::MOD && !role::BITWISE.contains(&tn),
 		Bool | Atom => matches!(tn, role::EQ | role::ORD),
 		Str => matches!(tn, role::EQ | role::ADD),
 		_ => false,

@@ -138,6 +138,13 @@ impl<'a, M: Module> Translator<'a, M> {
 						let v = self.b.ins().bnot(v);
 						self.narrow(v, &typ)
 					}
+					Typ::Struct(name, _) | Typ::Enum(name) => match self.fill(name, role::NOT, "not", 1) {
+						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
+						None => {
+							return Err(Diagnostic::new(format!("cannot apply `!` to {typ}"), expr.1.into_range())
+								.with_label(format!("claim `Not` for `{name}`")));
+						}
+					},
 					_ => {
 						return Err(Diagnostic::new(
 							format!("expected Bool or an integer, got {typ}"),

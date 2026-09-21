@@ -73,3 +73,24 @@ fn compound_assign() {
 		["88"],
 	);
 }
+
+#[test]
+fn overloads() {
+	check(
+		indoc! {"
+			Flags :: struct { bits: int }
+			Flags : Not, BitAnd, BitOr, BitXor, Shl, Shr < {
+				not :: fn(self) Flags { .{ bits = !self.bits } }
+				bitand :: fn(self, other: Flags) Flags { .{ bits = self.bits & other.bits } }
+				bitor :: fn(self, other: Flags) Flags { .{ bits = self.bits | other.bits } }
+				bitxor :: fn(self, other: Flags) Flags { .{ bits = self.bits ~ other.bits } }
+				shl :: fn(self, other: int) Flags { .{ bits = self.bits << other } }
+				shr :: fn(self, other: int) Flags { .{ bits = self.bits >> other } }
+			}
+			a := Flags.{ bits = 12 }
+			bits := Flags.{ bits = 10 }
+			print((a & bits).bits, (a | bits).bits, (a ~ bits).bits, (a << 2).bits, (a >> 2).bits, (!a).bits)
+		"},
+		["8 14 6 48 3 -13"],
+	);
+}
