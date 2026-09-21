@@ -82,7 +82,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		if self
-			.annotations
+			.types
+			.consts
+			.anns
 			.get(name)
 			.is_some_and(|a| a.iter().any(|x| ann(x, "unsafe").is_some()))
 		{
@@ -130,7 +132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut declared = def.params.iter();
 		if let Some(((rval, rtyp), rexpr)) = &recv {
 			let rparam = declared.next().unwrap();
-			unify(&rparam.typ, rtyp, &def.type_params, &mut subst, self.generics)
+			unify(&rparam.typ, rtyp, &def.type_params, &mut subst, self.types.generics)
 				.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
 			if rparam.access == Access::Move {
 				self.move_out(rexpr, rtyp)?;
@@ -141,7 +143,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		for (arg, param) in slots.iter().flatten().zip(declared) {
 			let (val, typ, entry) = self.arg_value(param.access, arg, None)?;
 			lent.extend(entry.map(|e| (val, e)));
-			unify(&param.typ, &typ, &def.type_params, &mut subst, self.generics)
+			unify(&param.typ, &typ, &def.type_params, &mut subst, self.types.generics)
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
 			vals.push(val);
 		}
@@ -155,7 +157,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		for p in &def.type_params {
 			let Some(bound) = &p.bound else { continue };
-			if !self.traits.contains_key(bound.as_str()) {
+			if !self.types.traits.contains_key(bound.as_str()) {
 				return Err(
 					Diagnostic::new(format!("unknown trait `{bound}`"), span.into_range()).with_label("no such trait")
 				);
@@ -179,7 +181,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let def = self.generic_fns.get(key).cloned()?;
 		let mut subst = HashMap::new();
 		let recv = &def.params.first()?.typ;
-		unify(recv, typ, &def.type_params, &mut subst, self.generics).ok()?;
+		unify(recv, typ, &def.type_params, &mut subst, self.types.generics).ok()?;
 		self.type_defaults(&def, &mut subst).ok()?;
 		def.type_params.iter().all(|p| subst.contains_key(&p.name)).then_some(())?;
 		self.declare_instance(key, &def, subst).ok()
@@ -209,16 +211,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(sig) = self.mono.get(&sym) {
 			return Ok(sig.clone());
 		}
-		let types = TypeCtx::new(
-			self.structs,
-			self.enums,
-			self.aliases,
-			&subst,
-			self.generics,
-			self.traits,
-		)
-		.with_consts(self.const_env())
-		.with_scope(self.home_scope(&def.module));
+		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(&def.module));
 		let params = types.resolve_params(&def.params)?;
 		let ret = match &def.ret {
 			Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,
@@ -248,7 +241,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			foreign: false,
 			unsafe_call: false,
 			pure: self
-				.annotations
+				.types
+				.consts
+				.anns
 				.get(name)
 				.is_some_and(|a| a.iter().any(|x| ann(x, role::PURE).is_some())),
 		};

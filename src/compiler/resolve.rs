@@ -168,6 +168,11 @@ impl<'a> TypeCtx<'a> {
 	pub fn with_consts(self, consts: Consts<'a>) -> Self {
 		TypeCtx { consts, ..self }
 	}
+
+	// A generic instance's substitution.
+	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
+		TypeCtx { type_params, ..self }
+	}
 }
 
 // Try to parse `name` as `<prefix><width>`.

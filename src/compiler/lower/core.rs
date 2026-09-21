@@ -5,23 +5,7 @@ use super::*;
 impl<'a, M: Module> Translator<'a, M> {
 	// The named types in scope.
 	pub(super) fn types(&self) -> TypeCtx<'a> {
-		TypeCtx::new(
-			self.structs,
-			self.enums,
-			self.aliases,
-			self.type_params,
-			self.generics,
-			self.traits,
-		)
-		.with_consts(self.const_env())
-		.with_scope(self.scope)
-	}
-
-	pub(super) fn const_env(&self) -> Consts<'a> {
-		Consts {
-			map: self.consts,
-			anns: self.annotations,
-		}
+		self.types
 	}
 
 	// The scope of the module a fn was written in.
@@ -31,10 +15,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Qualify a bare top-level name against the module's own items.
 	pub(super) fn qualify<'n>(&'n self, name: &'n str) -> Cow<'n, str> {
-		match self.scope.env.get(name) {
+		match self.types.scope.env.get(name) {
 			Some(q) => Cow::Borrowed(q.as_str()),
-			None if self.scope.module.is_empty() || name.contains("::") => Cow::Borrowed(name),
-			None => Cow::Owned(format!("{}::{name}", self.scope.module)),
+			None if self.types.scope.module.is_empty() || name.contains("::") => Cow::Borrowed(name),
+			None => Cow::Owned(format!("{}::{name}", self.types.scope.module)),
 		}
 	}
 
@@ -44,22 +28,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			return None;
 		};
 		let Expr::Ident(m) = &tuple.0 else { return None };
-		let vis = self.scope.visible.get(m).filter(|_| !self.vars.contains_key(m))?;
+		let vis = self.types.scope.visible.get(m).filter(|_| !self.vars.contains_key(m))?;
 		let t = match &vis.only {
 			None => field,
 			Some(only) => only.get(field)?,
 		};
 		let key = format!("{}::{t}", vis.module);
-		let known = self.structs.contains_key(&key)
-			|| self.enums.contains_key(&key)
-			|| self.generics.structs.contains_key(&key)
-			|| self.aliases.contains_key(&key);
+		let known = self.types.structs.contains_key(&key)
+			|| self.types.enums.contains_key(&key)
+			|| self.types.generics.structs.contains_key(&key)
+			|| self.types.aliases.contains_key(&key);
 		known.then_some((Expr::Ident(key), e.1))
 	}
 
 	// Ensure that a static is only written to from within its own module.
 	pub(super) fn check_static_write(&self, m: &str, field: &str, span: Span) -> Result<(), Diagnostic> {
-		let Some(vis) = self.scope.visible.get(m).filter(|_| !self.vars.contains_key(m)) else {
+		let Some(vis) = self.types.scope.visible.get(m).filter(|_| !self.vars.contains_key(m)) else {
 			return Ok(());
 		};
 		let key = format!("{}::{field}", vis.module);
@@ -74,7 +58,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = typ.split('[').next().unwrap(); // Box[int] -> Box
 		let owner = def.split_once("::").map_or("", |(m, _)| m);
-		if owner == self.scope.module || !self.privates.get(def).is_some_and(|ms| ms.contains(member)) {
+		if owner == self.types.scope.module || !self.privates.get(def).is_some_and(|ms| ms.contains(member)) {
 			return Ok(());
 		}
 		let msg = format!("`{member}` is private to module `{owner}`");
@@ -197,7 +181,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				boxed: true,
 				stat: true,
 			};
-			let bare = self.scope.env.iter().find(|(_, q)| **q == key).map(|(b, _)| b.clone());
+			let bare = self.types.scope.env.iter().find(|(_, q)| **q == key).map(|(b, _)| b.clone());
 			if let Some(bare) = bare {
 				self.vars.insert(bare, local.clone());
 			}

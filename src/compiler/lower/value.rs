@@ -283,10 +283,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The variant table of a named enum.
 	pub(super) fn enum_variants(&self, name: &str) -> Vec<VariantInfo> {
-		self.enums
+		self.types
+			.enums
 			.get(name)
 			.cloned()
-			.or_else(|| self.generics.instances.borrow().get(name).cloned())
+			.or_else(|| self.types.generics.instances.borrow().get(name).cloned())
 			.unwrap_or_default()
 	}
 
@@ -294,7 +295,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn peeled(&self, typ: &Typ) -> Typ {
 		match peel(typ) {
 			Typ::Struct(n, f) if f.is_empty() => {
-				Typ::Struct(n.clone(), self.structs.get(n).cloned().unwrap_or_default())
+				Typ::Struct(n.clone(), self.types.structs.get(n).cloned().unwrap_or_default())
 			}
 			t => t.clone(),
 		}
@@ -698,7 +699,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& let Typ::Fn(ps, _) = &**inner
 		{
 			let value = match &value.0 {
-				Expr::Annotated(a, v) if ann_names(self.scope, a) == *anns => v,
+				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,
 				_ => value,
 			};
 			let (val, vt) = self.check_expr(value, inner)?;
@@ -943,7 +944,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			})?,
 			_ => self.qualify(name).to_string(),
 		};
-		if self.enums.contains_key(name.as_str()) {
+		if self.types.enums.contains_key(name.as_str()) {
 			if !fields.is_empty() {
 				return Err(Diagnostic::new(
 					format!("enum `{name}` only supports `{name}.{{}}` with no fields"),
@@ -967,9 +968,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Struct(n, fs) if *n == name => Some(fs.clone()),
 			_ => None,
 		});
-		let struct_fields = match explicit.or(anon).or_else(|| self.structs.get(name.as_str()).cloned()) {
+		let struct_fields = match explicit.or(anon).or_else(|| self.types.structs.get(name.as_str()).cloned()) {
 			Some(fields) => fields,
-			None => match self.generics.structs.get(name.as_str()).cloned() {
+			None => match self.types.generics.structs.get(name.as_str()).cloned() {
 				Some(def) => return self.generic_struct_lit(&name, def, fields, span, target),
 				None => {
 					return Err(Diagnostic::new(format!("unknown struct `{name}`"), span.into_range())
@@ -1152,15 +1153,21 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.check_expr(value, &want)?
 				}
 			};
-			unify(&def.fields[idx].typ, &vtyp, &def.type_params, &mut subst, self.generics)
-				.map_err(|msg| Diagnostic::new(msg, value.1.into_range()).with_label("type mismatch"))?;
+			unify(
+				&def.fields[idx].typ,
+				&vtyp,
+				&def.type_params,
+				&mut subst,
+				self.types.generics,
+			)
+			.map_err(|msg| Diagnostic::new(msg, value.1.into_range()).with_label("type mismatch"))?;
 			let val = self.copy_in(val, &vtyp);
 			provided.push((idx, val, vtyp, value.1));
 		}
 		// params the field values didn't pin can come from the expected type
 		if let Some(Typ::Struct(_, tfields)) = target {
 			for (df, tf) in def.fields.iter().zip(tfields) {
-				unify(&df.typ, &tf.typ, &def.type_params, &mut subst, self.generics).ok();
+				unify(&df.typ, &tf.typ, &def.type_params, &mut subst, self.types.generics).ok();
 			}
 		}
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {

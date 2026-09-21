@@ -204,7 +204,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let args = if args.len() + self_n + 1 == sig.params.len()
 			&& let Some(Typ::Struct(n, _)) = sig.params.last().map(|p| &p.typ)
 			&& self
-				.annotations
+				.types
+				.consts
+				.anns
 				.get(n)
 				.is_some_and(|anns| anns.iter().any(|(e, _)| matches!(e, Expr::Ident(q) if q == role::PARAMS)))
 		{
@@ -707,7 +709,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (.., tmethods) = self.traits[tn];
+		let (.., tmethods) = self.types.traits[tn];
 		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
 			let msg = format!("trait `{tn}` has no method `{method}`");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such method"));
@@ -751,7 +753,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		field: &str,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, _, tfields, tmethods) = self.traits[tn];
+		let (_, _, tfields, tmethods) = self.types.traits[tn];
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
 			let msg = format!("trait `{tn}` has no field `{field}`");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));

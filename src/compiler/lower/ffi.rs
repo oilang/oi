@@ -125,14 +125,14 @@ impl<M: Module> Translator<'_, M> {
 
 	fn oi_fields<'t>(&self, typ: &'t Typ) -> Option<&'t [FieldDef]> {
 		match typ {
-			Typ::Struct(name, fields) if !is_c_struct(self.annotations, name) => Some(fields),
+			Typ::Struct(name, fields) if !is_c_struct(self.types.consts.anns, name) => Some(fields),
 			_ => None,
 		}
 	}
 
 	fn c_fields(&self, typ: &Typ, span: Span) -> Result<Option<Vec<FieldDef>>, Diagnostic> {
 		match typ {
-			Typ::Struct(name, fields) if is_c_struct(self.annotations, name) => Ok(Some(fields.clone())),
+			Typ::Struct(name, fields) if is_c_struct(self.types.consts.anns, name) => Ok(Some(fields.clone())),
 			t if t.is_c_repr() && !matches!(t, Typ::Fn(..)) => Ok(None),
 			_ => Err(Diagnostic::new(format!("`{typ}` has no C layout"), span.into_range())
 				.with_label("only a struct or C scalar crosses a `ptr`")),
@@ -158,7 +158,7 @@ impl<M: Module> Translator<'_, M> {
 
 	// Copy each field between its Oi slot and its C offset.
 	fn copy_fields(&mut self, oi: Value, c: Value, at: i32, fields: &[FieldDef], to_c: bool) {
-		let (anns, mem) = (self.annotations, MemFlags::new());
+		let (anns, mem) = (self.types.consts.anns, MemFlags::new());
 		let offsets = c_layout(fields, &|n: &str| is_c_struct(anns, n)).expect("validated").offsets;
 		for ((i, f), off) in fields.iter().enumerate().zip(offsets) {
 			let (slot, off) = ((i * 8) as i32, at + off as i32);

@@ -64,7 +64,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => {
 						let key = self.qualify(name);
 						let visible = key.contains("::") || !self.is_main;
-						match visible.then(|| self.consts.get(key.as_ref()).cloned()).flatten() {
+						match visible.then(|| self.types.consts.map.get(key.as_ref()).cloned()).flatten() {
 							Some(c) => self.expr(&c),
 							None => Err(e),
 						}
@@ -86,7 +86,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					));
 				};
 				let typ = self.types().resolve(&TypeExpr::Name(name.clone()), subject.1)?;
-				let tn = self.scope.env.get(trait_name).unwrap_or(trait_name);
+				let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
 				let holds = self.claims(&typ, tn) ^ negated;
 				Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool))
 			}
@@ -171,11 +171,11 @@ impl<'a, M: Module> Translator<'a, M> {
 						Some(sig) => self.call_sig(name, sig, None, None, args, expr.1),
 						None => match self.generic_fns.get(&qn).cloned() {
 							Some(def) => self.call_generic(&qn, &def, type_args, args, None, expr.1),
-							None if matches!(self.aliases.get(&qn), Some(TypeExpr::TupleStruct(..))) => {
+							None if matches!(self.types.aliases.get(&qn), Some(TypeExpr::TupleStruct(..))) => {
 								self.construct_tuple_struct(&qn, args, expr.1)
 							}
 							None if matches!(
-								self.aliases.get(&qn),
+								self.types.aliases.get(&qn),
 								Some(TypeExpr::Fn(..) | TypeExpr::Annotated(..))
 							) =>
 							{
@@ -223,7 +223,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// access to an imported module's function
 				if let Expr::Ident(m) = &recv.0
 					&& !self.vars.contains_key(m)
-					&& let Some(vis) = self.scope.visible.get(m)
+					&& let Some(vis) = self.types.scope.visible.get(m)
 				{
 					// narrowed imports
 					let target = match &vis.only {
@@ -240,7 +240,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// enum payload
 				if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
-					&& self.enums.contains_key(self.qualify(name).as_ref())
+					&& self.types.enums.contains_key(self.qualify(name).as_ref())
 				{
 					let name = self.qualify(name).to_string();
 					if method == "from" {
@@ -258,11 +258,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				// method call is static when `recv` names a type
 				let (sname, bound) = if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
-					&& (self.structs.contains_key(self.qualify(name).as_ref())
-						|| self.enums.contains_key(self.qualify(name).as_ref())
-						|| self.generics.structs.contains_key(self.qualify(name).as_ref())
+					&& (self.types.structs.contains_key(self.qualify(name).as_ref())
+						|| self.types.enums.contains_key(self.qualify(name).as_ref())
+						|| self.types.generics.structs.contains_key(self.qualify(name).as_ref())
 						|| matches!(
-							self.aliases.get(self.qualify(name).as_ref()),
+							self.types.aliases.get(self.qualify(name).as_ref()),
 							Some(TypeExpr::TupleStruct(..))
 						)) {
 					(self.qualify(name).to_string(), None)
@@ -406,7 +406,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// access an imported module's items
 				if let Expr::Ident(m) = &tuple.0
 					&& !self.vars.contains_key(m)
-					&& let Some(vis) = self.scope.visible.get(m)
+					&& let Some(vis) = self.types.scope.visible.get(m)
 				{
 					let target = match &vis.only {
 						None => field,
@@ -427,7 +427,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let val = self.read_local(&l);
 						return Ok((val, l.typ));
 					}
-					let (msg, label) = match self.consts.get(&key).cloned() {
+					let (msg, label) = match self.types.consts.map.get(&key).cloned() {
 						Some(c) if self.publics.contains(&key) => return self.expr(&c),
 						Some(_) => (format!("`{field}` is private to module `{module}`"), "not public"),
 						None if self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key) => {
@@ -441,7 +441,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// enum variants
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
-					&& self.enums.contains_key(self.qualify(name).as_ref())
+					&& self.types.enums.contains_key(self.qualify(name).as_ref())
 				{
 					let name = self.qualify(name).to_string();
 					return self.construct_variant(&name, field, &[], expr.1);
@@ -452,14 +452,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& !self.vars.contains_key(name)
 					&& let Ok(t) = self.types().named(name, tuple.1)
 				{
-					if let Some(c) = self.consts.get(&format!("{t}::{field}")).cloned() {
+					if let Some(c) = self.types.consts.map.get(&format!("{t}::{field}")).cloned() {
 						return self.check_expr(&c, &t);
 					}
 					if let Some(v) = self.numeric_bound(&t, field) {
 						return Ok((v, t));
 					}
 					if field == "size"
-						&& let Some((n, _)) = t.c_size_align(&|n: &str| is_c_struct(self.annotations, n))
+						&& let Some((n, _)) = t.c_size_align(&|n: &str| is_c_struct(self.types.consts.anns, n))
 					{
 						return Ok((self.b.ins().iconst(self.int, n as i64), Typ::USize));
 					}
@@ -537,7 +537,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					// a trait const or default settles fields that aren't stored
 					if !sfields.iter().any(|f| f.name == *field)
-						&& let Some(c) = self.consts.get(&format!("{sname}::{field}")).cloned()
+						&& let Some(c) = self.types.consts.map.get(&format!("{sname}::{field}")).cloned()
 					{
 						return self.check_expr(&c, &typ);
 					}
@@ -799,7 +799,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Annotated(anns, inner) => {
-				let (names, (val, typ)) = (ann_names(self.scope, anns), self.expr(inner)?);
+				let (names, (val, typ)) = (ann_names(self.types.scope, anns), self.expr(inner)?);
 				check_ann_typ(&names, &typ, expr.1)?;
 				let addr = self.b.ins().load(self.int, MemFlags::new(), val, 0);
 				Ok((addr, Typ::Annotated(names, Box::new(typ))))

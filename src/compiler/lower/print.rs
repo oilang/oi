@@ -190,7 +190,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::Trait(tn) => {
-				let (_, _, tfields, tmethods) = self.traits[tn.as_str()];
+				let (_, _, tfields, tmethods) = self.types.traits[tn.as_str()];
 				let slot = (trait_fns(tmethods).count() + tfields.len()) * 8;
 				let vtable = self.b.ins().load(self.int, MemFlags::new(), val, 0);
 				let data = self.b.ins().load(self.int, MemFlags::new(), val, 8);

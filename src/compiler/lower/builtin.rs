@@ -159,7 +159,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			// a raw address is a place
 			self.require_unsafe(&format!("{target} cast"), span)?;
-			if is_c_struct(self.annotations, name) {
+			if is_c_struct(self.types.consts.anns, name) {
 				let msg = format!("`{target}` is a `@c` struct, C layout behind a `ptr`");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("copy it with `p.read[T]()`"));
 			}

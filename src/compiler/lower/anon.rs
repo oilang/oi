@@ -105,7 +105,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			type_params: vec![],
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
 			self_name,
-			module: self.scope.module.clone(),
+			module: self.types.scope.module.clone(),
 		};
 		let sym = format!("anon${}_{}", span.start, self.mono.len());
 		let sig = self.declare_instance(&sym, &def, subst)?;

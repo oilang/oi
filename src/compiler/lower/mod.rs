@@ -8,13 +8,12 @@ use cranelift::prelude::*;
 use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleError};
 
 use super::{
-	Consts, FieldDef, FnParam, FnSig, GenericFnDef, GenericStructDef, Generics, Local, LoopFrame, Pending, TraitItem,
-	Typ, TypeCtx, VariantInfo, access_of, access_peel, access_wrap, ann_names, builtin_claim, c_layout, check_ann_typ,
-	check_c_sig, cl_int_for_width, cl_type, display_name, elem_size, embeds, enum_boxed, enum_slots, fallible,
-	is_c_struct, is_range, mentions, oi_symbol, option_variants, result_variants, sum_remap, trait_fns, type_expr,
-	typeid,
+	FieldDef, FnParam, FnSig, GenericFnDef, GenericStructDef, Generics, Local, LoopFrame, Pending, Typ, TypeCtx,
+	VariantInfo, access_of, access_peel, access_wrap, ann_names, builtin_claim, c_layout, check_ann_typ, check_c_sig,
+	cl_int_for_width, cl_type, display_name, elem_size, embeds, enum_boxed, enum_slots, fallible, is_c_struct,
+	is_range, mentions, oi_symbol, option_variants, result_variants, sum_remap, trait_fns, type_expr, typeid,
 };
-use crate::ast::{Access, Annotation, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr};
+use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::Scope;
 use crate::runtime;
@@ -49,25 +48,17 @@ pub(super) struct Translator<'a, M: Module> {
 	pub dollar: Option<TypedVal>,
 	pub module: &'a mut M,
 	pub funcs: &'a HashMap<String, FnSig>,
-	pub structs: &'a HashMap<String, Vec<FieldDef>>,
-	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
-	pub aliases: &'a HashMap<String, TypeExpr>,
-	pub type_params: &'a HashMap<String, Typ>,
-	pub generics: &'a Generics,
-	pub traits: &'a HashMap<&'a str, TraitItem<'a>>,
+	pub types: TypeCtx<'a>,
 	pub generic_fns: &'a HashMap<String, GenericFnDef>,
 	pub trait_impls: &'a HashSet<(String, String)>,
 	pub generic_claims: &'a HashSet<(String, String)>,
 	pub core_traits: &'a HashSet<String>,
-	pub scope: &'a Scope,
 	pub module_scopes: &'a HashMap<String, Scope>,
 	pub map: &'a SourceMap,
 	pub publics: &'a HashSet<String>,
 	pub privates: &'a HashMap<String, HashSet<String>>,
 	pub reexports: &'a HashMap<String, String>,
-	pub consts: &'a HashMap<String, Spanned<Expr>>,
 	pub statics: &'a HashMap<String, (String, Typ)>,
-	pub annotations: &'a HashMap<String, Vec<Annotation>>,
 	pub mono: &'a mut HashMap<String, FnSig>,
 	pub pending: &'a mut Vec<Pending>,
 	pub wanted: &'a mut Vec<FuncId>,
