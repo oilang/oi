@@ -16,7 +16,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A named type's `str` impl.
 	fn str_impl(&mut self, name: &str, val: Value, typ: &Typ) -> Option<Value> {
-		let base = name.split('[').next().unwrap();
+		let base = rc::base_name(name);
 		let sig = (self.funcs.get(&format!("{name}.str")).cloned())
 			.or_else(|| self.recv_instance(&format!("{base}.str"), typ))?;
 		(sig.params.len() == 1 && sig.ret == Typ::Str).then(|| self.emit_call(&sig, &[val]).0)

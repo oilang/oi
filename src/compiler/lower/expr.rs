@@ -326,7 +326,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let recv_expr = bound.is_some().then_some(recv);
 				self.check_member(&sname, method, expr.1)?;
 				let key = format!("{sname}.{method}");
-				let gkey = format!("{}.{method}", sname.split('[').next().unwrap());
+				let gkey = format!("{}.{method}", rc::base_name(&sname));
 				self.check_type_args(method, &gkey, type_args, expr.1)?;
 				if let Some(sig) = self.funcs.get(&key).cloned() {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);

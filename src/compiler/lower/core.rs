@@ -56,7 +56,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Ensure that no private members are accessed from outside their module.
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
-		let def = typ.split('[').next().unwrap(); // Box[int] -> Box
+		let def = rc::base_name(typ);
 		let owner = def.split_once("::").map_or("", |(m, _)| m);
 		if owner == self.types.scope.module || !self.privates.get(def).is_some_and(|ms| ms.contains(member)) {
 			return Ok(());
