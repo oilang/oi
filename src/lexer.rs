@@ -146,6 +146,16 @@ pub enum Token {
 	SlashEq,
 	#[token("%=")]
 	PercentEq,
+	#[token("&=")]
+	AmpEq,
+	#[token("|=")]
+	PipeEq,
+	#[token("~=")]
+	TildeEq,
+	#[token("<<=")]
+	LtLtEq,
+	#[token(">>=")]
+	GtGtEq,
 
 	// comparison operators
 	#[token("==")]
@@ -291,6 +301,11 @@ impl fmt::Display for Token {
 			Token::StarStarEq => write!(f, "**="),
 			Token::SlashEq => write!(f, "/="),
 			Token::PercentEq => write!(f, "%="),
+			Token::AmpEq => write!(f, "&="),
+			Token::PipeEq => write!(f, "|="),
+			Token::TildeEq => write!(f, "~="),
+			Token::LtLtEq => write!(f, "<<="),
+			Token::GtGtEq => write!(f, ">>="),
 			Token::Slash => write!(f, "/"),
 			Token::Percent => write!(f, "%"),
 			Token::Eq => write!(f, "=="),

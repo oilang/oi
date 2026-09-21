@@ -613,6 +613,11 @@ where
 		just(Token::StarEq).to(Some(BinOp::Mul)),
 		just(Token::SlashEq).to(Some(BinOp::Div)),
 		just(Token::PercentEq).to(Some(BinOp::Mod)),
+		just(Token::AmpEq).to(Some(BinOp::BitAnd)),
+		just(Token::PipeEq).to(Some(BinOp::BitOr)),
+		just(Token::TildeEq).to(Some(BinOp::BitXor)),
+		just(Token::LtLtEq).to(Some(BinOp::Shl)),
+		just(Token::GtGtEq).to(Some(BinOp::Shr)),
 		just(Token::Assign).to(None),
 	));
 	let fold = |op, lhs, value: Spanned<Expr>, span| match op {

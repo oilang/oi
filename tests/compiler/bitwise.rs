@@ -57,3 +57,19 @@ fn shifts() {
 fn rejects_floats() {
 	fail_with("1.5 & 2.0", "bitwise operators need integer operands");
 }
+
+#[test]
+fn compound_assign() {
+	check(
+		indoc! {"
+			x := 0b1100
+			x &= 0b1010
+			x |= 1
+			x ~= 2
+			x <<= 4
+			x >>= 1
+			print(x)
+		"},
+		["88"],
+	);
+}
