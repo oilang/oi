@@ -151,6 +151,7 @@ tags: []
 - [x] `if-do` `odin`
 ## consider
 - `nil`
+- [ ] fn math? f + g, if both return strings, concats strings?
 - [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
 - `let-else` `rust`
 - submodules `use raylib.math`

@@ -31,8 +31,12 @@ fn stepped_ranges() {
 			if i == 5 { break }
 			print(i)
 		}
+		loop i in 9..7.. {
+			if i < 5 { break }
+			print(i)
+		}
 	"};
-	check(src, ["0", "2", "4", "3", "4"]);
+	check(src, ["0", "2", "4", "3", "4", "9", "7", "5"]);
 }
 
 #[test]

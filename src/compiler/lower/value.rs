@@ -524,6 +524,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let bad = |msg: &str, label: &str| Diagnostic::new(msg, start.1.into_range()).with_label(label);
+		if let Some((
+			Expr::Range {
+				start: b, end: None, ..
+			},
+			_,
+		)) = end
+		{
+			let start = Box::new(start.clone());
+			let stepped = Expr::Range {
+				start,
+				end: Some(b.clone()),
+				inclusive: false,
+			};
+			return self.range_value(&(stepped, span), None, false, span);
+		}
 		let (start, second) = match &start.0 {
 			Expr::Range {
 				start: first,
