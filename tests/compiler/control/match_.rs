@@ -134,7 +134,7 @@ fn match_range_needs_int_subject() {
 
 #[test]
 fn match_tuple_destructure() {
-	check("p :: (3, 4)\nmatch p { (x, y) => x + y, }", "7");
+	check(["p :: (3, 4)", "match p { (x, y) => x + y, }"], "7");
 }
 
 #[test]
@@ -242,4 +242,20 @@ fn payload_bind_is_independent_copy() {
 		}
 	"};
 	check(src, "[1]");
+}
+
+#[test]
+fn bare_name_binds_propagator_payloads() {
+	let src = indoc! {"
+		o :: ?int.(42)
+		match o { n => n, else => -1 }
+	"};
+	check(src, "42");
+	check(["o :: ?int.(none)", "match o { n => n, else => -1 }"], "-1");
+
+	let src = indoc! {"
+		r :: !int.(42)
+		match r { v => v, else => -1 }
+	"};
+	check(src, "42");
 }
