@@ -37,3 +37,4 @@ pub(crate) const EXPORT: &str = "core::export";
 pub(crate) const C: &str = "core::c";
 pub(crate) const IMPLICIT: &str = "core::implicit";
 pub(crate) const PURE: &str = "core::pure";
+pub(crate) const NOZERO: &str = "core::nozero";

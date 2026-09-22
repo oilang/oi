@@ -260,6 +260,11 @@ pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -
 	anns.any(|a| ann(a, role::C).is_some())
 }
 
+pub(crate) fn is_nozero(anns: &HashMap<String, Vec<Annotation>>, name: &str) -> bool {
+	let mut anns = anns.get(name).into_iter().flatten();
+	anns.any(|a| ann(a, role::NOZERO).is_some())
+}
+
 // Check that every struct marked `@c` has a C layout.
 fn check_c_structs(
 	anns: &HashMap<String, Vec<Annotation>>,

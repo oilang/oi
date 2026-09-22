@@ -3,17 +3,19 @@ use super::*;
 use crate::ast::record_args;
 use crate::compiler::role;
 
-// Error when a `@required` field isn't fulfilled.
+// Error when a `@required` field, or a `@nozero` one without a default, isn't fulfilled.
 fn check_required(
 	name: &str,
 	struct_fields: &[FieldDef],
 	entries: &[(Option<String>, Spanned<Expr>)],
 	span: Span,
+	nozero: impl Fn(&FieldDef) -> bool,
 ) -> Result<(), Diagnostic> {
 	let required = |f: &&FieldDef| {
 		f.annotations
 			.iter()
 			.any(|a| matches!(&a.0, Expr::Ident(n) if n == role::REQUIRED))
+			|| (f.default.is_none() && nozero(f))
 	};
 	for (i, f) in struct_fields.iter().enumerate().filter(|(_, f)| required(f)) {
 		let set = entries.iter().enumerate().any(|(j, (n, v))| {
@@ -107,6 +109,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		let id = self.module.declare_data(sym, Linkage::Local, false, false).unwrap();
 		let gv = self.module.declare_data_in_func(id, self.b.func);
 		self.b.ins().symbol_value(self.int, gv)
+	}
+
+	// A `@nozero` type, or a struct carrying one.
+	fn nozero<'t>(&self, typ: &'t Typ) -> Option<&'t str> {
+		let name = match typ {
+			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => n.as_str(),
+			_ => return None,
+		};
+		if is_nozero(self.types.consts.anns, rc::base_name(name)) {
+			return Some(name);
+		}
+		match typ {
+			Typ::Struct(_, fields) => fields.iter().filter(|f| f.default.is_none()).find_map(|f| self.nozero(&f.typ)),
+			_ => None,
+		}
+	}
+
+	// Zero initialization.
+	pub(super) fn zero_or_err(&mut self, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
+		if let Some(name) = self.nozero(typ) {
+			let msg = format!("`{}` has no zero value", display_name(name));
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("must be initialized explicitly"));
+		}
+		Ok(self.zero(typ))
 	}
 
 	pub(super) fn zero(&mut self, typ: &Typ) -> Value {
@@ -669,7 +695,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			vals.push(match *slot {
 				Some(arg) if name == role::PTR => self.ptr_arg(arg)?,
 				Some(arg) => self.check_typed(arg, ft, "type mismatch")?,
-				None => self.zero(ft),
+				None => self.zero_or_err(ft, span)?,
 			});
 		}
 		if let [v] = vals[..] {
@@ -1050,7 +1076,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.copy_in(val, &ftyp);
 			self.b.ins().store(MemFlags::new(), val, base, (idx * 8) as i32);
 		}
-		check_required(&name, &struct_fields, fields, span)?;
+		check_required(&name, &struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
 		let typ = Typ::Struct(name.clone(), struct_fields);
 		self.temp(ptr, &typ);
 		Ok((ptr, typ))
@@ -1181,7 +1207,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let Typ::Struct(_, struct_fields) = &typ else {
 			unreachable!()
 		};
-		check_required(name, struct_fields, fields, span)?;
+		check_required(name, struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
 		let ptr = self.struct_slot(struct_fields)?;
 		for (idx, val, vtyp, vspan) in provided {
 			let expected = &struct_fields[idx].typ;

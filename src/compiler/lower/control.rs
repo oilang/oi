@@ -56,7 +56,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = self.else_default(els, &result, target)?;
+		let else_flow = self.else_default(els, &result, target, span)?;
 		if let Some(vt) = else_flow {
 			self.contribute("if", vt, &mut result, merge, span)?;
 		}
@@ -70,6 +70,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		els: Option<&[Spanned<Expr>]>,
 		result: &Option<(Variable, Typ)>,
 		target: Option<&Typ>,
+		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		let Some(els) = els else {
 			let t = result
@@ -77,7 +78,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map(|(_, t)| t.clone())
 				.or_else(|| target.cloned())
 				.unwrap_or(Typ::unit());
-			return self.scoped(|s| Ok(Some((s.zero(&t), t.clone()))));
+			return self.scoped(|s| Ok(Some((s.zero_or_err(&t, span)?, t.clone()))));
 		};
 		self.scoped(|s| s.block_tail(els, target))
 	}
@@ -291,7 +292,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(else_blk);
 		self.b.seal_block(else_blk);
-		let else_flow = self.else_default(else_body, &result, target)?;
+		let else_flow = self.else_default(else_body, &result, target, span)?;
 		if let Some(vt) = else_flow {
 			self.contribute("match", vt, &mut result, merge, span)?;
 		}

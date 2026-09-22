@@ -4,6 +4,7 @@ mod common;
 mod helpers;
 
 mod annotations;
+mod builtin;
 mod anon_fn;
 mod arithmetic;
 mod assertions;

@@ -60,7 +60,7 @@ impl<'a, M: Module> Translator<'a, M> {
 									Diagnostic::new(msg, stmt.1.into_range()).with_label("no zero value for `&T`")
 								);
 							}
-							(self.zero(&target), target)
+							(self.zero_or_err(&target, stmt.1)?, target)
 						}
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
@@ -246,7 +246,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						},
 						None => {
 							let typ = self.ret.as_ref().map_or(Typ::unit(), |(t, _)| t.clone());
-							(self.zero(&typ), typ)
+							(self.zero_or_err(&typ, stmt.1)?, typ)
 						}
 					};
 					if let Some(e) = value {

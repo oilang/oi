@@ -98,6 +98,9 @@ pub implicit :: ()
 ## Marks a fn as free of I/O and other impure calls.
 pub pure :: ()
 
+## Ensures a type is always explicitly initialized.
+pub nozero :: ()
+
 # ffi
 
 ## An untyped pointer for C boundaries.
