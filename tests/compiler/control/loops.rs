@@ -282,6 +282,25 @@ fn break_value_errors() {
 }
 
 #[test]
+fn custom_iterators() {
+	let src = indoc! {"
+		Countdown :: struct { n: int }
+		Countdown : Iterator[int] < {
+			next :: fn(mut self) ?int {
+				if self.n <= 0 { return none }
+				self.n -= 1
+				self.n
+			}
+		}
+		loop x in Countdown.{ n = 3 } { print(x) }
+		r :: 0..2
+		loop n in r { print(n) }
+		loop n in r { print(n) }
+	"};
+	check(src, ["2", "1", "0", "0", "1", "0", "1"]);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

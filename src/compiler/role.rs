@@ -18,6 +18,8 @@ pub(crate) const SHL: &str = "core::Shl";
 pub(crate) const SHR: &str = "core::Shr";
 pub(crate) const BITWISE: [&str; 6] = [NOT, BIT_AND, BIT_OR, BIT_XOR, SHL, SHR];
 pub(crate) const CONTAINS: &str = "core::Contains";
+pub(crate) const ITERATOR: &str = "core::Iterator";
+pub(crate) const ITERABLE: &str = "core::Iterable";
 pub(crate) const ERROR: &str = "core::Error";
 
 // types

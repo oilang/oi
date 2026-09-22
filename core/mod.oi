@@ -26,6 +26,10 @@ pub Shr :: trait { shr: fn(self, other: int) Self }
 # membership
 pub Contains[T] :: trait { contains: fn(self, v: T) bool }
 
+# iteration
+pub Iterator[Item] :: trait { next: fn(mut self) ?Item }
+pub Iterable[Iter] :: trait { iter: fn(self) Iter }
+
 # conversions
 
 pub From[T] :: trait { from: fn(v: T) Self }
@@ -86,12 +90,23 @@ Range : Contains[int] < {
 			.none => true,
 		}
 	}
+}
 
-	str :: fn(self) string {
-		second :: if self.step == 1 { "" } else { (self.start + self.step).str() + ".." }
-		last :: match self.end { .some.(e) => e.str(), .none => "" }
-		self.start.str() + ".." + second + last
+Range : Iterator[int] < {
+	next :: fn(mut self) ?int {
+		spent :: match self.end {
+			.some.(e) => if self.step > 0 { self.start >= e } else { self.start <= e },
+			.none => false, # unbounded
+		}
+		if spent { return none }
+		n :: self.start
+		self.start = self.start + self.step
+		n
 	}
+}
+
+Range : Iterable[Range] < {
+	iter :: fn(self) Self { Self.{ self.start, self.end, self.step } }
 }
 
 # annotations

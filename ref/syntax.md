@@ -1349,7 +1349,16 @@ main :: fn() {
 	# a loop with no valued `break` yields `()`
 	# mixing `break` and `break <value>` in one loop is an error
 
-	# TODO: custom iterators
+	# Iterator/Iterable traits
+	Countdown :: struct { n: int }
+	Countdown : Iterator[int] < {
+		next :: fn(mut self) ?int {
+			if self.n <= 0 { return none }
+			self.n -= 1
+			self.n
+		}
+	}
+	loop x in Countdown.{ n = 3 } { print(x) }
 
 	## everything is an expression
 

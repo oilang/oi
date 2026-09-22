@@ -622,6 +622,57 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Drive an Iterator.
+	fn iter_loop(
+		&mut self,
+		pat: &Spanned<Expr>,
+		body: &[Spanned<Expr>],
+		(val, typ): TypedVal,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let (it, it_typ) = match self.find_fill(&format!("{}.iter", typ.key()), 0, &typ) {
+			Some(sig) if self.claims(&typ, role::ITERABLE) => self.emit_call(&sig, &[val]),
+			_ => (val, typ),
+		};
+		let next = self.find_fill(&format!("{}.next", it_typ.key()), 0, &it_typ);
+		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
+		let (Some(next), Some(item)) = (next, item) else {
+			return Err(
+				Diagnostic::new(format!("cannot iterate over {it_typ}"), span.into_range())
+					.with_label("its `Iterator` claim has no `next(mut self) ?T`"),
+			);
+		};
+		let opt = next.ret.clone();
+
+		let (header, body_block, fallthrough, exit) = (
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+		);
+		self.b.ins().jump(header, &[]);
+
+		self.b.switch_to_block(header);
+		let (yielded, _) = self.emit_call(&next, &[it]);
+		let tag = self.enum_tag(&opt, yielded);
+		self.b.ins().brif(tag, body_block, &[], fallthrough, &[]);
+		self.b.seal_block(body_block);
+		self.b.seal_block(fallthrough);
+
+		self.b.switch_to_block(body_block);
+		let (frame, flow) = self.in_loop(header, Some(exit), Some(fallthrough), |s| {
+			let v = s.opt_payload(yielded, &opt, &item, 8);
+			s.bind_pat(pat, v, &item, Some(false))?;
+			s.block(body)
+		})?;
+		if let Some((v, t)) = flow {
+			self.release_value(v, &t);
+			self.b.ins().jump(header, &[]);
+		}
+		self.b.seal_block(header);
+		Ok(self.loop_end(frame, exit))
+	}
+
 	pub(super) fn for_loop(
 		&mut self,
 		pat: &Spanned<Expr>,
@@ -629,17 +680,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(iter)?;
+		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
+			return self.iter_loop(pat, body, (val, typ), iter.1);
+		}
 		let zero = self.b.ins().iconst(self.int, 0);
-		let mut range = None;
-		let (start, limit, src, vals): (_, _, Option<TypedVal>, Option<TypedVal>) = match typ {
-			t if is_range(&t) => {
-				let (start, end, step, open) = self.range_parts(val);
-				range = Some((open, end, step));
-				(start, zero, None, None)
-			}
+		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 				let (data, len) = self.array_parts(val, &typ);
-				(zero, len, Some((data, array_elem(&typ).clone())), None)
+				(len, (data, array_elem(&typ).clone()), None)
 			}
 			Typ::Map(k, v) => {
 				let (keys, vals) = (self.map_entries(val, true, &k), self.map_entries(val, false, &v));
@@ -647,7 +695,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.temp(vals, &Typ::Array(v.clone()));
 				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));
 				let vdata = self.array_data(vals);
-				(zero, len, Some((kdata, *k)), Some((vdata, *v)))
+				(len, (kdata, *k), Some((vdata, *v)))
 			}
 			_ => {
 				return Err(
@@ -656,8 +704,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		};
-		let counter = self.b.declare_var(self.b.func.dfg.value_type(start));
-		self.b.def_var(counter, start);
+		let counter = self.b.declare_var(self.b.func.dfg.value_type(zero));
+		self.b.def_var(counter, zero);
 
 		let (header, body_block, latch, fallthrough, exit) = (
 			self.b.create_block(),
@@ -670,16 +718,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(header);
 		let iv = self.b.use_var(counter);
-		let more = match range {
-			Some((open, end, step)) => {
-				let up = self.b.ins().icmp_imm(IntCC::SignedGreaterThan, step, 0);
-				let below = self.b.ins().icmp(IntCC::SignedLessThan, iv, end);
-				let above = self.b.ins().icmp(IntCC::SignedGreaterThan, iv, end);
-				let within = self.b.ins().select(up, below, above);
-				self.b.ins().bor(within, open)
-			}
-			None => self.b.ins().icmp(IntCC::SignedLessThan, iv, limit),
-		};
+		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
 		self.b.ins().brif(more, body_block, &[], fallthrough, &[]);
 		self.b.seal_block(body_block);
 		self.b.seal_block(fallthrough);
@@ -687,15 +726,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
 		let (frame, flow) = self.in_loop(latch, Some(exit), Some(fallthrough), |s| {
-			let (item, typ) = match &src {
-				None => (iv, Typ::Int(64)),
-				Some((data, elem)) => (s.load_nth(*data, iv, elem), elem.clone()),
-			};
+			let (data, elem) = &src;
+			let item = s.load_nth(*data, iv, elem);
 			match (&vals, &pat.0) {
-				(None, _) => s.bind_pat(pat, item, &typ, Some(false))?,
+				(None, _) => s.bind_pat(pat, item, elem, Some(false))?,
 				(Some((vdata, vt)), Expr::Tuple(te)) if te.len() == 2 => {
 					let vv = s.load_nth(*vdata, iv, vt);
-					s.bind_pat(&te[0].1, item, &typ, Some(false))?;
+					s.bind_pat(&te[0].1, item, elem, Some(false))?;
 					s.bind_pat(&te[1].1, vv, vt, Some(false))?;
 				}
 				_ => {
@@ -716,10 +753,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(latch);
 		let iv = self.b.use_var(counter);
-		let next = match range {
-			Some((_, _, step)) => self.b.ins().iadd(iv, step),
-			None => self.b.ins().iadd_imm(iv, 1),
-		};
+		let next = self.b.ins().iadd_imm(iv, 1);
 		self.b.def_var(counter, next);
 		self.b.ins().jump(header, &[]);
 		self.b.seal_block(header);
