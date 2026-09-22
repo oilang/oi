@@ -318,6 +318,16 @@ fn loop_match() {
 }
 
 #[test]
+fn header_pattern_bind() {
+	let src = indoc! {"
+		it := 0..3
+		loop .some.(n) := it.next() { print(n) }
+		print(:done)
+	"};
+	check(src, ["0", "1", "2", ":done"]);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

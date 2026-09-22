@@ -904,6 +904,23 @@ where
 
 		let array = bracket(loose_list(expr.clone())).map_with(|elems, ex| (Expr::Array(elems), ex.span()));
 
+		// match patterns
+		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
+		let struct_pat = dot()
+			.ignore_then(select! { Token::Ident(v) => v })
+			.then_ignore(dot())
+			.then(brace(loose_list(keyed.clone().or(bind))))
+			.map_with(|(variant, es), ex| {
+				let args = vec![(Expr::Record(es), ex.span())];
+				(Expr::EnumShorthand { variant, args }, ex.span())
+			});
+		// container types
+		let type_pat = type_expr
+			.clone()
+			.filter(|t| matches!(t, TypeExpr::Array(_) | TypeExpr::Map(..) | TypeExpr::FixedArray(..)))
+			.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
+		let match_pat = struct_pat.or(type_pat).or(expr.clone()).boxed();
+
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
 				.ignore_then(header_expr.clone())
@@ -979,25 +996,10 @@ where
 			.clone()
 			.then_ignore(just(Token::Comma).or_not())
 			.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
-		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
-		let struct_pat = dot()
-			.ignore_then(select! { Token::Ident(v) => v })
-			.then_ignore(dot())
-			.then(brace(loose_list(keyed.clone().or(bind))))
-			.map_with(|(variant, es), ex| {
-				let args = vec![(Expr::Record(es), ex.span())];
-				(Expr::EnumShorthand { variant, args }, ex.span())
-			});
-		// container types
-		let type_pat = type_expr
-			.clone()
-			.filter(|t| matches!(t, TypeExpr::Array(_) | TypeExpr::Map(..) | TypeExpr::FixedArray(..)))
-			.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 		let match_arm = binding
 			.then(
-				struct_pat
-					.or(type_pat)
-					.or(expr.clone())
+				match_pat
+					.clone()
 					.separated_by(just(Token::Comma))
 					.allow_trailing()
 					.at_least(1)
@@ -1342,7 +1344,23 @@ where
 				.map_with(|pair, ex| or_else(pair, ex.span()))
 				.boxed()
 		};
-		header_expr.define(level(None));
+		// control flow header expressions
+		let header_bind =
+			match_pat
+				.clone()
+				.then_ignore(just(Token::Bind))
+				.then(level(None))
+				.map_with(|(pat, value), ex| {
+					(
+						Expr::PatBind {
+							pat: Box::new(pat),
+							value: Box::new(value),
+							mutable: Some(true),
+						},
+						ex.span(),
+					)
+				});
+		header_expr.define(header_bind.or(level(None)));
 		juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
 		level(Some(trail_only))
 	};

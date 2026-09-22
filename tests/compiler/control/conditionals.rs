@@ -135,6 +135,40 @@ fn do_else_if_chain() {
 }
 
 #[test]
+fn header_pattern_bind() {
+	check(
+		indoc! {"
+			Coin :: enum { quarter(int) penny }
+			if .quarter.(cents) := Coin.quarter.(25) { print(cents) }
+		"},
+		"25",
+	);
+	check(
+		indoc! {r#"
+			Coin :: enum { quarter(int) penny }
+			if .quarter.(cents) := Coin.penny { print(cents) } else { print("nope") }
+		"#},
+		"nope",
+	);
+	check(
+		indoc! {"
+			Coin :: enum { quarter(int) penny }
+			if .quarter.(cents) := Coin.penny { cents }
+		"},
+		"0",
+	);
+}
+
+#[test]
+fn header_bind_scoped_to_body() {
+	let src = indoc! {"
+		Coin :: enum { quarter(int) penny }
+		if .quarter.(state) := Coin.penny { print(state) } else { print(state) }
+	"};
+	fail_with(src, "undefined variable `state`");
+}
+
+#[test]
 fn do_guard_return() {
 	let src = indoc! {"
 		abs :: fn(x: int) int {

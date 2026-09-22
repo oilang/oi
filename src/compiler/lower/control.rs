@@ -32,6 +32,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		target: Option<&Typ>,
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		if let Expr::PatBind { pat, value, .. } = &cond.0 {
+			let arm = MatchArm {
+				patterns: vec![(**pat).clone()],
+				body: then.to_vec(),
+				..Default::default()
+			};
+			return self.match_expr(value, &[arm], els, Some(&[]), target, span);
+		}
+
 		let (cv, ct) = self.expr(cond)?;
 		if ct != Typ::Bool {
 			return Err(
@@ -146,7 +155,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// a non-enum match has no coverage to analyse, so it is all a gap
 		if !st.is_enumish() && else_body.is_none() {
-			else_body = gap;
+			else_body = gap.filter(|g| !g.is_empty());
 		}
 
 		// ensure match covers every variant when applicable
@@ -173,7 +182,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							Diagnostic::new(msg, span.into_range()).with_label("cover these variants or add `else`")
 						);
 					}
-					else_body = gap;
+					else_body = gap.filter(|g| !g.is_empty());
 				}
 			}
 		}
@@ -554,6 +563,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// a conditional loop branches, into the body or out through `fallthrough`
 		let (exit, fallthrough) = match cond {
+			Some((Expr::PatBind { .. }, _)) | None => (None, None),
 			Some(cond) => {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
@@ -571,12 +581,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.switch_to_block(body_block);
 				(Some(exit), Some(fallthrough))
 			}
-			None => (None, None),
 		};
 
 		// a body expression that can fall through ends the loop when it does
-		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match body {
-			[(Expr::Match { subject, arms, .. }, sp)] => {
+		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match (cond, body) {
+			(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
+				let arm = MatchArm {
+					patterns: vec![(**pat).clone()],
+					body: body.to_vec(),
+					..Default::default()
+				};
+				s.match_expr(value, &[arm], None, Some(&[(Expr::Break(None), *sp)]), None, *sp)
+			}
+			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
 				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None), *sp)]), None, *sp)
 			}
 			_ => s.block(body),

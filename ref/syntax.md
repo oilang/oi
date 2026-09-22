@@ -1255,6 +1255,12 @@ main :: fn() {
 		print("idk")
 	}
 
+	# a pattern bind in the header is a test (Rust `if let`)
+	Coin :: enum { quarter(atom) penny }
+	coin :: Coin.quarter.(:wa)
+	if .quarter.(state) := coin do print(state) # :wa
+	if .penny := coin do print("a penny") else do print("not a penny")
+
 	# `do` takes a single statement instead of a block, anywhere a block is expected
 	if i == 2 do print("two")
 	if i > 0 do print("positive") else do print("nope")
@@ -1318,6 +1324,10 @@ main :: fn() {
 	loop match it.next() {
 		.some.(n) => print(n),
 	}
+	# a pattern bind in a loop header runs the body until it stops matching (Rust `while let`)
+	rest := 0..3
+	loop .some.(n) := rest.next() do print(n)
+
 	# cover every case and it runs until an arm breaks
 	loop match recv(ch) {
 		.done => break :done,
