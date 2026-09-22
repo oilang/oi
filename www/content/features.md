@@ -2,7 +2,7 @@
 title = "features"
 +++
 
-# [almost] everything is an expression
+# everything is an expression
 
 It is a goal for absolutely everything to be an expression.
 Right now most things are.
@@ -16,8 +16,8 @@ status := if score > 100 {
 
 # match expressions
 value := match token {
-	.number(n) => n,
-	.ident(_) => 0,
+	.number.(n) => n,
+	.ident.(_) => 0,
 }
 ```
 
@@ -75,9 +75,6 @@ sleep 1_000
 log.group :process
 ```
 
-# trailing records
-
-
 # trailing functions
 
 ```odin
@@ -122,10 +119,23 @@ This is especially useful inside pipelines.
 Bindings may be provided to return signatures, creating a mutable zeroed value.
 
 ```odin
-divmod :: fn(a: int, b: int) out (int, int) {
+divmod :: fn(a: int, b: int) out: (int, int) {
 	out.0 = a / b
 	out.1 = a % b
 	return
+}
+```
+
+# deferred cleanup
+
+Cleanup that runs when a scope exits, in reverse order.
+
+```odin
+f := os.create("out.log")!
+defer f.close()
+
+defer or {
+	log.error($)
 }
 ```
 
@@ -135,8 +145,8 @@ Functions marked as tests are treated specially.
 The are not compiled unless ran with `oi test`.
 
 ```odin
-@test division :: fn() {
-	assert! div(8, 2) == 4
+test! "division" {
+	assert! 8 / 2 == 4
 }
 ```
 
@@ -151,10 +161,10 @@ oi test
 oi build
 oi repl
 oi install
+oi init
 
 # not yet implemented:
 oi fmt
-oi init
 oi doc
 oi watch
 oi lsp

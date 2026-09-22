@@ -1,0 +1,45 @@
+module os
+
+getenv : fn(name: cstr) ptr : foreign
+setenv : fn(name: cstr, value: cstr, overwrite: i32) i32 : foreign
+getcwd : fn(buf: ptr, size: usize) ptr : foreign
+getpid : fn() i32 : foreign
+system : fn(cmd: cstr) i32 : foreign
+free : fn(p: ptr) : foreign
+@link.{name = "exit"}
+c_exit : fn(code: i32) : foreign
+
+## Read an env var.
+pub env :: fn(name: string) ?string {
+	p :: unsafe getenv(name.cstr())
+	if p.is_null() { return }
+	unsafe cstr.(p).str()
+}
+
+## Set an env var for this process.
+pub set_env :: fn(name: string, value: string) {
+	_ := unsafe setenv(name.cstr(), value.cstr(), 1)
+}
+
+## Get the working directory.
+pub cwd :: fn() string {
+	p :: unsafe getcwd(ptr(0), 0)
+	s :: unsafe cstr.(p).str()
+	unsafe free(p)
+	s
+}
+
+## Get the process id.
+pub pid :: fn() int {
+	int.(unsafe getpid())
+}
+
+## Run a shell command, returning its exit status.
+pub sh :: fn(cmd: string) u8 {
+	u8.(unsafe system(cmd.cstr()) >> 8)
+}
+
+## End the process with `code`.
+pub exit :: fn(code := 0) {
+	unsafe c_exit(i32.(code))
+}

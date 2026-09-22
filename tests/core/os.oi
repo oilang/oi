@@ -1,0 +1,10 @@
+use os
+
+test! "os" {
+	os.set_env("OI_TEST_VAR", "yo")
+	assert! (os.env("OI_TEST_VAR") or "") == "yo"
+	assert! (os.env("OI_NOPE") or "-") == "-"
+	assert! os.cwd().starts_with("/")
+	assert! os.pid() > 0
+	assert! os.sh("exit 3") == 3
+}

@@ -17,7 +17,7 @@ fn module_decl() {
 
 #[test]
 fn import_missing() {
-	fail_with("use os", "cannot find module `os`");
+	fail_with("use nope", "cannot find module `nope`");
 }
 
 #[test]
