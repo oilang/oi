@@ -245,6 +245,7 @@ where
 	let mut expr = Recursive::declare();
 	let mut juxt_expr = Recursive::declare();
 	let mut header_expr = Recursive::declare();
+	let mut header_cond = Recursive::declare();
 	let mut block = Recursive::declare();
 	let mut anon_fields = Recursive::declare();
 	let mut item = Recursive::declare();
@@ -435,29 +436,6 @@ where
 
 	// bindings
 	let annot = spanned(type_expr.clone());
-	let value_tail = just(Token::Bind)
-		.to(true)
-		.or(just(Token::DoubleColon).to(false))
-		.then(juxt_expr.clone())
-		.map(|(mutable, value)| (mutable, None, Some(value)));
-	let sandwich_tail = just(Token::Colon)
-		.ignore_then(annot.clone().validate(|t, _, emitter| {
-			if let (TypeExpr::AnonStruct(_), s) = &t {
-				emitter.emit(Rich::custom(*s, "an anonymous struct type can't be a binding's middle"));
-			}
-			t
-		}))
-		.then(
-			just(Token::Assign)
-				.to(true)
-				.or(just(Token::Colon).to(false))
-				.then(juxt_expr.clone())
-				.or_not(),
-		)
-		.map(|(typ, tail)| match tail {
-			Some((mutable, value)) => (mutable, Some(typ), Some(value)),
-			None => (true, Some(typ), None),
-		});
 	// macro bindings
 	let hole_ident = just(Token::Percent)
 		.then_ignore(adjacent)
@@ -473,24 +451,8 @@ where
 				.map(|n| (format!("%{n}"), None))
 				.or(brace(expr.clone()).map(|e| ("%".to_string(), Some(e)))),
 		)
-		.or(ident().map(|n| (n, None)));
-	let bind = bind_name
-		.then(value_tail.or(sandwich_tail))
-		.map_with(|((name, binder), (mutable, typ, value)), ex| {
-			let bind = (
-				Expr::Bind {
-					mutable,
-					name,
-					typ,
-					value: value.map(Box::new),
-				},
-				ex.span(),
-			);
-			match binder {
-				Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
-				None => bind,
-			}
-		});
+		.or(ident().map(|n| (n, None)))
+		.boxed();
 
 	// compound assignment
 	let assign_op = choice((
@@ -639,26 +601,72 @@ where
 	});
 	let pat = tuple_pat.or(struct_pat).or(array_pat).boxed();
 
-	// pattern binds
-	let destructure = pat
-		.clone()
-		.then(
-			just(Token::Bind)
-				.to(Some(true))
-				.or(just(Token::DoubleColon).to(Some(false)))
-				.or(just(Token::Assign).to(None)),
-		)
-		.then(juxt_expr.clone())
-		.map_with(|((pat, mutable), value), ex| {
-			(
-				Expr::PatBind {
-					pat: Box::new(pat),
-					mutable,
-					value: Box::new(value),
-				},
-				ex.span(),
+	// binding grammar
+	let binds = |value: P<'token, I, Spanned<Expr>>, pat: P<'token, I, Spanned<Expr>>| {
+		let value_tail = just(Token::Bind)
+			.to(true)
+			.or(just(Token::DoubleColon).to(false))
+			.then(value.clone())
+			.map(|(mutable, value)| (mutable, None, Some(value)));
+		let sandwich_tail = just(Token::Colon)
+			.ignore_then(annot.clone().validate(|t, _, emitter| {
+				if let (TypeExpr::AnonStruct(_), s) = &t {
+					emitter.emit(Rich::custom(*s, "an anonymous struct type can't be a binding's middle"));
+				}
+				t
+			}))
+			.then(
+				just(Token::Assign)
+					.to(true)
+					.or(just(Token::Colon).to(false))
+					.then(value.clone())
+					.or_not(),
 			)
-		});
+			.map(|(typ, tail)| match tail {
+				Some((mutable, value)) => (mutable, Some(typ), Some(value)),
+				None => (true, Some(typ), None),
+			});
+		let bind = bind_name
+			.clone()
+			.then(value_tail.or(sandwich_tail))
+			.map_with(|((name, binder), (mutable, typ, value)), ex| {
+				let bind = (
+					Expr::Bind {
+						mutable,
+						name,
+						typ,
+						value: value.map(Box::new),
+					},
+					ex.span(),
+				);
+				match binder {
+					Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
+					None => bind,
+				}
+			})
+			.boxed();
+		let destructure = pat
+			.then(
+				just(Token::Bind)
+					.to(Some(true))
+					.or(just(Token::DoubleColon).to(Some(false)))
+					.or(just(Token::Assign).to(None)),
+			)
+			.then(value)
+			.map_with(|((pat, mutable), value), ex| {
+				(
+					Expr::PatBind {
+						pat: Box::new(pat),
+						mutable,
+						value: Box::new(value),
+					},
+					ex.span(),
+				)
+			})
+			.boxed();
+		(bind, destructure)
+	};
+	let (bind, destructure) = binds(juxt_expr.clone().boxed(), pat.clone());
 
 	let doc = select! { Token::Doc(text) => text }
 		.repeated()
@@ -923,7 +931,7 @@ where
 
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
-				.ignore_then(header_expr.clone())
+				.ignore_then(header_cond.clone())
 				.then(block.clone())
 				.then(
 					just(Token::Else)
@@ -949,7 +957,7 @@ where
 				block
 					.clone()
 					.map(|body| (None, body))
-					.or(header_expr.clone().map(Some).then(block.clone()))
+					.or(header_cond.clone().map(Some).then(block.clone()))
 					.or(header_expr.clone().map(|e| (None, vec![e]))),
 			)
 			.map_with(|(cond, body), ex| {
@@ -1344,23 +1352,9 @@ where
 				.map_with(|pair, ex| or_else(pair, ex.span()))
 				.boxed()
 		};
-		// control flow header expressions
-		let header_bind =
-			match_pat
-				.clone()
-				.then_ignore(just(Token::Bind))
-				.then(level(None))
-				.map_with(|(pat, value), ex| {
-					(
-						Expr::PatBind {
-							pat: Box::new(pat),
-							value: Box::new(value),
-							mutable: Some(true),
-						},
-						ex.span(),
-					)
-				});
-		header_expr.define(header_bind.or(level(None)));
+		header_expr.define(level(None));
+		let (bind, test) = binds(level(None).boxed(), match_pat.clone());
+		header_cond.define(bind.or(test).or(header_expr.clone()));
 		juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
 		level(Some(trail_only))
 	};

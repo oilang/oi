@@ -160,6 +160,22 @@ fn header_pattern_bind() {
 }
 
 #[test]
+fn header_binding() {
+	let src = indoc! {"
+		x := 5
+		if x := 9 do print(x)
+		print(x)
+		if (a, b) :: (1, 2) do print(a + b)
+		if n : int do print(n)
+	"};
+	check(src, ["9", "5", "3", "0"]);
+	fail_with(
+		r#"if x := 5 { print(x) } else { print("dead") }"#,
+		"this binding always succeeds, so `else` can never run",
+	);
+}
+
+#[test]
 fn header_bind_scoped_to_body() {
 	let src = indoc! {"
 		Coin :: enum { quarter(int) penny }

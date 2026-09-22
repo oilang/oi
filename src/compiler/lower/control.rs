@@ -2,6 +2,15 @@ use crate::compiler::expand;
 
 use super::*;
 
+// A header bind is a test only when its pattern can fail, otherwise it just binds.
+fn infallible(cond: &Expr) -> bool {
+	match cond {
+		Expr::Bind { .. } => true,
+		Expr::PatBind { pat, .. } => matches!(pat.0, Expr::Tuple(_) | Expr::Array(_) | Expr::StructLit { .. }),
+		_ => false,
+	}
+}
+
 impl<'a, M: Module> Translator<'a, M> {
 	// Lower branching control flow constructs.
 	pub(super) fn branching(
@@ -32,6 +41,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		target: Option<&Typ>,
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		if infallible(&cond.0) {
+			if let Some([first, ..]) = els {
+				let msg = "this binding always succeeds, so `else` can never run";
+				return Err(Diagnostic::new(msg, first.1.into_range()).with_label("unreachable"));
+			}
+			let body: Vec<_> = std::iter::once(cond.clone()).chain(then.iter().cloned()).collect();
+			return self.scoped(|s| s.block_tail(&body, target));
+		}
+
 		if let Expr::PatBind { pat, value, .. } = &cond.0 {
 			let arm = MatchArm {
 				patterns: vec![(**pat).clone()],
@@ -564,6 +582,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// a conditional loop branches, into the body or out through `fallthrough`
 		let (exit, fallthrough) = match cond {
 			Some((Expr::PatBind { .. }, _)) | None => (None, None),
+			Some((c, _)) if infallible(c) => (None, None),
 			Some(cond) => {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
@@ -585,6 +604,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// a body expression that can fall through ends the loop when it does
 		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match (cond, body) {
+			(Some(c), _) if infallible(&c.0) => {
+				let body: Vec<_> = std::iter::once(c.clone()).chain(body.iter().cloned()).collect();
+				s.block(&body)
+			}
 			(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
 				let arm = MatchArm {
 					patterns: vec![(**pat).clone()],
