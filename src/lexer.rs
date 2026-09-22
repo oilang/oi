@@ -124,6 +124,7 @@ pub enum Token {
 	Plus,
 	#[token("-")]
 	Minus,
+	SpaceMinus,
 	#[token("*")]
 	Asterisk,
 	#[token("**")]
@@ -292,7 +293,7 @@ impl fmt::Display for Token {
 			Token::Dot | Token::SpaceDot => write!(f, "."),
 			Token::Colon => write!(f, ":"),
 			Token::Plus => write!(f, "+"),
-			Token::Minus => write!(f, "-"),
+			Token::Minus | Token::SpaceMinus => write!(f, "-"),
 			Token::Asterisk => write!(f, "*"),
 			Token::StarStar => write!(f, "**"),
 			Token::PlusEq => write!(f, "+="),
@@ -448,6 +449,13 @@ pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 				let gap = &src[raw[i - 1].1.end..span.start];
 				let spaced = !gap.is_empty() && !gap.contains('\n');
 				out.push((if spaced { Token::SpaceDot } else { Token::Dot }, *span));
+			}
+			// asymmetric spacing is a negation
+			Token::Minus if i > 0 => {
+				let before = &src[raw[i - 1].1.end..span.start];
+				let after = raw.get(i + 1).map(|(_, next)| &src[span.end..next.start]);
+				let lead = !before.is_empty() && !before.contains('\n') && after == Some("");
+				out.push((if lead { Token::SpaceMinus } else { Token::Minus }, *span));
 			}
 			Token::String(s) => out.extend(expand_string(s, *span, src)),
 			Token::RawString(s) => out.push((Token::String(s.clone()), *span)),
