@@ -284,7 +284,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					let has_str_impl = matches!(
 						recv_typ,
-						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::CStr
+						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::Sum(..) | Typ::CStr
 					);
 					if method == "str" && args.is_empty() && !has_str_impl {
 						return Ok((self.derived_str(recv_val, &recv_typ), Typ::Str));
@@ -298,7 +298,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return self.dyn_call(recv_val, role::ERROR, method, args, expr.1);
 					}
 					match &recv_typ {
-						Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) => {
+						Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) | Typ::Sum(name, _) => {
 							(name.clone(), Some((recv_val, recv_typ)))
 						}
 						Typ::Str | Typ::CStr => (recv_typ.to_string(), Some((recv_val, recv_typ))),

@@ -165,6 +165,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((val, target.clone()));
 		}
+		if let (Typ::CStr, Typ::TupleStruct(p, _)) = (target, &typ)
+			&& p == role::PTR
+		{
+			self.require_unsafe("cstr cast", span)?;
+			return Ok((val, Typ::CStr));
+		}
 		if let (Typ::Array(e), Typ::Str) = (target, &typ)
 			&& **e == Typ::UInt(8)
 		{
