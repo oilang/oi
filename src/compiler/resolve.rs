@@ -419,8 +419,14 @@ impl TypeCtx<'_> {
 					.with_label("would require infinitely nested variants"),
 			);
 		}
-		let args: Vec<_> = def.type_params.iter().map(|p| subst[&p.name].key()).collect();
+		let concrete: Vec<Typ> = def.type_params.iter().map(|p| subst[&p.name].clone()).collect();
+		let args: Vec<_> = concrete.iter().map(Typ::key).collect();
 		let display = format!("{name}[{}]", args.join(", "));
+		self.generics
+			.instance_args
+			.borrow_mut()
+			.entry(display.clone())
+			.or_insert(concrete);
 		if self.generics.instances.borrow().contains_key(&display) {
 			return Ok(Typ::Enum(display));
 		}

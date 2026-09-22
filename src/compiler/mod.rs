@@ -189,6 +189,13 @@ pub(crate) struct Generics {
 	pub instance_args: RefCell<HashMap<String, Vec<Typ>>>,
 }
 
+impl Generics {
+	// The concrete type args an instance was built from, if it is one.
+	pub fn instance_args(&self, key: &str) -> Option<Vec<Typ>> {
+		self.instance_args.borrow().get(key).cloned()
+	}
+}
+
 // Does a type ref mention the named type?
 fn mentions(te: &TypeExpr, name: &str) -> bool {
 	match te {

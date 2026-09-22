@@ -45,16 +45,13 @@ pub(super) fn unify(
 			.iter()
 			.zip(fields)
 			.try_for_each(|((_, e), (_, f))| unify(e, f, params, subst, generics)),
-		(TypeExpr::Generic(_, gargs), Typ::Struct(sname, _)) => {
-			let cached = generics.instance_args.borrow().get(sname).cloned();
-			match cached {
-				Some(cargs) => gargs
-					.iter()
-					.zip(&cargs)
-					.try_for_each(|(g, c)| unify(g, c, params, subst, generics)),
-				None => Ok(()),
-			}
-		}
+		(TypeExpr::Generic(_, gargs), Typ::Struct(name, _) | Typ::Enum(name)) => match generics.instance_args(name) {
+			Some(cargs) => gargs
+				.iter()
+				.zip(&cargs)
+				.try_for_each(|(g, c)| unify(g, c, params, subst, generics)),
+			None => Ok(()),
+		},
 		// a non-param name, atom-sum, etc: trust it, the call emits against the real signature anyway
 		_ => Ok(()),
 	}

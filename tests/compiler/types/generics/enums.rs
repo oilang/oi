@@ -48,7 +48,33 @@ fn two_instances_coexist() {
 		match geti() { .some.(n) => print(n), .nope => {} }
 		match gets() { .some.(s) => print(s), .nope => {} }
 	"#};
-	check(src, "1\nhi");
+	check(src, ["1", "hi"]);
+}
+
+#[test]
+fn infers_params_from_instance() {
+	let src = indoc! {r#"
+		Opt[T] :: enum { nope, some(T) }
+		again[T] :: fn(o: Opt[T]) Opt[T] { o }
+		i : Opt[int] = .some.(7)
+		s : Opt[string] = .some.("hi")
+		match again(i) { .some.(n) => print(n), .nope => {} }
+		match again(s) { .some.(v) => print(v), .nope => {} }
+	"#};
+	check(src, ["7", "hi"]);
+
+	let src = indoc! {"
+		Either[L, R] :: enum { left(L), right(R) }
+		swap[L, R] :: fn(e: Either[L, R]) Either[R, L] {
+			match e {
+				.left.(v) => .right.(v),
+				.right.(v) => .left.(v),
+			}
+		}
+		e : Either[int, string] = .left.(1)
+		match swap(e) { .left.(a) => print(a), .right.(b) => print(b) }
+	"};
+	check(src, "1");
 }
 
 #[test]
