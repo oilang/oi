@@ -83,6 +83,8 @@ version : fn() cstr : foreign
 memset : fn(p: ptr, c: int, n: usize) : foreign
 unsafe memset(buf.ptr, 0, 4)
 assert!(unsafe { "hello".ptr.offset(1).string(2) } == "el")
+# a `ptr` casts to `cstr` when it holds a NUL-terminated string
+home :: unsafe cstr.(getenv("HOME")).str()
 
 # `@unsafe` colors a function and callers need to use it
 @unsafe
@@ -181,7 +183,7 @@ twople :: fn(x: int, y: int) {
 ## Although Oi looks like V and in turn Go, and Go has a named return feature itself (which V interestingly did not copy),
 ## I really attribute this more to Nim's implicit `result`:
 ## - https://nim-by-example.github.io/variables/result/
-## - 
+## -
 ## Nim's `result` is great, but I don't like that it's magic.
 ## So I opted to make you opt-in by naming it explicitly.
 
@@ -551,6 +553,13 @@ Frac : Ord < {
 	lt :: fn(self, other: Self) bool { self.num * other.den < other.num * self.den }
 }
 assert!(Frac.{1, 3} < Frac.{1, 2})
+
+# `in` dispatches to a `Contains[T]` claim, so any type can be searched
+Bag :: struct { items: []int }
+Bag : Contains[int] < {
+	contains :: fn(self, v: int) bool { v in self.items }
+}
+assert!(2 in Bag.{ items = [1 2 3] })
 
 # enums can claim operator traits too
 Dir :: enum { up, down }
@@ -1668,6 +1677,16 @@ main :: fn() {
 
 	# sum types may be used in type signatures
 	lookup :: fn(id: Id) User | :missing { :missing }
+
+	# sum types can be given fills
+	Id :< {
+		pub str :: fn(self) string {
+			match self {
+				n @ int => "#{n}",
+				s @ string => s,
+			}
+		}
+	}
 
 	# nested sum aliases splice in place
 	Num :: int | f64

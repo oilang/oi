@@ -199,3 +199,16 @@ fn non_commuting_ops_never_reverse() {
 	"};
 	fail_with(src, "cannot apply `/` to int and Scale");
 }
+
+#[test]
+fn contains_drives_in() {
+	let src = indoc! {r#"
+		Bag :: struct { items: []int }
+		Bag : Contains[int] < {
+			contains :: fn(self, v: int) bool { v in self.items }
+		}
+		b :: Bag.{ items = [1 2 3] }
+		print(2 in b, 9 in b)
+	"#};
+	check(src, "true false");
+}

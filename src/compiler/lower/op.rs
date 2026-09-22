@@ -117,6 +117,23 @@ impl<'a, M: Module> Translator<'a, M> {
 			.filter(|s| claimed && s.params.len() == arity)
 	}
 
+	// Contains claim.
+	pub(super) fn emit_contains(
+		&mut self,
+		c: Value,
+		ct: &Typ,
+		(v, vt): TypedVal,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let Some(sig) = self.find_fill(&format!("{}.contains", ct.key()), 1, &vt) else {
+			return Err(
+				Diagnostic::new(format!("cannot search {vt} in {ct}"), span.into_range())
+					.with_label(format!("`{ct}` claims no `Contains[{vt}]`")),
+			);
+		};
+		Ok(self.emit_call(&sig, &[c, v]))
+	}
+
 	// Whether `typ` claims `tn`.
 	pub(super) fn claims(&self, typ: &Typ, tn: &str) -> bool {
 		let key = typ.key();
@@ -547,18 +564,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(self.emit_call(&sig, &[rhs_val, lhs_val]));
 		}
 
-		if is_range(&rhs_typ) {
-			let n = self.int_value(lhs, "`in` value")?;
-			let n = self.intcast(n, types::I64, true);
-			let hit = self.range_contains(rhs_val, n, rhs.1)?;
-			return Ok((hit, Typ::Bool));
+		if self.claims(&rhs_typ, role::CONTAINS) {
+			let v = self.expr(lhs)?;
+			return self.emit_contains(rhs_val, &rhs_typ, v, lhs.1);
 		}
 
 		let elem = match rhs_typ {
 			Typ::Array(ref e) => (**e).clone(),
 			_ => {
 				return Err(Diagnostic::new(
-					format!("right side of `in` must be an array, Str or Range, got {rhs_typ}"),
+					format!("right side of `in` must be an array, Str or a `Contains` type, got {rhs_typ}"),
 					rhs.1.into_range(),
 				)
 				.with_label("not an array or string"));

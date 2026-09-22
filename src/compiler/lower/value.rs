@@ -574,18 +574,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("not an integer"));
 		};
 		let zero = (Expr::Int(0), span);
-		let (range, _) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
+		let (range, rt) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
 		let sv = self.intcast(sv, types::I64, true);
-		let hit = self.range_contains(range, sv, span)?;
+		let (hit, _) = self.emit_contains(range, &rt, (sv, Typ::Int(64)), span)?;
 		Ok(self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0))
-	}
-
-	pub(super) fn range_contains(&mut self, range: Value, n: Value, span: Span) -> Result<Value, Diagnostic> {
-		let sig = self.funcs.get(role::RANGE_CONTAINS).cloned().ok_or_else(|| {
-			Diagnostic::new(format!("core is missing `{}`", role::RANGE_CONTAINS), span.into_range())
-				.with_label("required to test range membership")
-		})?;
-		Ok(self.emit_call(&sig, &[range, n]).0)
 	}
 
 	// Split `Enum.variant` into its enum and variant.

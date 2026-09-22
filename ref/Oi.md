@@ -102,6 +102,8 @@ tags: []
 		```
 	- [x] `::` in fn params should make immutable defaults for consistency
 	- [ ] zero enum values `none`?
+	- [ ] `10..-2..` `revo`
+	- [ ] `if let`/`while let`/`loop let`/?`match let` `rust`
 - [ ] `comp assert`
 - [x] pipeline examples with `!` postfix collide with macros
 - [x] revisit needing `print`, `assert`, et al to be macros

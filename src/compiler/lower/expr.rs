@@ -337,6 +337,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args)? {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, &args, expr.1);
 				}
+				if let Some((_, rt)) = &bound
+					&& args.is_empty()
+					&& let Some(sig) = self.find_fill(&key, 0, rt)
+				{
+					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
+				}
 				if method == "str"
 					&& args.is_empty()
 					&& let Some((v, t)) = &bound

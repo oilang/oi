@@ -17,6 +17,7 @@ pub(crate) const BIT_XOR: &str = "core::BitXor";
 pub(crate) const SHL: &str = "core::Shl";
 pub(crate) const SHR: &str = "core::Shr";
 pub(crate) const BITWISE: [&str; 6] = [NOT, BIT_AND, BIT_OR, BIT_XOR, SHL, SHR];
+pub(crate) const CONTAINS: &str = "core::Contains";
 pub(crate) const ERROR: &str = "core::Error";
 
 // types
@@ -28,7 +29,6 @@ pub(crate) const RANGE: &str = "core::Range";
 // fns
 pub(crate) const ZERO: &str = "core::zero";
 pub(crate) const STR_CONTAINS: &str = "string.contains";
-pub(crate) const RANGE_CONTAINS: &str = "core::Range.contains";
 
 // annotations
 pub(crate) const PARAMS: &str = "core::params";

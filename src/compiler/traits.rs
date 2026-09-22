@@ -26,6 +26,9 @@ pub(crate) struct TraitBody<'a> {
 // Whether a primitive natively satisfies std trait `tn`.
 pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	use Typ::*;
+	if matches!(tn, role::CONTAINS) {
+		return false;
+	}
 	match typ {
 		Int(_) => true,
 		UInt(_) | ISize | USize => tn != role::NEG,
