@@ -26,8 +26,6 @@ pub(crate) enum Typ {
 	TupleStruct(String, Vec<(Option<String>, Typ)>),
 	Enum(String),
 	Trait(String),
-	Option(Box<Typ>),
-	Result(Box<Typ>, Box<Typ>),
 	Sum(String, Vec<VariantInfo>),
 	Error,
 	Fn(Vec<FnParam>, Box<Typ>),
@@ -148,10 +146,7 @@ impl Typ {
 	}
 
 	pub fn is_enumish(&self) -> bool {
-		matches!(
-			self,
-			Typ::Enum(_) | Typ::Option(_) | Typ::Result(..) | Typ::Sum(..) | Typ::Any
-		)
+		matches!(self, Typ::Enum(_) | Typ::Sum(..) | Typ::Any)
 	}
 
 	// Single-field tuple structs are transparent.
@@ -205,9 +200,6 @@ impl Typ {
 			}
 			Typ::Array(e) => format!("[]{}", e.key()),
 			Typ::FixedArray(e, n) => format!("[{n}]{}", e.key()),
-			Typ::Option(inner) => format!("?{}", inner.key()),
-			Typ::Result(ok, err) if **err == Typ::Error => format!("!{}", ok.key()),
-			Typ::Result(ok, err) => format!("Result[{}, {}]", ok.key(), err.key()),
 			Typ::Map(k, v) => format!("[{}]{}", k.key(), v.key()),
 			Typ::Access(a, inner) => format!("{a} {}", inner.key()),
 			Typ::Ref(inner) => format!("&{}", inner.key()),
@@ -252,11 +244,11 @@ impl fmt::Display for Typ {
 			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
 			Typ::Struct(name, _) => write!(f, "{name}"),
 			Typ::TupleStruct(name, _) => write!(f, "{name}"),
-			Typ::Enum(name) => write!(f, "{name}"),
+			Typ::Enum(name) => match sugar(name) {
+				Some(s) => write!(f, "{s}"),
+				None => write!(f, "{name}"),
+			},
 			Typ::Trait(name) => write!(f, "{name}"),
-			Typ::Option(inner) => write!(f, "?{inner}"),
-			Typ::Result(ok, err) if **err == Typ::Error => write!(f, "!{ok}"),
-			Typ::Result(ok, err) => write!(f, "Result[{ok}, {err}]"),
 			Typ::Sum(name, _) if !name.is_empty() => write!(f, "{name}"),
 			Typ::Sum(_, variants) => {
 				write!(
@@ -313,8 +305,7 @@ impl PartialEq for Typ {
 			(Typ::Struct(n, a), Typ::Struct(m, b)) => n == m && a == b,
 			(Typ::Enum(a), Typ::Enum(b)) => a == b,
 			(Typ::Trait(a), Typ::Trait(b)) => a == b,
-			(Typ::Option(a), Typ::Option(b)) | (Typ::Array(a), Typ::Array(b)) => a == b,
-			(Typ::Result(a, e), Typ::Result(b, f)) => a == b && e == f,
+			(Typ::Array(a), Typ::Array(b)) => a == b,
 			(Typ::FixedArray(a, n), Typ::FixedArray(b, m)) => a == b && n == m,
 			(Typ::Sum(n, a), Typ::Sum(m, b)) => n == m && a == b,
 			(Typ::Fn(p, r) | Typ::Closure(p, r, _), Typ::Fn(q, s) | Typ::Closure(q, s, _)) => p == q && r == s,
@@ -341,15 +332,6 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 		Typ::Array(e) => TypeExpr::Array(Box::new(type_expr(e)?)),
 		Typ::FixedArray(e, n) => {
 			TypeExpr::FixedArray(Box::new(type_expr(e)?), Box::new((Expr::Int(*n as i64), (0..0).into())))
-		}
-		Typ::Option(e) => TypeExpr::Option(Box::new(type_expr(e)?)),
-		Typ::Result(ok, err) => {
-			let err = if **err == Typ::Error {
-				None
-			} else {
-				Some(Box::new(type_expr(err)?))
-			};
-			TypeExpr::Result(Box::new(type_expr(ok)?), err)
 		}
 		Typ::Map(k, v) => TypeExpr::Map(Box::new(type_expr(k)?), Box::new(type_expr(v)?)),
 		Typ::Tuple(fs) => TypeExpr::Tuple(
@@ -388,6 +370,19 @@ pub(crate) fn access_wrap(access: Access, typ: Typ) -> Typ {
 
 pub(crate) fn oi_symbol(name: &str) -> String {
 	format!("oi_{}", name.replace('.', "__").replace("::", "$"))
+}
+
+// Spell the core Option/Result instances back as `?T` / `!T` where possible.
+pub(crate) fn sugar(name: &str) -> Option<String> {
+	let args = |base: &str| name.strip_prefix(base)?.strip_prefix('[')?.strip_suffix(']');
+	if let Some(inner) = args(role::OPTION) {
+		return Some(format!("?{inner}"));
+	}
+	let parts = args(role::RESULT)?;
+	Some(match parts.strip_suffix(", Error") {
+		Some(ok) => format!("!{ok}"),
+		None => format!("Result[{parts}]"),
+	})
 }
 
 // Strip qualifiers like `module::`.
@@ -477,20 +472,6 @@ pub(crate) fn sum_remap(src: &[VariantInfo], dst: &[VariantInfo]) -> Option<Vec<
 pub(crate) fn enum_slots(variants: &[VariantInfo]) -> usize {
 	// the tag plus the widest variant's fields
 	1 + variants.iter().map(|v| v.payload.len()).max().unwrap_or(0)
-}
-
-pub(crate) fn option_variants(inner: &Typ) -> Vec<VariantInfo> {
-	vec![
-		VariantInfo::new("none", 0, vec![]),
-		VariantInfo::new("some", 1, vec![inner.clone()]),
-	]
-}
-
-pub(crate) fn result_variants(ok: &Typ, err: &Typ) -> Vec<VariantInfo> {
-	vec![
-		VariantInfo::new("ok", 0, vec![ok.clone()]),
-		VariantInfo::new("err", 1, vec![err.clone()]),
-	]
 }
 
 // The tag an `any` box carries for a type.

@@ -230,7 +230,6 @@ impl TypeCtx<'_> {
 					self.array_len(len)?,
 				))
 			}
-			TypeExpr::Option(inner) => Ok(Typ::Option(Box::new(self.resolve(inner, span)?))),
 			TypeExpr::Ref(inner) => {
 				let it = self.resolve(inner, span)?;
 				if !matches!(it, Typ::Struct(..)) {
@@ -241,13 +240,6 @@ impl TypeCtx<'_> {
 					.with_label("not a struct"));
 				}
 				Ok(Typ::Ref(Box::new(it)))
-			}
-			TypeExpr::Result(inner, err) => {
-				let err = match err {
-					Some(e) => self.resolve(e, span)?,
-					None => Typ::Error,
-				};
-				Ok(Typ::Result(Box::new(self.resolve(inner, span)?), Box::new(err)))
 			}
 			TypeExpr::AtomSum(names) => {
 				let mut seen = HashSet::new();
@@ -451,9 +443,40 @@ impl TypeCtx<'_> {
 				| "string" | "cstr"
 				| "atom" | "any"
 				| "array" | "map"
-				| "Option" | "Result"
 				| "Error" | "Ast"
 		) || name.strip_prefix(['i', 'u', 'f']).is_some_and(|w| w.parse::<u16>().is_ok())
+	}
+
+	// An instance of a core generic enum.
+	pub fn core_enum(&self, name: &str, args: &[Typ]) -> Typ {
+		let def = self.generics.enums.get(name).expect("core declares it");
+		let subst = (def.type_params.iter().zip(args))
+			.map(|(p, a)| (p.name.clone(), a.clone()))
+			.collect();
+		(self.instantiate_enum(name, def, &subst, Span::default()))
+			.unwrap_or_else(|_| unreachable!("{name} does not recurse"))
+	}
+
+	// The type args of a core generic enum instance.
+	fn instance_of(&self, typ: &Typ, base: &str) -> Option<Vec<Typ>> {
+		match typ {
+			Typ::Enum(n) if n.split('[').next() == Some(base) => self.generics.instance_args(n),
+			_ => None,
+		}
+	}
+
+	pub fn option_inner(&self, typ: &Typ) -> Option<Typ> {
+		self.instance_of(typ, role::OPTION)?.pop()
+	}
+
+	pub fn result_parts(&self, typ: &Typ) -> Option<(Typ, Typ)> {
+		let [ok, err] = <[Typ; 2]>::try_from(self.instance_of(typ, role::RESULT)?).ok()?;
+		Some((ok, err))
+	}
+
+	// Whether a fn specifies a Result.
+	pub fn fallible(&self, typ: &Typ) -> bool {
+		self.result_parts(typ).is_some_and(|(ok, _)| ok.is_unit())
 	}
 
 	// Resolve a named type.

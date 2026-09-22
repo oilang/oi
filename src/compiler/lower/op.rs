@@ -485,9 +485,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || rc::opt_ref(l)) {
 					self.b.ins().icmp(icc, lv, rv)
 				} else {
-					let label = match l {
-						Typ::Enum(_) | Typ::Struct(..) => format!("claim `Ord` for `{lt}` to define ordering"),
-						_ => "only `==` and `!=` are supported".into(),
+					let claimable = matches!(l, Typ::Struct(..)) || matches!(l, Typ::Enum(n) if sugar(n).is_none());
+					let label = match claimable {
+						true => format!("claim `Ord` for `{lt}` to define ordering"),
+						false => "only `==` and `!=` are supported".into(),
 					};
 					return Err(
 						Diagnostic::new(format!("cannot compare {lt} and {rt}"), span.into_range()).with_label(label),

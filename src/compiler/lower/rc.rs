@@ -26,13 +26,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
 			Typ::Map(_, val) => self.is_resource_seen(val, seen),
 			Typ::Tuple(fields) => fields.iter().any(|(_, t)| self.is_resource_seen(t, seen)),
-			Typ::Option(_) | Typ::Enum(_) => {
-				if let Typ::Enum(name) = typ {
-					if seen.contains(name) {
-						return false;
-					}
-					seen.push(name.clone());
+			Typ::Enum(name) => {
+				if seen.contains(name) {
+					return false;
 				}
+				seen.push(name.clone());
 				self.variants_of(typ)
 					.iter()
 					.any(|v| v.payload.iter().any(|t| self.is_resource_seen(t, seen)))
@@ -147,7 +145,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& self.is_resource(typ)
 		{
 			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
-		} else if matches!(typ, Typ::Option(_) | Typ::Enum(_)) && self.is_resource(typ) {
+		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
 			let tag = self.b.ins().load(self.int, MemFlags::new(), val, 0);
 			for v in self.variants_of(typ) {
 				if !v.payload.iter().any(|t| releasable(t) || self.is_resource(t)) {
@@ -274,10 +272,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut join = None;
 		if d.on_err {
 			let Some((val, typ)) = ret else { return Ok(()) };
-			let (happy, err) = match typ {
-				Typ::Option(_) => (1, None),
-				Typ::Result(_, e) => (0, Some((**e).clone())),
-				_ => {
+			let (happy, err) = match self.types.result_parts(typ) {
+				Some((_, e)) => (0, Some(e)),
+				None if self.types.option_inner(typ).is_some() => (1, None),
+				None => {
 					return Err(
 						Diagnostic::new("`defer or` needs a fn returning `?T`/`!T`", d.body.1.into_range())
 							.with_label("this fn cannot fail"),
@@ -386,9 +384,9 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 	}
 }
 
-// Is `typ` a `?&T`?
+// Whether `typ` is a `?&T`.
 pub(super) fn opt_ref(typ: &Typ) -> bool {
-	matches!(typ, Typ::Option(i) if matches!(&**i, Typ::Ref(_)))
+	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[&")))
 }
 
 // Is type a ref pointer?

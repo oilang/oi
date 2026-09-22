@@ -166,6 +166,20 @@ fn long_form_matches_shorthand() {
 }
 
 #[test]
+fn generic_fn_infers_through_option() {
+	let src = indoc! {r#"
+		unwrap[T] :: fn(o: Option[T], fallback: T) T {
+			match o {
+				.some.(v) => v,
+				.none => fallback,
+			}
+		}
+		print(unwrap(?int.(5), 0), unwrap(?string.(none), "hi"))
+	"#};
+	check(src, "5 hi");
+}
+
+#[test]
 fn array_payload_is_independent_copy() {
 	let src = indoc! {"
 		wrap :: fn(a: []int) ?[]int { return a }

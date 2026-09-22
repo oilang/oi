@@ -129,7 +129,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Zero initialization.
 	pub(super) fn zero_or_err(&mut self, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
 		if let Some(name) = self.nozero(typ) {
-			let msg = format!("`{}` has no zero value", display_name(name));
+			let name = sugar(name).unwrap_or_else(|| display_name(name).to_string());
+			let msg = format!("`{name}` has no zero value");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("must be initialized explicitly"));
 		}
 		Ok(self.zero(typ))
@@ -166,9 +167,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Annotated(..) | Typ::Closure(..) | Typ::Trait(_) | Typ::Ref(_) => self.b.ins().iconst(self.int, 0),
 			Typ::Access(..) => unreachable!("an access mod only marks params inside a fn"),
-			Typ::Option(inner) => self.make_option(inner, None),
-			// default to first variant, with zero'd payload fields
-			Typ::Enum(_) | Typ::Result(..) | Typ::Sum(..) => {
+			Typ::Enum(_) if rc::opt_ref(typ) => self.b.ins().iconst(self.int, 0),
+			// default to first variant, with zeroed payload fields
+			Typ::Enum(_) | Typ::Sum(..) => {
 				let variants = self.variants_of(typ);
 				let v = variants.first().cloned();
 				let disc = v.as_ref().map_or(0, |v| v.disc);
@@ -236,6 +237,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
 				.with_label(format!("doesn't fit in {target}"))
 		};
+		if let Some(some) = self.types.option_inner(target) {
+			if matches!(inner, Expr::Ident(n) if n == "none") {
+				return Ok(Some(self.make_option(target, None)));
+			}
+			let v = self.coerce_lit(value, &some)?;
+			return Ok(v.map(|v| self.make_option(target, Some(v))));
+		}
+		if let Some((ok, err)) = self.types.result_parts(target)
+			&& let Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant) = inner
+		{
+			let has = |t: &Typ| matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant));
+			let Some((disc, side)) = [ok, err].into_iter().enumerate().find(|(_, t)| has(t)) else {
+				return Ok(None);
+			};
+			let variants = self.variants_of(target);
+			let v = self.coerce_lit(value, &side)?;
+			return Ok(v.map(|v| self.make_enum(&variants, disc as i64, &[v])));
+		}
 		let v = match (inner, target) {
 			(Expr::Int(n), Typ::Int(w)) => {
 				let n = if neg { -*n } else { *n };
@@ -283,25 +302,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.make_enum(&variants, v.disc, &[])
 			}
-			(
-				Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant),
-				Typ::Result(ok, err),
-			) => {
-				let has =
-					|t: &Typ| matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant));
-				let Some((disc, side)) = [ok, err].into_iter().enumerate().find(|(_, t)| has(t)) else {
-					return Ok(None);
-				};
-				match self.coerce_lit(value, side)? {
-					Some(v) => self.make_enum(&result_variants(ok, err), disc as i64, &[v]),
-					None => return Ok(None),
-				}
-			}
-			(Expr::Ident(name), Typ::Option(inner)) if name == "none" => self.make_option(inner, None),
-			(_, Typ::Option(inner)) => match self.coerce_lit(value, inner)? {
-				Some(v) => self.make_option(inner, Some(v)),
-				None => return Ok(None),
-			},
 			_ => return Ok(None),
 		};
 		Ok(Some(v))
@@ -331,8 +331,6 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn variants_of(&self, typ: &Typ) -> Vec<VariantInfo> {
 		match typ {
 			Typ::Enum(name) => self.enum_variants(name),
-			Typ::Option(inner) => option_variants(inner),
-			Typ::Result(ok, err) => result_variants(ok, err),
 			Typ::Sum(name, _) if !name.is_empty() => self.types().named_sum(name, Span::default()).unwrap_or_default(),
 			Typ::Sum(_, variants) => variants.clone(),
 			_ => Vec::new(),
@@ -368,11 +366,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Build an Option value.
-	pub(super) fn make_option(&mut self, inner: &Typ, some: Option<Value>) -> Value {
-		if matches!(inner, Typ::Ref(_)) {
+	pub(super) fn make_option(&mut self, typ: &Typ, some: Option<Value>) -> Value {
+		if rc::opt_ref(typ) {
 			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
 		}
-		let variants = option_variants(inner);
+		let variants = self.variants_of(typ);
 		match some {
 			Some(v) => self.make_enum(&variants, 1, &[v]),
 			None => self.make_enum(&variants, 0, &[]),
@@ -494,7 +492,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let fields = fields.clone();
 		let ptr = self.struct_slot(&fields)?;
 		let end = end.map(|v| self.intcast(v, types::I64, true));
-		let end = self.make_option(&Typ::Int(64), end);
+		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
+		let end = self.make_option(&opt_typ, end);
 		let start = self.intcast(start, types::I64, true);
 		let step = self.intcast(step, types::I64, true);
 		for (i, v) in [start, end, step].into_iter().enumerate() {
@@ -510,7 +509,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let start = self.b.ins().load(cl, MemFlags::new(), range, 0);
 		let opt = self.b.ins().load(self.int, MemFlags::new(), range, 8);
 		let step = self.b.ins().load(cl, MemFlags::new(), range, 16);
-		let opt_typ = Typ::Option(Box::new(Typ::Int(64)));
+		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let tag = self.enum_tag(&opt_typ, opt);
 		let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
 		let end = self.opt_payload(opt, &opt_typ, &Typ::Int(64), 8);
@@ -796,10 +795,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((ptr, to.clone()));
 		}
 		// values widens into options
-		if let Typ::Option(inner) = to
-			&& **inner == *from
-		{
-			return Ok((self.make_option(inner, Some(val)), to.clone()));
+		if self.types.option_inner(to).is_some_and(|i| i == *from) {
+			return Ok((self.make_option(to, Some(val)), to.clone()));
 		}
 		if let Typ::Sum(..) = to {
 			let variants = self.variants_of(to);

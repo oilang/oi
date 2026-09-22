@@ -28,6 +28,19 @@ pub Shr :: trait { shr: fn(self, other: int) Self }
 pub From[T] :: trait { from: fn(v: T) Self }
 pub TryFrom[T] :: trait { try_from: fn(v: T) !Self }
 
+# enums
+
+pub Option[T] :: enum {
+	none
+	some(T)
+}
+
+@nozero
+pub Result[T, E] :: enum {
+	ok(T)
+	err(E)
+}
+
 # errors
 
 pub Error :: trait {

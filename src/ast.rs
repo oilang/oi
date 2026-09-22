@@ -597,8 +597,6 @@ pub enum TypeExpr {
 	FixedArray(Box<TypeExpr>, Box<Spanned<Expr>>),
 	Fn(Vec<(Option<String>, Access, TypeExpr)>, Box<TypeExpr>),
 	Annotated(Vec<Annotation>, Box<TypeExpr>),
-	Option(Box<TypeExpr>),
-	Result(Box<TypeExpr>, Option<Box<TypeExpr>>),
 	AtomSum(Vec<String>),
 	Sum(Vec<TypeExpr>),
 	TupleStruct(String, Vec<(Option<String>, TypeExpr)>),
@@ -618,13 +616,8 @@ impl TypeExpr {
 			TypeExpr::Array(t)
 			| TypeExpr::FixedArray(t, _)
 			| TypeExpr::Annotated(_, t)
-			| TypeExpr::Option(t)
 			| TypeExpr::Ref(t)
 			| TypeExpr::Variadic(t) => t.walk_mut(f),
-			TypeExpr::Result(t, e) => {
-				t.walk_mut(f);
-				e.iter_mut().for_each(|e| e.walk_mut(f));
-			}
 			TypeExpr::Map(k, v) => {
 				k.walk_mut(f);
 				v.walk_mut(f);

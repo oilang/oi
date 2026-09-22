@@ -20,6 +20,8 @@ pub(crate) const BITWISE: [&str; 6] = [NOT, BIT_AND, BIT_OR, BIT_XOR, SHL, SHR];
 pub(crate) const ERROR: &str = "core::Error";
 
 // types
+pub(crate) const OPTION: &str = "core::Option";
+pub(crate) const RESULT: &str = "core::Result";
 pub(crate) const PTR: &str = "core::ptr";
 pub(crate) const RANGE: &str = "core::Range";
 

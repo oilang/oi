@@ -1190,7 +1190,7 @@ where
 				}),
 				prefix(12, just(Token::Not), |_, rhs, ex| match rhs {
 					(Expr::Cast { target: (t, ts), args }, _) => {
-						let target = (TypeExpr::Result(Box::new(t), None), ts);
+						let target = (types::result_of(t, None), ts);
 						(Expr::Cast { target, args }, ex.span())
 					}
 					_ => (Expr::Not(Box::new(rhs)), ex.span()),

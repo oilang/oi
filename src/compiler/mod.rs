@@ -98,11 +98,6 @@ fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 	Err(Diagnostic::new(msg, p.span.into_range()).with_label("second vararg"))
 }
 
-// Whether fn specifies a Result.
-pub(crate) fn fallible(typ: &Typ) -> bool {
-	matches!(typ, Typ::Result(ok, _) if ok.is_unit())
-}
-
 // Check that every param and return are C friendly.
 pub(crate) fn check_c_sig(name: &str, params: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
 	match (params.iter().map(|p| &p.typ))
@@ -200,10 +195,7 @@ impl Generics {
 fn mentions(te: &TypeExpr, name: &str) -> bool {
 	match te {
 		TypeExpr::Name(n) => n == name,
-		TypeExpr::Array(e) | TypeExpr::FixedArray(e, _) | TypeExpr::Option(e) | TypeExpr::Variadic(e) => {
-			mentions(e, name)
-		}
-		TypeExpr::Result(e, err) => mentions(e, name) || err.as_deref().is_some_and(|e| mentions(e, name)),
+		TypeExpr::Array(e) | TypeExpr::FixedArray(e, _) | TypeExpr::Variadic(e) => mentions(e, name),
 		TypeExpr::Sum(es) | TypeExpr::Generic(_, es) => es.iter().any(|e| mentions(e, name)),
 		TypeExpr::Tuple(fs) => fs.iter().any(|(_, t)| mentions(t, name)),
 		TypeExpr::Fn(ps, r) => ps.iter().any(|(_, _, p)| mentions(p, name)) || mentions(r, name),
@@ -421,8 +413,7 @@ fn ref_guarded(typ: &Typ, placeholders: &HashSet<String>) -> bool {
 	match typ {
 		Typ::Ref(_) => true,
 		Typ::Struct(n, fs) => !placeholders.contains(n) && fs.iter().all(|f| ref_guarded(&f.typ, placeholders)),
-		Typ::Option(i) | Typ::Array(i) | Typ::FixedArray(i, _) => ref_guarded(i, placeholders),
-		Typ::Result(ok, err) => ref_guarded(ok, placeholders) && ref_guarded(err, placeholders),
+		Typ::Array(i) | Typ::FixedArray(i, _) => ref_guarded(i, placeholders),
 		Typ::Map(k, v) => ref_guarded(k, placeholders) && ref_guarded(v, placeholders),
 		Typ::Tuple(fs) | Typ::TupleStruct(_, fs) => fs.iter().all(|(_, t)| ref_guarded(t, placeholders)),
 		Typ::Sum(_, vs) => vs.iter().all(|v| v.payload.iter().all(|t| ref_guarded(t, placeholders))),
@@ -436,9 +427,7 @@ fn replace_self(te: &TypeExpr, self_ty: &TypeExpr) -> TypeExpr {
 		TypeExpr::Name(n) if n == "Self" => self_ty.clone(),
 		TypeExpr::Array(e) => TypeExpr::Array(Box::new(replace_self(e, self_ty))),
 		TypeExpr::FixedArray(e, n) => TypeExpr::FixedArray(Box::new(replace_self(e, self_ty)), n.clone()),
-		TypeExpr::Option(e) => TypeExpr::Option(Box::new(replace_self(e, self_ty))),
 		TypeExpr::Variadic(e) => TypeExpr::Variadic(Box::new(replace_self(e, self_ty))),
-		TypeExpr::Result(e, err) => TypeExpr::Result(Box::new(replace_self(e, self_ty)), err.clone()),
 		TypeExpr::Tuple(fs) => TypeExpr::Tuple(fs.iter().map(|(n, t)| (n.clone(), replace_self(t, self_ty))).collect()),
 		TypeExpr::Annotated(a, t) => TypeExpr::Annotated(a.clone(), Box::new(replace_self(t, self_ty))),
 		TypeExpr::Fn(ps, r) => TypeExpr::Fn(
@@ -1625,7 +1614,7 @@ impl<M: Module> Compiler<M> {
 			None => None,
 		};
 		if let Some((typ, span)) = &ret
-			&& !fallible(typ)
+			&& !types.fallible(typ)
 		{
 			let msg = format!("`main` cannot return `{typ}`");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("`main` returns nothing or `!`"));

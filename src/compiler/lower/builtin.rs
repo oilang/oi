@@ -42,15 +42,18 @@ impl<'a, M: Module> Translator<'a, M> {
 					)
 					.with_label("wrong number of arguments"));
 				}
-				let (av, at) = match self.ret.clone() {
+				let ret = self.ret.as_ref().map(|(t, _)| t.clone());
+				let err = ret.as_ref().and_then(|t| self.types.result_parts(t)).map(|(_, e)| e);
+				let (av, at) = match &err {
 					// resolve enum shorthands
-					Some((Typ::Result(_, err), _)) if *err != Typ::Error => self.check_expr(&args[0], &err)?,
+					Some(err) if *err != Typ::Error => self.check_expr(&args[0], err)?,
 					_ => self.expr(&args[0])?,
 				};
-				match self.ret.clone() {
-					Some((Typ::Result(ok, err), _)) if at == *err => {
-						let v = self.make_enum(&result_variants(&ok, &err), 1, &[av]);
-						Ok(Some((v, Typ::Result(ok, err))))
+				match (ret, err) {
+					(Some(ret), Some(err)) if at == err => {
+						let variants = self.variants_of(&ret);
+						let v = self.make_enum(&variants, 1, &[av]);
+						Ok(Some((v, ret)))
 					}
 					_ if self.open_error(&at) => Ok(Some((self.box_error(av, &at), Typ::Error))),
 					_ => {
@@ -145,10 +148,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
 		}
-		if let Typ::Result(ok, err) = target
-			&& **err == Typ::Error
+		if let Some((ok, err)) = self.types.result_parts(target)
+			&& err == Typ::Error
 		{
-			return self.result_init((**ok).clone(), value);
+			return self.result_init(ok, value);
 		}
 		let (val, typ) = self.check_expr(value, target)?;
 		if typ == *target {

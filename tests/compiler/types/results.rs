@@ -12,8 +12,8 @@ fn construct_err() {
 }
 
 #[test]
-fn zero_value_is_ok() {
-	check("r: !int; r", "ok.(0)");
+fn nozero_leaves_no_zero_value() {
+	fail_with("r: !int; r", "`!int` has no zero value");
 }
 
 #[test]

@@ -4,6 +4,12 @@ use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
 
+// Construct a Result.
+pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
+	let err = err.unwrap_or_else(|| TypeExpr::Name("Error".into()));
+	TypeExpr::Generic("Result".into(), vec![ok, err])
+}
+
 // The type-expression grammar, boxed so its types stop at this fn boundary.
 pub(super) fn type_expr<'token, I>(
 	dotted_name: P<'token, I, String>,
@@ -58,7 +64,7 @@ where
 			// options
 			let option = just(Token::Question)
 				.ignore_then(base.clone())
-				.map(|t| TypeExpr::Option(Box::new(t)));
+				.map(|t| TypeExpr::Generic("Option".into(), vec![t]));
 			// varargs
 			let variadic = just(Token::DotDot)
 				.ignore_then(base.clone())
@@ -66,19 +72,12 @@ where
 			// results
 			let result = just(Token::Not)
 				.ignore_then(base.clone().or_not())
-				.map(|t| TypeExpr::Result(Box::new(t.unwrap_or(TypeExpr::Tuple(vec![]))), None));
+				.map(|t| result_of(t.unwrap_or(TypeExpr::Tuple(vec![])), None));
 			// shared refs
 			let ref_type = just(Token::Amp).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
 			// atom(s)
 			let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
 
-			// built-in generic types
-			let result_long = just(Token::Ident("Result".to_string()))
-				.ignore_then(bracket(te.clone().then_ignore(just(Token::Comma)).then(te.clone())))
-				.map(|(t, e)| TypeExpr::Result(Box::new(t), Some(Box::new(e))));
-			let option_long = just(Token::Ident("Option".to_string()))
-				.ignore_then(bracket(te.clone()))
-				.map(|t| TypeExpr::Option(Box::new(t)));
 			// anonymous structs
 			let anon_struct = just(Token::Struct)
 				.ignore_then(brace(anon_fields.clone()))
@@ -103,8 +102,6 @@ where
 				result,
 				atom,
 				anon_struct,
-				result_long,
-				option_long,
 				generic_instance,
 				name,
 				tuple,
@@ -116,7 +113,7 @@ where
 		base.clone()
 			.then(same_line.clone().ignore_then(just(Token::Not)).ignore_then(base).or_not())
 			.map(|(e, ok)| match ok {
-				Some(ok) => TypeExpr::Result(Box::new(ok), Some(Box::new(e))),
+				Some(ok) => result_of(ok, Some(e)),
 				None => e,
 			})
 			.separated_by(just(Token::Pipe))

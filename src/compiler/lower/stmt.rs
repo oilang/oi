@@ -341,7 +341,10 @@ impl<'a, M: Module> Translator<'a, M> {
 							let (v, t) = self.expr(e)?;
 							match fallthrough {
 								// a loop that can end without breaking yields an Option
-								Some(_) => (self.make_option(&t, Some(v)), Typ::Option(Box::new(t))),
+								Some(_) => {
+									let ot = self.types.core_enum(role::OPTION, &[t]);
+									(self.make_option(&ot, Some(v)), ot)
+								}
 								None => (self.copy_in(v, &t), t),
 							}
 						}
@@ -387,7 +390,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// trailing places
 		if let Some(read) = stmts.last().and_then(place_read) {
 			last = match tail {
-				Some(t) if t.is_unit() || fallible(t) => self.unit_value(),
+				Some(t) if t.is_unit() || self.types.fallible(t) => self.unit_value(),
 				Some(t) => self.check_expr(&read, t)?,
 				None => self.expr(&read)?,
 			};
@@ -399,30 +402,30 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Autowrap return types.
 	// idk whether it'll be more general in the future, but for now this is for `Option` and `Result`.
 	fn autowrap_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<TypedVal, Diagnostic> {
-		let ret = self.ret.as_ref().map(|(t, _)| t.clone());
-		let (val, typ) = match &ret {
-			Some(Typ::Option(inner) | Typ::Result(inner, _)) => self.coerce(val, &typ, inner, span)?,
-			_ => (val, typ),
+		let Some(ret) = self.ret.as_ref().map(|(t, _)| t.clone()) else {
+			return Ok((val, typ));
 		};
-		Ok(match ret {
-			Some(Typ::Option(inner)) if typ == *inner => {
-				let v = self.make_option(&inner, Some(val));
-				(v, Typ::Option(inner))
-			}
-			Some(Typ::Result(ok, err)) if typ == *ok => {
-				let v = self.make_enum(&result_variants(&ok, &err), 0, &[val]);
-				(v, Typ::Result(ok, err))
-			}
-			Some(Typ::Result(ok, err)) if typ == *err => {
-				let v = self.make_enum(&result_variants(&ok, &err), 1, &[val]);
-				(v, Typ::Result(ok, err))
-			}
-			Some(Typ::Result(ok, err)) if *err == Typ::Error && self.open_error(&typ) => {
-				let boxed = self.box_error(val, &typ);
-				let v = self.make_enum(&result_variants(&ok, &err), 1, &[boxed]);
-				(v, Typ::Result(ok, err))
-			}
-			_ => (val, typ),
+		if let Some(some) = self.types.option_inner(&ret) {
+			let (val, typ) = self.coerce(val, &typ, &some, span)?;
+			return Ok(match typ == some {
+				true => (self.make_option(&ret, Some(val)), ret),
+				false => (val, typ),
+			});
+		}
+		let Some((ok, err)) = self.types.result_parts(&ret) else {
+			return Ok((val, typ));
+		};
+		let (val, typ) = self.coerce(val, &typ, &ok, span)?;
+		let variants = self.variants_of(&ret);
+		Ok(if typ == ok {
+			(self.make_enum(&variants, 0, &[val]), ret)
+		} else if typ == err {
+			(self.make_enum(&variants, 1, &[val]), ret)
+		} else if err == Typ::Error && self.open_error(&typ) {
+			let boxed = self.box_error(val, &typ);
+			(self.make_enum(&variants, 1, &[boxed]), ret)
+		} else {
+			(val, typ)
 		})
 	}
 
@@ -433,7 +436,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label("every exit path already runs this deferred body"));
 		}
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
-		if self.is_main && !typ.is_unit() && !fallible(&typ) {
+		if self.is_main && !typ.is_unit() && !self.types.fallible(&typ) {
 			if self.script {
 				self.emit_print(val, &typ, false, runtime::Sink::Out);
 				self.write_lit("\n", runtime::Sink::Out);

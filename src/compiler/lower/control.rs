@@ -78,7 +78,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map(|(_, t)| t.clone())
 				.or_else(|| target.cloned())
 				.unwrap_or(Typ::unit());
-			return self.scoped(|s| Ok(Some((s.zero_or_err(&t, span)?, t.clone()))));
+			let ok = self.types.fallible(&t);
+			return self.scoped(|s| {
+				let v = if ok { s.zero(&t) } else { s.zero_or_err(&t, span)? };
+				Ok(Some((v, t.clone())))
+			});
 		};
 		self.scoped(|s| s.block_tail(els, target))
 	}
@@ -340,9 +344,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
-		let (inner, happy, err) = match &typ {
-			Typ::Option(inner) => ((**inner).clone(), 1, None),
-			Typ::Result(inner, err) => ((**inner).clone(), 0, Some((**err).clone())),
+		let (inner, happy, err) = match (self.types.result_parts(&typ), self.types.option_inner(&typ)) {
+			(Some((ok, err)), _) => (ok, 0, Some(err)),
+			(None, Some(inner)) => (inner, 1, None),
 			_ => {
 				return Err(
 					Diagnostic::new(format!("`or` needs a `?T`/`!T` value, got {typ}"), value.1.into_range())
@@ -388,9 +392,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Panics when called in `main`.
 	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
-		let (is_result, inner, err_typ) = match &typ {
-			Typ::Option(inner) => (false, (**inner).clone(), Typ::Error),
-			Typ::Result(inner, err) => (true, (**inner).clone(), (**err).clone()),
+		let (is_result, inner, err_typ) = match (self.types.result_parts(&typ), self.types.option_inner(&typ)) {
+			(Some((ok, err)), _) => (true, ok, err),
+			(None, Some(inner)) => (false, inner, Typ::Error),
 			_ => {
 				let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
 				return Err(Diagnostic::new(msg, value.1.into_range()).with_label("not a `?T` or `!T` value"));
@@ -399,31 +403,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		let shape = if is_result { "!T" } else { "?T" };
 		let panic_in_main = self.ret.is_none() && self.is_main;
 		let mut target_err = err_typ.clone();
-		let target = match &self.ret {
-			Some((Typ::Option(t), _)) if !is_result => (**t).clone(),
-			Some((Typ::Result(t, e), _)) if is_result => {
-				if **e != err_typ && !(**e == Typ::Error && self.open_error(&err_typ)) {
-					let declared = Typ::Result(t.clone(), e.clone());
-					let msg = format!("cannot propagate `{err_typ}` into a fn returning {declared}");
-					let label = match **e == Typ::Error {
+		let declared = self.ret.as_ref().map(|(t, _)| t.clone());
+		let target = match &declared {
+			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
+				if e != err_typ && !(e == Typ::Error && self.open_error(&err_typ)) {
+					let msg = format!("cannot propagate `{err_typ}` into a fn returning {d}");
+					let label = match e == Typ::Error {
 						true => format!("`{err_typ}` does not claim Error"),
 						false => "mismatched error type".to_string(),
 					};
 					return Err(Diagnostic::new(msg, span.into_range()).with_label(label));
 				}
-				target_err = (**e).clone();
-				(**t).clone()
+				target_err = e;
+				t
 			}
-			Some((other, _)) => {
+			Some(d) if !is_result && let Some(t) = self.types.option_inner(d) => t,
+			Some(other) => {
 				let msg = format!("`?` needs an enclosing fn returning `{shape}`, found {other}");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label(format!("not a `{shape}` fn")));
 			}
 			None => inner.clone(),
 		};
-		let target_typ = if is_result {
-			Typ::Result(Box::new(target.clone()), Box::new(target_err.clone()))
-		} else {
-			Typ::Option(Box::new(target.clone()))
+		let target_typ = match is_result {
+			true => self.types.core_enum(role::RESULT, &[target.clone(), target_err.clone()]),
+			false => self.types.core_enum(role::OPTION, std::slice::from_ref(&target)),
 		};
 
 		let tag = self.enum_tag(&typ, val);
@@ -455,9 +458,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					self.box_error(e, &err_typ)
 				};
-				self.make_enum(&result_variants(&target, &target_err), 1, &[e])
+				let variants = self.variants_of(&target_typ);
+				self.make_enum(&variants, 1, &[e])
 			} else {
-				self.make_option(&target, None)
+				self.make_option(&target_typ, None)
 			};
 			self.emit_return(sad_val, target_typ, span)?;
 		}
@@ -469,7 +473,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Report the error and exit 1 (main's sad path).
 	pub(crate) fn emit_fail(&mut self, val: Value, typ: &Typ) {
-		let Typ::Result(_, err) = typ else { return };
+		let Some((_, err)) = self.types.result_parts(typ) else {
+			return;
+		};
 		let tag = self.enum_tag(typ, val);
 		let (sad, done) = (self.b.create_block(), self.b.create_block());
 		self.b.ins().brif(tag, sad, &[], done, &[]);
@@ -477,7 +483,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(done);
 		self.b.switch_to_block(sad);
 		let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-		let msg = self.derived_str(e, err);
+		let msg = self.derived_str(e, &err);
 		self.rt_call("fail", &[msg]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		self.b.switch_to_block(done);
@@ -498,7 +504,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("not an int, string, or atom"));
 		}
 
-		let target = Typ::Result(Box::new(Typ::Enum(name.to_string())), Box::new(Typ::Error));
+		let target = self.types.core_enum(role::RESULT, &[Typ::Enum(name.to_string()), Typ::Error]);
 		let target_variants = self.variants_of(&target);
 		let variants = self.enum_variants(name);
 
@@ -600,9 +606,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(fallthrough) = frame.fallthrough {
 			self.b.switch_to_block(fallthrough);
 			if let Some((var, t)) = &frame.result {
-				let v = match t {
-					Typ::Option(inner) => self.make_option(inner, None),
-					_ => self.unit_value().0,
+				let v = match self.types.option_inner(t) {
+					Some(_) => self.make_option(&t.clone(), None),
+					None => self.unit_value().0,
 				};
 				self.b.def_var(*var, v);
 			}

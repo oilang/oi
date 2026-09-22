@@ -1583,9 +1583,10 @@ main :: fn() {
 
 	# ?T and !T are syntax suger for these:
 	Option[T] :: enum {
-		some(T)
 		none
+		some(T)
 	}
+	@nozero
 	Result[T, E] :: enum {
 		ok(T)
 		err(E)
@@ -2097,6 +2098,11 @@ main :: fn() {
 	# blessed builtins are just consts in core
 	# pub required :: ()
 	Player :: struct { name: string @required }
+
+	# `@nozero` requires a type to be explicitly initialized
+	@nozero
+	Handle :: struct { fd: int }
+	h: Handle # error: `Handle` has no zero value
 
 	# annotations attach to definitions and struct fields
 	GetProc :: @c fn(name: cstr) ptr
