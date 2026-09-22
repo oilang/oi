@@ -1,0 +1,71 @@
+module core
+
+# ranges
+
+pub Range :: struct { start: int, end: ?int, step: int }
+
+Range :< {
+	pub collect :: fn(self) []int {
+		out: []int = []
+		loop n in self { out << n }
+		out
+	}
+
+	str :: fn(self) string {
+		second :: if self.step == 1 { "" } else { (self.start + self.step).str() + ".." }
+		last :: match self.end { .some.(e) => e.str(), .none => "" }
+		self.start.str() + ".." + second + last
+	}
+}
+
+Range : Contains[int] < {
+	contains :: fn(self, n: int) bool {
+		offset :: n - self.start
+		if offset % self.step != 0 { return false }
+		if (self.step > 0 && offset < 0) || (self.step < 0 && offset > 0) { return false }
+		match self.end {
+			.some.(e) => if self.step > 0 { n < e } else { n > e },
+			.none => true,
+		}
+	}
+}
+
+Range : Iterator[int] < {
+	next :: fn(mut self) ?int {
+		spent :: match self.end {
+			.some.(e) => if self.step > 0 { self.start >= e } else { self.start <= e },
+			.none => false, # unbounded
+		}
+		if spent { return none }
+		n :: self.start
+		self.start = self.start + self.step
+		n
+	}
+}
+
+Range : Iterable[Range] < {
+	iter :: fn(self) Self { Self.{ self.start, self.end, self.step } }
+}
+
+# ffi
+
+## An untyped pointer for C boundaries.
+pub ptr :: struct (usize)
+
+ptr :< {
+	## Copy `len` bytes into an owned string.
+	@unsafe
+	pub string :: fn(self, len: int) string {
+		unsafe rt.oi_ptr_string(self, len)
+	}
+
+	## The pointer `n` bytes further along.
+	pub offset :: fn(self, n: int) ptr {
+		ptr(self.0 + usize.(n))
+	}
+
+	## Whether this is a null pointer.
+	pub is_null :: fn(self) bool {
+		self.0 == 0
+	}
+}

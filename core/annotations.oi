@@ -1,0 +1,30 @@
+module core
+
+pub params :: ()
+pub required :: ()
+
+pub test :: struct {
+	name: string = ""
+	skip: bool = false
+}
+
+## Expands to a `@test` fn right now.
+pub test! :: fn(name: Ast, body: Ast) Ast {
+	id := gensym("test")
+	`@test.{%name} %id :: fn() { %{..body.items} }`
+}
+
+pub link :: struct { lib: string = "", name: string = "" }
+pub export :: struct { name: string = "" }
+
+## Marks a struct as also describing a C struct.
+pub c :: ()
+
+## Marks a trait as satisfied by shape alone.
+pub implicit :: ()
+
+## Marks a fn as free of I/O and other impure calls.
+pub pure :: ()
+
+## Ensures a type is always explicitly initialized.
+pub nozero :: ()

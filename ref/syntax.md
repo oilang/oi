@@ -1409,7 +1409,11 @@ main :: fn() {
 	# `?T` holds `some(T)` or `none`
 	# `!T` holds `ok(T)` or an `error` (any type implementing the `Error` trait)
 	# bare return values are auto-wrapped
-	# there is no need for an explicit `ok()` or `some()` un/wrapper like there is in Rust
+
+	# `Option` and `Result` are plain generic enums in core
+	# `?T` / `!T` / `E!T` are sugar for them, but they can also be used directly
+	Option.some(5) == ?int.(5)
+	Result[int, string].err("nope") == string!int.(error("nope"))
 
 	Repo :: struct {
 		users []User
@@ -1598,17 +1602,6 @@ main :: fn() {
 	assert!(ord(Suit.spades) == 1)
 
 	# a backed enum cannot have payload variants
-
-	# ?T and !T are syntax suger for these:
-	Option[T] :: enum {
-		none
-		some(T)
-	}
-	@nozero
-	Result[T, E] :: enum {
-		ok(T)
-		err(E)
-	}
 
 	# first value is default
 	c: Color # .red

@@ -1,0 +1,4 @@
+module core
+
+## Get the zeroed value of a type.
+pub zero[T] :: fn() T { z: T; z }

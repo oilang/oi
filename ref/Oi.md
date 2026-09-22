@@ -140,8 +140,8 @@ tags: []
 - [x] a way to type a var without declaring it, like `var` in Go `go`
 - [ ] `loop match {...}` `revo`
 - [ ] traits
-	- [ ] `Contains`, lets type be used with `in` operator
-	- [ ] `Iterable`
+	- [x] `Contains`, lets type be used with `in` operator
+	- [x] `Iterable`
 - [x] Algebraic Data Types (ADT) `rust`
 - [x] c-strings primitive (`c"foo"`?)
 - [x] incremental compilation
