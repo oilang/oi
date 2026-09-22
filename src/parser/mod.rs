@@ -927,7 +927,8 @@ where
 				block
 					.clone()
 					.map(|body| (None, body))
-					.or(header_expr.clone().map(Some).then(block.clone())),
+					.or(header_expr.clone().map(Some).then(block.clone()))
+					.or(header_expr.clone().map(|e| (None, vec![e]))),
 			)
 			.map_with(|(cond, body), ex| {
 				(

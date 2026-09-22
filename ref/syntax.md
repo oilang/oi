@@ -1304,6 +1304,20 @@ main :: fn() {
 		i += 1
 	}
 
+	# `loop <expr>` makes the expression the body
+	loop if i < 6 { i += 1 } else { break }
+
+	# a body that can fall through ends the loop when it does
+	it := 0..3
+	loop match it.next() {
+		.some.(n) => print(n),
+	}
+	# cover every case and it runs until an arm breaks
+	loop match recv(ch) {
+		.done => break :done,
+		.got.(x) => print("got", x),
+	}
+
 	# for
 	loop i in 0..5 {
 		print(i)

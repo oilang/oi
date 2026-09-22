@@ -301,6 +301,23 @@ fn custom_iterators() {
 }
 
 #[test]
+fn loop_match() {
+	let src = indoc! {"
+		a := 0..2
+		loop match a.next() {
+			.some.(n) => print(n),
+		}
+		b := 0..2
+		out :: loop match b.next() {
+			.none => break :done,
+			.some.(x) => print(x),
+		}
+		print(out)
+	"};
+	check(src, ["0", "1", "0", "1", ":done"]);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

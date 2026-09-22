@@ -15,7 +15,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				subject,
 				arms,
 				else_body,
-			} => self.match_expr(subject, arms, else_body.as_deref(), hint, expr.1),
+			} => self.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
 			Expr::Loop { cond, body } => self.loop_expr(cond.as_deref(), body),
 			_ => unreachable!(),
 		}
@@ -129,19 +129,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		})
 	}
 
-	// `match`
-	// first arm wins.
-	pub(super) fn match_expr(
+	// Match.
+	pub(super) fn match_expr<'e>(
 		&mut self,
 		subject: &Spanned<Expr>,
 		arms: &[MatchArm],
-		else_body: Option<&[Spanned<Expr>]>,
+		mut else_body: Option<&'e [Spanned<Expr>]>,
+		// whatever the arms leave uncovered
+		gap: Option<&'e [Spanned<Expr>]>,
 		target: Option<&Typ>,
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		let (sv, st) = self.expr(subject)?;
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
 		self.b.def_var(sv_var, sv);
+
+		// a non-enum match has no coverage to analyse, so it is all a gap
+		if !st.is_enumish() && else_body.is_none() {
+			else_body = gap;
+		}
 
 		// ensure match covers every variant when applicable
 		if st.is_enumish() {
@@ -161,10 +167,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					.map(|v| v.name.clone())
 					.collect();
 				if !missing.is_empty() {
-					let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
-					return Err(
-						Diagnostic::new(msg, span.into_range()).with_label("cover these variants or add `else`")
-					);
+					if gap.is_none() {
+						let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
+						return Err(
+							Diagnostic::new(msg, span.into_range()).with_label("cover these variants or add `else`")
+						);
+					}
+					else_body = gap;
 				}
 			}
 		}
@@ -565,7 +574,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => (None, None),
 		};
 
-		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| s.block(body))?;
+		// a body expression that can fall through ends the loop when it does
+		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match body {
+			[(Expr::Match { subject, arms, .. }, sp)] => {
+				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None), *sp)]), None, *sp)
+			}
+			_ => s.block(body),
+		})?;
 
 		if let Some((v, t)) = flow {
 			// a discarded body value is released here, once per iteration

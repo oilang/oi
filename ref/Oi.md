@@ -138,7 +138,7 @@ tags: []
 - [x] FFI
 - [x] some sort of `todo`/`unimplemented` macros `rust`
 - [x] a way to type a var without declaring it, like `var` in Go `go`
-- [ ] `loop match {...}` `revo`
+- [x] `loop match {...}` `revo`
 - [ ] traits
 	- [x] `Contains`, lets type be used with `in` operator
 	- [x] `Iterable`
