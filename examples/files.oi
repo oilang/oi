@@ -1,0 +1,25 @@
+use fs
+
+Perm : u3 : enum {
+	none  = 0b000
+	read  = 0b001
+	write = 0b010
+	exec  = 0b100
+}
+
+Handle :: struct {
+	path: string,
+	perms: []Perm,
+}
+
+main :: fn() {
+	# TODO: mktemp kind of deal
+	file :: "/tmp/oi-data.json"
+
+	rw := Handle.{ file, [ .read .write ]}
+	ro := Handle.{ file, [ .read ]}
+
+	p : Perm
+	# print(p)
+	# print(ro)
+}

@@ -11,6 +11,7 @@ const EXPECTED: &[(&str, &str)] = &[
 	("boxes", "hi"),
 	("dimensions", "(width = 1920, height = 1080)"),
 	("errors", "84"),
+	("files", ""),
 	("grades", "B"),
 	("main", "3.2"),
 	("points", "(13, 4)"),
