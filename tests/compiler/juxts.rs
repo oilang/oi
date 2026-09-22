@@ -48,12 +48,24 @@ fn leading_literals() {
 		Box :: struct { n: int }
 		Box :< { tag :: fn(self, a: :go) int { self.n } }
 		shout :: fn(s: string) string { s }
-		take :: fn(n: int) int { n }
-		print(shout "hey")
-		print(take 1_000)
+		s :: shout "hey"
+		print(s)
 		Box.{ n = 10 }.tag :go
 	"#};
-	check(src, ["hey", "1000", "10"]);
+	check(src, ["hey", "10"]);
+}
+
+#[test]
+fn leading_arg_is_any_expr() {
+	let src = indoc! {r#"
+		Point :: struct { x: int, y: int }
+		p :: Point.{ x = 1, y = 2 }
+		print p
+		print p.x + 10
+		print -2
+		print 1 - 2
+	"#};
+	check(src, ["Point.{x = 1, y = 2}", "11", "-2", "-1"]);
 }
 
 #[test]
@@ -99,13 +111,14 @@ fn bind_rhs_trailing_fn() {
 }
 
 #[test]
-fn array_elem_juxt() {
+fn lists_beat_leading_args() {
 	let src = indoc! {"
-		double :: fn(n: int) int { n * 2 }
-		a :: [double 3]
-		a.len
+		lat :: 1
+		long :: 2
+		print((lat long 4))
+		print([lat long 4])
 	"};
-	check(src, "1");
+	check(src, ["(1, 2, 4)", "[1, 2, 4]"]);
 }
 
 #[test]
@@ -133,7 +146,7 @@ fn juxt_enum_shorthand_arg() {
 	let src = indoc! {"
 		Phase :: enum { startup }
 		hook :: fn(p: Phase, f: fn() int) int { print(p) f() }
-		print(hook .startup { 21 })
+		hook .startup { 21 }
 	"};
 	check(src, ["startup", "21"]);
 }

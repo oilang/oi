@@ -132,6 +132,9 @@ fn pipe(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> 
 	)
 }
 
+// A juxtaposed leading literal and/or trailing fn
+type Juxt = (Option<Spanned<Expr>>, Option<Spanned<Expr>>);
+
 // Handle named results.
 type Bound = (String, (Spanned<TypeExpr>, Option<Spanned<Expr>>));
 fn named_ret(bound: Option<Bound>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec<Spanned<Expr>> {
@@ -240,6 +243,7 @@ where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
 	let mut expr = Recursive::declare();
+	let mut juxt_expr = Recursive::declare();
 	let mut header_expr = Recursive::declare();
 	let mut block = Recursive::declare();
 	let mut anon_fields = Recursive::declare();
@@ -434,7 +438,7 @@ where
 	let value_tail = just(Token::Bind)
 		.to(true)
 		.or(just(Token::DoubleColon).to(false))
-		.then(expr.clone())
+		.then(juxt_expr.clone())
 		.map(|(mutable, value)| (mutable, None, Some(value)));
 	let sandwich_tail = just(Token::Colon)
 		.ignore_then(annot.clone().validate(|t, _, emitter| {
@@ -447,7 +451,7 @@ where
 			just(Token::Assign)
 				.to(true)
 				.or(just(Token::Colon).to(false))
-				.then(expr.clone())
+				.then(juxt_expr.clone())
 				.or_not(),
 		)
 		.map(|(typ, tail)| match tail {
@@ -511,8 +515,10 @@ where
 	// assignment
 	let mut assign = Recursive::declare();
 	assign.define(
-		ident().then(assign_op.clone()).then(assign.clone().or(expr.clone())).map_with(
-			move |((name, op), value), ex| {
+		ident()
+			.then(assign_op.clone())
+			.then(assign.clone().or(juxt_expr.clone()))
+			.map_with(move |((name, op), value), ex| {
 				let value = fold(op, Expr::Ident(name.clone()), value, ex.span());
 				(
 					Expr::Assign {
@@ -521,13 +527,12 @@ where
 					},
 					ex.span(),
 				)
-			},
-		),
+			}),
 	);
 
 	// return statements
 	let ret_stmt = choice((
-		just(Token::Return).ignore_then(expr.clone().or_not()),
+		just(Token::Return).ignore_then(juxt_expr.clone().or_not()),
 		just(Token::BareReturn).to(None),
 	))
 	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
@@ -536,7 +541,7 @@ where
 	let index_assign = ident()
 		.then(bracket(expr.clone()))
 		.then(assign_op.clone())
-		.then(expr.clone())
+		.then(juxt_expr.clone())
 		.map_with(move |(((name, index), op), value), ex| {
 			let collection = Box::new((Expr::Ident(name.clone()), ex.span()));
 			let lhs = Expr::Index {
@@ -574,7 +579,7 @@ where
 		.then_ignore(just(Token::Dot))
 		.then(ident())
 		.then(assign_op)
-		.then(expr.clone())
+		.then(juxt_expr.clone())
 		.map_with(move |(((name, field), op), value), ex| {
 			let tuple = Box::new((Expr::Ident(name.clone()), ex.span()));
 			let lhs = Expr::Field {
@@ -643,7 +648,7 @@ where
 				.or(just(Token::DoubleColon).to(Some(false)))
 				.or(just(Token::Assign).to(None)),
 		)
-		.then(expr.clone())
+		.then(juxt_expr.clone())
 		.map_with(|((pat, mutable), value), ex| {
 			(
 				Expr::PatBind {
@@ -684,7 +689,7 @@ where
 
 	let defer_stmt = just(Token::Defer)
 		.ignore_then(just(Token::Or).or_not())
-		.then(expr.clone())
+		.then(juxt_expr.clone())
 		.map_with(|(or, body), ex| {
 			(
 				Expr::Defer {
@@ -724,7 +729,7 @@ where
 		.or(place.clone())
 		.or(macro_def.clone())
 		.or(macro_stmt)
-		.or(expr.clone())
+		.or(juxt_expr.clone())
 		.boxed();
 
 	// blocks
@@ -973,7 +978,7 @@ where
 		let arm_body = block
 			.clone()
 			.then_ignore(just(Token::Comma).or_not())
-			.or(expr.clone().map(|e| vec![e]).then_ignore(arm_end));
+			.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
 		let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
 		let struct_pat = dot()
 			.ignore_then(select! { Token::Ident(v) => v })
@@ -1044,7 +1049,7 @@ where
 			.map_with(|stmts, ex| (Expr::Quote(stmts), ex.span()));
 
 		let comp_expr = just(Token::Comp)
-			.ignore_then(expr.clone())
+			.ignore_then(header_expr.clone())
 			.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 			.boxed();
 		let unsafe_expr = just(Token::Unsafe)
@@ -1186,7 +1191,7 @@ where
 					(Expr::Annotated(vec![a], Box::new(rhs)), ex.span())
 				}),
 				// unary
-				prefix(12, just(Token::Minus), |_, rhs, ex| {
+				prefix(12, just(Token::Minus).or(just(Token::SpaceMinus)), |_, rhs, ex| {
 					(Expr::Negative(Box::new(rhs)), ex.span())
 				}),
 				prefix(12, just(Token::Not), |_, rhs, ex| match rhs {
@@ -1266,75 +1271,80 @@ where
 			))
 			.boxed();
 
-		// juxts (leading literals and trailing functions)
-		let trailing = anon_fn.clone().or(block_ast.clone());
-		let lit_arg = spanned(literal).or(enum_shorthand);
-		let juxt = choice((
-			lit_arg.then(trailing.clone().or_not()).map(|(l, t)| (Some(l), t)),
-			trailing.map(|t| (None, Some(t))),
-		));
-		let juxted = core
-			.clone()
-			.then(juxt.or_not())
-			.try_map(|((inner, s), jx), span| {
-				let Some((lit, trail)) = jx else { return Ok((inner, s)) };
-				let has_lit = lit.is_some();
-				let args: Vec<_> = lit.into_iter().chain(trail).collect();
-				let e = match inner {
-					Expr::Ident(name) => Expr::Call {
-						name,
-						type_args: vec![],
-						args,
-					},
-					Expr::Field { tuple, field } => Expr::MethodCall {
-						recv: tuple,
-						method: field,
-						type_args: vec![],
-						args,
-					},
-					Expr::Call {
-						name,
-						type_args,
-						args: mut a,
-					} if !has_lit => {
-						a.extend(args);
-						Expr::Call {
-							name,
-							type_args,
-							args: a,
-						}
-					}
-					Expr::MethodCall {
-						recv,
-						method,
-						type_args,
-						args: mut a,
-					} if !has_lit => {
-						a.extend(args);
-						Expr::MethodCall {
-							recv,
-							method,
-							type_args,
-							args: a,
-						}
-					}
-					_ => return Err(Rich::custom(span, "trailing arg needs a call or method callee")),
-				};
-				Ok((e, span))
-			})
-			.or(core.clone())
+		// juxts
+		let trailing = anon_fn.clone().or(block_ast.clone()).boxed();
+		let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
+		let with_lead = same_line
+			.ignore_then(header_expr.clone())
+			.then(trailing.or_not())
+			.map(|(l, t)| (Some(l), t))
 			.boxed();
 
 		// or blocks
 		let or_tail = just(Token::Or).ignore_then(block.clone().or(core.clone().map(|e| vec![pipe_step(e)])));
-		header_expr.define(
-			core.then(or_tail.clone().or_not())
-				.map_with(|pair, ex| or_else(pair, ex.span())),
-		);
-		juxted
-			.then(or_tail.or_not())
-			.map_with(|pair, ex| or_else(pair, ex.span()))
-			.boxed()
+		let level = |juxt: Option<P<'token, I, Juxt>>| {
+			let inner = match juxt {
+				None => core.clone().boxed(),
+				Some(juxt) => core
+					.clone()
+					.then(juxt.or_not())
+					.try_map(|((inner, s), jx), span| {
+						let Some((lead, trail)) = jx else { return Ok((inner, s)) };
+						let has_lead = lead.is_some();
+						let args: Vec<_> = lead.into_iter().chain(trail).collect();
+						let e = match inner {
+							Expr::Ident(name) => Expr::Call {
+								name,
+								type_args: vec![],
+								args,
+							},
+							Expr::Field { tuple, field } => Expr::MethodCall {
+								recv: tuple,
+								method: field,
+								type_args: vec![],
+								args,
+							},
+							Expr::Call {
+								name,
+								type_args,
+								args: mut a,
+							} if !has_lead => {
+								a.extend(args);
+								Expr::Call {
+									name,
+									type_args,
+									args: a,
+								}
+							}
+							Expr::MethodCall {
+								recv,
+								method,
+								type_args,
+								args: mut a,
+							} if !has_lead => {
+								a.extend(args);
+								Expr::MethodCall {
+									recv,
+									method,
+									type_args,
+									args: a,
+								}
+							}
+							_ => return Err(Rich::custom(span, "trailing arg needs a call or method callee")),
+						};
+						Ok((e, span))
+					})
+					.or(core.clone())
+					.boxed(),
+			};
+			inner
+				.then(or_tail.clone().or_not())
+				.map_with(|pair, ex| or_else(pair, ex.span()))
+				.boxed()
+		};
+		header_expr.define(level(None));
+		juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
+		level(Some(trail_only))
 	};
 	expr.define(definition);
 

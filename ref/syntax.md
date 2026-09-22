@@ -282,6 +282,12 @@ foo "bar"
 print "lol"
 sleep 1_000
 log.group :process
+print point.x + 1
+print Point.{ x = 1, y = 2 }
+print -2
+
+# it runs to end of statement, so it is a statement form, like a parenless macro call.
+# inside brackets a comma-less list wins: `(lat long 4)` is a 3-tuple
 
 # this can be used in conjunction with trailing functions
 benchmark 1_000_000 { do_work() }
@@ -2231,9 +2237,8 @@ main :: fn() {
 # main :: fn() ! { serve(load_config("app.oi")?) }
 
 
-## std
+## core
 
-print[T: Display] :: fn(value: T)
 
 # these are plain fns, interpolation happens in the lexer
 print(value) # stdout, with newline
