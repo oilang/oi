@@ -5,3 +5,14 @@ test! "read" {
 	assert! (fs.read_bytes("justfile") or { [] })[0] == 109
 	assert! fs.read("nope.txt") == !string.(error("cannot open nope.txt"))
 }
+
+test! "write" {
+	d :: "/tmp/oi_fs_dir"
+	fs.mkdir(d)
+	fs.write("{d}/a.txt", "hi\n")
+	fs.append("{d}/a.txt", "yo")
+	assert! fs.read("{d}/a.txt") == !string.("hi\nyo")
+	fs.remove("{d}/a.txt")
+	fs.remove(d)
+	assert! !fs.exists(d)
+}

@@ -2,19 +2,32 @@ module fs
 
 fopen : fn(path: cstr, mode: cstr) ptr : foreign
 fgetc : fn(stream: ptr) i32 : foreign
+fwrite : fn(buf: ptr, size: usize, n: usize, stream: ptr) usize : foreign
 fclose : fn(stream: ptr) i32 : foreign
+access : fn(path: cstr, mode: i32) i32 : foreign
+opendir : fn(path: cstr) ptr : foreign
+readdir : fn(dir: ptr) ptr : foreign
+closedir : fn(dir: ptr) i32 : foreign
+
+@link.{name = "remove"}
+c_remove : fn(path: cstr) i32 : foreign
+
+@link.{name = "mkdir"}
+c_mkdir : fn(path: cstr, mode: u32) i32 : foreign
 
 ## Read a file's contents as raw bytes.
 pub read_bytes :: fn(path: string) ![]u8 {
 	f := unsafe fopen(path.cstr(), "rb")
-	if f.is_null() { return error("cannot open {path}") }
-	out: []u8 = []
+	if f.is_null() do return error("cannot open {path}")
+
+	out: []u8
 	loop {
 		c := unsafe fgetc(f)
-		if c < 0 { break }
+		if c < 0 do break
 		out << u8.(c)
 	}
 	unsafe fclose(f)
+
 	out
 }
 
@@ -22,4 +35,45 @@ pub read_bytes :: fn(path: string) ![]u8 {
 pub read :: fn(path: string) !string {
 	bytes := read_bytes(path)?
 	string.(bytes)
+}
+
+## Write to a file, replacing its contents.
+pub write :: fn(path: string, s: string) ! {
+	spill(path, s, "wb")
+}
+
+## Append to a file, creating it if needed.
+pub append :: fn(path: string, s: string) ! {
+	spill(path, s, "ab")
+}
+
+spill :: fn(path: string, s: string, mode: cstr) ! {
+	f := unsafe fopen(path.cstr(), mode)
+	if f.is_null() do return error("cannot open {path}")
+
+	n :: unsafe fwrite(s.ptr, 1, usize.(s.len), f)
+	_ := unsafe fclose(f)
+
+	if int.(n) != s.len {
+		return error("short write to {path}")
+	}
+}
+
+## Whether a file or directory exists.
+pub exists :: fn(path: string) bool {
+	unsafe access(path.cstr(), 0) == 0
+}
+
+## Delete a file or empty directory.
+pub remove :: fn(path: string) ! {
+	if unsafe c_remove(path.cstr()) != 0 {
+		return error("cannot remove {path}")
+	}
+}
+
+## Create a directory.
+pub mkdir :: fn(path: string) ! {
+	if unsafe c_mkdir(path.cstr(), 0o755) != 0 {
+		return error("cannot create {path}")
+	}
 }
