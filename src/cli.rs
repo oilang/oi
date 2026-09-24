@@ -3,9 +3,19 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use oi::driver::Emit;
 
+pub const VERSION: &str = concat!(
+	"v",
+	env!("CARGO_PKG_VERSION"),
+	" (",
+	env!("OI_GIT_SHA"),
+	" ",
+	env!("OI_TARGET"),
+	")"
+);
+
 /// The Oi CLI.
 #[derive(Parser)]
-#[command(name = "oi", version, about)]
+#[command(name = "oi", version = VERSION, about)]
 pub struct Cli {
 	#[command(subcommand)]
 	pub command: Option<Command>,

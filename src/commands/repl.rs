@@ -5,6 +5,8 @@ use oi::ast::Expr;
 use oi::driver::{DebugOpts, run_source};
 use oi::loader::parse_file;
 
+use crate::cli::VERSION;
+
 const HELP: &str = indoc::indoc! {"
 	The Oi REPL.
 
@@ -20,7 +22,7 @@ const HELP: &str = indoc::indoc! {"
 "};
 
 pub fn run() -> Result<(), Reported> {
-	eprintln!("Oi! Type :help for help.");
+	eprintln!("Oi! {VERSION}\nType :help for help.");
 	// reedline needs a tty, so piped stdin reads plain lines
 	let mut next: Box<dyn FnMut() -> Option<String>> = if std::io::stdin().is_terminal() {
 		let mut rl = reedline();
@@ -50,7 +52,7 @@ pub fn run() -> Result<(), Reported> {
 	while let Some(line) = next() {
 		match line.trim() {
 			"" => {}
-			":help" | ":h" => eprint!("{HELP}"),
+			":help" | ":h" => eprint!("oi {VERSION}\n{HELP}"),
 			":quit" | ":q" | ":exit" | ":x" => break,
 			":clear" | ":c" => session.clear(),
 			_ => {

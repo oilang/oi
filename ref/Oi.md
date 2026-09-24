@@ -105,6 +105,8 @@ tags: []
 	- [x] `10..-2..` `revo`
 	- [x] `if let`/`while let` `rust`
 	- [ ] `loop let`/?`match let` `rust`
+	- [ ] Julia/V style REPL banner `julia v`
+	- [ ] `:h <topic>` `vim revo`
 - [ ] `comp assert`
 - [x] pipeline examples with `!` postfix collide with macros
 - [x] revisit needing `print`, `assert`, et al to be macros
