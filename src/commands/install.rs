@@ -1,6 +1,7 @@
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use oi::Reported;
 use oi::driver::{DebugOpts, build_source};
@@ -10,7 +11,11 @@ use crate::commands::run;
 
 /// Install a binary, module, or shared library into OI_HOME.
 pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result<(), Reported> {
-	let path = path.unwrap_or(Path::new("."));
+	let url = path
+		.and_then(Path::to_str)
+		.filter(|s| s.contains("://") || s.starts_with("git@"));
+	let cloned = url.map(|u| fetch(u, prefix)).transpose()?;
+	let path = cloned.as_deref().or(path).unwrap_or(Path::new("."));
 	let src = path.canonicalize().map_err(at(path))?;
 	let entry = [src.join("src/main.oi"), src.join("main.oi")].into_iter().find(|p| p.exists());
 	let kind = if entry.is_some() { "bin" } else { "lib" };
@@ -33,6 +38,26 @@ pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result
 	}
 	println!("oi: installed {}", dest.display());
 	Ok(())
+}
+
+// Shallow-clone (or fast-forward) a git URL into OI_HOME/src/<name>, returning that checkout.
+fn fetch(url: &str, prefix: Option<&Path>) -> Result<PathBuf, Reported> {
+	let name = url.trim_end_matches('/').rsplit('/').next().unwrap_or(url);
+	let dir = prefix
+		.map_or_else(home, Path::to_path_buf)
+		.join("src")
+		.join(name.trim_end_matches(".git"));
+	let mut git = Command::new("git");
+	if dir.exists() {
+		git.arg("-C").arg(&dir).args(["pull", "--ff-only"]);
+	} else {
+		git.args(["clone", "--depth", "1", url]).arg(&dir);
+	}
+	if !git.status().map_err(at(&dir))?.success() {
+		eprintln!("oi: {url}: git failed");
+		return Err(Reported);
+	}
+	Ok(dir)
 }
 
 // Recursively copy Oi files and shared libs.
