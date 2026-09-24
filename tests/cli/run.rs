@@ -3,7 +3,7 @@ use crate::common::{Project, Run, oi, ok};
 #[test]
 fn version_reports_pkg_version_sha_and_target() {
 	let out = ok(oi(&["--version"]).run(None));
-	assert!(out.starts_with("oi 0.1.0 ("), "version was:\n{out}");
+	assert!(out.starts_with("oi v0.1.0 ("), "version was:\n{out}");
 }
 
 #[test]
