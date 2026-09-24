@@ -56,8 +56,16 @@ fn main_file_const_as_annotation() {
 }
 
 #[test]
-fn builtin_marker_is_a_real_value() {
-	check("print(required)", "()");
+fn marker_lives_outside_the_value_namespace() {
+	check(
+		indoc! {r#"
+			c :: fn() int { 7 }
+			@c
+			Pt :: struct { x: int, y: int }
+			print(c())
+		"#},
+		"7",
+	);
 }
 
 #[test]

@@ -219,7 +219,7 @@ fn qualify_anns(scope: &Scope, anns: &[Annotation]) -> Vec<Annotation> {
 	for a in &mut anns {
 		match &mut a.0 {
 			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. } if name != "unsafe" => {
-				*name = scope.qualify_name(name)
+				*name = role::marker(name).map_or_else(|| scope.qualify_name(name), String::from)
 			}
 			_ => {}
 		}
