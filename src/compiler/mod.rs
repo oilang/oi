@@ -1178,6 +1178,12 @@ impl<M: Module> Compiler<M> {
 					mutable: false,
 					name,
 					typ: None,
+					value: Some(_),
+				} if has_main && self.consts.contains_key(name) => {}
+				Expr::Bind {
+					mutable: false,
+					name,
+					typ: None,
 					value: Some(v),
 				} => {
 					if let Some(te) = TypeExpr::from_expr(&v.0) {

@@ -91,3 +91,17 @@ fn pure_fns_cannot_touch_statics() {
 	"};
 	fail(src, "`total` isn't allowed in a `@pure` fn");
 }
+
+#[test]
+fn top_level_const_works_alongside_main() {
+	let src = indoc! {r#"
+		N :: 3
+		GREETING :: "hi"
+
+		main :: fn() {
+			buf : [N]int
+			print("{GREETING} {buf.len}")
+		}
+	"#};
+	check(src, "hi 3");
+}
