@@ -303,6 +303,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((lhs, rhs))
 	}
 
+	// An expression known at comptime to be a plain int.
+	fn const_int(&self, e: &Spanned<Expr>) -> Option<i64> {
+		match &e.0 {
+			Expr::Int(n) => Some(*n),
+			Expr::Negative(inner) => self.const_int(inner).map(i64::wrapping_neg),
+			Expr::Ident(name) => match self.types.consts.map.get(self.qualify(name).as_ref())? {
+				(Expr::Int(n), _) => Some(*n),
+				_ => None,
+			},
+			_ => None,
+		}
+	}
+
 	pub(super) fn binop(
 		&mut self,
 		op: BinOp,
@@ -400,6 +413,20 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range())
 					.with_label("bitwise operators need integer operands"),
 			);
+		}
+		if let (BinOp::Shl | BinOp::Shr, Some(n)) = (op, self.const_int(r)) {
+			let width = match &lt {
+				Typ::Int(w) | Typ::UInt(w) => *w as i64,
+				_ => 64, // isize/usize
+			};
+			// cranelift apparently masks a runtime shift count by the container width, so reject comptime-known counts outside that range
+			if !(0..width).contains(&n) {
+				return Err(Diagnostic::new(
+					format!("shift count {n} is out of range for {lt} ({width} bits)"),
+					r.1.into_range(),
+				)
+				.with_label(format!("must be between 0 and {}", width - 1)));
+			}
 		}
 		// cranelift apparently has no pow instruction, so `**` widens to 64 bits and calls into the runtime
 		let pow = matches!(op, BinOp::Pow).then(|| {
