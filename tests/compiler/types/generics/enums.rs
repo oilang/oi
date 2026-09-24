@@ -113,3 +113,39 @@ fn recursive_payload() {
 	"};
 	check(src, "5");
 }
+
+#[test]
+fn qualified_variant_path() {
+	let src = indoc! {r#"
+		Opt[T] :: enum { nope, yep(T) }
+		print(Opt[int].nope)
+		print(Opt[int].yep(3))
+		print(Result[int, string].err("nope"))
+		xs := [10, 20, 30]
+		i := 1
+		print(xs[i])
+	"#};
+	check(src, ["nope", "yep.(3)", r#"err.("nope")"#, "20"]);
+}
+
+#[test]
+fn bare_path_infers_from_the_payload() {
+	let src = indoc! {r#"
+		Opt[T] :: enum { nope, yep(T) }
+		print(Opt.yep("hi"))
+		x: ?int = Option.some(9)
+		print(x?)
+	"#};
+	check(src, [r#"yep.("hi")"#, "9"]);
+}
+
+#[test]
+fn a_generic_struct_head_is_not_a_variant_path() {
+	fail(
+		indoc! {"
+			Pair[A, B] :: struct { a: A, b: B }
+			print(Pair[int, string].a)
+		"},
+		"is a type, not a value",
+	);
+}

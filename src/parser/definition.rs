@@ -187,6 +187,12 @@ where
 		)),
 	});
 
+	// generic type headers
+	let generic_head = ident()
+		.then(call_type_args.clone().filter(|args| args.len() > 1))
+		.then_ignore(dot().rewind())
+		.map(|(name, args)| Expr::TypePat(TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect())));
+
 	let call_tail = call_type_args.clone().or_not().then(args.clone());
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {
 		Some((type_args, args)) => Expr::Call {
@@ -198,7 +204,15 @@ where
 	});
 
 	// leaf atoms pair themselves with their span
-	let leaf = spanned(literal.or(foreign_lit).or(ref_lit).or(struct_lit).or(var_or_call)).boxed();
+	let leaf = spanned(
+		literal
+			.or(foreign_lit)
+			.or(ref_lit)
+			.or(struct_lit)
+			.or(generic_head)
+			.or(var_or_call),
+	)
+	.boxed();
 
 	// record entries
 	let key = select! {
@@ -350,7 +364,7 @@ where
 		})
 		.boxed();
 	let break_expr = just(Token::Break)
-		.ignore_then(p.expr.clone().or_not())
+		.ignore_then(p.same_line.clone().ignore_then(p.expr.clone()).or_not())
 		.map_with(|v, ex| (Expr::Break(v.map(Box::new)), ex.span()));
 	let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 

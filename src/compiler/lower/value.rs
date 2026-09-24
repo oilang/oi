@@ -621,6 +621,59 @@ impl<'a, M: Module> Translator<'a, M> {
 			.then(|| (name, variant.to_string()))
 	}
 
+	// The enum instance named by a generic enum.
+	pub(super) fn enum_instance(&self, head: &Spanned<Expr>) -> Option<String> {
+		let te = TypeExpr::from_expr(&head.0)?;
+		let TypeExpr::Generic(name, _) = &te else { return None };
+		if self.vars.contains_key(name) {
+			return None;
+		}
+		match self.types().resolve(&te, head.1).ok()? {
+			Typ::Enum(instance) => Some(instance),
+			_ => None,
+		}
+	}
+
+	// Whether a fill shadows a same-named variant.
+	pub(super) fn has_fill(&self, name: &str, method: &str) -> bool {
+		let key = format!("{}.{method}", rc::base_name(name));
+		self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key)
+	}
+
+	// Build enum with variant+payload on a generic enum.
+	pub(super) fn infer_variant(
+		&mut self,
+		name: &str,
+		def: &GenericEnumDef,
+		variant: &str,
+		args: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let payload = &def.variants.iter().find(|v| v.name == variant).expect("caller checked").payload;
+		let mut subst = HashMap::new();
+		let mut fields = Vec::with_capacity(args.len());
+		for (arg, (te, _)) in args.iter().zip(payload) {
+			let (val, typ) = self.expr(arg)?;
+			unify(te, &typ, &def.type_params, &mut subst, self.types.generics)
+				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
+			self.move_resource(arg, &typ)?;
+			fields.push(val);
+		}
+		if args.len() != payload.len() || def.type_params.iter().any(|p| !subst.contains_key(&p.name)) {
+			let msg = format!("cannot infer `{name}`'s type arguments from `.{variant}`");
+			return Err(Diagnostic::new(msg, span.into_range()).with_label(format!("write them: `{name}[…]`")));
+		}
+		let typ = self.types().instantiate_enum(name, def, &subst, span)?;
+		let Typ::Enum(instance) = &typ else {
+			unreachable!("enums instantiate to enums")
+		};
+		let variants = self.enum_variants(instance);
+		let disc = variants.iter().find(|v| v.name == variant).expect("declared above").disc;
+		let val = self.make_enum(&variants, disc, &fields);
+		self.temp(val, &typ);
+		Ok((val, typ))
+	}
+
 	// Make and check enum variant.
 	pub(super) fn construct_variant(
 		&mut self,

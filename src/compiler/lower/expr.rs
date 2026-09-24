@@ -255,17 +255,36 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 
+				// generic enum variants
+				if let Some(instance) = self.enum_instance(recv)
+					&& !self.has_fill(&instance, method)
+				{
+					return self.construct_variant(&instance, method, args, expr.1);
+				}
+				if let Expr::Ident(name) = &recv.0
+					&& !self.vars.contains_key(name)
+					&& let Some(def) = self.types.generics.enums.get(self.qualify(name).as_ref()).cloned()
+					&& def.variants.iter().any(|v| v.name == *method)
+					&& !self.has_fill(self.qualify(name).as_ref(), method)
+				{
+					let name = self.qualify(name).to_string();
+					return self.infer_variant(&name, &def, method, args, expr.1);
+				}
+
 				// method call is static when `recv` names a type
 				let (sname, bound) = if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
 					&& (self.types.structs.contains_key(self.qualify(name).as_ref())
 						|| self.types.enums.contains_key(self.qualify(name).as_ref())
 						|| self.types.generics.structs.contains_key(self.qualify(name).as_ref())
+						|| self.types.generics.enums.contains_key(self.qualify(name).as_ref())
 						|| matches!(
 							self.types.aliases.get(self.qualify(name).as_ref()),
 							Some(TypeExpr::TupleStruct(..))
 						)) {
 					(self.qualify(name).to_string(), None)
+				} else if let Some(instance) = self.enum_instance(recv) {
+					(instance, None)
 				} else if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
 					&& let Some(typ) = self.types().named(name, recv.1).ok().filter(|t| {
@@ -451,6 +470,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					let name = self.qualify(name).to_string();
 					return self.construct_variant(&name, field, &[], expr.1);
+				}
+				if let Some(instance) = self.enum_instance(tuple) {
+					return self.construct_variant(&instance, field, &[], expr.1);
 				}
 
 				// associated consts
@@ -821,7 +843,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1.into_range(),
 			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
-			Expr::TypePat(_) => unreachable!("type pattern in expression position"),
+			Expr::TypePat(te) => Err(Diagnostic::new(
+				format!("`{}` is a type, not a value", self.types().resolve(te, expr.1)?),
+				expr.1.into_range(),
+			)),
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break(_) | Expr::Continue => Err(Diagnostic::new(
 				"`break` and `continue` never produce a value",
