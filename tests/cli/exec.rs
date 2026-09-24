@@ -30,8 +30,13 @@ fn stdin_arithmetic() {
 }
 
 #[test]
-fn stdin_and_arg_concatenate() {
-	assert_eq!(ok(oi(&["exec", "x + 1"]).run(Some("x :: 41"))), "42");
+fn arg_ignores_piped_stdin() {
+	assert_eq!(ok(oi(&["exec", "2 + 2"]).run(Some("not valid oi"))), "4");
+}
+
+#[test]
+fn dash_reads_stdin() {
+	assert_eq!(ok(oi(&["exec", "-"]).run(Some("1 + 2"))), "3");
 }
 
 #[test]
