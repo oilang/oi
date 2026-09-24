@@ -1120,7 +1120,7 @@ impl<M: Module> Compiler<M> {
 					..
 				} => {
 					// `@test`
-					let test_ann = (!name.contains("::"))
+					let test_ann = (!program.core_origin.contains(&scope.module))
 						.then(|| self.annotations.get(name))
 						.flatten()
 						.and_then(|anns| anns.iter().find_map(|a| ann(a, role::TEST)));
@@ -1140,7 +1140,7 @@ impl<M: Module> Compiler<M> {
 						};
 						let display = match lit("name", 0) {
 							Some(Expr::String(s)) => s.clone(),
-							_ => name.clone(),
+							_ => name.replace("::", "."),
 						};
 						let skip = matches!(lit("skip", 1), Some(Expr::Bool(true)));
 						self.tests.push((name.clone(), display, skip));

@@ -217,6 +217,7 @@ fn fold(
 			.collect(),
 		annotations,
 		roots: program.roots.clone(),
+		core_origin: program.core_origin.clone(),
 	};
 	let compiler = stage0.get_or_insert_with(Compiler::default);
 	compiler.roots = vec![name.clone()];

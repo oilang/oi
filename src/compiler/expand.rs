@@ -211,6 +211,7 @@ impl Expander {
 			consts: program.consts.clone(),
 			annotations,
 			roots: program.roots.clone(),
+			core_origin: program.core_origin.clone(),
 		};
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
 		compiler.roots = self.macros.keys().cloned().collect();

@@ -59,6 +59,26 @@ fn each_test_starts_from_the_declared_statics() {
 }
 
 #[test]
+fn module_tests_are_qualified_and_filterable() {
+	let dir = Project::new()
+		.file("main.oi", ["use greeter", "@test main_test :: fn() { assert! true }"])
+		.file(
+			"greeter.oi",
+			["module greeter", "@test warmup :: fn() { assert! true }"],
+		);
+	let out = ok(oi(&["test"]).current_dir(&dir).run(None));
+	assert!(
+		out.contains("greeter.warmup ... ok") && out.contains("2 passed"),
+		"{out}"
+	);
+	let out = ok(oi(&["test", "main.oi", "warmup"]).current_dir(&dir).run(None));
+	assert!(
+		!out.contains("main_test") && out.contains("1 passed; 1 filtered out"),
+		"{out}"
+	);
+}
+
+#[test]
 fn failing_test_is_isolated() {
 	let dir = project(indoc! {r#"
 		@test first :: fn() { assert! false }

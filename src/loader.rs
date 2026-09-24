@@ -117,6 +117,7 @@ pub struct Program {
 	pub consts: HashMap<String, Spanned<Expr>>,
 	pub annotations: HashMap<String, Vec<Annotation>>,
 	pub roots: Vec<PathBuf>,
+	pub core_origin: HashSet<String>,
 }
 
 impl Program {
@@ -800,5 +801,6 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		reexports,
 		consts: loader.consts,
 		annotations: loader.annotations,
+		core_origin: loader.core_origin,
 	})
 }
