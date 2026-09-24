@@ -1,4 +1,4 @@
-use crate::common::{Project, Run, oi, ok};
+use crate::common::{Project, Run, oi, ok, trim};
 
 #[test]
 fn version_reports_pkg_version_sha_and_target() {
@@ -48,7 +48,7 @@ fn emit_tokens_dumps_the_lexer_output() {
 
 	let stderr = String::from_utf8_lossy(&out.stderr);
 	assert!(stderr.contains("Plus"), "stderr was:\n{stderr}");
-	assert_eq!(ok(out), "3");
+	assert_eq!(trim(&out.stdout), "3");
 }
 
 #[test]

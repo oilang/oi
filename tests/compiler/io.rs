@@ -70,7 +70,9 @@ fn ewrite_goes_to_stderr() {
 
 #[test]
 fn eprint_no_args() {
-	check("eprint()", "");
+	let (stdout, stderr) = run_streams("eprint()");
+	assert_eq!(stdout, "");
+	assert_eq!(stderr, "");
 }
 
 #[test]

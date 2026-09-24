@@ -25,11 +25,16 @@ impl Run for Command {
 	}
 }
 
-/// Assert success and return trimmed stdout.
+/// Assert success and a clean stderr, and return trimmed stdout.
 pub fn ok(out: Output) -> String {
 	assert!(
 		out.status.success(),
 		"oi failed:\n{}",
+		String::from_utf8_lossy(&out.stderr)
+	);
+	assert!(
+		out.stderr.is_empty(),
+		"unexpected stderr:\n{}",
 		String::from_utf8_lossy(&out.stderr)
 	);
 	trim(&out.stdout)

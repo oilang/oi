@@ -1,7 +1,13 @@
-use crate::common::{Run, oi, ok};
+use crate::common::{Run, oi, trim};
 
 fn repl(input: &str) -> String {
-	ok(oi(&["repl"]).run(Some(input)))
+	let out = oi(&["repl"]).run(Some(input));
+	assert!(
+		out.status.success(),
+		"repl failed:\n{}",
+		String::from_utf8_lossy(&out.stderr)
+	);
+	trim(&out.stdout)
 }
 
 #[test]

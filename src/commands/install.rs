@@ -49,9 +49,9 @@ fn fetch(url: &str, prefix: Option<&Path>) -> Result<PathBuf, Reported> {
 		.join(name.trim_end_matches(".git"));
 	let mut git = Command::new("git");
 	if dir.exists() {
-		git.arg("-C").arg(&dir).args(["pull", "--ff-only"]);
+		git.arg("-C").arg(&dir).args(["pull", "-q", "--ff-only"]);
 	} else {
-		git.args(["clone", "--depth", "1", url]).arg(&dir);
+		git.args(["clone", "-q", "--depth", "1", url]).arg(&dir);
 	}
 	if !git.status().map_err(at(&dir))?.success() {
 		eprintln!("oi: {url}: git failed");
