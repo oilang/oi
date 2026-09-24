@@ -165,3 +165,15 @@ fn a_generic_struct_head_is_not_a_variant_path() {
 		"is a type, not a value",
 	);
 }
+
+#[test]
+fn a_variant_path_on_an_enum_bound_param() {
+	let src = indoc! {r#"
+		Sig :: enum { idle, busy(int) }
+		start[T] :: fn() T { T.idle }
+		load[T] :: fn(n: int) T { T.busy(n) }
+		print(start[Sig]())
+		print(load[Sig](3))
+	"#};
+	check(src, ["idle", "busy.(3)"]);
+}

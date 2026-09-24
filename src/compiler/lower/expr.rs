@@ -289,10 +289,13 @@ impl<'a, M: Module> Translator<'a, M> {
 								| Typ::Bool | Typ::ISize | Typ::USize
 								| Typ::Str | Typ::Struct(..)
 								| Typ::TupleStruct(..) | Typ::Enum(_)
+								| Typ::Array(_) | Typ::Map(..)
 						)
 					}) {
 					match &typ {
 						Typ::Enum(n) => (n.clone(), None),
+						Typ::Array(_) => ("array".into(), None),
+						Typ::Map(..) => ("map".into(), None),
 						_ => (typ.to_string(), None),
 					}
 				} else {

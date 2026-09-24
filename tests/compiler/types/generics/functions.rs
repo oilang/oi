@@ -233,3 +233,12 @@ fn static_call_through_a_bound() {
 	"#};
 	check(src, ["made", "1"]);
 }
+
+#[test]
+fn static_call_on_an_array_bound_param() {
+	let src = indoc! {r#"
+		empty[T] :: fn(xs: T) bool { T.is_empty(xs) }
+		print(empty([1, 2]))
+	"#};
+	check(src, "false");
+}

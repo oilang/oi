@@ -621,10 +621,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			.then(|| (name, variant.to_string()))
 	}
 
-	// The enum instance named by a generic enum.
+	// The enum instance named by a generic enum or type param.
 	pub(super) fn enum_instance(&self, head: &Spanned<Expr>) -> Option<String> {
 		let te = TypeExpr::from_expr(&head.0)?;
-		let TypeExpr::Generic(name, _) = &te else { return None };
+		let (TypeExpr::Name(name) | TypeExpr::Generic(name, _)) = &te else {
+			return None;
+		};
 		if self.vars.contains_key(name) {
 			return None;
 		}
