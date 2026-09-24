@@ -171,8 +171,12 @@ pub(super) fn check_impls<'p>(
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("missing supertrait impl"));
 			}
 		}
+		let mut sig_params = types.type_params.clone();
+		for (p, (te, sp)) in tparams.iter().zip(args) {
+			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(te, *sp)?);
+		}
 		for tf in *tfields {
-			let want = types.resolve(&tf.typ, tf.span)?;
+			let want = types.with_type_params(&sig_params).resolve(&tf.typ, tf.span)?;
 			// let embedded structs satisfy field requirements
 			let stored = types
 				.structs
@@ -209,10 +213,6 @@ pub(super) fn check_impls<'p>(
 		}
 		let mut sig_aliases = types.aliases.clone();
 		sig_aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
-		let mut sig_params = types.type_params.clone();
-		for (p, (te, sp)) in tparams.iter().zip(args) {
-			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(te, *sp)?);
-		}
 		let sig_types = TypeCtx::new(
 			types.structs,
 			types.enums,

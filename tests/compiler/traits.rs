@@ -616,3 +616,26 @@ fn a_trait_takes_type_arguments() {
 	"#};
 	check(src, ["500", "7"]);
 }
+
+#[test]
+fn a_type_argument_fills_a_field_slot() {
+	let src = indoc! {"
+		Wrap[T] :: trait {
+			value: T
+			get : fn(self) T
+		}
+		Box :: struct { value: int }
+		Box : Wrap[int] < { get :: fn(self) int { self.value } }
+		print(Box.{ 7 }.get())
+	"};
+	check(src, "7");
+	fail(
+		indoc! {r#"
+			Wrap[T] :: trait { value: T }
+			Box :: struct { value: string }
+			Box : Wrap[int] < {}
+			print(Box.{ "x" }.value)
+		"#},
+		"missing field `value int`",
+	);
+}
