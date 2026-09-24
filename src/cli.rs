@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use oi::driver::Emit;
 
 /// The Oi CLI.
 #[derive(Parser)]
@@ -29,6 +30,10 @@ pub enum Command {
 		/// Print phase timings to stderr.
 		#[arg(long)]
 		timings: bool,
+
+		/// Dump a compilation stage to stderr.
+		#[arg(long, value_enum)]
+		emit: Option<Emit>,
 	},
 
 	/// Compile an Oi file to a native executable.
@@ -59,6 +64,10 @@ pub enum Command {
 		/// Print phase timings to stderr.
 		#[arg(long)]
 		timings: bool,
+
+		/// Dump a compilation stage to stderr.
+		#[arg(long, value_enum)]
+		emit: Option<Emit>,
 	},
 
 	/// Compile and run a file's `@test` fns.

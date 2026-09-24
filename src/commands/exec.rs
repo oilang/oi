@@ -6,7 +6,7 @@ use oi::driver::{DebugOpts, run_source};
 /// Compile and run source from the argument, piped stdin, or both concatenated.
 /// With no arg, stdin is the program.
 /// With an arg, stdin is an optional preamble.
-pub fn run(source: Option<String>, timings: bool) -> Result<(), Reported> {
+pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
 	let stdin = std::io::stdin();
 	let mut src = String::new();
 	if source.is_none() || (!stdin.is_terminal() && stdin_has_data()) {
@@ -22,11 +22,7 @@ pub fn run(source: Option<String>, timings: bool) -> Result<(), Reported> {
 		}
 		src.push_str(&arg);
 	}
-	run_source(
-		vec![(name.to_string(), src)],
-		std::path::Path::new("."),
-		DebugOpts { timings },
-	)
+	run_source(vec![(name.to_string(), src)], std::path::Path::new("."), opts)
 }
 
 /// Whether stdin has bytes waiting.

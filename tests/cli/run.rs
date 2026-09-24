@@ -4,6 +4,7 @@ use crate::common::{Project, Run, oi, ok};
 fn missing_file_errors() {
 	let out = oi(&["run", "definitely-missing.oi"]).run(None);
 	assert!(!out.status.success());
+
 	let stderr = String::from_utf8_lossy(&out.stderr);
 	assert!(stderr.contains("cannot read"), "stderr was:\n{stderr}");
 }
@@ -19,6 +20,7 @@ fn timings_prints_phases_to_stderr() {
 	let dir = Project::new().file("main.oi", "1 + 2");
 	let out = oi(&["run", "--timings"]).current_dir(&dir).run(None);
 	assert!(out.status.success());
+
 	let stderr = String::from_utf8_lossy(&out.stderr);
 	assert!(stderr.contains("codegen"), "stderr was:\n{stderr}");
 	assert!(stderr.contains("run"), "stderr was:\n{stderr}");
@@ -30,4 +32,35 @@ fn directory_entry_runs_all_its_files_as_one_main() {
 		.file("src/a.oi", "f :: fn() int { 42 }")
 		.file("src/b.oi", "print(f())");
 	assert_eq!(ok(oi(&["run", "src"]).current_dir(&dir).run(None)), "42");
+}
+
+#[test]
+fn emit_tokens_dumps_the_lexer_output() {
+	let dir = Project::new().file("main.oi", "1 + 2");
+	let out = oi(&["run", "--emit", "tokens"]).current_dir(&dir).run(None);
+	assert!(out.status.success());
+
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	assert!(stderr.contains("Plus"), "stderr was:\n{stderr}");
+	assert_eq!(ok(out), "3");
+}
+
+#[test]
+fn emit_ast_dumps_the_parsed_tree() {
+	let dir = Project::new().file("main.oi", "1 + 2");
+	let out = oi(&["run", "--emit", "ast"]).current_dir(&dir).run(None);
+	assert!(out.status.success());
+
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	assert!(stderr.contains("Binary"), "stderr was:\n{stderr}");
+}
+
+#[test]
+fn emit_clif_dumps_cranelift_ir() {
+	let dir = Project::new().file("main.oi", "1 + 2");
+	let out = oi(&["run", "--emit", "clif"]).current_dir(&dir).run(None);
+	assert!(out.status.success());
+
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	assert!(stderr.contains("function u0:0"), "stderr was:\n{stderr}");
 }

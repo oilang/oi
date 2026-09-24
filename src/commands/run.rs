@@ -18,8 +18,8 @@ pub fn entry(file: Option<PathBuf>) -> PathBuf {
 }
 
 /// Run a source file, or a directory's `.oi` files.
-pub fn run(file: &Path, timings: bool) -> Result<(), Reported> {
-	run_source(files(file)?, root(file), DebugOpts { timings })
+pub fn run(file: &Path, opts: DebugOpts) -> Result<(), Reported> {
+	run_source(files(file)?, root(file), opts)
 }
 
 /// Compile a source file to a native executable or shared library.
@@ -29,7 +29,10 @@ pub fn build(file: &Path, out: Option<&Path>, lib: bool, timings: bool) -> Resul
 		true => format!("{}{stem}{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX).into(),
 		false => PathBuf::from(&stem),
 	};
-	let opts = DebugOpts { timings };
+	let opts = DebugOpts {
+		timings,
+		..Default::default()
+	};
 	build_source(files(file)?, root(file), &stem, out.unwrap_or(&default), lib, opts)
 }
 

@@ -4,20 +4,46 @@ use std::time::Instant;
 
 use crate::Reported;
 use crate::compiler::Compiler;
+use crate::lexer::lex_at;
 use crate::loader::{self, Entry};
+
+/// A compilation stage to dump to stderr instead of running.
+#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq)]
+pub enum Emit {
+	Tokens,
+	Ast,
+	Clif,
+}
 
 /// Flags that toggle introspection.
 #[derive(Default, Clone, Copy)]
 pub struct DebugOpts {
 	pub timings: bool,
+	pub emit: Option<Emit>,
 }
 
 /// Compile and run a program from its entry files.
 pub fn run_source(entry: Entry, root: &Path, opts: DebugOpts) -> Result<(), Reported> {
 	let mut compiler = Compiler::default();
+	compiler.emit_clif = opts.emit == Some(Emit::Clif);
+	if opts.emit == Some(Emit::Tokens) {
+		for (name, src) in &entry {
+			eprintln!("-- {name} --");
+			for (tok, span) in lex_at(src, 0) {
+				eprintln!("{span:?} {tok:?}");
+			}
+		}
+	}
+
 	let t = Instant::now();
 	let program = loader::load(entry, root)?;
 	compiler.timings.push(("load", t.elapsed()));
+
+	if opts.emit == Some(Emit::Ast) {
+		for m in program.modules.iter().filter(|m| m.name == "main") {
+			eprintln!("{:#?}", m.items);
+		}
+	}
 
 	let code = match compiler.compile(&program) {
 		Ok(code) => code,
