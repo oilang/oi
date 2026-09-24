@@ -123,7 +123,7 @@ pub(crate) struct Consts<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct TypeCtx<'a> {
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
-	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
+	pub enums: &'a RefCell<HashMap<String, Vec<VariantInfo>>>,
 	pub aliases: &'a HashMap<String, TypeExpr>,
 	pub type_params: &'a HashMap<String, Typ>,
 	pub generics: &'a Generics,
@@ -137,7 +137,7 @@ pub(crate) struct TypeCtx<'a> {
 impl<'a> TypeCtx<'a> {
 	pub fn new(
 		structs: &'a HashMap<String, Vec<FieldDef>>,
-		enums: &'a HashMap<String, Vec<VariantInfo>>,
+		enums: &'a RefCell<HashMap<String, Vec<VariantInfo>>>,
 		aliases: &'a HashMap<String, TypeExpr>,
 		type_params: &'a HashMap<String, Typ>,
 		generics: &'a Generics,
@@ -307,7 +307,7 @@ impl TypeCtx<'_> {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate_enum(name, def, &subst, span);
 				}
-				let msg = match self.structs.contains_key(name) || self.enums.contains_key(name) {
+				let msg = match self.structs.contains_key(name) || self.enums.borrow().contains_key(name) {
 					true => format!("`{name}` is not generic"),
 					false => format!("unknown type `{name}`"),
 				};
@@ -419,17 +419,18 @@ impl TypeCtx<'_> {
 			.borrow_mut()
 			.entry(display.clone())
 			.or_insert(concrete);
-		if self.generics.instances.borrow().contains_key(&display) {
+		if self.enums.borrow().contains_key(&display) {
 			return Ok(Typ::Enum(display));
 		}
-		self.generics.instances.borrow_mut().insert(display.clone(), Vec::new());
+		// name-only first, so a self-referential payload resolves instead of recursing
+		self.enums.borrow_mut().insert(display.clone(), Vec::new());
 		let inner = TypeCtx {
 			type_params: subst,
 			depth: self.depth + 1,
 			..*self
 		};
 		let variants = build_variants(&def.variants, inner)?;
-		self.generics.instances.borrow_mut().insert(display.clone(), variants);
+		self.enums.borrow_mut().insert(display.clone(), variants);
 		Ok(Typ::Enum(display))
 	}
 
@@ -558,7 +559,7 @@ impl TypeCtx<'_> {
 		if let Some(fields) = self.structs.get(name) {
 			return Ok(Typ::Struct(name.to_string(), fields.clone()));
 		}
-		if self.enums.contains_key(name) {
+		if self.enums.borrow().contains_key(name) {
 			return Ok(Typ::Enum(name.to_string()));
 		}
 		if self.generics.structs.contains_key(name) || self.generics.enums.contains_key(name) {

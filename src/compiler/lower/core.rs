@@ -35,7 +35,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let key = format!("{}::{t}", vis.module);
 		let known = self.types.structs.contains_key(&key)
-			|| self.types.enums.contains_key(&key)
+			|| self.types.enums.borrow().contains_key(&key)
 			|| self.types.generics.structs.contains_key(&key)
 			|| self.types.aliases.contains_key(&key);
 		known.then_some((Expr::Ident(key), e.1))

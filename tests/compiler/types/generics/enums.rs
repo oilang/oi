@@ -177,3 +177,14 @@ fn a_variant_path_on_an_enum_bound_param() {
 	"#};
 	check(src, ["idle", "busy.(3)"]);
 }
+
+#[test]
+fn instance_in_a_struct_field() {
+	let src = indoc! {"
+		Opt[T] :: enum { nope, yep(T) }
+		Slot :: struct { v: Opt[int] }
+		s :: Slot.{ v = Opt[int].yep(4) }
+		match s.v { .nope => print(0), .yep.(n) => print(n), }
+	"};
+	check(src, "4");
+}

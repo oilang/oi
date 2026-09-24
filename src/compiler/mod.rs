@@ -178,8 +178,6 @@ pub(crate) struct GenericEnumDef {
 pub(crate) struct Generics {
 	pub structs: HashMap<String, GenericStructDef>,
 	pub enums: HashMap<String, GenericEnumDef>,
-	// enum instances keyed by display name (`Opt[int]`)
-	pub instances: RefCell<HashMap<String, Vec<VariantInfo>>>,
 	// struct instances' concrete type args keyed by display name (`Box[int]`)
 	pub instance_args: RefCell<HashMap<String, Vec<Typ>>>,
 }
@@ -1205,8 +1203,8 @@ impl<M: Module> Compiler<M> {
 		}
 
 		// name-only registry
-		let enum_names: HashMap<String, Vec<VariantInfo>> =
-			enum_items.iter().map(|(name, ..)| (name.to_string(), Vec::new())).collect();
+		let enums: RefCell<HashMap<String, Vec<VariantInfo>>> =
+			RefCell::new(enum_items.iter().map(|(name, ..)| (name.to_string(), Vec::new())).collect());
 
 		let (const_map, const_anns) = (self.consts.clone(), self.annotations.clone());
 		let consts = Consts {
@@ -1236,7 +1234,7 @@ impl<M: Module> Compiler<M> {
 		while !pending.is_empty() {
 			let (mut done, mut err) = (vec![], None);
 			pending.retain(|(name, fields)| {
-				let types = TypeCtx::new(&structs, &enum_names, &aliases, &no_type_params, &generics, &traits)
+				let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 					.with_consts(consts)
 					.with_scope(scope_of(name));
 				let resolve = || {
@@ -1281,7 +1279,7 @@ impl<M: Module> Compiler<M> {
 		check_c_structs(&self.annotations, &structs)?;
 
 		let field_types =
-			TypeCtx::new(&structs, &enum_names, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
+			TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
 
 		// implicit traits
 		for (tn, anns) in &self.annotations {
@@ -1341,19 +1339,16 @@ impl<M: Module> Compiler<M> {
 			&mut self.consts,
 		)?;
 
-		let enums: HashMap<String, Vec<VariantInfo>> = enum_items
-			.iter()
-			.map(|(name, backing, variants)| {
-				let types = TypeCtx::new(&structs, &enum_names, &aliases, &no_type_params, &generics, &traits)
-					.with_consts(consts)
-					.with_scope(scope_of(name));
-				let mut vs = build_variants(variants, types)?;
-				if let Some(bt) = backing {
-					apply_backing(bt, &mut vs, variants, types)?;
-				}
-				Ok((name.to_string(), vs))
-			})
-			.collect::<Result<_, _>>()?;
+		for (name, backing, variants) in &enum_items {
+			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
+				.with_consts(consts)
+				.with_scope(scope_of(name));
+			let mut vs = build_variants(variants, types)?;
+			if let Some(bt) = backing {
+				apply_backing(bt, &mut vs, variants, types)?;
+			}
+			enums.borrow_mut().insert(name.to_string(), vs);
+		}
 
 		// hoist fns
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();

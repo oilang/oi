@@ -240,7 +240,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// enum payload
 				if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
-					&& self.types.enums.contains_key(self.qualify(name).as_ref())
+					&& self.types.enums.borrow().contains_key(self.qualify(name).as_ref())
 				{
 					let name = self.qualify(name).to_string();
 					if method == "from" {
@@ -269,7 +269,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (sname, bound) = if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
 					&& (self.types.structs.contains_key(self.qualify(name).as_ref())
-						|| self.types.enums.contains_key(self.qualify(name).as_ref())
+						|| self.types.enums.borrow().contains_key(self.qualify(name).as_ref())
 						|| self.types.generics.structs.contains_key(self.qualify(name).as_ref())
 						|| self.types.generics.enums.contains_key(self.qualify(name).as_ref())
 						|| matches!(
@@ -470,7 +470,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// enum variants
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
-					&& self.types.enums.contains_key(self.qualify(name).as_ref())
+					&& self.types.enums.borrow().contains_key(self.qualify(name).as_ref())
 				{
 					let name = self.qualify(name).to_string();
 					return self.construct_variant(&name, field, &[], expr.1);

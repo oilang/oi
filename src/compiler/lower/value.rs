@@ -309,12 +309,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The variant table of a named enum.
 	pub(super) fn enum_variants(&self, name: &str) -> Vec<VariantInfo> {
-		self.types
-			.enums
-			.get(name)
-			.cloned()
-			.or_else(|| self.types.generics.instances.borrow().get(name).cloned())
-			.unwrap_or_default()
+		self.types.enums.borrow().get(name).cloned().unwrap_or_default()
 	}
 
 	// See through `&T`.
@@ -1059,7 +1054,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			})?,
 			_ => self.qualify(name).to_string(),
 		};
-		if self.types.enums.contains_key(name.as_str()) {
+		if self.types.enums.borrow().contains_key(name.as_str()) {
 			if !fields.is_empty() {
 				return Err(Diagnostic::new(
 					format!("enum `{name}` only supports `{name}.{{}}` with no fields"),
