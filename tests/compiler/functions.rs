@@ -307,3 +307,12 @@ fn named_tuple_result() {
 	"};
 	check(src, "(3, 1)");
 }
+
+#[test]
+fn named_result_cannot_shadow_a_param() {
+	let src = indoc! {"
+		f :: fn(n: int) n: int { return }
+		f(1)
+	"};
+	fail_with_compile(src, "duplicate argument `n`");
+}
