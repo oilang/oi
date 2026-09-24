@@ -9,3 +9,4 @@ loop id in [ 1 7 3 7 ] {
 }
 
 total
+# expect: 84

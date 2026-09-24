@@ -11,3 +11,4 @@ grade :: fn(score: int) Grade {
 }
 
 grade(89)
+# expect: B

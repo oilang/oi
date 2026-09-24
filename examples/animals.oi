@@ -44,14 +44,17 @@ cat := Cat.{
 	name = "Jerry"
 }
 cat.greet() |> print
+# expect: Jerry says meow!
 
 terry := Dog.{
 	name = "Terry"
 }
 terry.greet() |> print
+# expect: Terry the doggo says woof!
 
 larry := Dog.{
 	name = "Larry"
 	greeting = "bark"
 }
 larry.greet() |> print
+# expect: Larry the doggo says bark!

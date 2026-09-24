@@ -314,5 +314,5 @@ fn named_result_cannot_shadow_a_param() {
 		f :: fn(n: int) n: int { return }
 		f(1)
 	"};
-	fail_with_compile(src, "duplicate argument `n`");
+	fail(src, "duplicate argument `n`");
 }

@@ -37,4 +37,7 @@ user := User.create(
 user.status = .online
 
 badge(user) |> print
+# expect: 🟢 ur_mom_lolol
+
 user.greet()
+# expect: Welcome back, ur_mom_lolol!

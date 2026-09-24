@@ -5,4 +5,6 @@ Box[T] :< {
 
 b := Box.{ v = 21 }
 assert!(b.get() == 21)
+
 Box.{ "hi" }.get()
+# expect: hi

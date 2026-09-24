@@ -30,4 +30,5 @@ main :: fn() {
 	str = "string"
 
 	print(2.0 + 1.2)
+	# expect: 3.2
 }
