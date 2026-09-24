@@ -635,22 +635,23 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Whether a fill shadows a same-named variant.
+	pub(super) fn generic_variant(&self, head: &Spanned<Expr>, variant: &str) -> Option<(String, GenericEnumDef)> {
+		let Expr::Ident(n) = &head.0 else { return None };
+		if self.vars.contains_key(n) { return None; }
+		let q = self.qualify(n).to_string();
+		let d = self.types.generics.enums.get(&q)?;
+		(d.variants.iter().any(|v| v.name == variant) && !self.has_fill(&q, variant)).then(|| (q, d.clone()))
+	}
 	pub(super) fn has_fill(&self, name: &str, method: &str) -> bool {
-		let key = format!("{}.{method}", rc::base_name(name));
-		self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key)
+		let k = format!("{}.{method}", rc::base_name(name));
+		self.funcs.contains_key(&k) || self.generic_fns.contains_key(&k)
 	}
 
-	// Build enum with variant+payload on a generic enum.
-	pub(super) fn infer_variant(
-		&mut self,
-		name: &str,
-		def: &GenericEnumDef,
-		variant: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
-		let payload = &def.variants.iter().find(|v| v.name == variant).expect("caller checked").payload;
+	// Build generic enum.
+	pub(super) fn infer_variant(&mut self, name: &str, def: &GenericEnumDef, variant: &str, args: &[Spanned<Expr>], hint: Option<&Typ>, span: Span) -> Result<TypedVal, Diagnostic> {
+		let payload = &def.variants.iter().find(|v| v.name == variant).unwrap().payload;
 		let mut subst = HashMap::new();
+		if let Some(Typ::Enum(i)) = hint && rc::base_name(i)==name && let Some(t) = self.types.generics.instance_args(i) { subst.extend(def.type_params.iter().map(|p| p.name.clone()).zip(t)); }
 		let mut fields = Vec::with_capacity(args.len());
 		for (arg, (te, _)) in args.iter().zip(payload) {
 			let (val, typ) = self.expr(arg)?;

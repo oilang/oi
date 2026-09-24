@@ -102,8 +102,9 @@ tags: []
 		```
 	- [x] `::` in fn params should make immutable defaults for consistency
 	- [ ] zero enum values `none`?
-	- [ ] `10..-2..` `revo`
-	- [ ] `if let`/`while let`/`loop let`/?`match let` `rust`
+	- [x] `10..-2..` `revo`
+	- [x] `if let`/`while let` `rust`
+	- [ ] `loop let`/?`match let` `rust`
 - [ ] `comp assert`
 - [x] pipeline examples with `!` postfix collide with macros
 - [x] revisit needing `print`, `assert`, et al to be macros
@@ -121,14 +122,14 @@ tags: []
 - [x] make another pass on generics. I don't love what I have now
 - [x] make another pass on metaprogramming. I don't love what I have now
 - [x] varargs
-- [ ] bit flags syntax
+- [x] bit flags syntax
 - [ ] channels
 - [ ] units and unit conversion
 - [x] enum methods `rust`
 - [ ] primitive data type for paths
 - [x] `unsafe`
 - [ ] `@noinit` `v`
-- [ ] `@nozero`
+- [x] `@nozero`
 - [x] ownership / memory model
 - [x] casting `capy`
 - [ ] `discard` and/or `pass`
@@ -139,7 +140,7 @@ tags: []
 - [x] some sort of `todo`/`unimplemented` macros `rust`
 - [x] a way to type a var without declaring it, like `var` in Go `go`
 - [x] `loop match {...}` `revo`
-- [ ] traits
+- [x] traits
 	- [x] `Contains`, lets type be used with `in` operator
 	- [x] `Iterable`
 - [x] Algebraic Data Types (ADT) `rust`

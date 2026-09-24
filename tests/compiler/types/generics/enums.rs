@@ -140,6 +140,22 @@ fn bare_path_infers_from_the_payload() {
 }
 
 #[test]
+fn bare_path_infers_from_the_expected_type() {
+	let src = indoc! {r#"
+		Opt[T] :: enum { nope, yep(T) }
+		x: ?int = Option.none
+		y: !int = Result.ok(7)
+		z: string!int = Result.err("no")
+		o: Opt[int] = Opt.nope
+		print(x)
+		print(y)
+		print(z)
+		print(o)
+	"#};
+	check(src, ["none", "ok.(7)", r#"err.("no")"#, "nope"]);
+}
+
+#[test]
 fn a_generic_struct_head_is_not_a_variant_path() {
 	fail(
 		indoc! {"

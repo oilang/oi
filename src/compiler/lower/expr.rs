@@ -261,14 +261,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.construct_variant(&instance, method, args, expr.1);
 				}
-				if let Expr::Ident(name) = &recv.0
-					&& !self.vars.contains_key(name)
-					&& let Some(def) = self.types.generics.enums.get(self.qualify(name).as_ref()).cloned()
-					&& def.variants.iter().any(|v| v.name == *method)
-					&& !self.has_fill(self.qualify(name).as_ref(), method)
-				{
-					let name = self.qualify(name).to_string();
-					return self.infer_variant(&name, &def, method, args, expr.1);
+				if let Some((n, d)) = self.generic_variant(recv, method) {
+					return self.infer_variant(&n, &d, method, args, hint, expr.1);
 				}
 
 				// method call is static when `recv` names a type
@@ -473,6 +467,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				if let Some(instance) = self.enum_instance(tuple) {
 					return self.construct_variant(&instance, field, &[], expr.1);
+				}
+				if let Some((n, d)) = self.generic_variant(tuple, field) {
+					return self.infer_variant(&n, &d, field, &[], hint, expr.1);
 				}
 
 				// associated consts
