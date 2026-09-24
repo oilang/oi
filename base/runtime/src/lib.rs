@@ -813,6 +813,15 @@ pub unsafe extern "C" fn map_len(map: *mut OiMap) -> i64 {
 	unsafe { &*map }.entries.len() as i64
 }
 
+/// Whether two maps hold the same set of keys.
+/// # Safety
+/// `a` and `b` must be valid, live `OiMap` pointers.
+#[unsafe(export_name = "oi_map_keys_eq")]
+pub unsafe extern "C" fn map_keys_eq(a: *mut OiMap, b: *mut OiMap) -> i64 {
+	let (a, b) = unsafe { (&*a, &*b) };
+	(a.entries.len() == b.entries.len() && a.entries.keys().all(|k| b.entries.contains_key(k))) as i64
+}
+
 /// The keys or values of a map as an array the caller releases.
 /// # Safety
 /// `map` must be a valid, live `OiMap` pointer.

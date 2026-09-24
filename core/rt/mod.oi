@@ -27,6 +27,7 @@ pub oi_map_set : fn(m: ptr, tag: isize, bits: isize, value: isize) ptr : foreign
 pub oi_map_delete : fn(m: ptr, tag: isize, bits: isize) ptr : foreign
 pub oi_map_len : fn(m: ptr) isize : foreign
 pub oi_map_entries : fn(m: ptr, keys: isize, width: isize) ptr : foreign
+pub oi_map_keys_eq : fn(a: ptr, b: ptr) isize : foreign
 
 # rc
 pub oi_array_share : fn(h: ptr) ptr : foreign

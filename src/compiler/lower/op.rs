@@ -23,7 +23,7 @@ fn eq_slots(t: &Typ) -> Option<Vec<Typ>> {
 
 // Whether a type should compare structurally, rather than comparing bits.
 fn eq_dispatchable(t: &Typ) -> bool {
-	t.is_enumish() || eq_slots(t).is_some() || matches!(t, Typ::Array(_) | Typ::FixedArray(..))
+	t.is_enumish() || eq_slots(t).is_some() || matches!(t, Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..))
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -97,6 +97,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		match t {
 			t if eq_slots(t).is_some() => self.emit_slots_eq(a, b, t, span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
+			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
 			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_ref(t) => {
 				self.emit_enum_eq(a, b, t, span)
 			}
@@ -207,6 +208,27 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.emit_scan(la, true, seed, |s, i| {
 			let (ea, eb) = (s.load_nth(da, i, &elem), s.load_nth(db, i, &elem));
 			s.emit_val_eq(ea, eb, &elem, &owner, span)
+		})
+	}
+
+	// Check whether every key/value pair is equal between two maps.
+	fn emit_map_eq(&mut self, a: Value, b: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
+		let Typ::Map(k, v) = typ else {
+			unreachable!("emit_map_eq on {typ}")
+		};
+		let (owner, kt) = (typ.to_string(), Typ::Array(k.clone()));
+		let tag = map_key_tag(k).expect("map keys are taggable");
+		let same_keys = self.rt_call("map_keys_eq", &[a, b]).unwrap();
+		let seed = self.b.ins().icmp_imm(IntCC::NotEqual, same_keys, 0);
+		let keys = self.map_entries(a, true, k);
+		self.temp(keys, &kt);
+		let (data, n) = self.array_parts(keys, &kt);
+		self.emit_scan(n, true, seed, |s, i| {
+			let key = s.load_nth(data, i, k);
+			let bits = s.map_bits(key);
+			let (ga, gb) = (s.call_map_get(a, tag, bits), s.call_map_get(b, tag, bits));
+			let (va, vb) = (s.unmap_bits(ga, v), s.unmap_bits(gb, v));
+			s.emit_val_eq(va, vb, v, &owner, span)
 		})
 	}
 

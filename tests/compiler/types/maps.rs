@@ -383,3 +383,18 @@ fn independent_copies() {
 		"[1]",
 	);
 }
+
+#[test]
+fn equality_is_order_independent() {
+	check(
+		indoc! {r#"
+			a := ["x" = [1, 2], "y" = [3]]
+			print a == ["y" = [3], "x" = [1, 2]]
+			print a == ["x" = [1, 2]]
+			print a == ["x" = [1, 2], "y" = [4]]
+			print a == ["z" = [3], "x" = [1, 2]]
+			print a != ["y" = [3], "x" = [1, 2]]
+		"#},
+		["true", "false", "false", "false", "false"],
+	);
+}
