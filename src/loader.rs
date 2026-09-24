@@ -259,7 +259,7 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 }
 
 // Lex and parse one file's source at its base offset.
-fn parse_file(src: &str, base: usize) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
+pub fn parse_file(src: &str, base: usize) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
 	let toks = lex_at(src, base);
 	let eoi = (base + src.len()..base + src.len()).into();
 	parser(src, base)

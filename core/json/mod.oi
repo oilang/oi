@@ -30,7 +30,7 @@ P :< {
 		}
 	}
 
-	word :: fn(mut self, w: string) !() {
+	word :: fn(mut self, w: string) ! {
 		self.space()
 		if !self.s[self.i..].starts_with(w) { return error("expected {w} at {self.i}") }
 		self.i += w.len
