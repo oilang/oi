@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use oi::diagnostics::ColorMode;
 use oi::driver::Emit;
 
 pub const VERSION: &str = concat!(
@@ -17,6 +18,10 @@ pub const VERSION: &str = concat!(
 #[derive(Parser)]
 #[command(name = "oi", version = VERSION, about)]
 pub struct Cli {
+	/// Colorize diagnostics.
+	#[arg(long, global = true, value_enum, default_value = "auto")]
+	pub color: ColorMode,
+
 	#[command(subcommand)]
 	pub command: Option<Command>,
 }

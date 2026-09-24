@@ -1,10 +1,22 @@
 use std::io::IsTerminal;
 use std::ops::Range;
+use std::sync::OnceLock;
 
 use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
 use chumsky::error::{Rich, RichReason};
 
 use crate::lexer::Token;
+
+/// `--color`, set once by the CLI.
+pub static COLOR: OnceLock<ColorMode> = OnceLock::new();
+
+#[derive(clap::ValueEnum, Clone, Copy, Default)]
+pub enum ColorMode {
+	#[default]
+	Auto,
+	Always,
+	Never,
+}
 
 // A source file at its program-wide byte offset.
 #[derive(Clone)]
@@ -100,7 +112,13 @@ impl Diagnostic {
 	// Render span to stderr.
 	pub fn report(&self, filename: &str, src: &str) {
 		let id = filename.to_string();
-		let color = std::io::stderr().is_terminal();
+		let color = match COLOR.get().copied().unwrap_or_default() {
+			ColorMode::Always => true,
+			ColorMode::Never => false,
+			ColorMode::Auto => {
+				std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
+			}
+		};
 		let config = Config::default().with_color(color).with_index_type(IndexType::Byte);
 
 		let mut builder = Report::build(ReportKind::Error, (id.clone(), self.span.clone()))

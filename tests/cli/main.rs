@@ -3,6 +3,7 @@ mod common;
 
 mod build;
 mod cache;
+mod color;
 mod exec;
 mod init;
 mod install;
