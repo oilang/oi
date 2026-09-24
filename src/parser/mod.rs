@@ -478,7 +478,7 @@ where
 	// field assignment
 	let field_assign = ident()
 		.then_ignore(just(Token::Dot))
-		.then(ident())
+		.then(ident().or(select! { Token::Int(n) => n.to_string() }))
 		.then(assign_op)
 		.then(juxt_expr.clone())
 		.map_with(move |(((name, field), op), value), ex| {

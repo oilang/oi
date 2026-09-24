@@ -234,3 +234,17 @@ fn equality_is_structural() {
 		["true", "false"],
 	);
 }
+
+#[test]
+fn field_assign() {
+	check(
+		indoc! {"
+			t := (1, b = 2)
+			t.0 += 10
+			t.b = 20
+			t
+		"},
+		"(11, b = 20)",
+	);
+	fail("t := (1, 2)\nt.z = 3", "tuple has no field `z`");
+}

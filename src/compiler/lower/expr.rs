@@ -906,8 +906,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		})
 	}
 
-	pub(super) fn result_init(&mut self, ok_typ: Typ, arg: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
-		let err_typ = Typ::Error;
+	pub(super) fn result_init(&mut self, ok_typ: Typ, err_typ: Typ, arg: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let typ = self.types.core_enum(role::RESULT, &[ok_typ.clone(), err_typ.clone()]);
 		let variants = self.variants_of(&typ);
 		let (fv, at) = self.check_expr(arg, &ok_typ)?;

@@ -294,3 +294,16 @@ fn do_body() {
 	"};
 	check(src, "18");
 }
+
+#[test]
+fn named_tuple_result() {
+	let src = indoc! {"
+		divmod :: fn(a: int, b: int) out: (int, int) {
+			out.0 = a / b
+			out.1 = a % b
+			return
+		}
+		divmod(10, 3)
+	"};
+	check(src, "(3, 1)");
+}

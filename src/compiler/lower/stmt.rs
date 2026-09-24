@@ -272,10 +272,30 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::FieldAssign { name, field, value } => {
 					self.check_static_write(name, field, stmt.1)?;
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
-					let fields = match self.peeled(&local.typ) {
+					let (path, idx, ftyp) = match self.peeled(&local.typ) {
+						Typ::Tuple(elems) => {
+							let i = match field.parse::<usize>() {
+								Ok(i) if i < elems.len() => i,
+								_ => elems
+									.iter()
+									.position(|(n, _)| n.as_deref() == Some(field.as_str()))
+									.ok_or_else(|| {
+										Diagnostic::new(format!("tuple has no field `{field}`"), stmt.1.into_range())
+											.with_label("no such field")
+									})?,
+							};
+							(Vec::new(), i, elems[i].1.clone())
+						}
+						// writes fall through embeds
 						Typ::Struct(sname, fields) => {
 							self.check_member(&sname, field, stmt.1)?;
-							fields
+							match fields.iter().position(|f| &f.name == field) {
+								Some(i) => (Vec::new(), i, fields[i].typ.clone()),
+								None => self.promoted(&fields, field, stmt.1)?.ok_or_else(|| {
+									Diagnostic::new(format!("struct has no field `{field}`"), stmt.1.into_range())
+										.with_label("no such field")
+								})?,
+							}
 						}
 						_ => {
 							return Err(
@@ -283,20 +303,6 @@ impl<'a, M: Module> Translator<'a, M> {
 									.with_label("not a struct"),
 							);
 						}
-					};
-					// writes fall through embeds
-					let (path, idx, ftyp) = match fields.iter().position(|f| &f.name == field) {
-						Some(i) => (Vec::new(), i, fields[i].typ.clone()),
-						None => match self.promoted(&fields, field, stmt.1)? {
-							Some((p, i, t)) => (p, i, t),
-							None => {
-								return Err(Diagnostic::new(
-									format!("struct has no field `{field}`"),
-									stmt.1.into_range(),
-								)
-								.with_label("no such field"));
-							}
-						},
 					};
 					let (val, vtyp) = self.check_expr(value, &ftyp)?;
 					if vtyp != ftyp {
