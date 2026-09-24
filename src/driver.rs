@@ -20,6 +20,7 @@ pub enum Emit {
 pub struct DebugOpts {
 	pub timings: bool,
 	pub emit: Option<Emit>,
+	pub check: bool,
 }
 
 /// Compile and run a program from its entry files.
@@ -52,6 +53,9 @@ pub fn run_source(entry: Entry, root: &Path, opts: DebugOpts) -> Result<(), Repo
 			return Err(Reported);
 		}
 	};
+	if opts.check {
+		return Ok(());
+	}
 
 	// run
 	let t = Instant::now();

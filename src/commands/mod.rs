@@ -18,7 +18,8 @@ pub fn dispatch(cmd: Command) -> Result<(), Reported> {
 			file,
 			timings,
 			emit,
-		} => run::run(&run::entry(file), DebugOpts { timings, emit }),
+			check,
+		} => run::run(&run::entry(file), DebugOpts { timings, emit, check }),
 		Command::Build {
 			file,
 			out,
@@ -28,7 +29,9 @@ pub fn dispatch(cmd: Command) -> Result<(), Reported> {
 		Command::Exec {
 			source,
 			timings,
-		} => exec::run(source, DebugOpts { timings, emit }),
+			emit,
+			check,
+		} => exec::run(source, DebugOpts { timings, emit, check }),
 		Command::Test { file, pattern } => run::test(&run::entry(file), pattern.as_deref()),
 		Command::Repl => repl::run(),
 		Command::Install { path, prefix, link } => install::install(path.as_deref(), prefix.as_deref(), link),

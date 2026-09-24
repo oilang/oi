@@ -64,3 +64,16 @@ fn emit_clif_dumps_cranelift_ir() {
 	let stderr = String::from_utf8_lossy(&out.stderr);
 	assert!(stderr.contains("function u0:0"), "stderr was:\n{stderr}");
 }
+
+#[test]
+fn check_type_checks_without_running() {
+	let dir = Project::new().file("main.oi", r#"print("should not run")"#);
+	assert_eq!(ok(oi(&["run", "--check"]).current_dir(&dir).run(None)), "");
+
+	let dir = Project::new().file("main.oi", "x + 1");
+	let out = oi(&["run", "--check"]).current_dir(&dir).run(None);
+	assert!(!out.status.success());
+
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	assert!(stderr.contains("undefined variable"), "stderr was:\n{stderr}");
+}

@@ -34,6 +34,10 @@ pub enum Command {
 		/// Dump a compilation stage to stderr.
 		#[arg(long, value_enum)]
 		emit: Option<Emit>,
+
+		/// Parse and type-check without running.
+		#[arg(long)]
+		check: bool,
 	},
 
 	/// Compile an Oi file to a native executable.
@@ -68,6 +72,10 @@ pub enum Command {
 		/// Dump a compilation stage to stderr.
 		#[arg(long, value_enum)]
 		emit: Option<Emit>,
+
+		/// Parse and type-check without running.
+		#[arg(long)]
+		check: bool,
 	},
 
 	/// Compile and run a file's `@test` fns.
