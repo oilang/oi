@@ -499,6 +499,7 @@ pub struct Compiler<M: Module = JITModule> {
 	hoisted: HashMap<String, FnSig>,
 	lib: bool,
 	aot: bool,
+	pub(crate) emit_clif: bool,
 	pub(crate) include_tests: bool,
 	pub(crate) tests: Vec<(String, String, bool)>,
 	pub(crate) roots: Vec<String>,
@@ -647,7 +648,7 @@ impl Compiler<ObjectModule> {
 			false => ("main", Linkage::Export),
 		};
 		let id = self.module.declare_function(name, linkage, &self.ctx.func.signature).unwrap();
-		self.module.define_function(id, &mut self.ctx).unwrap();
+		self.define_function(id);
 		self.module.clear_context(&mut self.ctx);
 		if self.lib {
 			// seed statics because libs don't have a `main` fn entrypoint
@@ -698,6 +699,7 @@ impl<M: Module> Compiler<M> {
 			hoisted: HashMap::new(),
 			lib: false,
 			aot: false,
+			emit_clif: false,
 			include_tests: false,
 			tests: Vec::new(),
 			roots: Vec::new(),
@@ -1763,30 +1765,52 @@ impl<M: Module> Compiler<M> {
 		}
 	}
 
+	// Dump `self.ctx.func`'s IR to stderr, then panic! at the disco.
+	fn die(&self, err: impl std::fmt::Debug) -> ! {
+		eprintln!("{}", self.ctx.func.display());
+		panic!("define function: {err:?}");
+	}
+
+	// Commit a fn's body from `self.ctx`, via the incremental cache if enabled.
+	fn define_function(&mut self, id: FuncId) {
+		if self.emit_clif {
+			eprintln!("{}", self.ctx.func.display());
+		}
+		match &mut self.cache {
+			None => {
+				if let Err(e) = self.module.define_function(id, &mut self.ctx) {
+					self.die(e);
+				}
+			}
+			Some(store) => {
+				if let Err(e) = self.ctx.compile_with_cache(self.module.isa(), store, &mut Default::default()) {
+					let msg = format!("{e:?}");
+					self.die(msg);
+				}
+				let code = self.ctx.compiled_code().expect("just compiled");
+				let relocs: Vec<_> = code
+					.buffer
+					.relocs()
+					.iter()
+					.map(|r| ModuleReloc::from_mach_reloc(r, &self.ctx.func, id))
+					.collect();
+				let defined =
+					self.module
+						.define_function_bytes(id, code.buffer.alignment as u64, code.code_buffer(), &relocs);
+				if let Err(e) = defined {
+					self.die(e);
+				}
+			}
+		}
+	}
+
 	fn finish_fn(&mut self, name: &str) -> FuncId {
 		let id = self
 			.module
 			.declare_function(name, Linkage::Local, &self.ctx.func.signature)
 			.expect("declare function");
 		if self.defined.insert(id) {
-			match &mut self.cache {
-				None => self.module.define_function(id, &mut self.ctx).expect("define function"),
-				Some(store) => {
-					self.ctx
-						.compile_with_cache(self.module.isa(), store, &mut Default::default())
-						.expect("compile function");
-					let code = self.ctx.compiled_code().expect("just compiled");
-					let relocs: Vec<_> = code
-						.buffer
-						.relocs()
-						.iter()
-						.map(|r| ModuleReloc::from_mach_reloc(r, &self.ctx.func, id))
-						.collect();
-					self.module
-						.define_function_bytes(id, code.buffer.alignment as u64, code.code_buffer(), &relocs)
-						.expect("define function");
-				}
-			}
+			self.define_function(id);
 		}
 		self.module.clear_context(&mut self.ctx);
 		id
