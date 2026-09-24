@@ -38,7 +38,7 @@ ci: build fmt-check lint test
 # run tests
 [group("cargo")]
 @test *args:
-	cargo test "$@"
+	cargo test -q "$@"
 
 # install
 [group("cargo")]

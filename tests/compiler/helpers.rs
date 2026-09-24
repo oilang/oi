@@ -31,7 +31,11 @@ fn failure(src: impl Lines, at_compile_time: bool, expected: &str) -> String {
 	assert!(
 		!out.status.success() && compiled == !at_compile_time && err.contains(expected),
 		"expected a {} containing {expected:?}\nsrc:\n{src}\nstatus: {:?}\nstdout:\n{}\nstderr:\n{err}",
-		if at_compile_time { "compile error" } else { "runtime abort" },
+		if at_compile_time {
+			"compile error"
+		} else {
+			"runtime abort"
+		},
 		out.status,
 		String::from_utf8_lossy(&out.stdout)
 	);

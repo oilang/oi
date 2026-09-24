@@ -284,10 +284,17 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& let Some(typ) = self.types().named(name, recv.1).ok().filter(|t| {
 						matches!(
 							t,
-							Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize | Typ::Str
+							Typ::Int(_)
+								| Typ::UInt(_) | Typ::Float(_)
+								| Typ::Bool | Typ::ISize | Typ::USize
+								| Typ::Str | Typ::Struct(..)
+								| Typ::TupleStruct(..) | Typ::Enum(_)
 						)
 					}) {
-					(typ.to_string(), None)
+					match &typ {
+						Typ::Enum(n) => (n.clone(), None),
+						_ => (typ.to_string(), None),
+					}
 				} else {
 					let (recv_val, recv_typ) = self.expr(recv)?;
 					let recv_typ = self.peeled(&recv_typ);

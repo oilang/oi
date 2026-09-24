@@ -101,13 +101,16 @@ fn len_keys_values() {
 fn tuple_keys_fail_for_now() {
 	// TODO: actually implement complex keys and fix test
 	assert!(
-		fail(indoc! {"
-			Point :: (int, int)
-			m: [Point]int
-			m[(1, 2)] = 6
-			m[(2, 1)] = 9
-			m[(2, 1)]
-		"}, "")
+		fail(
+			indoc! {"
+				Point :: (int, int)
+				m: [Point]int
+				m[(1, 2)] = 6
+				m[(2, 1)] = 9
+				m[(2, 1)]
+			"},
+			""
+		)
 		.contains("tuple cannot be used as a map key")
 	);
 }
@@ -115,10 +118,13 @@ fn tuple_keys_fail_for_now() {
 #[test]
 fn missing_key_panics() {
 	assert!(
-		fail_rt(indoc! {r#"
-			m: [string]int
-			m["missing"]
-		"#}, "")
+		fail_rt(
+			indoc! {r#"
+				m: [string]int
+				m["missing"]
+			"#},
+			""
+		)
 		.contains("key not found")
 	);
 }
@@ -126,10 +132,13 @@ fn missing_key_panics() {
 #[test]
 fn wrong_key_type() {
 	assert!(
-		fail(indoc! {r#"
-			m: [string]int
-			m[1]
-		"#}, "")
+		fail(
+			indoc! {r#"
+				m: [string]int
+				m[1]
+			"#},
+			""
+		)
 		.contains("expected string key")
 	);
 }
@@ -137,10 +146,13 @@ fn wrong_key_type() {
 #[test]
 fn wrong_value_type() {
 	assert!(
-		fail(indoc! {r#"
-			m: [string]int
-			m["a"] = "b"
-		"#}, "")
+		fail(
+			indoc! {r#"
+				m: [string]int
+				m["a"] = "b"
+			"#},
+			""
+		)
 		.contains("type mismatch")
 	);
 }
@@ -207,11 +219,14 @@ fn bracket_lit_var_key_uses_value_not_name() {
 		"1",
 	);
 	assert!(
-		fail_rt(indoc! {r#"
-			k :: "one"
-			m := [k = 1]
-			m["k"]
-		"#}, "")
+		fail_rt(
+			indoc! {r#"
+				k :: "one"
+				m := [k = 1]
+				m["k"]
+			"#},
+			""
+		)
 		.contains("key not found")
 	);
 }

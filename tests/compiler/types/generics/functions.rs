@@ -218,3 +218,18 @@ fn inference_and_explicit_args_beat_the_default() {
 	"#};
 	check(src, ["a", "none"]);
 }
+
+#[test]
+fn static_call_through_a_bound() {
+	let src = indoc! {r#"
+		Maker :: trait {
+			make: fn() Self
+			tag :: fn() string { "made" }
+		}
+		A :: struct { n: int }
+		A : Maker < { make :: fn() Self { .{ n = 1 } } }
+		build[T: Maker] :: fn() T { print T.tag(); T.make() }
+		print(build[A]().n)
+	"#};
+	check(src, ["made", "1"]);
+}

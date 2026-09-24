@@ -71,12 +71,15 @@ fn supertraits() {
 	"};
 	check(src, "true");
 
-	fail(indoc! {"
-		Eq :: trait {}
-		Ord :: trait is Eq {}
-		X :: struct {}
-		X :< Ord
-	"}, "");
+	fail(
+		indoc! {"
+			Eq :: trait {}
+			Ord :: trait is Eq {}
+			X :: struct {}
+			X :< Ord
+		"},
+		"",
+	);
 }
 
 #[test]
@@ -159,36 +162,51 @@ fn implicit_trait() {
 
 #[test]
 fn is_expression_unknown_type() {
-	fail(indoc! {"
-		Animal :: trait {}
-		print(Ghost is Animal)
-	"}, "");
+	fail(
+		indoc! {"
+			Animal :: trait {}
+			print(Ghost is Animal)
+		"},
+		"",
+	);
 }
 
 #[test]
 fn rejects_bad_impls() {
-	fail(indoc! {r#"
-		Dog :: struct {}
-		Dog : Animal < { speak :: fn(self) string { "woof" } }
-	"#}, "");
-	fail(indoc! {r#"
-		Animal :: trait { speak: fn(self) string }
-		Dog :: struct {}
-		Dog : Animal < {}
-	"#}, "");
-	fail(indoc! {r#"
-		Animal :: trait { kind: string }
-		Dog :: struct {}
-		Dog :< Animal
-	"#}, "");
+	fail(
+		indoc! {r#"
+			Dog :: struct {}
+			Dog : Animal < { speak :: fn(self) string { "woof" } }
+		"#},
+		"",
+	);
+	fail(
+		indoc! {r#"
+			Animal :: trait { speak: fn(self) string }
+			Dog :: struct {}
+			Dog : Animal < {}
+		"#},
+		"",
+	);
+	fail(
+		indoc! {r#"
+			Animal :: trait { kind: string }
+			Dog :: struct {}
+			Dog :< Animal
+		"#},
+		"",
+	);
 }
 
 #[test]
 fn rejects_duplicate_trait() {
-	fail(indoc! {"
-		Animal :: trait { speak :: fn(self) string }
-		Animal :: trait { bark :: fn(self) string }
-	"}, "");
+	fail(
+		indoc! {"
+			Animal :: trait { speak :: fn(self) string }
+			Animal :: trait { bark :: fn(self) string }
+		"},
+		"",
+	);
 }
 
 #[test]
@@ -386,18 +404,24 @@ fn self_sig_static_dispatch_ok() {
 
 #[test]
 fn rejects_non_object_safe_trait() {
-	fail(indoc! {r#"
-		Cloner :: trait { dup : fn(self) Self }
-		Dog :: struct {}
-		Dog : Cloner < { dup :: fn(self) Self { Dog.{} } }
-		f :: fn(c: Cloner) string { "no" }
-	"#}, "");
-	fail(indoc! {r#"
-		Eater :: trait { eat : fn(self, other: Self) string }
-		Dog :: struct {}
-		Dog : Eater < { eat :: fn(self, other: Self) string { "ate" } }
-		pack :: Eater.[ Dog.{} ]
-	"#}, "");
+	fail(
+		indoc! {r#"
+			Cloner :: trait { dup : fn(self) Self }
+			Dog :: struct {}
+			Dog : Cloner < { dup :: fn(self) Self { Dog.{} } }
+			f :: fn(c: Cloner) string { "no" }
+		"#},
+		"",
+	);
+	fail(
+		indoc! {r#"
+			Eater :: trait { eat : fn(self, other: Self) string }
+			Dog :: struct {}
+			Dog : Eater < { eat :: fn(self, other: Self) string { "ate" } }
+			pack :: Eater.[ Dog.{} ]
+		"#},
+		"",
+	);
 }
 
 #[test]

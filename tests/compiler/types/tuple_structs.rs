@@ -62,20 +62,26 @@ fn print_named() {
 
 #[test]
 fn index_out_of_range() {
-	fail(indoc! {"
-		Money :: struct (int)
-		m: Money
-		m.1
-	"}, "");
+	fail(
+		indoc! {"
+			Money :: struct (int)
+			m: Money
+			m.1
+		"},
+		"",
+	);
 }
 
 #[test]
 fn no_such_field() {
-	fail(indoc! {"
-		Point :: struct (x: float, y: float)
-		p: Point
-		p.z
-	"}, "");
+	fail(
+		indoc! {"
+			Point :: struct (x: float, y: float)
+			p: Point
+			p.z
+		"},
+		"",
+	);
 }
 
 #[test]
@@ -130,11 +136,14 @@ fn nominal_in_signatures() {
 		"},
 		"500",
 	);
-	fail(indoc! {"
-		Money :: struct (int)
-		pay :: fn(m: Money) int { m.0 }
-		pay(500)
-	"}, "");
+	fail(
+		indoc! {"
+			Money :: struct (int)
+			pay :: fn(m: Money) int { m.0 }
+			pay(500)
+		"},
+		"",
+	);
 }
 
 #[test]
@@ -183,14 +192,20 @@ fn construct_into_sum_member() {
 
 #[test]
 fn wrong_arity_and_type() {
-	fail(indoc! {"
-		Money :: struct (int)
-		Money(1, 2)
-	"}, "");
-	fail(indoc! {r#"
-		Money :: struct (int)
-		Money("x")
-	"#}, "");
+	fail(
+		indoc! {"
+			Money :: struct (int)
+			Money(1, 2)
+		"},
+		"",
+	);
+	fail(
+		indoc! {r#"
+			Money :: struct (int)
+			Money("x")
+		"#},
+		"",
+	);
 }
 
 #[test]
