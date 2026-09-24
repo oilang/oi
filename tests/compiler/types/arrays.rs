@@ -74,7 +74,7 @@ fn index_into_nested() {
 
 #[test]
 fn mixed_types() {
-	fail_with(r#"[1, "two"]"#, "must share a type");
+	fail(r#"[1, "two"]"#, "must share a type");
 }
 
 #[test]
@@ -90,32 +90,32 @@ fn spread() {
 
 #[test]
 fn spread_type_mismatch() {
-	fail_with([r#"a :: ["x", "y"]"#, "[1, ..a]"], "must share a type");
+	fail([r#"a :: ["x", "y"]"#, "[1, ..a]"], "must share a type");
 }
 
 #[test]
 fn empty_unsupported() {
-	fail_with("[]", "empty array");
+	fail("[]", "empty array");
 }
 
 #[test]
 fn index_non_array() {
-	fail_with(["x :: 5", "x[0]"], "cannot index");
+	fail(["x :: 5", "x[0]"], "cannot index");
 }
 
 #[test]
 fn non_int_index() {
-	fail_with(r#"a :: [1, 2]; a["x"]"#, "index must be Int");
+	fail(r#"a :: [1, 2]; a["x"]"#, "index must be Int");
 }
 
 #[test]
 fn index_out_of_range() {
-	fail_with(["a :: [1, 2]", "a[5]"], "out of range");
+	fail_rt(["a :: [1, 2]", "a[5]"], "out of range");
 }
 
 #[test]
 fn unknown_named_field() {
-	fail_with(["a :: [1, 2]", "a.foo"], "no field `foo`");
+	fail(["a :: [1, 2]", "a.foo"], "no field `foo`");
 }
 
 // slices
@@ -157,22 +157,22 @@ fn slice_is_an_array() {
 
 #[test]
 fn slice_out_of_bounds() {
-	fail_with(["a :: [1, 2, 3]", "a[1..9]"], "out of bounds");
+	fail_rt(["a :: [1, 2, 3]", "a[1..9]"], "out of bounds");
 }
 
 #[test]
 fn slice_reversed_range() {
-	fail_with(["a :: [1, 2, 3]", "a[3..1]"], "out of bounds");
+	fail_rt(["a :: [1, 2, 3]", "a[3..1]"], "out of bounds");
 }
 
 #[test]
 fn slice_non_array() {
-	fail_with(["x :: 5", "x[0..1]"], "cannot slice");
+	fail(["x :: 5", "x[0..1]"], "cannot slice");
 }
 
 #[test]
 fn slice_non_int_bound() {
-	fail_with(r#"a :: [1, 2, 3]; a[true..2]"#, "must be Int");
+	fail(r#"a :: [1, 2, 3]; a[true..2]"#, "must be Int");
 }
 
 // index assignment
@@ -189,22 +189,22 @@ fn index_assign_variable_index() {
 
 #[test]
 fn index_assign_immutable_error() {
-	fail_with(["a :: [1, 2]", "a[0] = 5"], "immutable");
+	fail(["a :: [1, 2]", "a[0] = 5"], "immutable");
 }
 
 #[test]
 fn index_assign_non_array_error() {
-	fail_with(["x := 5", "x[0] = 1"], "not an array");
+	fail(["x := 5", "x[0] = 1"], "not an array");
 }
 
 #[test]
 fn index_assign_type_mismatch_error() {
-	fail_with(r#"a := [1, 2]; a[0] = "hi""#, "type mismatch");
+	fail(r#"a := [1, 2]; a[0] = "hi""#, "type mismatch");
 }
 
 #[test]
 fn index_assign_oob_error() {
-	fail_with(["a := [1, 2]", "a[5] = 9"], "out of range");
+	fail_rt(["a := [1, 2]", "a[5] = 9"], "out of range");
 }
 
 // append
@@ -232,17 +232,17 @@ fn append_in_expression_position() {
 
 #[test]
 fn append_immutable_error() {
-	fail_with(["a :: [1, 2]", "a << 3"], "immutable");
+	fail(["a :: [1, 2]", "a << 3"], "immutable");
 }
 
 #[test]
 fn append_non_array_error() {
-	fail_with([r#"x := "hi""#, "x << 1"], "cannot apply `<<`");
+	fail([r#"x := "hi""#, "x << 1"], "cannot apply `<<`");
 }
 
 #[test]
 fn append_type_mismatch_error() {
-	fail_with(r#"a := [1, 2]; a << "hi""#, "type mismatch");
+	fail(r#"a := [1, 2]; a << "hi""#, "type mismatch");
 }
 
 // array extend (<<)
@@ -264,7 +264,7 @@ fn extend_into_empty_ish() {
 
 #[test]
 fn extend_type_mismatch_error() {
-	fail_with(r#"a := [1, 2]; b :: ["x"]; a << b"#, "type mismatch");
+	fail(r#"a := [1, 2]; b :: ["x"]; a << b"#, "type mismatch");
 }
 
 // value semantics (COW)
@@ -370,12 +370,12 @@ fn in_after_append() {
 
 #[test]
 fn in_non_array_error() {
-	fail_with("5 in 10", "not an array");
+	fail("5 in 10", "not an array");
 }
 
 #[test]
 fn in_type_mismatch_error() {
-	fail_with(r#"a :: [1, 2]; "x" in a"#, "type mismatch");
+	fail(r#"a :: [1, 2]; "x" in a"#, "type mismatch");
 }
 
 #[test]
@@ -403,7 +403,7 @@ fn fn_return_type_mismatch_array() {
 		bad :: fn() []int { 42 }
 		bad()
 	"};
-	fail_with(src, "wrong return type");
+	fail(src, "wrong return type");
 }
 
 #[test]
@@ -451,7 +451,7 @@ fn fixed_value_semantics() {
 
 #[test]
 fn fixed_index_out_of_range() {
-	fail_with(["a: [2]int", "a[5]"], "out of range");
+	fail_rt(["a: [2]int", "a[5]"], "out of range");
 }
 
 #[test]
@@ -466,7 +466,7 @@ fn typed_literal() {
 
 #[test]
 fn typed_literal_mismatch() {
-	fail_with(r#"a :: int.[1, "x"]"#, "must share a type");
+	fail(r#"a :: int.[1, "x"]"#, "must share a type");
 }
 
 // anon array literals
@@ -478,7 +478,7 @@ fn anon_against_fixed_target() {
 
 #[test]
 fn anon_fixed_count_mismatch() {
-	fail_with("a: [3]int = .[1 2]", "expected 3 elements, got 2");
+	fail("a: [3]int = .[1 2]", "expected 3 elements, got 2");
 }
 
 #[test]
@@ -509,7 +509,7 @@ fn anon_fixed_value_semantics() {
 
 #[test]
 fn anon_empty_no_context_fails() {
-	fail_with("a := .[]", "cannot infer the element type");
+	fail("a := .[]", "cannot infer the element type");
 }
 
 // fixed <-> dynamic
@@ -521,7 +521,7 @@ fn typed_literal_is_fixed_value_semantics() {
 
 #[test]
 fn typed_literal_empty_fails() {
-	fail_with("int.[]", "an exact array literal needs elements");
+	fail("int.[]", "an exact array literal needs elements");
 }
 
 #[test]
@@ -533,7 +533,7 @@ fn array_type_literal_is_whole_type() {
 
 #[test]
 fn array_type_literal_count_mismatch() {
-	fail_with("[2]int.[3]", "expected 2 elements, got 1");
+	fail("[2]int.[3]", "expected 2 elements, got 1");
 }
 
 #[test]
@@ -581,5 +581,5 @@ fn equality_is_structural() {
 
 #[test]
 fn ordering_rejected() {
-	fail_with("[1, 2] < [1, 3]", "only `==` and `!=`");
+	fail("[1, 2] < [1, 3]", "only `==` and `!=`");
 }

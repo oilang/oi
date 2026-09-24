@@ -53,7 +53,7 @@ fn concrete_impl_own_type_param() {
 
 #[test]
 fn unknown_method_error() {
-	fail_with(
+	fail(
 		indoc! {"
 			Box[T] :: struct { v: T }
 			Box[T] :< { get :: fn(self) T { self.v } }

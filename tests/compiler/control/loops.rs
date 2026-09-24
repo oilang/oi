@@ -61,12 +61,12 @@ fn break_targets_innermost() {
 
 #[test]
 fn break_outside_loop() {
-	fail_with("break", "outside of a loop");
+	fail("break", "outside of a loop");
 }
 
 #[test]
 fn continue_outside_loop() {
-	fail_with("continue", "outside of a loop");
+	fail("continue", "outside of a loop");
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn while_never_enters() {
 
 #[test]
 fn while_condition_must_be_bool() {
-	fail_with("loop 3 { }", "must be Bool");
+	fail("loop 3 { }", "must be Bool");
 }
 
 // loops over ranges
@@ -147,7 +147,7 @@ fn for_range_continue_advances() {
 
 #[test]
 fn for_var_is_scoped() {
-	fail_with(["loop i in 0..3 { i }", "i"], "undefined variable");
+	fail(["loop i in 0..3 { i }", "i"], "undefined variable");
 }
 
 // loops over iterables
@@ -191,22 +191,22 @@ fn for_each_tuple_destructure() {
 
 #[test]
 fn for_each_iterable_must_be_array() {
-	fail_with("loop x in 5 { x }", "not iterable");
+	fail("loop x in 5 { x }", "not iterable");
 }
 
 #[test]
 fn for_range_bound_must_be_int() {
-	fail_with("loop i in 0..true { i }", "must be Int");
+	fail("loop i in 0..true { i }", "must be Int");
 }
 
 #[test]
 fn for_tuple_pattern_on_non_tuple() {
-	fail_with("loop (x, y) in [1, 2, 3] { x }", "destructure");
+	fail("loop (x, y) in [1, 2, 3] { x }", "destructure");
 }
 
 #[test]
 fn for_tuple_pattern_wrong_field_count() {
-	fail_with("loop (x, y, z) in [(1, 2)] { x }", "fields");
+	fail("loop (x, y, z) in [(1, 2)] { x }", "fields");
 }
 
 #[test]
@@ -276,9 +276,9 @@ fn for_loop_break_value_or_else() {
 
 #[test]
 fn break_value_errors() {
-	fail_with("x := break", "never produce a value");
-	fail_with("loop { x := continue }", "never produce a value");
-	fail_with("loop { if true { break 1 } else { break } }", "mismatched types");
+	fail("x := break", "never produce a value");
+	fail("loop { x := continue }", "never produce a value");
+	fail("loop { if true { break 1 } else { break } }", "mismatched types");
 }
 
 #[test]

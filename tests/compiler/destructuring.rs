@@ -56,17 +56,17 @@ fn bare_tuple_still_expr() {
 
 #[test]
 fn fail_arity_mismatch() {
-	fail_with("(a, b, c) :: (1, 2)", "fields");
+	fail("(a, b, c) :: (1, 2)", "fields");
 }
 
 #[test]
 fn fail_non_tuple() {
-	fail_with("(a, b) :: 5", "cannot destructure");
+	fail("(a, b) :: 5", "cannot destructure");
 }
 
 #[test]
 fn fail_assign_immutable() {
-	fail_with("(a, b) :: (1, 2)\n(a, b) = (3, 4)", "immutably bound");
+	fail("(a, b) :: (1, 2)\n(a, b) = (3, 4)", "immutably bound");
 }
 
 #[test]
@@ -88,8 +88,8 @@ fn struct_bind() {
 
 #[test]
 fn fail_struct_bind() {
-	fail_with("Point :: struct { x: int }\nPoint.{ z } :: Point.{ 1 }", "no field `z`");
-	fail_with("Point :: struct { x: int }\nPoint.{ x } :: 5", "cannot destructure");
+	fail("Point :: struct { x: int }\nPoint.{ z } :: Point.{ 1 }", "no field `z`");
+	fail("Point :: struct { x: int }\nPoint.{ x } :: 5", "cannot destructure");
 }
 
 #[test]
@@ -130,6 +130,6 @@ fn assign_through_pattern() {
 
 #[test]
 fn fail_array_bind() {
-	fail_with("[a b] :: [1]", "out of range");
-	fail_with("[a b] :: 5", "cannot destructure");
+	fail_rt("[a b] :: [1]", "out of range");
+	fail("[a b] :: 5", "cannot destructure");
 }

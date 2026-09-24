@@ -60,7 +60,7 @@ fn empty_literal_is_default() {
 
 #[test]
 fn empty_literal_rejects_fields() {
-	fail_with(["Color :: enum { red green blue }", "Color.{ red }"], "only supports");
+	fail(["Color :: enum { red green blue }", "Color.{ red }"], "only supports");
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn in_match() {
 
 #[test]
 fn unknown_variant() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", "Color.purple"],
 		"no variant `purple`",
 	);
@@ -214,7 +214,7 @@ fn shorthand_in_field_and_element_assignment() {
 
 #[test]
 fn shorthand_unknown_variant() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", "c :: Color.red", "c == .purple"],
 		"no variant `purple`",
 	);
@@ -222,7 +222,7 @@ fn shorthand_unknown_variant() {
 
 #[test]
 fn shorthand_without_context_errors() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", ".red"],
 		"cannot infer the enum type",
 	);
@@ -230,12 +230,12 @@ fn shorthand_without_context_errors() {
 
 #[test]
 fn duplicate_disc_rejected() {
-	fail_with("E :: enum { a = 2, b, c = 2 }", "discriminant value `2`");
+	fail("E :: enum { a = 2, b, c = 2 }", "discriminant value `2`");
 }
 
 #[test]
 fn auto_increment_from_explicit() {
-	fail_with("E :: enum { a = 5, b, c = 6 }", "discriminant value `6`");
+	fail("E :: enum { a = 5, b, c = 6 }", "discriminant value `6`");
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn payload_empty_literal_is_default() {
 
 #[test]
 fn payload_int_cast_errors() {
-	fail_with(
+	fail(
 		["Opt :: enum { nope some(int) }", "int.(Opt.some.(1))"],
 		"no backing value",
 	);
@@ -287,7 +287,7 @@ fn payload_int_cast_errors() {
 
 #[test]
 fn payload_field_type_mismatch() {
-	fail_with(
+	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.(3.0)"],
 		"expected int, got float",
 	);
@@ -295,7 +295,7 @@ fn payload_field_type_mismatch() {
 
 #[test]
 fn payload_wrong_arity() {
-	fail_with(
+	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.()"],
 		"takes 1 field(s), got 0",
 	);
@@ -392,7 +392,7 @@ fn payload_eq_string_field() {
 
 #[test]
 fn payload_ordering_rejected() {
-	fail_with(
+	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.(1) < Opt.some.(2)"],
 		"claim `Ord` for `Opt` to define ordering",
 	);
@@ -483,7 +483,7 @@ fn struct_form_zero_is_first_variant() {
 
 #[test]
 fn struct_form_unknown_field() {
-	fail_with(
+	fail(
 		["S :: enum { circle { radius: f64 } }", "S.circle.{ r = 1.0 }"],
 		"no field `r`",
 	);
@@ -511,7 +511,7 @@ fn struct_form_takes_positional() {
 
 #[test]
 fn tuple_form_record_rejected() {
-	fail_with(
+	fail(
 		["S :: enum { tri(f64, f64) }", "S.tri.{ a = 1.0 }"],
 		"takes positional fields",
 	);
@@ -535,7 +535,7 @@ fn alias_payload() {
 
 #[test]
 fn payload_unknown_type_rejected() {
-	fail_with("A :: enum { wrap(NoSuchType) }", "unknown type");
+	fail("A :: enum { wrap(NoSuchType) }", "unknown type");
 }
 
 #[test]
@@ -585,7 +585,7 @@ fn atom_coerces_in_struct_field() {
 
 #[test]
 fn atom_unknown_variant() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", "c : Color : :purple"],
 		"no variant `purple`",
 	);
@@ -608,17 +608,17 @@ fn backed_cast_to_backing() {
 
 #[test]
 fn backing_non_integer_errors() {
-	fail_with("E : bool : enum { a }", "not an enum-able type");
+	fail("E : bool : enum { a }", "not an enum-able type");
 }
 
 #[test]
 fn backing_out_of_range_errors() {
-	fail_with("E : u8 : enum { a = 300 }", "out of range for its backing type");
+	fail("E : u8 : enum { a = 300 }", "out of range for its backing type");
 }
 
 #[test]
 fn backing_with_payload_errors() {
-	fail_with("E : u8 : enum { a some(int) }", "cannot have payload");
+	fail("E : u8 : enum { a some(int) }", "cannot have payload");
 }
 
 #[test]
@@ -638,7 +638,7 @@ fn str_method() {
 
 #[test]
 fn no_such_method() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", "Color.red.hex()"],
 		"has no method `hex`",
 	);
@@ -733,7 +733,7 @@ fn from_payload_zero_fills() {
 
 #[test]
 fn from_wrong_type() {
-	fail_with(
+	fail(
 		["Color :: enum { red green blue }", "Color.from(true)"],
 		"needs an int, string, or atom",
 	);
@@ -881,11 +881,11 @@ fn string_backed_raws() {
 
 #[test]
 fn string_backed_errors() {
-	fail_with(["S : string : enum { a b }", "int.(S.a)"], "cannot cast string");
-	fail_with(r#"S :: enum { a = "x" }"#, "needs a string backing");
-	fail_with(r#"S : string : enum { a = 2 }"#, "uses raw values");
-	fail_with(r#"S : string : enum { a = "x" b = "x" }"#, "assigned more than once");
-	fail_with(r#"S : string : enum { a b = "a" }"#, "assigned more than once");
+	fail(["S : string : enum { a b }", "int.(S.a)"], "cannot cast string");
+	fail(r#"S :: enum { a = "x" }"#, "needs a string backing");
+	fail(r#"S : string : enum { a = 2 }"#, "uses raw values");
+	fail(r#"S : string : enum { a = "x" b = "x" }"#, "assigned more than once");
+	fail(r#"S : string : enum { a b = "a" }"#, "assigned more than once");
 }
 
 #[test]

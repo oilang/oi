@@ -82,5 +82,5 @@ fn range_stored_then_iterated() {
 
 #[test]
 fn range_bound_must_be_int() {
-	fail_with("0..true", "must be Int");
+	fail("0..true", "must be Int");
 }

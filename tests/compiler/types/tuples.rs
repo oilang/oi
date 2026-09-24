@@ -89,17 +89,17 @@ fn tuple_in_var_prints() {
 
 #[test]
 fn index_out_of_range() {
-	fail_with(["t :: (1, 2)", "t.5"], "out of range");
+	fail(["t :: (1, 2)", "t.5"], "out of range");
 }
 
 #[test]
 fn unknown_named_field() {
-	fail_with(["t :: (a = 1,)", "t.z"], "no field `z`");
+	fail(["t :: (a = 1,)", "t.z"], "no field `z`");
 }
 
 #[test]
 fn field_of_non_tuple() {
-	fail_with(["x :: 5", "x.0"], "cannot access a field");
+	fail(["x :: 5", "x.0"], "cannot access a field");
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn fn_return_type_mismatch_tuple() {
 		bad :: fn() (int, int) { 42 }
 		bad()
 	"};
-	fail_with(src, "wrong return type");
+	fail(src, "wrong return type");
 }
 
 #[test]

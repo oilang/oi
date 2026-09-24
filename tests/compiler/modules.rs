@@ -1,7 +1,7 @@
 use indoc::indoc;
 
 use crate::common::Project;
-use crate::helpers::{check, fail_with};
+use crate::helpers::{check, fail};
 
 #[test]
 fn pub_fn_runs() {
@@ -11,13 +11,13 @@ fn pub_fn_runs() {
 #[test]
 fn module_decl() {
 	check(["module main", r#"print("ok")"#], "ok");
-	fail_with("module other", "the entry file is module `main`");
-	fail_with(["x :: 1", "module main"], "`module` must come first");
+	fail("module other", "the entry file is module `main`");
+	fail(["x :: 1", "module main"], "`module` must come first");
 }
 
 #[test]
 fn import_missing() {
-	fail_with("use nope", "cannot find module `nope`");
+	fail("use nope", "cannot find module `nope`");
 }
 
 #[test]
@@ -33,13 +33,13 @@ fn import_trait() {
 
 #[test]
 fn import_nested_path() {
-	fail_with("use a.b.c", "nested module paths aren't supported yet");
-	fail_with("x :: use a.b.{ c }", "nested module paths aren't supported yet");
+	fail("use a.b.c", "nested module paths aren't supported yet");
+	fail("x :: use a.b.{ c }", "nested module paths aren't supported yet");
 }
 
 #[test]
 fn rt_is_internal_to_core() {
-	fail_with(["use rt"], "internal to core");
+	fail(["use rt"], "internal to core");
 }
 
 #[test]
@@ -240,20 +240,20 @@ fn foreign_callback_rejects_a_closure() {
 
 #[test]
 fn raw_memory_needs_unsafe() {
-	fail_with(
+	fail(
 		["buf: []u8 = .[1]", "buf.ptr.array[u8](1)"],
 		"`ptr.array` needs `unsafe`",
 	);
-	fail_with(
+	fail(
 		["abs : fn(x: i32) i32 : foreign", "print(abs(-5))"],
 		"`abs` needs `unsafe`",
 	);
-	fail_with(["@unsafe peek :: fn() {}", "peek()"], "`peek` needs `unsafe`");
+	fail(["@unsafe peek :: fn() {}", "peek()"], "`peek` needs `unsafe`");
 }
 
 #[test]
 fn unsafe_fn_value_needs_unsafe() {
-	fail_with(["@unsafe peek :: fn() {}", "f := peek", "f()"], "`peek` needs `unsafe`");
+	fail(["@unsafe peek :: fn() {}", "f := peek", "f()"], "`peek` needs `unsafe`");
 	check(
 		["@unsafe peek :: fn() int { 1 }", "f := unsafe peek", "print(f())"],
 		"1",
@@ -262,7 +262,7 @@ fn unsafe_fn_value_needs_unsafe() {
 
 #[test]
 fn fn_ptr_cast_needs_a_c_signature() {
-	fail_with(
+	fail(
 		["Bad :: fn(s: string) int", "f := unsafe Bad(ptr(0))"],
 		"can't cross the C ABI",
 	);
@@ -354,9 +354,9 @@ fn c_struct_roundtrips_fixed_array() {
 
 #[test]
 fn c_struct_rejects_missing_c_repr() {
-	fail_with(["@c Bad :: struct { s: string }"], "`Bad.s` has no C representation");
+	fail(["@c Bad :: struct { s: string }"], "`Bad.s` has no C representation");
 	// 1 vs. 8 bytes
-	fail_with(
+	fail(
 		["@c Wide :: struct { flags: [4]bool }"],
 		"`Wide.flags` has no C representation",
 	);
@@ -364,7 +364,7 @@ fn c_struct_rejects_missing_c_repr() {
 		buf: []u8 = .[0]
 		unsafe { buf.ptr.write("hi") }
 	"#};
-	fail_with(src, "`string` has no C layout");
+	fail(src, "`string` has no C layout");
 }
 
 #[test]
@@ -389,12 +389,12 @@ fn c_struct_fn_field_rejects_a_closure() {
 		k := 2
 		Init.{ cb = fn [move k] (n: i32) i32 { n * k } }
 	"};
-	fail_with(src, "`@c` fns can't capture");
+	fail(src, "`@c` fns can't capture");
 }
 
 #[test]
 fn c_struct_rejects_bad_fn_field() {
-	fail_with(["@c Bad :: struct { cb: fn(s: string) }"], "has no C representation");
+	fail(["@c Bad :: struct { cb: fn(s: string) }"], "has no C representation");
 }
 
 #[test]

@@ -198,7 +198,7 @@ fn composition_tail_must_be_a_fn() {
 		f :: double |> ($ + 1)
 		print(f(3))
 	"};
-	fail_with(src, "cannot infer the composed return type");
+	fail(src, "cannot infer the composed return type");
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn generic_head_cannot_compose() {
 		f :: id |> double
 		print(f(3))
 	"};
-	fail_with(src, "cannot compose a generic function");
+	fail(src, "cannot compose a generic function");
 }
 
 #[test]

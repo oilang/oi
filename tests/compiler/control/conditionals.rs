@@ -84,7 +84,7 @@ fn branch_binding_does_not_leak() {
 		if true { y :: 5 }
 		y
 	"};
-	fail_with(src, "undefined variable");
+	fail(src, "undefined variable");
 }
 
 #[test]
@@ -112,12 +112,12 @@ fn return_in_one_branch() {
 
 #[test]
 fn condition_must_be_bool() {
-	fail_with("if 1 { 2 } else { 3 }", "must be Bool");
+	fail("if 1 { 2 } else { 3 }", "must be Bool");
 }
 
 #[test]
 fn mismatched_branches() {
-	fail_with(r#"if true { 1 } else { "x" }"#, "mismatched types");
+	fail(r#"if true { 1 } else { "x" }"#, "mismatched types");
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn header_binding() {
 		if n : int do print(n)
 	"};
 	check(src, ["9", "5", "3", "0"]);
-	fail_with(
+	fail(
 		r#"if x := 5 { print(x) } else { print("dead") }"#,
 		"this binding always succeeds, so `else` can never run",
 	);
@@ -181,7 +181,7 @@ fn header_bind_scoped_to_body() {
 		Coin :: enum { quarter(int) penny }
 		if .quarter.(state) := Coin.penny { print(state) } else { print(state) }
 	"};
-	fail_with(src, "undefined variable `state`");
+	fail(src, "undefined variable `state`");
 }
 
 #[test]

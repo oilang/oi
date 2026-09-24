@@ -25,7 +25,7 @@ fn wrong_arg_count() {
 		add :: fn [] (x: int, y: int) int { x + y }
 		add(1)
 	"};
-	fail_with(src, "expects 2 argument");
+	fail(src, "expects 2 argument");
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn wrong_arg_type() {
 		add :: fn [] (x: int, y: int) int { x + y }
 		add(1, 2.0)
 	"};
-	fail_with(src, "wrong argument type");
+	fail(src, "wrong argument type");
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn not_callable() {
 		x :: 5
 		x()
 	"};
-	fail_with(src, "not callable");
+	fail(src, "not callable");
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn capture_undefined() {
 		f :: fn [missing] () int { 0 }
 		f()
 	"};
-	fail_with(src, "undefined variable");
+	fail(src, "undefined variable");
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn capture_mut_requires_mut_binding() {
 		f :: fn [mut x] () int { x }
 		f()
 	"};
-	fail_with(src, "cannot capture `x` as `mut`");
+	fail(src, "cannot capture `x` as `mut`");
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn closure_cannot_be_returned() {
 		}
 		make()
 	"};
-	fail_with(src, "borrows its captures, so it can't be returned");
+	fail(src, "borrows its captures, so it can't be returned");
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn closure_cannot_be_stored_in_array_literal() {
 		n :: 10
 		arr :: [fn [n] () int { n }]
 	"};
-	fail_with(src, "borrows its captures, so it can't be stored in an array");
+	fail(src, "borrows its captures, so it can't be stored in an array");
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn closure_cannot_be_smuggled_through_a_generic_store() {
 		n :: 10
 		smuggle(fn [n] () int { n })
 	"};
-	fail_with(src, "borrows its captures, so it can't be stored in an array");
+	fail(src, "borrows its captures, so it can't be stored in an array");
 }
 
 #[test]
@@ -242,7 +242,7 @@ fn closure_cannot_be_a_map_value() {
 		n :: 10
 		["a" = fn [n] () int { n }]
 	"#};
-	fail_with(src, "borrows its captures, so it can't be stored in a map");
+	fail(src, "borrows its captures, so it can't be stored in a map");
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn closure_cannot_be_stored_in_a_struct_field() {
 		n :: 10
 		Box.{ v = fn [n] () int { n } }
 	"};
-	fail_with(src, "borrows its captures, so it can't be stored in a field");
+	fail(src, "borrows its captures, so it can't be stored in a field");
 }
 
 #[test]
@@ -286,7 +286,7 @@ fn move_capture_kills_the_name() {
 		f :: fn [move xs] () int { xs[0] }
 		print(xs)
 	"};
-	fail_with(src, "undefined variable");
+	fail(src, "undefined variable");
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn move_capture_of_fn_param_is_borrowed() {
 		}
 		make([1])
 	"};
-	fail_with(src, "cannot move `xs`, it is borrowed here");
+	fail(src, "cannot move `xs`, it is borrowed here");
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn move_capture_inside_loop_of_outer_binding() {
 			i = i + 1
 		}
 	"};
-	fail_with(src, "cannot move `xs` out of the enclosing loop");
+	fail(src, "cannot move `xs` out of the enclosing loop");
 }
 
 #[test]
@@ -371,7 +371,7 @@ fn bare_fn_still_needs_ret_without_context() {
 	let src = indoc! {"
 		f := fn { 21 }
 	"};
-	fail_with(src, "explicit return type");
+	fail(src, "explicit return type");
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn named_fn_param_needs_a_type() {
 		f :: fn(x) { x + 1 }
 		print(f(1))
 	"};
-	fail_with(src, "needs a type");
+	fail(src, "needs a type");
 }
 
 #[test]

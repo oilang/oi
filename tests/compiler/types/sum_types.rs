@@ -91,7 +91,7 @@ fn matching() {
 		"#},
 		"fallback",
 	);
-	fail_with(
+	fail(
 		indoc! {r#"
 			Status :: :ok | :err
 			x : Status : :err
@@ -105,7 +105,7 @@ fn matching() {
 
 #[test]
 fn unknown_atom_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			Status :: :ok | :err
 			x : Status : :nope
@@ -116,7 +116,7 @@ fn unknown_atom_errors() {
 
 #[test]
 fn duplicate_atom_in_type_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			Status :: :ok | :ok
 			f :: fn() Status { :ok }
@@ -389,7 +389,7 @@ fn general_ord_gives_tag() {
 
 #[test]
 fn int_cast_on_sum_errors() {
-	fail_with(
+	fail(
 		["Id :: int | string", "x : Id : 4", "int.(x)"],
 		"cannot extract a sum member by casting",
 	);
@@ -397,7 +397,7 @@ fn int_cast_on_sum_errors() {
 
 #[test]
 fn duplicate_type_member_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			Bad :: int | int
 			x: Bad
@@ -439,7 +439,7 @@ fn nested_sum_alias_splices() {
 
 #[test]
 fn splice_duplicate_member_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			Num :: int | f64
 			Bad :: Num | int

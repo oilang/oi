@@ -76,5 +76,5 @@ fn positions() {
 
 #[test]
 fn unterminated_fails() {
-	fail(r#"print("oops {who")"#);
+	fail(r#"print("oops {who")"#, "");
 }

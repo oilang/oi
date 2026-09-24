@@ -13,7 +13,7 @@ fn construct_err() {
 
 #[test]
 fn nozero_leaves_no_zero_value() {
-	fail_with("r: !int; r", "`!int` has no zero value");
+	fail("r: !int; r", "`!int` has no zero value");
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn ord_gives_tag() {
 
 #[test]
 fn int_cast_errors() {
-	fail_with("int.(!int.(42))", "no backing value");
+	fail("int.(!int.(42))", "no backing value");
 }
 
 #[test]
@@ -45,12 +45,12 @@ fn eq_ok_vs_err() {
 
 #[test]
 fn field_type_mismatch() {
-	fail_with("!int.(3.0)", "expected int or Error, got float");
+	fail("!int.(3.0)", "expected int or Error, got float");
 }
 
 #[test]
 fn ordering_rejected() {
-	fail_with("!int.(1) < !int.(2)", "only `==` and `!=`");
+	fail("!int.(1) < !int.(2)", "only `==` and `!=`");
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn match_err_arm() {
 
 #[test]
 fn match_non_exhaustive_errors() {
-	fail_with(
+	fail(
 		indoc! {r"
 			r :: !int.(42)
 			match r {
@@ -158,7 +158,7 @@ fn error_message_via_dollar() {
 
 #[test]
 fn error_unknown_method() {
-	fail_with(r#"error("oops").nope()"#, "no method `nope`");
+	fail(r#"error("oops").nope()"#, "no method `nope`");
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn unclaimed_error_propagation_rejected() {
 		}
 		load()
 	"};
-	fail_with(src, "does not claim Error");
+	fail(src, "does not claim Error");
 }
 
 #[test]

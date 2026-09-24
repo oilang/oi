@@ -62,7 +62,7 @@ fn first_of_array() {
 
 #[test]
 fn type_mismatch_across_args() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			max[T] :: fn(a: T, b: T) T { if a > b { a } else { b } }
 			max(1, "a")
@@ -93,7 +93,7 @@ fn tuple_substitutions_monomorphize_separately() {
 
 #[test]
 fn omitted_return_type_rejects_a_value() {
-	fail_with(
+	fail(
 		indoc! {"
 			noret[T] :: fn(x: T) { x }
 			noret(1)
@@ -126,7 +126,7 @@ fn explicit_type_arg_redundant_with_inference() {
 
 #[test]
 fn explicit_type_arg_count_mismatch() {
-	fail_with(
+	fail(
 		indoc! {"
 			max[T] :: fn(a: T, b: T) T { if a > b { a } else { b } }
 			max[int, string](3, 7)
@@ -137,7 +137,7 @@ fn explicit_type_arg_count_mismatch() {
 
 #[test]
 fn explicit_type_arg_on_non_generic_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			add :: fn(a: int, b: int) int { a + b }
 			add[int](3, 7)
@@ -172,7 +172,7 @@ fn std_bound_satisfied_by_builtin() {
 
 #[test]
 fn bound_violated() {
-	fail_with(
+	fail(
 		indoc! {"
 			Ord :: trait {}
 			biggest[T: Ord] :: fn(a: T, b: T) T {
@@ -186,7 +186,7 @@ fn bound_violated() {
 
 #[test]
 fn unknown_bound_trait() {
-	fail_with(
+	fail(
 		indoc! {"
 			biggest[T: Odr] :: fn(a: T, b: T) T {
 				if a > b { a } else { b }

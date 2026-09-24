@@ -25,7 +25,7 @@ fn nozero_structs() {
 
 #[test]
 fn nozero_failures() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			@nozero
 			Handle :: struct { fd: int }
@@ -33,7 +33,7 @@ fn nozero_failures() {
 		"#},
 		"`Handle` has no zero value",
 	);
-	fail_with(
+	fail(
 		indoc! {r#"
 			@nozero
 			Handle :: struct { fd: int }

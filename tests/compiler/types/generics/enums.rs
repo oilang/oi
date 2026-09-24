@@ -79,7 +79,7 @@ fn infers_params_from_instance() {
 
 #[test]
 fn bare_name_needs_type_arguments() {
-	fail_with(
+	fail(
 		indoc! {"
 			Opt[T] :: enum { nope, some(T) }
 			f :: fn(o: Opt) int { 0 }
@@ -91,7 +91,7 @@ fn bare_name_needs_type_arguments() {
 
 #[test]
 fn wrong_arity() {
-	fail_with(
+	fail(
 		indoc! {"
 			Opt[T] :: enum { nope, some(T) }
 			f :: fn() Opt[int, string] { .nope }

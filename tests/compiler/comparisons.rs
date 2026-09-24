@@ -54,7 +54,7 @@ fn equality_looser_than_relational() {
 
 #[test]
 fn mismatched_types() {
-	fail_with(r#"1 < "x""#, "cannot compare");
+	fail(r#"1 < "x""#, "cannot compare");
 }
 
 #[test]

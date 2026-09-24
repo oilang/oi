@@ -91,7 +91,7 @@ fn comp_if_is_conditional_compilation() {
 
 #[test]
 fn comp_rejects_unreifiable_type() {
-	fail_with(r#"A :: comp ["a" = 1]"#, "can't use this type in `comp` yet");
+	fail(r#"A :: comp ["a" = 1]"#, "can't use this type in `comp` yet");
 }
 
 #[test]

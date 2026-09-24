@@ -57,7 +57,7 @@ fn partial_positional_literal() {
 		p.y",
 		"0",
 	);
-	fail_with(
+	fail(
 		"Point :: struct { x: int, y: int }
 		Point.{3, 4, 5}",
 		"has 2 fields but 3 values were provided",
@@ -165,7 +165,7 @@ fn fn_return_type_annotation_mismatch() {
 		bad :: fn() Point { 42 }
 		bad()
 	"};
-	fail_with(src, "wrong return type");
+	fail(src, "wrong return type");
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn if_no_else_struct_zero() {
 
 #[test]
 fn immutable_field_assign_error() {
-	fail_with(
+	fail(
 		"Point :: struct { x: int, y: int }
 		p :: Point.{}
 		p.x = 5",
@@ -258,7 +258,7 @@ fn empty_literal_defaults_struct() {
 
 #[test]
 fn unknown_field_error() {
-	fail_with(
+	fail(
 		"Point :: struct { x: int, y: int }
 		p : Point : .{ z = 1 }",
 		"no field `z`",
@@ -273,7 +273,7 @@ fn mixed_positional_and_named_fields() {
 		p.x + p.y",
 		"12",
 	);
-	fail_with(
+	fail(
 		"Point :: struct { x: int, y: int }
 		p :: Point.{ 3, x = 9 }",
 		"`x` was already set positionally",
@@ -348,7 +348,7 @@ fn mixed_positional_and_named_args() {
 
 #[test]
 fn named_before_positional_error() {
-	fail_with(
+	fail(
 		"Options :: struct { foo: int }
 		g :: fn(x: int, o: Options) {}
 		g(foo = 1, 2)",
@@ -392,12 +392,12 @@ fn struct_typed_field_reassign() {
 
 #[test]
 fn self_recursive_struct_error() {
-	fail_with("A :: struct { a: A }", "recurses for ever ever");
+	fail("A :: struct { a: A }", "recurses for ever ever");
 }
 
 #[test]
 fn mutually_recursive_structs_error() {
-	fail_with(
+	fail(
 		"A :: struct { b: B }
 		B :: struct { a: A }",
 		"recurses for ever ever",
@@ -406,7 +406,7 @@ fn mutually_recursive_structs_error() {
 
 #[test]
 fn unknown_field_type_error() {
-	fail_with("Wallet :: struct { cash: Money }", "unknown type `Money`");
+	fail("Wallet :: struct { cash: Money }", "unknown type `Money`");
 }
 
 #[test]
@@ -466,7 +466,7 @@ fn spread_is_overwritten_by_later_fields() {
 
 #[test]
 fn spread_of_other_struct_error() {
-	fail_with(
+	fail(
 		"A :: struct { x: int }
 		B :: struct { x: int }
 		A.{ ..B.{ x = 1 } }.x",
@@ -540,7 +540,7 @@ fn embedded_via_alias() {
 
 #[test]
 fn embedded_ambiguous_field() {
-	fail_with(
+	fail(
 		"A :: struct { x: int }
 		B :: struct { x: int }
 		C :: struct { A, B }
@@ -593,7 +593,7 @@ fn anonymous_type_positions() {
 
 #[test]
 fn anonymous_type_rejected_as_middle() {
-	fail("x : struct { a: int }");
+	fail("x : struct { a: int }", "");
 }
 
 #[test]
@@ -627,7 +627,7 @@ fn anonymous_inferred_from_the_literal() {
 		"},
 		"3",
 	);
-	fail_with("p := .{ 5 }", "cannot infer the struct type");
+	fail("p := .{ 5 }", "cannot infer the struct type");
 }
 
 #[test]
@@ -657,19 +657,19 @@ fn nested_struct_field_copy_is_independent() {
 
 #[test]
 fn duplicate_field_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			F :: struct { x: int }
 			F.{ x = 1, x = 2 }
 		"},
 		"`x` is repeated",
 	);
-	fail_with("p := .{ x = 1, x = 2 }", "`x` is repeated");
+	fail("p := .{ x = 1, x = 2 }", "`x` is repeated");
 }
 
 #[test]
 fn quoted_struct_def_in_fn_body_errors() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			mk! :: fn() Ast { `P :: struct { x: int }` }
 			f :: fn() { mk!() }

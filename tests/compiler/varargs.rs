@@ -8,14 +8,14 @@ fn vararg_rejections() {
 		"S :: struct { xs: ..int }",
 		"f :: fn() ..int { [] }",
 	] {
-		fail_with(src, "`..T` is only allowed as a parameter type");
+		fail(src, "`..T` is only allowed as a parameter type");
 	}
-	fail_with("f :: fn(a: ..int, b: ..int) {}", "`f` has more than one vararg");
-	fail_with(
+	fail("f :: fn(a: ..int, b: ..int) {}", "`f` has more than one vararg");
+	fail(
 		["f :: fn(a: ..int, b: int) {}", "f()"],
 		"`f` expects 1.. argument(s), got 0",
 	);
-	fail_with(["f :: fn(xs: ..int) {}", "a :: [1]", "f(a)"], "expected int, got []int");
+	fail(["f :: fn(xs: ..int) {}", "a :: [1]", "f(a)"], "expected int, got []int");
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn generic_varargs() {
 		print(first(1, 2, 3), first("a", "b"))
 	"#};
 	check(src, ["3 2", "1 a"]);
-	fail_with(
+	fail(
 		["first[T] :: fn(xs: ..T) T { xs[0] }", r#"first(1, "a")"#],
 		"array elements must share a type",
 	);
@@ -72,6 +72,6 @@ fn spread_args() {
 	"#};
 	check(src, ["3 1", "7 2", "4 5", "12"]);
 	let show = "show :: fn(q: int, r: int) { print(q, r) }";
-	fail_with([show, "show(..[1, 2])"], "a `[]T` spread may only feed the vararg slot");
-	fail_with([show, r#"show(.."ab")"#], "cannot spread string");
+	fail([show, "show(..[1, 2])"], "a `[]T` spread may only feed the vararg slot");
+	fail([show, r#"show(.."ab")"#], "cannot spread string");
 }

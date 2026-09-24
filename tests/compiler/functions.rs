@@ -87,7 +87,7 @@ fn fn_arg_wrong_type() {
 		i :: fn(x: int) int { x }
 		i(2.4)
 	"};
-	fail_with(src, "wrong argument type");
+	fail(src, "wrong argument type");
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn immutable_default_param() {
 		f :: fn(a :: 2) { a = 3 }
 		f()
 	"};
-	fail_with(src, "immutably bound");
+	fail(src, "immutably bound");
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn default_param_not_trailing() {
 		add :: fn(x: int = 1, y: int) int { x + y }
 		add(1)
 	"};
-	fail_with(src, "defaults must be trailing");
+	fail(src, "defaults must be trailing");
 }
 
 #[test]
@@ -272,7 +272,7 @@ fn duplicate_definition_reports() {
 		def!()
 		def!()
 	"};
-	fail_with(src, "duplicate fn `t`");
+	fail(src, "duplicate fn `t`");
 }
 
 #[test]

@@ -55,7 +55,24 @@ fn shifts() {
 
 #[test]
 fn rejects_floats() {
-	fail_with("1.5 & 2.0", "bitwise operators need integer operands");
+	fail("1.5 & 2.0", "bitwise operators need integer operands");
+}
+
+#[test]
+fn rejects_out_of_range_shift() {
+	fail("print(1 << 64)", "shift count 64 is out of range for int (64 bits)");
+}
+
+#[test]
+fn shl_still_appends() {
+	check(
+		indoc! {"
+			a := [1, 2]
+			a << 3
+			print(a)
+		"},
+		"[1, 2, 3]",
+	);
 }
 
 #[test]

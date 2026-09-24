@@ -15,7 +15,7 @@ fn reverse_drop_order() {
 
 #[test]
 fn bind_move_kills_source() {
-	fail_with([FILE, "f :: File.{fd = 1}", "g :: f", "print(f)"], "undefined variable");
+	fail([FILE, "f :: File.{fd = 1}", "g :: f", "print(f)"], "undefined variable");
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn arg_borrows_and_drops_once() {
 
 #[test]
 fn callee_cannot_steal_a_borrowed_arg() {
-	fail_with(
+	fail(
 		[
 			FILE,
 			"steal :: fn(f: File) { g :: f }",
@@ -65,11 +65,11 @@ fn resource_field_makes_its_owner_one() {
 		[FILE, owner, "h :: Handle.{file = File.{fd = 1}}", r#"print("built")"#],
 		["built", "drop 1"],
 	);
-	fail_with(
+	fail(
 		[FILE, owner, "h :: Handle.{file = File.{fd = 1}}", "g :: h", "print(h)"],
 		"undefined variable",
 	);
-	fail_with(
+	fail(
 		[FILE, owner, "f :: File.{fd = 1}", "h :: Handle.{file = f}", "print(f)"],
 		"undefined variable",
 	);
@@ -86,7 +86,7 @@ fn array_elements_drop_with_their_last_owner() {
 		],
 		["built", "drop 1", "drop 2"],
 	);
-	fail_with(
+	fail(
 		[FILE, "f :: File.{fd = 1}", "a :: [f]", "print(f)"],
 		"undefined variable",
 	);
@@ -99,7 +99,7 @@ fn a_projected_resource_is_a_borrow() {
 		[FILE, a, "look :: fn(f: File) {}", "look(a[0])", "print(a[0].fd)"],
 		["1", "drop 1"],
 	);
-	fail_with([FILE, a, "g :: a[0]"], "cannot move File out of its container");
+	fail([FILE, a, "g :: a[0]"], "cannot move File out of its container");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn overwrite_drops_the_old_value_and_moves_the_new() {
 		],
 		["drop 1", "set", "drop 2"],
 	);
-	fail_with(
+	fail(
 		[FILE, "f := File.{fd = 1}", "g :: File.{fd = 2}", "f = g", "print(g)"],
 		"undefined variable",
 	);
@@ -143,9 +143,9 @@ fn a_move_arg_transfers_ownership() {
 		[FILE, eat, f, "eat(move f)", r#"print("after")"#],
 		["ate 1", "drop 1", "after"],
 	);
-	fail_with([FILE, eat, f, "eat(move f)", "print(f.fd)"], "undefined variable");
-	fail_with([FILE, eat, f, "eat(f)"], "missing `move` at the callsite");
-	fail_with(["look :: fn(n: int) {}", "look(move 1)"], "not `move`");
+	fail([FILE, eat, f, "eat(move f)", "print(f.fd)"], "undefined variable");
+	fail([FILE, eat, f, "eat(f)"], "missing `move` at the callsite");
+	fail(["look :: fn(n: int) {}", "look(move 1)"], "not `move`");
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn move_self_consumes_the_receiver() {
 		[FILE, close, "f :: File.{fd = 1}", "f.close()", r#"print("after")"#],
 		["closing 1", "drop 1", "after"],
 	);
-	fail_with(
+	fail(
 		[FILE, close, "f :: File.{fd = 1}", "f.close()", "print(f)"],
 		"undefined variable",
 	);
@@ -166,15 +166,15 @@ fn an_object_cannot_hand_over_what_it_borrows() {
 	let sink = "Sink :: trait { swallow : fn(move self) }";
 	let claim = "File : Sink < { swallow :: fn(move self) {} }";
 	let d = "d : Sink : File.{fd = 1}";
-	fail_with([FILE, sink, claim, d, "d.swallow()"], "only borrows its data");
-	fail_with([FILE, "Sink :: trait { swallow : fn(self) }", claim], "wrong signature");
+	fail([FILE, sink, claim, d, "d.swallow()"], "only borrows its data");
+	fail([FILE, "Sink :: trait { swallow : fn(self) }", claim], "wrong signature");
 }
 
 #[test]
 fn fixed_array_elements_drop_with_their_last_owner() {
 	let a = "a : [2]File : .[File.{fd = 1}, File.{fd = 2}]";
 	check([FILE, a, "b :: a", r#"print("built")"#], ["built", "drop 1", "drop 2"]);
-	fail_with([FILE, a, "b :: a", "print(a[0].fd)"], "undefined variable");
+	fail([FILE, a, "b :: a", "print(a[0].fd)"], "undefined variable");
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn boxed_payloads_drop_with_their_box() {
 		],
 		["built", "drop 2", "drop 1"],
 	);
-	fail_with(
+	fail(
 		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held.(f)", "print(f)"],
 		"undefined variable",
 	);
@@ -216,7 +216,7 @@ fn a_generic_claim_drops_each_instance() {
 		],
 		["built", "drop two", "drop 1"],
 	);
-	fail_with(
+	fail(
 		[
 			"Show :: trait { show : fn(self) }",
 			"Box[T] :: struct { val: T }",
@@ -290,7 +290,7 @@ fn a_generic_claim_copies_each_instance() {
 
 #[test]
 fn copy_without_drop_is_rejected() {
-	fail_with(
+	fail(
 		[
 			"Plain :: struct { n: int }",
 			"Plain : Copy < { copy :: fn(mut self) {} }",

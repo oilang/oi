@@ -35,12 +35,12 @@ fn dollar_is_the_returned_value_or_its_error() {
 
 #[test]
 fn body_cannot_leave_the_scope() {
-	fail_with(
+	fail(
 		["f :: fn() int { defer { return 1 }; return 2 }", "f()"],
 		"cannot return from a defer body",
 	);
-	fail_with("defer break", "outside of a loop");
-	fail_with(
+	fail("defer break", "outside of a loop");
+	fail(
 		["f :: fn() int { defer or print(0); return 1 }", "f()"],
 		"`defer or` needs a fn returning",
 	);

@@ -21,26 +21,32 @@ pub(crate) fn run_streams(src: &str) -> (String, String) {
 	(trim(&out.stdout), trim(&out.stderr))
 }
 
-/// Run provided source expecting a compilation error.
-pub(crate) fn fail(src: impl Lines) -> String {
+/// Run provided source expecting it to fail, returning the error.
+fn failure(src: impl Lines, at_compile_time: bool, expected: &str) -> String {
 	let src = src.text();
 	let out = exec(&src);
+	let err = trim(&out.stderr);
+	// the compiler's own diagnostics carry ariadne's banner; a runtime abort never does
+	let compiled = !err.starts_with("Error:");
 	assert!(
-		!out.status.success(),
-		"expected failure but compiler succeeded\nsrc:\n{src}\nstdout:\n{}",
+		!out.status.success() && compiled == !at_compile_time && err.contains(expected),
+		"expected a {} containing {expected:?}\nsrc:\n{src}\nstatus: {:?}\nstdout:\n{}\nstderr:\n{err}",
+		if at_compile_time { "compile error" } else { "runtime abort" },
+		out.status,
 		String::from_utf8_lossy(&out.stdout)
 	);
-	trim(&out.stderr)
+	err
 }
 
-/// Run provided source expecting a compilation error containing `expected`.
-pub(crate) fn fail_with(src: impl Lines, expected: &str) {
-	let src = src.text();
-	let err = fail(&src);
-	assert!(
-		err.contains(expected),
-		"\nexpected error containing {expected:?}\nsrc:\n{src}\nstderr:\n{err}"
-	);
+/// Run provided source expecting the compiler to reject it, with an error containing `expected`
+/// (`""` for any).
+pub(crate) fn fail(src: impl Lines, expected: &str) -> String {
+	failure(src, true, expected)
+}
+
+/// Run provided source expecting it to compile, then abort at runtime.
+pub(crate) fn fail_rt(src: impl Lines, expected: &str) -> String {
+	failure(src, false, expected)
 }
 
 /// Run provided source expecting a given result.

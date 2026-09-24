@@ -69,7 +69,7 @@ fn bang_propagates_error() {
 
 #[test]
 fn requires_option_or_result() {
-	fail_with(["f :: fn() int { 42? }", "f()"], "`?` needs a `?T` or `!T` value");
+	fail(["f :: fn() int { 42? }", "f()"], "`?` needs a `?T` or `!T` value");
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn option_panics_in_main() {
 		}
 		find(1)?
 	"};
-	fail_with(src, "panic: unwrapped `none`");
+	fail_rt(src, "panic: unwrapped `none`");
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn result_panics_in_main() {
 		}
 		load("nope")?
 	"#};
-	fail_with(src, "panic: missing");
+	fail_rt(src, "panic: missing");
 }
 
 #[test]
@@ -103,8 +103,8 @@ fn bang_main() {
 		load :: fn() !int { return error("missing") }
 		main :: fn() ! { print(load()?) }
 	"#};
-	fail_with(bad, "error: missing");
-	fail_with("main :: fn() int { 5 }", "`main` cannot return `int`");
+	fail_rt(bad, "error: missing");
+	fail("main :: fn() int { 5 }", "`main` cannot return `int`");
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn requires_matching_enclosing_return() {
 		}
 		display(7)
 	"};
-	fail_with(src, "needs an enclosing fn returning `?T`");
+	fail(src, "needs an enclosing fn returning `?T`");
 }
 
 #[test]
@@ -134,5 +134,5 @@ fn requires_matching_enclosing_return_result() {
 		}
 		display("ok")
 	"#};
-	fail_with(src, "needs an enclosing fn returning `!T`");
+	fail(src, "needs an enclosing fn returning `!T`");
 }

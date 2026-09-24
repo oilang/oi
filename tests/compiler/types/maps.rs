@@ -40,8 +40,8 @@ fn generic_fn_type_param_as_map_key() {
 
 #[test]
 fn dot_brace_map_syntax_is_gone() {
-	fail_with("Map.{ one = 1 }", "unknown struct");
-	fail_with(r#"Map[string, int].{"x"}"#, "unknown type `Map`");
+	fail("Map.{ one = 1 }", "unknown struct");
+	fail(r#"Map[string, int].{"x"}"#, "unknown type `Map`");
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn tuple_keys_fail_for_now() {
 			m[(1, 2)] = 6
 			m[(2, 1)] = 9
 			m[(2, 1)]
-		"})
+		"}, "")
 		.contains("tuple cannot be used as a map key")
 	);
 }
@@ -115,10 +115,10 @@ fn tuple_keys_fail_for_now() {
 #[test]
 fn missing_key_panics() {
 	assert!(
-		fail(indoc! {r#"
+		fail_rt(indoc! {r#"
 			m: [string]int
 			m["missing"]
-		"#})
+		"#}, "")
 		.contains("key not found")
 	);
 }
@@ -129,7 +129,7 @@ fn wrong_key_type() {
 		fail(indoc! {r#"
 			m: [string]int
 			m[1]
-		"#})
+		"#}, "")
 		.contains("expected string key")
 	);
 }
@@ -140,7 +140,7 @@ fn wrong_value_type() {
 		fail(indoc! {r#"
 			m: [string]int
 			m["a"] = "b"
-		"#})
+		"#}, "")
 		.contains("type mismatch")
 	);
 }
@@ -183,7 +183,7 @@ fn bracket_lit_typed_target() {
 
 #[test]
 fn empty_array_against_array_target() {
-	check("a: []int = []\na.len", "0");
+	check(["a: []int = []", "a.len"], "0");
 }
 
 #[test]
@@ -207,18 +207,18 @@ fn bracket_lit_var_key_uses_value_not_name() {
 		"1",
 	);
 	assert!(
-		fail(indoc! {r#"
+		fail_rt(indoc! {r#"
 			k :: "one"
 			m := [k = 1]
 			m["k"]
-		"#})
+		"#}, "")
 		.contains("key not found")
 	);
 }
 
 #[test]
 fn bracket_lit_undefined_ident_key_fails() {
-	fail_with("[one = 1]", "undefined variable `one`");
+	fail("[one = 1]", "undefined variable `one`");
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn bracket_lit_as_call_arg() {
 
 #[test]
 fn bracket_lit_mixed_value_types_fail() {
-	fail_with(r#"m :: ["a" = 1, "b" = "two"]"#, "expected int, got string");
+	fail(r#"m :: ["a" = 1, "b" = "two"]"#, "expected int, got string");
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn delete_missing_key_is_noop() {
 
 #[test]
 fn deleted_key_then_lookup_panics() {
-	fail_with(
+	fail_rt(
 		indoc! {r#"
 			m: [string]int
 			m["one"] = 1
@@ -278,7 +278,7 @@ fn deleted_key_then_lookup_panics() {
 
 #[test]
 fn delete_on_immutable_map_fails() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			f :: fn(m: [string]int) int {
 				m.delete["one"]

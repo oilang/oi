@@ -65,7 +65,7 @@ fn fallback_can_diverge() {
 
 #[test]
 fn type_mismatch_errors() {
-	fail_with(
+	fail(
 		r#"?int.(42) or { "wrong" }"#,
 		"or` branches have mismatched types: int and str",
 	);
@@ -73,5 +73,5 @@ fn type_mismatch_errors() {
 
 #[test]
 fn requires_option_or_result() {
-	fail_with("42 or { 0 }", "needs a `?T`/`!T` value");
+	fail("42 or { 0 }", "needs a `?T`/`!T` value");
 }

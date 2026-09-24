@@ -54,7 +54,7 @@ fn widening_casts() {
 fn result_casts() {
 	check("!int.(7)", "ok.(7)");
 	check(r#"!int.(error("oops"))"#, r#"err.("oops")"#);
-	fail("?int(42)");
+	fail("?int(42)", "");
 }
 
 #[test]
@@ -99,6 +99,6 @@ fn string_to_bytes_copies() {
 
 #[test]
 fn strings_do_not_parse() {
-	fail_with(r#"int.("42")"#, "cannot cast string to int");
-	fail_with(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");
+	fail(r#"int.("42")"#, "cannot cast string to int");
+	fail(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");
 }

@@ -18,7 +18,7 @@ fn zero_value_is_none() {
 
 #[test]
 fn bare_none_without_context_errors() {
-	fail_with("none", "cannot infer the type");
+	fail("none", "cannot infer the type");
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn ord_gives_tag() {
 
 #[test]
 fn int_cast_errors() {
-	fail_with("int.(?int.(42))", "no backing value");
+	fail("int.(?int.(42))", "no backing value");
 }
 
 #[test]
@@ -50,12 +50,12 @@ fn eq_none_vs_some() {
 
 #[test]
 fn field_type_mismatch() {
-	fail_with("?int.(3.0)", "cannot cast float to ?int");
+	fail("?int.(3.0)", "cannot cast float to ?int");
 }
 
 #[test]
 fn ordering_rejected() {
-	fail_with("?int.(1) < ?int.(2)", "only `==` and `!=`");
+	fail("?int.(1) < ?int.(2)", "only `==` and `!=`");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn match_none_arm() {
 
 #[test]
 fn match_non_exhaustive_errors() {
-	fail_with(
+	fail(
 		indoc! {r"
 			o :: ?int.(42)
 			match o {

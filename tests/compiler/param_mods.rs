@@ -138,7 +138,7 @@ fn inout_is_leak_free() {
 
 #[test]
 fn missing_mut_at_callsite() {
-	fail_with(
+	fail(
 		["f :: fn(mut xs: []int) {}", "a := [1]", "f(a)"],
 		"missing `mut` at the callsite",
 	);
@@ -146,12 +146,12 @@ fn missing_mut_at_callsite() {
 
 #[test]
 fn mut_on_non_mut_param() {
-	fail_with(["f :: fn(xs: []int) {}", "a := [1]", "f(mut a)"], "not `mut`");
+	fail(["f :: fn(xs: []int) {}", "a := [1]", "f(mut a)"], "not `mut`");
 }
 
 #[test]
 fn immutable_binding_lent() {
-	fail_with(
+	fail(
 		indoc! {"
 			f :: fn(mut xs: []int) {}
 			a :: [1]
@@ -163,12 +163,12 @@ fn immutable_binding_lent() {
 
 #[test]
 fn non_place_lent() {
-	fail_with(["f :: fn(mut xs: []int) {}", "f(mut [1, 2])"], "only a mutable binding");
+	fail(["f :: fn(mut xs: []int) {}", "f(mut [1, 2])"], "only a mutable binding");
 }
 
 #[test]
 fn exclusivity_same_name() {
-	fail_with(
+	fail(
 		indoc! {"
 			f :: fn(mut xs: []int, ys: []int) {}
 			a := [1]
@@ -180,7 +180,7 @@ fn exclusivity_same_name() {
 
 #[test]
 fn exclusivity_in_subexpression() {
-	fail_with(
+	fail(
 		["f :: fn(mut xs: []int, n: int) {}", "a := [1]", "f(mut a, a[0])"],
 		"while it is lent `mut`",
 	);
@@ -188,7 +188,7 @@ fn exclusivity_in_subexpression() {
 
 #[test]
 fn exclusivity_covers_receiver() {
-	fail_with(
+	fail(
 		indoc! {"
 			C :: struct { xs: []int }
 			C :< { take :: fn(self, mut xs: []int) {} }
@@ -201,7 +201,7 @@ fn exclusivity_covers_receiver() {
 
 #[test]
 fn mut_self_needs_mut_binding() {
-	fail_with(
+	fail(
 		indoc! {"
 			C :: struct { n: int }
 			C :< { bump :: fn(mut self) { self.n = self.n + 1 } }
@@ -214,7 +214,7 @@ fn mut_self_needs_mut_binding() {
 
 #[test]
 fn slice_projection_length_change_panics() {
-	fail_with(
+	fail_rt(
 		indoc! {"
 			grow :: fn(mut a: []int) { a = [7, 8, 9] }
 			xs := [1, 2, 3, 4]
@@ -226,7 +226,7 @@ fn slice_projection_length_change_panics() {
 
 #[test]
 fn slice_projection_exclusivity() {
-	fail_with(
+	fail(
 		indoc! {"
 			f :: fn(mut a: []int, b: int) {}
 			xs := [1, 2, 3]
@@ -238,7 +238,7 @@ fn slice_projection_exclusivity() {
 
 #[test]
 fn slice_projection_immutable_base_rejected() {
-	fail_with(
+	fail(
 		indoc! {"
 			f :: fn(mut a: []int) {}
 			xs :: [1, 2, 3]
@@ -250,12 +250,12 @@ fn slice_projection_immutable_base_rejected() {
 
 #[test]
 fn scalar_mut_param_rejected() {
-	fail_with("f :: fn(mut n: int) {}", "must be arrays, maps, or structs");
+	fail("f :: fn(mut n: int) {}", "must be arrays, maps, or structs");
 }
 
 #[test]
 fn callee_cannot_mutate_plain_param() {
-	fail_with(["f :: fn(xs: []int) { xs << 1 }", "f([1])"], "immutable");
+	fail(["f :: fn(xs: []int) { xs << 1 }", "f([1])"], "immutable");
 }
 
 #[test]
@@ -296,5 +296,5 @@ fn mut_closure_rejected_for_plain_fn_param() {
 		g :: fn(mut ys: []int) int { 0 }
 		h(g)
 	"};
-	fail_with(src, "wrong argument type");
+	fail(src, "wrong argument type");
 }

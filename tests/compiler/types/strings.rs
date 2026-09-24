@@ -39,7 +39,7 @@ fn string_in_empty_value() {
 
 #[test]
 fn string_in_type_mismatch_error() {
-	fail_with(r#"42 in "foo""#, "type mismatch");
+	fail(r#"42 in "foo""#, "type mismatch");
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn escapes() {
 
 #[test]
 fn unknown_escape_fails() {
-	fail(r#"print("\z")"#);
+	fail(r#"print("\z")"#, "");
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn raw_strings() {
 fn len_and_index() {
 	check(r#"print("hello".len)"#, "5");
 	check(r#"print("abc"[1])"#, "98");
-	fail_with(r#"print("abc"[9])"#, "out of range");
+	fail_rt(r#"print("abc"[9])"#, "out of range");
 }
 
 #[test]
@@ -112,10 +112,10 @@ fn slices() {
 	check(r#"print("hello"[1..3])"#, "el");
 	check(r#"print("hello"[..2])"#, "he");
 	check(r#"print("hello"[2..])"#, "llo");
-	fail_with(r#""abc"[1..9]"#, "out of bounds");
+	fail_rt(r#""abc"[1..9]"#, "out of bounds");
 }
 
 #[test]
 fn immutable() {
-	fail_with([r#"a := "abc""#, "a[0] = 1"], "strings are immutable");
+	fail([r#"a := "abc""#, "a[0] = 1"], "strings are immutable");
 }

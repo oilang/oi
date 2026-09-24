@@ -33,7 +33,7 @@ fn zero_value_falls_to_else() {
 
 #[test]
 fn needs_else() {
-	fail_with(
+	fail(
 		indoc! {"
 			x: any = 7
 			match x { n @ int => n }

@@ -1,7 +1,7 @@
 use indoc::indoc;
 
 use crate::common::Project;
-use crate::helpers::{check, fail_with};
+use crate::helpers::{check, fail};
 
 #[test]
 fn static_is_shared_by_every_fn() {
@@ -89,5 +89,5 @@ fn pure_fns_cannot_touch_statics() {
 
 		main :: fn() { print(peek()) }
 	"};
-	fail_with(src, "`total` isn't allowed in a `@pure` fn");
+	fail(src, "`total` isn't allowed in a `@pure` fn");
 }

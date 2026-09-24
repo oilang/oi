@@ -85,12 +85,12 @@ fn self_param_and_fields() {
 
 #[test]
 fn self_outside_impl() {
-	fail_with("Self.{}", "no enclosing impl");
+	fail("Self.{}", "no enclosing impl");
 }
 
 #[test]
 fn immutable_self_rejects_field_assign() {
-	fail_with(
+	fail(
 		indoc! {"
 			P :: struct { x: int }
 			P :< { bad :: fn(self) { self.x = 9 } }
@@ -102,7 +102,7 @@ fn immutable_self_rejects_field_assign() {
 
 #[test]
 fn no_such_method() {
-	fail_with(
+	fail(
 		indoc! {"
 			P :: struct { x: int }
 			p :: P.{1}
@@ -114,7 +114,7 @@ fn no_such_method() {
 
 #[test]
 fn wrong_arg_count() {
-	fail_with(
+	fail(
 		indoc! {"
 			P :: struct { x: int }
 			P :< { add :: fn(self, k: int) int { self.x + k } }
@@ -173,7 +173,7 @@ fn associated_const() {
 
 #[test]
 fn builtin_amendment_outside_core() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			string :< {
 				nope :: fn(self) bool { true }

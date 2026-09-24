@@ -79,6 +79,6 @@ fn subscripts_with_a_range_value() {
 
 #[test]
 fn spread_rejections() {
-	fail_with("[..(3..)]", "open range");
-	fail_with(["xs :: [1, 2, 3, 4]", "r := 0..2..4", "print(xs[r])"], "strided");
+	fail_rt("[..(3..)]", "open range");
+	fail_rt(["xs :: [1, 2, 3, 4]", "r := 0..2..4", "print(xs[r])"], "strided");
 }

@@ -2,12 +2,12 @@ use crate::helpers::*;
 
 #[test]
 fn undefined_variable() {
-	fail_with("foo", "undefined variable");
+	fail("foo", "undefined variable");
 }
 
 #[test]
 fn undefined_function() {
-	fail_with("bar()", "undefined function");
+	fail("bar()", "undefined function");
 }
 
 #[test]
@@ -16,7 +16,7 @@ fn wrong_arg_count() {
 		add :: fn(x: int, y: int) int { x + y }
 		add(1)
 	"};
-	fail_with(src, "expects 2 argument");
+	fail(src, "expects 2 argument");
 }
 
 #[test]
@@ -25,7 +25,7 @@ fn wrong_arg_type() {
 		double :: fn(x: int) int { x + x }
 		double("nope")
 	"#};
-	fail_with(src, "expected int argument");
+	fail(src, "expected int argument");
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn wrong_return_type() {
 		bad :: fn() int { "nope" }
 		bad()
 	"#};
-	fail_with(src, "expected int return value");
+	fail(src, "expected int return value");
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn unknown_return_type() {
 		bad :: fn() blob { 1 }
 		bad()
 	"};
-	fail_with(src, "unknown type `blob`");
+	fail(src, "unknown type `blob`");
 }
 
 #[test]
@@ -52,42 +52,42 @@ fn return_keyword_wrong_type() {
 		bad :: fn() int { return 2.0 }
 		bad()
 	"};
-	fail_with(src, "expected int return value");
+	fail(src, "expected int return value");
 }
 
 #[test]
 fn type_mismatch() {
-	fail_with(r#"1 + "x""#, "cannot apply `+`");
+	fail(r#"1 + "x""#, "cannot apply `+`");
 }
 
 #[test]
 fn unexpected_token() {
-	fail_with("2 +", "expected");
+	fail("2 +", "expected");
 }
 
 #[test]
 fn invalid_token() {
-	fail_with(r"\", r"unexpected character `\`");
+	fail(r"\", r"unexpected character `\`");
 }
 
 #[test]
 fn assign_to_immutable() {
-	fail_with(["x :: 1", "x = 2"], "cannot assign to immutable");
+	fail(["x :: 1", "x = 2"], "cannot assign to immutable");
 }
 
 #[test]
 fn assign_to_undefined() {
-	fail_with("x = 5", "cannot assign to undefined variable");
+	fail("x = 5", "cannot assign to undefined variable");
 }
 
 #[test]
 fn assign_wrong_type() {
-	fail_with(["x := 1", "x = 2.0"], "cannot assign float");
+	fail(["x := 1", "x = 2.0"], "cannot assign float");
 }
 
 #[test]
 fn annotation_space_after_at() {
-	fail_with(
+	fail(
 		["@ c", "f :: fn() int { 42 }"],
 		"must immediately follow, with no space",
 	);
@@ -110,5 +110,5 @@ fn top_level_stmt_with_main() {
 		}
 		2
 	"};
-	fail_with(src, "top-level statements");
+	fail(src, "top-level statements");
 }

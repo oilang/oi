@@ -11,7 +11,7 @@ fn dollar_scalar() {
 
 #[test]
 fn dollar_scalar_has_no_fields() {
-	fail_with("f :: fn(x: int) int { $.0 } f(9)", "cannot access a field of int");
+	fail("f :: fn(x: int) int { $.0 } f(9)", "cannot access a field of int");
 }
 
 #[test]
@@ -48,5 +48,5 @@ fn dollar_unit() {
 
 #[test]
 fn dollar_index_out_of_range() {
-	fail_with("f :: fn(x: int, y: int) int { $.5 } f(1, 2)", "out of range");
+	fail("f :: fn(x: int, y: int) int { $.5 } f(1, 2)", "out of range");
 }

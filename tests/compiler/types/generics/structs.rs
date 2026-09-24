@@ -32,7 +32,7 @@ fn type_position_param() {
 
 #[test]
 fn conflicting_field_types_error() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			Pair[T] :: struct { a: T, b: T }
 			Pair.{ a = 3, b = "x" }
@@ -43,7 +43,7 @@ fn conflicting_field_types_error() {
 
 #[test]
 fn cannot_infer_error() {
-	fail_with(
+	fail(
 		indoc! {"
 			Pair[T] :: struct { a: T, b: T }
 			Pair.{}
@@ -78,7 +78,7 @@ fn partial_lit_infers_from_annotation() {
 
 #[test]
 fn bare_name_needs_type_arguments() {
-	fail_with(
+	fail(
 		indoc! {"
 			Pair[T] :: struct { a: T, b: T }
 			f :: fn(p: Pair) int { p.a }
@@ -113,7 +113,7 @@ fn tuple_args_make_distinct_instances() {
 
 #[test]
 fn concrete_field_type_still_checked() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			Tagged[T] :: struct { v: T, id: int }
 			Tagged.{ v = 1.5, id = "x" }
@@ -124,7 +124,7 @@ fn concrete_field_type_still_checked() {
 
 #[test]
 fn type_args_on_non_generic_struct_error() {
-	fail_with(
+	fail(
 		indoc! {"
 			Point :: struct { x: int, y: int }
 			f :: fn(p: Point[int]) int { p.x }
@@ -144,7 +144,7 @@ fn explicit_instance_head() {
 		"},
 		"7",
 	);
-	fail_with(
+	fail(
 		indoc! {"
 			Box[T] :: struct { v: T }
 			Box[string].{ v = 7 }

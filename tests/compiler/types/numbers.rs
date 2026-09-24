@@ -142,7 +142,7 @@ fn u8_cast() {
 fn literal_takes_operand_type() {
 	check(["x: u8 = 97", "print(x >= 97, x - 32)"], "true 65");
 	check(["x: u8 = 97", "print(97 == x)"], "true");
-	fail_with(["x: u8 = 97", "x == -1"], "out of range for u8");
+	fail(["x: u8 = 97", "x == -1"], "out of range for u8");
 }
 
 #[test]
@@ -240,23 +240,23 @@ fn promotion() {
 	check("i64.(2) + i8.(3)", "5");
 	check("u8.(200) + u16.(1000)", "1200");
 	check("f32.(1.5) + 2.0", "3.5");
-	fail_with("i8.(1) + u8.(1)", "cannot apply");
+	fail("i8.(1) + u8.(1)", "cannot apply");
 }
 
 #[test]
 fn f16_not_yet_supported() {
-	fail_with("f16.(1.0)", "f16 casts are not yet supported");
-	fail_with("f16.(123)", "f16 casts are not yet supported");
+	fail("f16.(1.0)", "f16 casts are not yet supported");
+	fail("f16.(123)", "f16 casts are not yet supported");
 }
 
 #[test]
 fn f128_not_yet_supported() {
-	fail_with("f128.(1.0)", "f128 casts are not yet supported");
-	fail_with("f128.(123)", "f128 casts are not yet supported");
+	fail("f128.(1.0)", "f128 casts are not yet supported");
+	fail("f128.(123)", "f128 casts are not yet supported");
 }
 
 #[test]
 fn cast_syntax() {
 	check("int.(u8.(200))", "200");
-	fail_with("int(3)", "undefined function `int`");
+	fail("int(3)", "undefined function `int`");
 }

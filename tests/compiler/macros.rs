@@ -11,14 +11,14 @@ fn dbg_passes_value_through() {
 #[test]
 fn assert_statement_form() {
 	check("assert! 1 + 1 == 2", "");
-	fail_with("assert! 1 == 2", "assertion failed: 1 == 2");
+	fail_rt("assert! 1 == 2", "assertion failed: 1 == 2");
 }
 
 #[test]
 fn helpers_abort() {
-	fail_with("todo!()", "not yet implemented");
-	fail_with("unreachable!()", "entered unreachable code");
-	fail_with(r#"todo!("idk")"#, "idk");
+	fail_rt("todo!()", "not yet implemented");
+	fail_rt("unreachable!()", "entered unreachable code");
+	fail(r#"todo!("idk")"#, "idk");
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn panic_flushes_stdout_and_exits() {
 
 #[test]
 fn unknown_macro_errors() {
-	fail_with("nope!(1)", "no macro named");
+	fail("nope!(1)", "no macro named");
 }
 
 #[test]
@@ -62,12 +62,12 @@ fn macro_run_error_is_a_diagnostic() {
 		grow! :: fn(n: Ast) Ast { `%{n.int() + 1}` }
 		print(grow!(true))
 	"};
-	fail_with(src, "while running `grow!`");
+	fail(src, "while running `grow!`");
 }
 
 #[test]
 fn bare_call_suggests_macro() {
-	fail_with("assert(true)", "write `assert!(...)`");
+	fail("assert(true)", "write `assert!(...)`");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn template_macro_wrong_arity_fails() {
 		twice! :: fn(x: Ast) Ast { `%x + %x` }
 		twice!(1, 2)
 	"};
-	fail_with(src, "takes 1 argument, got 2");
+	fail(src, "takes 1 argument, got 2");
 }
 
 #[test]
@@ -191,7 +191,7 @@ fn macro_ret_must_be_ast() {
 		bad! :: fn(x: Ast) int { 1 }
 		bad!(1)
 	"};
-	fail_with(src, "macros return `Ast`");
+	fail(src, "macros return `Ast`");
 }
 
 #[test]

@@ -66,7 +66,7 @@ fn index_out_of_range() {
 		Money :: struct (int)
 		m: Money
 		m.1
-	"});
+	"}, "");
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn no_such_field() {
 		Point :: struct (x: float, y: float)
 		p: Point
 		p.z
-	"});
+	"}, "");
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn nominal_in_signatures() {
 		Money :: struct (int)
 		pay :: fn(m: Money) int { m.0 }
 		pay(500)
-	"});
+	"}, "");
 }
 
 #[test]
@@ -186,11 +186,11 @@ fn wrong_arity_and_type() {
 	fail(indoc! {"
 		Money :: struct (int)
 		Money(1, 2)
-	"});
+	"}, "");
 	fail(indoc! {r#"
 		Money :: struct (int)
 		Money("x")
-	"#});
+	"#}, "");
 }
 
 #[test]
@@ -220,8 +220,8 @@ fn wraps_an_array() {
 
 #[test]
 fn builtin_name_errors_at_def() {
-	fail_with("int :: struct (bool)", "is a builtin type");
-	fail_with("f32 :: struct (float)", "is a builtin type");
+	fail("int :: struct (bool)", "is a builtin type");
+	fail("f32 :: struct (float)", "is a builtin type");
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn dot_tuple_as_call_arg() {
 
 #[test]
 fn dot_tuple_wrong_arity() {
-	fail_with(
+	fail(
 		indoc! {"
 			Money :: struct (int)
 			m: Money = .(1, 2)
@@ -269,5 +269,5 @@ fn dot_tuple_wrong_arity() {
 
 #[test]
 fn dot_tuple_no_context() {
-	fail_with("m := .(1)", "cannot infer");
+	fail("m := .(1)", "cannot infer");
 }

@@ -16,7 +16,7 @@ fn aliasing_shares_identity() {
 
 #[test]
 fn bare_ref_without_value_errors() {
-	fail_with(
+	fail(
 		["Node :: struct { value: int }", "n: &Node"],
 		"a reference must be initialized (`?&T` for an optional one)",
 	);
@@ -56,7 +56,7 @@ fn bare_ref_field_rejected() {
 		Node :: struct { value: int }
 		List :: struct { head: &Node }
 	"};
-	fail_with(src, "must be optional (`?&T`)");
+	fail(src, "must be optional (`?&T`)");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn user_enum_with_ref_payload_stays_boxed() {
 
 #[test]
 fn value_recursion_still_errors() {
-	fail_with(
+	fail(
 		["A :: struct { b: B }", "B :: struct { a: A }"],
 		"would require infinitely nested fields",
 	);

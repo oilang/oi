@@ -89,7 +89,7 @@ fn annotated_binding() {
 
 #[test]
 fn annotation_type_mismatch() {
-	fail_with(r#"x : int : "hi""#, "expected int, got string");
+	fail(r#"x : int : "hi""#, "expected int, got string");
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn annotation_coerces_float() {
 
 #[test]
 fn annotation_out_of_range() {
-	fail_with(["x : i8 : 9999", "x"], "out of range for i8");
+	fail(["x : i8 : 9999", "x"], "out of range for i8");
 }
 
 #[test]

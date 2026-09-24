@@ -129,7 +129,7 @@ fn match_binding() {
 
 #[test]
 fn match_range_needs_int_subject() {
-	fail_with(r#"match "s" { 0..5 => 1, _ => 2 }"#, "integer subject");
+	fail(r#"match "s" { 0..5 => 1, _ => 2 }"#, "integer subject");
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn match_tuple_destructure() {
 
 #[test]
 fn match_tuple_arity_mismatch() {
-	fail_with("match (1, 2) { (a, b, c) => a, }", "pattern binds 3 names");
+	fail("match (1, 2) { (a, b, c) => a, }", "pattern binds 3 names");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn match_struct_unknown_field() {
 			Point.{ z } => z,
 		}
 	"#};
-	fail_with(src, "no field `z`");
+	fail(src, "no field `z`");
 }
 
 #[test]
@@ -198,17 +198,17 @@ fn match_enum_non_exhaustive() {
 			.green => 2,
 		}
 	"#};
-	fail_with(src, "non-exhaustive match, missing: blue");
+	fail(src, "non-exhaustive match, missing: blue");
 }
 
 #[test]
 fn match_mismatched_arm_types() {
-	fail_with(r#"match 1 { 1 => "str", else => 2 }"#, "mismatched types");
+	fail(r#"match 1 { 1 => "str", else => 2 }"#, "mismatched types");
 }
 
 #[test]
 fn match_pattern_type_mismatch() {
-	fail_with(r#"match 1 { "str" => 1, }"#, "type mismatch");
+	fail(r#"match 1 { "str" => 1, }"#, "type mismatch");
 }
 
 #[test]

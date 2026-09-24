@@ -111,5 +111,5 @@ fn unknown_alias_target_errors() {
 		f :: fn(x: Foo) Foo { x }
 		f(1)
 	"};
-	fail_with(src, "unknown type");
+	fail(src, "unknown type");
 }

@@ -76,7 +76,7 @@ fn supertraits() {
 		Ord :: trait is Eq {}
 		X :: struct {}
 		X :< Ord
-	"});
+	"}, "");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn is_expression_unknown_type() {
 	fail(indoc! {"
 		Animal :: trait {}
 		print(Ghost is Animal)
-	"});
+	"}, "");
 }
 
 #[test]
@@ -170,17 +170,17 @@ fn rejects_bad_impls() {
 	fail(indoc! {r#"
 		Dog :: struct {}
 		Dog : Animal < { speak :: fn(self) string { "woof" } }
-	"#});
+	"#}, "");
 	fail(indoc! {r#"
 		Animal :: trait { speak: fn(self) string }
 		Dog :: struct {}
 		Dog : Animal < {}
-	"#});
+	"#}, "");
 	fail(indoc! {r#"
 		Animal :: trait { kind: string }
 		Dog :: struct {}
 		Dog :< Animal
-	"#});
+	"#}, "");
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn rejects_duplicate_trait() {
 	fail(indoc! {"
 		Animal :: trait { speak :: fn(self) string }
 		Animal :: trait { bark :: fn(self) string }
-	"});
+	"}, "");
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn allows_extra_helper_fills() {
 
 #[test]
 fn rejects_wrong_arity_impl() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			Animal :: trait { speak: fn(self) string }
 			Dog :: struct {}
@@ -231,7 +231,7 @@ fn one_fill_satisfies_two_traits() {
 
 #[test]
 fn rejects_shared_fill_sig_mismatch() {
-	fail_with(
+	fail(
 		indoc! {"
 			A :: trait { f: fn(self) int }
 			B :: trait { f: fn(self) string }
@@ -244,7 +244,7 @@ fn rejects_shared_fill_sig_mismatch() {
 
 #[test]
 fn rejects_conflicting_defaults() {
-	fail_with(
+	fail(
 		indoc! {"
 			A :: trait { f :: fn(self) int { 1 } }
 			B :: trait { f :: fn(self) int { 2 } }
@@ -280,7 +280,7 @@ fn body_fill_discharges_bare_claim() {
 
 #[test]
 fn rejects_duplicate_fill() {
-	fail_with(
+	fail(
 		indoc! {"
 			S :: struct { f :: fn(self) int { 1 } }
 			S :< { f :: fn(self) int { 2 } }
@@ -391,13 +391,13 @@ fn rejects_non_object_safe_trait() {
 		Dog :: struct {}
 		Dog : Cloner < { dup :: fn(self) Self { Dog.{} } }
 		f :: fn(c: Cloner) string { "no" }
-	"#});
+	"#}, "");
 	fail(indoc! {r#"
 		Eater :: trait { eat : fn(self, other: Self) string }
 		Dog :: struct {}
 		Dog : Eater < { eat :: fn(self, other: Self) string { "ate" } }
 		pack :: Eater.[ Dog.{} ]
-	"#});
+	"#}, "");
 }
 
 #[test]
@@ -472,7 +472,7 @@ fn rejects_non_implementing_trait_object() {
 		Rock :: struct {}
 		a : Animal : Rock.{}
 	"};
-	fail([ANIMAL_DOG, src]);
+	fail([ANIMAL_DOG, src], "");
 }
 
 #[test]
@@ -521,7 +521,7 @@ fn rejects_headerless_fill_the_trait_does_not_declare() {
 		Foo :: struct {}
 		Foo : Dbl < { nope :: { 1 } }
 	"};
-	fail_with(src, "no trait method `nope` supplies a signature");
+	fail(src, "no trait method `nope` supplies a signature");
 }
 
 #[test]
@@ -563,7 +563,7 @@ fn dyn_field_from_const() {
 
 #[test]
 fn rejects_wrong_type_fill() {
-	fail_with(
+	fail(
 		indoc! {"
 			Animal :: trait { name: string }
 			Rock :: struct {}
@@ -571,7 +571,7 @@ fn rejects_wrong_type_fill() {
 		"},
 		"must be a `string` literal to satisfy trait",
 	);
-	fail_with(
+	fail(
 		indoc! {r#"
 			Animal :: trait { greeting: string = "hi" }
 			Rock :: struct { greeting: int }

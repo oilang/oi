@@ -104,7 +104,7 @@ fn unordered_struct_is_rejected() {
 		Point :: struct { x: int, y: int }
 		Point.{1, 2} < Point.{3, 4}
 	"};
-	fail_with(src, "claim `Ord` for `Point` to define ordering");
+	fail(src, "claim `Ord` for `Point` to define ordering");
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn incomparable_field_is_rejected() {
 		a := Holder.{ fn(x: int) int { x } }
 		a == a
 	"};
-	fail_with(src, "cannot compare Holder: contains fn(int) int");
+	fail(src, "cannot compare Holder: contains fn(int) int");
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn unclaimed_struct_is_rejected() {
 		Point :: struct { x: int, y: int }
 		Point.{1, 2} - Point.{3, 4}
 	"};
-	fail_with(src, "cannot apply `-` to Point");
+	fail(src, "cannot apply `-` to Point");
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn fill_must_match_the_trait() {
 			eq :: fn(self, other: int) bool { true }
 		}
 	"};
-	fail_with(
+	fail(
 		src,
 		"`Point.eq` is `fn(Point, int) bool`, trait `core::Eq` declares `fn(Point, Point) bool`",
 	);
@@ -197,7 +197,7 @@ fn non_commuting_ops_never_reverse() {
 		}
 		print(2 / Scale.{3})
 	"};
-	fail_with(src, "cannot apply `/` to int and Scale");
+	fail(src, "cannot apply `/` to int and Scale");
 }
 
 #[test]

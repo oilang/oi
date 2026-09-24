@@ -62,7 +62,7 @@ fn builtin_marker_is_a_real_value() {
 
 #[test]
 fn unknown_annotation_is_not_a_struct() {
-	fail_with(
+	fail(
 		indoc! {"
 			@bogus.{}
 			thing :: fn() int { 1 }
@@ -73,7 +73,7 @@ fn unknown_annotation_is_not_a_struct() {
 
 #[test]
 fn annotation_arg_must_be_literal() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			deprecated :: struct { reason: string }
 			x :: "hi"
@@ -86,7 +86,7 @@ fn annotation_arg_must_be_literal() {
 
 #[test]
 fn annotation_field_set_twice() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			deprecated :: struct { reason: string }
 			@deprecated.{"a", reason = "b"}
@@ -98,7 +98,7 @@ fn annotation_field_set_twice() {
 
 #[test]
 fn annotation_only_goes_on_definitions() {
-	fail_with(
+	fail(
 		indoc! {"
 			Foo :: struct {}
 			@:awesome
@@ -123,7 +123,7 @@ fn bare_struct_name_is_its_zero_value() {
 
 #[test]
 fn required_field_omitted() {
-	fail_with(
+	fail(
 		indoc! {"
 			Foo :: struct { n: int @required }
 			f := Foo.{}
@@ -148,7 +148,7 @@ fn required_field_provided() {
 
 #[test]
 fn generic_required_omitted() {
-	fail_with(
+	fail(
 		indoc! {"
 			Box[T] :: struct { v: T, n: int @required }
 			b := Box.{v = 1}
@@ -179,7 +179,7 @@ fn params_omits_trailing_struct() {
 
 #[test]
 fn params_only_on_marked_struct() {
-	fail_with(
+	fail(
 		indoc! {"
 			Settings :: struct { idk: int = 7 }
 			take :: fn(settings: Settings) { print(settings.idk) }
@@ -205,7 +205,7 @@ fn annotation_fn_call_is_folded() {
 
 #[test]
 fn params_synthesized_literal_checks_required() {
-	fail_with(
+	fail(
 		indoc! {"
 			@params
 			Settings :: struct { idk: int @required }
@@ -335,7 +335,7 @@ fn qualified_field_annotation() {
 
 #[test]
 fn export_rejects_non_c_repr_params() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			@export
 			greet :: fn(name: string) int { 1 }
@@ -346,7 +346,7 @@ fn export_rejects_non_c_repr_params() {
 
 #[test]
 fn plain_fn_with_fn_pointer_param_needs_c_marker() {
-	fail_with(
+	fail(
 		indoc! {r#"
 			@export
 			call_with_getter_cb :: fn(cb: fn(get: fn() i32) i32) i32 { 42 }
@@ -395,16 +395,16 @@ fn c_fn_types() {
 
 #[test]
 fn annotated_types_are_checked() {
-	fail_with(["f :: fn(cb: @c fn(s: string)) {}"], "`@c fn` can't cross the C ABI");
-	fail_with(
+	fail(["f :: fn(cb: @c fn(s: string)) {}"], "`@c fn` can't cross the C ABI");
+	fail(
 		["n := 3", "h := @c fn (x: i32) i32 { x + n }"],
 		"`@c` fns can't capture",
 	);
-	fail_with(
+	fail(
 		["f :: fn(cb: @stdcall fn(x: i32)) {}"],
 		"`@stdcall fn(i32) ()` isn't a type",
 	);
-	fail_with(["x := @c 5"], "`@c int` isn't a type");
+	fail(["x := @c 5"], "`@c int` isn't a type");
 }
 
 #[test]
@@ -423,11 +423,11 @@ fn pure_fn_calls_pure_fn() {
 
 #[test]
 fn pure_fn_rejects_impure_calls() {
-	fail_with(
+	fail(
 		["@pure", "f :: fn() { print(1) }", "f()"],
 		"isn't allowed in a `@pure` fn",
 	);
-	fail_with(
+	fail(
 		["g :: fn() int { 1 }", "@pure", "f :: fn() int { g() }", "f()"],
 		"isn't allowed in a `@pure` fn",
 	);
@@ -435,7 +435,7 @@ fn pure_fn_rejects_impure_calls() {
 
 #[test]
 fn unknown_attr_macro_errors() {
-	fail_with(
+	fail(
 		indoc! {"
 			@nope!
 			f :: fn() int { 1 }
