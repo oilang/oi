@@ -240,6 +240,7 @@ fn wrapped_def(e: &mut Expr) -> Option<(bool, &mut String)> {
 fn is_const_value(e: &Expr) -> bool {
 	match e {
 		Expr::Tuple(fields) => fields.is_empty(),
+		Expr::Array(items) => items.iter().all(|(v, _)| is_literal(v)),
 		Expr::StructLit { fields, .. } => fields.iter().all(|(_, v)| is_literal(&v.0)),
 		Expr::Field { tuple, .. } => {
 			matches!(&tuple.0, Expr::Ident(n) if n.rsplit("::").next().is_some_and(|t| t.starts_with(char::is_uppercase)))

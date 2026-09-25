@@ -60,6 +60,14 @@ fn foreign_resolves_process_symbols() {
 }
 
 #[test]
+fn list_static_compiles_in_a_module() {
+	Project::new()
+		.file("main.oi", ["use seenmod", "main :: fn() { print(seenmod.seen.len) }"])
+		.file("seenmod.oi", ["module seenmod", r#"pub seen: []string = [""]"#])
+		.check("1");
+}
+
+#[test]
 fn foreign_cstr_param_calls_strlen() {
 	Project::new()
 		.file("main.oi", ["use cext", r#"print(unsafe cext.strlen("hi!".cstr()))"#])
