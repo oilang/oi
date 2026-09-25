@@ -643,7 +643,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 	pub(super) fn has_fill(&self, name: &str, method: &str) -> bool {
 		let k = format!("{}.{method}", rc::base_name(name));
-		self.funcs.contains_key(&k) || self.generic_fns.contains_key(&k)
+		self.funcs
+			.get(&k)
+			.is_some_and(|f| f.params.first().is_none_or(|p| p.name.as_deref() != Some("self")))
+			|| self
+				.generic_fns
+				.get(&k)
+				.is_some_and(|d| d.params.first().is_none_or(|p| p.name != "self"))
 	}
 
 	// Build generic enum.

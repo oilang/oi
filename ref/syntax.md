@@ -1560,6 +1560,9 @@ main :: fn() {
 
 	parse(src) or { panic!($.message()) }
 
+	# `.context()` wraps the error with what was being attempted, keeping the original as its `cause()`
+	save :: fs.open(path).context("loading save")? # "loading save: no such file"
+
 	# error `message` fn defaults to `self.str()`
 	NetError :: enum { timeout refused }
 	NetError :< Error

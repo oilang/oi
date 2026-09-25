@@ -10,3 +10,21 @@ pub Result[T, E] :: enum {
 	ok(T)
 	err(E)
 }
+
+Result[T, E] :< {
+	## The ok value, discarding any error.
+	pub ok :: fn(self) ?T {
+		match self {
+			.ok.(v) => v,
+			else => none
+		}
+	}
+
+	## Wrap any error with additional context.
+	## TODO: structured ctx rather than string
+	pub context :: fn(self, ctx: string) !T {
+		self or {
+			return error(Ctx.{ Error = $, ctx = ctx })
+		}
+	}
+}

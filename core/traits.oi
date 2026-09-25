@@ -51,3 +51,9 @@ pub Err :: struct { pub msg: string }
 Err : Error < {
 	message :: fn(self) string { self.msg }
 }
+
+pub Ctx :: struct { Error, pub ctx: string }
+Ctx : Error < {
+	message :: fn(self) string { "{self.ctx}: {self.Error.message()}" }
+	cause :: fn(self) ?Error { self.Error }
+}

@@ -313,6 +313,39 @@ fn error_message_defaults_to_str() {
 }
 
 #[test]
+fn result_ok_discards_the_error() {
+	let src = indoc! {r#"
+		f :: fn(n: int) !int { if n == 0 { return error("boom") } n }
+		print(f(1).ok())
+		print(f(0).ok())
+	"#};
+	check(src, ["some.(1)", "none"]);
+}
+
+#[test]
+fn result_context_wraps_the_error() {
+	let src = indoc! {r#"
+		f :: fn(n: int) !int { if n == 0 { return error("disk on fire") } n }
+		g :: fn() !int { f(0).context("loading save")? }
+		f(0).context("loading save") or {
+			print($.message())
+			print(match $.cause() { .some.(e) => e.message(), .none => "none" })
+			0
+		}
+		g() or { print($.message()) 0 }
+	"#};
+	check(
+		src,
+		[
+			"loading save: disk on fire",
+			"disk on fire",
+			"loading save: disk on fire",
+			"0",
+		],
+	);
+}
+
+#[test]
 fn claimed_error_wrapped() {
 	let src = indoc! {r#"
 		NetError :: enum { timeout refused }
