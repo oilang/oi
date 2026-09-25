@@ -455,6 +455,20 @@ fn fixed_index_out_of_range() {
 }
 
 #[test]
+fn fixed_field_survives_return() {
+	check(
+		indoc! {"
+			T :: struct { w: [4]u64 }
+			make :: fn() T { T.{ w = .[1 2 3 4] } }
+			t := make()
+			print(t.w[0])
+			print(t.w[3])
+		"},
+		["1", "4"],
+	);
+}
+
+#[test]
 fn empty_dynamic_via_init() {
 	check(["a: []int", "a.len"], "0");
 }

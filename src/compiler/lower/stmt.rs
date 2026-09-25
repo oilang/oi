@@ -475,25 +475,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok(());
 		}
-		let val = self.copy_in(val, &typ);
-		// `copy_in` already heap-copied structs, but fixed arrays still need to escape the frame
-		let final_val = match &typ {
-			Typ::FixedArray(elem, n) => {
-				let (elem, n) = ((**elem).clone(), *n);
-				let stride = self.elem_stride(&elem);
-				let heap = self.call_alloc_bytes(n as i64 * stride);
-				for i in 0..n {
-					let off = (i as i64 * stride) as i32;
-					let v = self.load_elem(val, off, &elem);
-					self.store_elem(heap, off, &elem, v);
-				}
-				heap
-			}
-			_ => val,
-		};
-		// the bumped return value survives the walk over everything this fn owned
+		let final_val = self.copy_in(val, &typ);
 		self.release_scopes(0, Some((final_val, typ.clone())))?;
-		// the cranelift signature takes its return type from the first return
+		// take return type from the first return
 		if self.b.func.signature.returns.is_empty() {
 			self.b.func.signature.returns.push(AbiParam::new(cl_type(&typ, self.int)));
 		}

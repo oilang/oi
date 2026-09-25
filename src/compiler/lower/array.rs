@@ -242,6 +242,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.settle(val, heap, typ);
 			return heap;
 		}
+		// a fixed array's buffer is inline, so a copy must escape the frame with its owner
+		if let Typ::FixedArray(elem, n) = typ {
+			let (elem, n) = ((**elem).clone(), *n);
+			let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
+			self.fixed_move(heap, val, &elem, n);
+			return heap;
+		}
 		// move resource to new owner
 		if self.handover(val, typ) {
 			self.untemp(val);
