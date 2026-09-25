@@ -67,6 +67,7 @@ fn fallback_can_diverge() {
 fn fallback_can_panic() {
 	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
 	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");
+	fail_rt(r#"!string.(error("boom")) or panic!("boom")"#, "panic: boom");
 }
 
 #[test]

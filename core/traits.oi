@@ -45,3 +45,8 @@ pub Error :: trait {
 string : Error < {
 	message :: fn(self) string { self }
 }
+
+pub Err :: struct { pub msg: string }
+Err : Error < {
+	message :: fn(self) string { self.msg }
+}

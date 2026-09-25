@@ -486,7 +486,7 @@ fn array_of_trait_objects_renders() {
 	"#};
 	check(
 		[ANIMAL_DOG_KIND, src],
-		"[Dog.{kind = \"collie\"}, Cat.{kind = \"mau\"}]",
+		r#"[Dog.{ kind = "collie" }, Cat.{ kind = "mau" }]"#,
 	);
 }
 
@@ -500,7 +500,7 @@ fn trait_declared_str_dyn_dispatches() {
 		print(a)
 		print(a.str())
 	"#};
-	check(src, "custom-collie\ncustom-collie");
+	check(src, ["custom-collie", "custom-collie"]);
 }
 
 #[test]
@@ -663,4 +663,30 @@ fn a_type_argument_fills_a_field_slot() {
 		"#},
 		"missing field `value int`",
 	);
+}
+
+#[test]
+fn boxed_error_outlives_its_scope() {
+	let src = indoc! {r#"
+		Bad :: struct { line: int }
+		Bad : Error < { message :: fn(self) string { "at " + self.line.str() } }
+		parse :: fn() !int { return Bad.{ line = 4 } }
+		print(parse() or { print($.message()); 0 })
+	"#};
+	check(src, ["at 4", "0"]);
+}
+
+#[test]
+fn embedded_err_promotes_error_claim() {
+	let src = indoc! {r#"
+		Parse :: struct { Err, line: int }
+		Parse :< { message :: fn(self) string { "parse error at line {self.line}" } }
+		Io :: struct { Err }
+		boom :: fn(n: int) !int {
+			if n == 0 { return Parse.{ line = 4 } }
+			return Io.{ Err = Err.{ msg = "disk on fire" } }
+		}
+		loop n in 0..2 { boom(n) or { print($.message()) 0 } }
+	"#};
+	check(src, ["parse error at line 4", "disk on fire"]);
 }

@@ -104,6 +104,41 @@ pub(crate) fn fill_from_decl(
 	Ok((ps, params_tuple, ret))
 }
 
+// Embedding promotes the embedded type's claims, routed like an implicit `via`.
+pub(super) fn promote_embeds<'p>(
+	structs: &HashMap<String, Vec<FieldDef>>,
+	impls: &mut HashSet<(String, String)>,
+	scope_of: impl Fn(&str) -> &'p Scope,
+) -> Vec<TraitBody<'p>> {
+	let (mut out, mut settled) = (vec![], usize::MAX);
+	while out.len() != settled {
+		settled = out.len();
+		for (typ, fields) in structs {
+			for (o, sn, _) in embeds(fields) {
+				let tns: Vec<String> = (impls.iter())
+					.filter(|(t, tn)| t == sn && !is_hook_trait(tn))
+					.map(|(_, tn)| tn.clone())
+					.collect();
+				for tn in tns {
+					if !impls.insert((typ.clone(), tn.clone())) {
+						continue;
+					}
+					out.push(TraitBody {
+						span: Span::default(),
+						typ: Box::leak(typ.clone().into_boxed_str()),
+						trait_name: tn,
+						args: &[],
+						via: Some(Box::leak(fields[o].name.clone().into_boxed_str())),
+						methods: &[],
+						scope: scope_of(typ),
+					});
+				}
+			}
+		}
+	}
+	out
+}
+
 // Check trait impl bodies.
 // Validates supertraits, required fields, method sigs.
 pub(super) fn check_impls<'p>(

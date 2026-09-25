@@ -912,7 +912,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					.with_label("no matching impl"),
 			);
 		}
-		Ok((self.box_trait_object(val, name, tn), Typ::Trait(tn.to_string())))
+		Ok((self.box_trait_object(val, vt, tn), Typ::Trait(tn.to_string())))
 	}
 
 	// Whether `typ` claims std `Error`, boxing into the open `Error` type.
@@ -922,13 +922,14 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Box a claimer of `Error` behind its vtable.
 	pub(super) fn box_error(&mut self, val: Value, typ: &Typ) -> Value {
-		self.box_trait_object(val, &typ.key(), role::ERROR)
+		self.box_trait_object(val, typ, role::ERROR)
 	}
 
-	// Box `val` (an instance of `name`) behind its `name`/`tn` vtable.
-	pub(super) fn box_trait_object(&mut self, val: Value, name: &str, tn: &str) -> Value {
-		let sym = oi_symbol(&format!("vtable_{name}_{tn}"));
+	// Box `val` (an instance of `typ`) behind its `typ`/`tn` vtable. The box owns a heap copy.
+	pub(super) fn box_trait_object(&mut self, val: Value, typ: &Typ, tn: &str) -> Value {
+		let sym = oi_symbol(&format!("vtable_{}_{tn}", typ.key()));
 		let vtable = self.data_addr(&sym);
+		let val = self.copy_in(val, typ);
 		let boxp = self.call_alloc(2);
 		self.b.ins().store(MemFlags::new(), vtable, boxp, 0);
 		self.b.ins().store(MemFlags::new(), val, boxp, 8);

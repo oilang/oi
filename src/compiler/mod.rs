@@ -1348,6 +1348,7 @@ impl<M: Module> Compiler<M> {
 			return Err(Diagnostic::new(msg, b.span.into_range()).with_label("claim `Drop` too"));
 		}
 
+		trait_bodies.extend(promote_embeds(&structs, &mut self.trait_impls, scope_of));
 		check_impls(
 			trait_bodies,
 			&traits,
