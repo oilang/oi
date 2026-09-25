@@ -774,7 +774,7 @@ impl<M: Module> Compiler<M> {
 				.or_default()
 				.extend(qualify_anns(scope, anns));
 			// visibility
-			if !public && claim.decls.is_empty() && typ.contains("::") {
+			if !public && claim.decls.is_empty() && typ.starts_with(&format!("{}::", scope.module)) {
 				self.privates.entry(typ.to_string()).or_default().insert(name.clone());
 			}
 			if others.iter().any(|f| f.key == key) || self.generics.contains_key(&key) {

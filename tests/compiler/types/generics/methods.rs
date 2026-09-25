@@ -95,3 +95,17 @@ fn explicit_type_arg() {
 	"};
 	check(src, ["0", "3"]);
 }
+
+#[test]
+fn amend_imported_generic_enum() {
+	let src = indoc! {r#"
+		Option[T] :< {
+			or_zero :: fn(self) T { self or { z: T; z } }
+		}
+		n: ?int = 4
+		s: ?string = none
+		print(n.or_zero())
+		print(s.or_zero())
+	"#};
+	check(src, ["4", ""]);
+}

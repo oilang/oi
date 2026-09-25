@@ -718,6 +718,21 @@ impl Loader {
 		}
 	}
 
+	// Re-resolve claim targets once the prelude is seeded.
+	// So that a claim on an imported type keys off the owning module instead of the writer's guess.
+	fn resolve_claims(&mut self) {
+		for m in &mut self.modules {
+			let own = format!("{}::", m.scope.module);
+			for item in &mut m.items {
+				if let Expr::Claim { typ, .. } = &mut item.0
+					&& !crate::compiler::TypeCtx::builtin_type(typ)
+				{
+					*typ = m.scope.qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
+				}
+			}
+		}
+	}
+
 	// Ensure selected names are public within their module.
 	fn check_selected(&self) -> Result<(), Reported> {
 		for (module, name, span) in &self.selected {
@@ -788,6 +803,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	loader.load_files("main", entry)?;
 	let reexports = loader.resolve_reexports();
 	loader.seed_prelude();
+	loader.resolve_claims();
 	loader.check_selected()?;
 	Ok(Program {
 		roots: loader.roots.clone(),
