@@ -1,3 +1,5 @@
+use indoc::indoc;
+
 use crate::common::{Project, Run, oi, ok, trim};
 
 #[test]
@@ -82,4 +84,15 @@ fn check_type_checks_without_running() {
 
 	let stderr = String::from_utf8_lossy(&out.stderr);
 	assert!(stderr.contains("undefined variable"), "stderr was:\n{stderr}");
+}
+
+#[test]
+fn trailing_args_reach_os_args() {
+	let src = indoc! {"
+		use os
+		print(os.args()[1..])
+	"};
+	let dir = Project::new().file("main.oi", src);
+	let out = oi(&["run", "main.oi", "a", "-b"]).current_dir(&dir).run(None);
+	assert_eq!(ok(out), r#"["a", "-b"]"#);
 }

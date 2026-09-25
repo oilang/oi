@@ -16,10 +16,11 @@ pub fn dispatch(cmd: Command) -> Result<(), Reported> {
 		Command::New { name } => init::new(&name),
 		Command::Run {
 			file,
+			args,
 			timings,
 			emit,
 			check,
-		} => run::run(&run::entry(file), DebugOpts { timings, emit, check }),
+		} => run::run(&run::entry(file), args, DebugOpts { timings, emit, check }),
 		Command::Build {
 			file,
 			out,

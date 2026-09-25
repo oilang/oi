@@ -13,5 +13,5 @@ pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
 			})?,
 		),
 	};
-	run_source(vec![(name.to_string(), src)], std::path::Path::new("."), opts)
+	run_source(vec![(name.to_string(), src)], std::path::Path::new("."), &[], opts)
 }

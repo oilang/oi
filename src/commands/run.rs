@@ -18,8 +18,9 @@ pub fn entry(file: Option<PathBuf>) -> PathBuf {
 }
 
 /// Run a source file, or a directory's `.oi` files.
-pub fn run(file: &Path, opts: DebugOpts) -> Result<(), Reported> {
-	run_source(files(file)?, root(file), opts)
+pub fn run(file: &Path, mut args: Vec<String>, opts: DebugOpts) -> Result<(), Reported> {
+	args.insert(0, file.display().to_string());
+	run_source(files(file)?, root(file), &args, opts)
 }
 
 /// Compile a source file to a native executable or shared library.

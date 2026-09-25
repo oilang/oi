@@ -621,15 +621,28 @@ impl Compiler<ObjectModule> {
 	// The object's entrypoint.
 	fn emit_entry(&mut self, entry: FuncId) {
 		let sig = self.module.make_signature();
+		let ptr = self.module.target_config().pointer_type();
 		let mut calls = vec![entry];
+		let mut set_args = None;
 		if !self.lib {
+			// argc/argv
+			let mut asig = self.module.make_signature();
+			asig.params = vec![AbiParam::new(types::I32), AbiParam::new(ptr)];
+			set_args = Some(self.module.declare_function("oi_set_args", Linkage::Import, &asig).unwrap());
 			calls.push(self.module.declare_function("oi_epilogue", Linkage::Import, &sig).unwrap());
+			self.ctx.func.signature.params = asig.params.clone();
 			self.ctx.func.signature.returns.push(AbiParam::new(types::I32));
 		}
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
+		b.append_block_params_for_function_params(block);
 		b.switch_to_block(block);
 		b.seal_block(block);
+		if let Some(id) = set_args {
+			let argv = b.block_params(block).to_vec();
+			let f = self.module.declare_func_in_func(id, b.func);
+			b.ins().call(f, &argv);
+		}
 		for id in calls {
 			let f = self.module.declare_func_in_func(id, b.func);
 			b.ins().call(f, &[]);

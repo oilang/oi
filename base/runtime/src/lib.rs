@@ -3,7 +3,9 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 // Type tag shared with the compiler.
@@ -705,6 +707,30 @@ pub extern "C" fn epilogue() {
 	if std::env::var_os("OI_LEAK_CHECK").is_some() {
 		eprintln!("leaked allocations: {}", leaked());
 	}
+}
+
+static ARGS: OnceLock<Vec<CString>> = OnceLock::new();
+
+/// Record the process arguments, once, for `os.args`.
+/// # Safety
+/// `argv` must point to `argc` live NUL-terminated strings.
+#[unsafe(export_name = "oi_set_args")]
+pub unsafe extern "C" fn set_args(argc: i32, argv: *const *const c_char) {
+	let args = (0..argc.max(0)).map(|i| unsafe { CStr::from_ptr(*argv.add(i as usize)) }.to_owned());
+	let _ = ARGS.set(args.collect());
+}
+
+// Argument count the process was given.
+#[unsafe(export_name = "oi_argc")]
+pub extern "C" fn argc() -> i64 {
+	ARGS.get().map_or(0, |a| a.len() as i64)
+}
+
+// The `i`th argument, or null when out of range.
+#[unsafe(export_name = "oi_argv")]
+pub extern "C" fn argv(i: i64) -> *const c_char {
+	let arg = ARGS.get().and_then(|a| a.get(i as usize));
+	arg.map_or(std::ptr::null(), |a| a.as_ptr())
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

@@ -58,7 +58,7 @@ pub fn run() -> Result<(), Reported> {
 			_ => {
 				let src = format!("{session}{line}\n");
 				let entry = vec![("<repl>".into(), src)];
-				if run_source(entry, std::path::Path::new("."), DebugOpts::default()).is_ok() {
+				if run_source(entry, std::path::Path::new("."), &[], DebugOpts::default()).is_ok() {
 					session.push_str(&defs(&line));
 				}
 			}

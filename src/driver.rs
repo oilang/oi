@@ -1,3 +1,4 @@
+use std::ffi::{CString, c_char};
 use std::io::Write as _;
 use std::path::Path;
 use std::time::Instant;
@@ -24,7 +25,7 @@ pub struct DebugOpts {
 }
 
 /// Compile and run a program from its entry files.
-pub fn run_source(entry: Entry, root: &Path, opts: DebugOpts) -> Result<(), Reported> {
+pub fn run_source(entry: Entry, root: &Path, args: &[String], opts: DebugOpts) -> Result<(), Reported> {
 	let mut compiler = Compiler::default();
 	compiler.emit_clif = opts.emit == Some(Emit::Clif);
 	if opts.emit == Some(Emit::Tokens) {
@@ -59,7 +60,11 @@ pub fn run_source(entry: Entry, root: &Path, opts: DebugOpts) -> Result<(), Repo
 
 	// run
 	let t = Instant::now();
-	// SAFETY: `code` is the finalized `__oi_main` entrypoint emitted by `compile`. There are no params or return.
+	let cstrs: Vec<CString> = args.iter().filter_map(|a| CString::new(a.as_str()).ok()).collect();
+	let argv: Vec<*const c_char> = cstrs.iter().map(|a| a.as_ptr()).collect();
+	// SAFETY: `argv` holds `cstrs`'s pointers, alive for the call.
+	unsafe { crate::runtime::set_args(argv.len() as i32, argv.as_ptr()) };
+	// SAFETY: `code` is the finalized `__oi_main` entrypoint emitted by `compile`.
 	let f = unsafe { std::mem::transmute::<*const u8, fn()>(code) };
 	f();
 	compiler.timings.push(("run", t.elapsed()));

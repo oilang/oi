@@ -1,5 +1,7 @@
 module os
 
+use rt
+
 getenv : fn(name: cstr) ptr : foreign
 setenv : fn(name: cstr, value: cstr, overwrite: i32) i32 : foreign
 getcwd : fn(buf: ptr, size: usize) ptr : foreign
@@ -8,6 +10,15 @@ system : fn(cmd: cstr) i32 : foreign
 free : fn(p: ptr) : foreign
 @link.{name = "exit"}
 c_exit : fn(code: i32) : foreign
+
+## The command-line arguments, program path first.
+pub args :: fn() out: []string {
+	n :: unsafe rt.oi_argc()
+	loop i in 0..n {
+		out << unsafe rt.oi_argv(i).str()
+	}
+	out
+}
 
 ## Read an env var.
 pub env :: fn(name: string) ?string {

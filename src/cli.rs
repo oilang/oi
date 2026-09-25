@@ -42,6 +42,10 @@ pub enum Command {
 		/// Path to the .oi source file.
 		file: Option<PathBuf>,
 
+		/// Arguments for the program, read back with `os.args()`.
+		#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+		args: Vec<String>,
+
 		/// Print phase timings to stderr.
 		#[arg(long)]
 		timings: bool,
