@@ -495,7 +495,7 @@ fn array_of_trait_objects_renders() {
 	"#};
 	check(
 		[ANIMAL_DOG_KIND, src],
-		r#"[Dog.{ kind = "collie" }, Cat.{ kind = "mau" }]"#,
+		r#"[Dog.{kind = "collie"}, Cat.{kind = "mau"}]"#,
 	);
 }
 

@@ -9,6 +9,16 @@ fn dbg_passes_value_through() {
 }
 
 #[test]
+fn src_captures_the_call_site() {
+	let src = indoc! {r#"
+		here := src!()
+		print(here.file, here.line)
+		print(src!())
+	"#};
+	check(src, ["<stdin> 1", "<stdin>:3"]);
+}
+
+#[test]
 fn assert_statement_form() {
 	check("assert! 1 + 1 == 2", "");
 	fail_rt("assert! 1 == 2", "assertion failed: 1 == 2");

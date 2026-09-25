@@ -47,13 +47,38 @@ string : Error < {
 }
 atom :< Error
 
-pub Err :: struct { pub msg: string }
+pub Err :: struct {
+	pub msg: string,
+	pub at: ?Src,
+}
 Err : Error < {
 	message :: fn(self) string { self.msg }
 }
 
-pub Ctx :: struct { Error, pub ctx: string }
+## A source location, as `src!()` captures it.
+pub Src :: struct {
+	pub file: string,
+	pub line: int,
+}
+Src :< {
+	str :: fn(self) string { "{self.file}:{self.line}" }
+}
+
+pub Ctx :: struct {
+	Error,
+	pub ctx: string,
+}
 Ctx : Error < {
 	message :: fn(self) string { "{self.ctx}: {self.Error.message()}" }
 	cause :: fn(self) ?Error { self.Error }
+}
+
+# what `error("...")` builds
+raise :: fn(msg: string, at: Src) Err { Err.{msg, at} }
+
+# appended to main's exit line
+origin :: fn(e: Error) string {
+	err :: Err.(e) or { return "" }
+	at :: err.at or { return "" }
+	"  at {at}"
 }

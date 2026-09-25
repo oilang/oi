@@ -126,7 +126,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"dbg" => (1, 1),
 			"assert" => (1, 2),
 			"panic" | "unreachable" => (0, 1),
-			"todo" => (0, 0),
+			"todo" | "src" => (0, 0),
 			_ => {
 				return Err(
 					Diagnostic::new(format!("no macro named `{name}!`"), span.into_range()).with_label("unknown macro")
@@ -154,6 +154,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.write_lit("\n", runtime::Sink::Err);
 				Ok((val, typ))
 			}
+
+			"src" => self.src_lit(span),
 
 			"assert" => {
 				let (cond, typ) = self.expr(&args[0])?;

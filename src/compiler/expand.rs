@@ -13,7 +13,7 @@ use super::Compiler;
 
 use Child::{List, One};
 
-const BUILTINS: [&str; 5] = ["dbg", "assert", "panic", "todo", "unreachable"];
+const BUILTINS: [&str; 6] = ["dbg", "assert", "panic", "todo", "unreachable", "src"];
 const MAX_DEPTH: usize = 64;
 const MAX_PARAMS: usize = 4;
 

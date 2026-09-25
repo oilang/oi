@@ -527,7 +527,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(done);
 		self.b.switch_to_block(sad);
 		let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-		let msg = self.derived_str(e, &err);
+		let mut msg = self.derived_str(e, &err);
+		if let Some(sig) = (err == Typ::Error).then(|| self.funcs.get(role::ORIGIN).cloned()).flatten() {
+			let (at, _) = self.emit_call(&sig, &[e]);
+			msg = self.rt_call("str_concat", &[msg, at]).unwrap();
+		}
 		self.rt_call("fail", &[msg]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		self.b.switch_to_block(done);

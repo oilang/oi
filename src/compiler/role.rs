@@ -27,10 +27,13 @@ pub(crate) const OPTION: &str = "core::Option";
 pub(crate) const RESULT: &str = "core::Result";
 pub(crate) const PTR: &str = "core::ptr";
 pub(crate) const RANGE: &str = "core::Range";
+pub(crate) const SRC: &str = "core::Src";
 
 // fns
 pub(crate) const ZERO: &str = "core::zero";
 pub(crate) const STR_CONTAINS: &str = "string.contains";
+pub(crate) const ORIGIN: &str = "core::origin";
+pub(crate) const RAISE: &str = "core::raise";
 
 // annotations
 pub(crate) const PARAMS: &str = "core::params";

@@ -49,11 +49,19 @@ impl<'a, M: Module> Translator<'a, M> {
 					Some(err) if *err != Typ::Error => self.check_expr(&args[0], err)?,
 					_ => self.expr(&args[0])?,
 				};
+				let bare = at == Typ::Str && err.as_ref().is_none_or(|e| *e == Typ::Error);
 				match (ret, err) {
 					(Some(ret), Some(err)) if at == err => {
 						let variants = self.variants_of(&ret);
 						let v = self.make_enum(&variants, 1, &[av]);
 						Ok(Some((v, ret)))
+					}
+					// stamp error with call site
+					_ if bare => {
+						let (src, _) = self.src_lit(span)?;
+						let sig = self.funcs[role::RAISE].clone();
+						let (v, t) = self.emit_call(&sig, &[av, src]);
+						Ok(Some((self.box_error(v, &t), Typ::Error)))
 					}
 					_ if self.open_error(&at) => Ok(Some((self.box_error(av, &at), Typ::Error))),
 					_ => {
@@ -84,6 +92,17 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			_ => Ok(None),
 		}
+	}
+
+	// The call site as a `Src`.
+	pub(super) fn src_lit(&mut self, span: Span) -> Result<TypedVal, Diagnostic> {
+		let (file, line, _) = self.map.locate_span(span.into_range());
+		let field = |n: &str, e| (Some(n.to_string()), (e, span));
+		let fields = [
+			field("file", Expr::String(file.to_string())),
+			field("line", Expr::Int(line as i64)),
+		];
+		self.struct_lit(role::SRC, &[], &fields, span, None)
 	}
 
 	// Yield a value to the `comp` host (recursive).

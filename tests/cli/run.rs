@@ -24,6 +24,18 @@ fn default_file_is_main_oi_in_cwd() {
 }
 
 #[test]
+fn failing_main_reports_where_the_error_came_from() {
+	let src = indoc! {r#"
+		main :: fn() ! {
+			return error("boom")
+		}
+	"#};
+	let dir = Project::new().file("main.oi", src);
+	let out = oi(&["run"]).current_dir(&dir).run(None);
+	assert_eq!(trim(&out.stderr), "error: boom  at main.oi:2");
+}
+
+#[test]
 fn timings_prints_phases_to_stderr() {
 	let dir = Project::new().file("main.oi", "1 + 2");
 	let out = oi(&["run", "--timings"]).current_dir(&dir).run(None);

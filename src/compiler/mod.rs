@@ -1683,7 +1683,10 @@ impl<M: Module> Compiler<M> {
 				self.finish_fn(&self.symbol(&item.key).0);
 			}
 			let Some((sym, def, subst)) = self.pending.pop().or_else(|| self.compile_printers(&funcs, types)) else {
-				break;
+				if self.wanted.is_empty() {
+					break;
+				}
+				continue;
 			};
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }];
 			let types = TypeCtx::new(&structs, &enums, &aliases, &subst, &generics, &traits)

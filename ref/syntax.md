@@ -2281,6 +2281,7 @@ assert! :: fn(expr, msg: string?)
 panic! :: fn(msg: string?)
 todo! :: fn()
 unreachable! :: fn(msg: string?)
+src! :: fn() Src # the call site
 
 ## stdlib
 ```
