@@ -467,21 +467,6 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Err(Diagnostic::new(msg, expr.1.into_range()).with_label(label));
 				}
 
-				// enum variants
-				if let Expr::Ident(name) = &tuple.0
-					&& !self.vars.contains_key(name)
-					&& self.types.enums.borrow().contains_key(self.qualify(name).as_ref())
-				{
-					let name = self.qualify(name).to_string();
-					return self.construct_variant(&name, field, &[], expr.1);
-				}
-				if let Some(instance) = self.enum_instance(tuple) {
-					return self.construct_variant(&instance, field, &[], expr.1);
-				}
-				if let Some((n, d)) = self.generic_variant(tuple, field) {
-					return self.infer_variant(&n, &d, field, &[], hint, expr.1);
-				}
-
 				// associated consts
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
@@ -498,6 +483,21 @@ impl<'a, M: Module> Translator<'a, M> {
 					{
 						return Ok((self.b.ins().iconst(self.int, n as i64), Typ::USize));
 					}
+				}
+
+				// enum variants
+				if let Expr::Ident(name) = &tuple.0
+					&& !self.vars.contains_key(name)
+					&& self.types.enums.borrow().contains_key(self.qualify(name).as_ref())
+				{
+					let name = self.qualify(name).to_string();
+					return self.construct_variant(&name, field, &[], expr.1);
+				}
+				if let Some(instance) = self.enum_instance(tuple) {
+					return self.construct_variant(&instance, field, &[], expr.1);
+				}
+				if let Some((n, d)) = self.generic_variant(tuple, field) {
+					return self.infer_variant(&n, &d, field, &[], hint, expr.1);
 				}
 
 				let (ptr, typ) = self.expr(tuple)?;

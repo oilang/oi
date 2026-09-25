@@ -925,6 +925,18 @@ fn method_on_receiver() {
 }
 
 #[test]
+fn const_fill_holds_a_variant() {
+	check(
+		indoc! {"
+			Color :: enum { red green blue }
+			Color :< { DEFAULT :: Color.green }
+			print(Color.DEFAULT)
+		"},
+		"green",
+	);
+}
+
+#[test]
 fn method_compares_self() {
 	check(
 		indoc! {"
