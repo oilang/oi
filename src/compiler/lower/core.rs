@@ -164,7 +164,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A static reads and writes through its cell.
-	pub fn seed_statics(&mut self, inits: &[(String, Spanned<Expr>)]) -> Result<(), Diagnostic> {
+	pub fn seed_statics(&mut self, inits: &[(String, Span, Option<Spanned<Expr>>)]) -> Result<(), Diagnostic> {
 		let cells: Vec<_> = self
 			.statics
 			.iter()
@@ -187,9 +187,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.vars.insert(key, local);
 		}
-		for (key, init) in inits {
+		for (key, span, init) in inits {
 			let local = self.vars[key].clone();
-			let val = self.check_typed(init, &local.typ, "does not match the declared type")?;
+			let val = match init {
+				Some(init) => self.check_typed(init, &local.typ, "does not match the declared type")?,
+				None => self.zero_or_err(&local.typ, *span)?,
+			};
 			// the cell outlives the frame that filled it
 			let val = match &local.typ {
 				Typ::Struct(..) => self.copy_in(val, &local.typ),

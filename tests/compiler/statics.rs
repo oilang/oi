@@ -114,6 +114,15 @@ fn top_level_const_works_alongside_main() {
 }
 
 #[test]
+fn typed_static_without_init_zeroes() {
+	let src = indoc! {"
+		foo: []int
+		main :: fn() { print(foo.len) }
+	"};
+	check(src, "0");
+}
+
+#[test]
 fn const_enum_variant_crosses_modules() {
 	Project::new()
 		.file("main.oi", ["use mem", "main :: fn() { print(mem.RED == mem.E.green) }"])

@@ -483,7 +483,7 @@ pub struct Compiler<M: Module = JITModule> {
 	reexports: HashMap<String, String>,
 	consts: HashMap<String, Spanned<Expr>>,
 	statics: HashMap<String, (String, Typ)>,
-	static_inits: Vec<(String, Spanned<Expr>)>,
+	static_inits: Vec<(String, Span, Option<Spanned<Expr>>)>,
 	annotations: HashMap<String, Vec<Annotation>>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
@@ -1184,9 +1184,10 @@ impl<M: Module> Compiler<M> {
 					mutable: true,
 					name,
 					typ,
-					value: Some(v),
+					value,
 				} if has_main || !scope.module.is_empty() => {
-					static_items.push((name.clone(), typ.clone(), (**v).clone(), scope, item.1));
+					let init = value.as_ref().map(|v| (**v).clone());
+					static_items.push((name.clone(), typ.clone(), init, scope, item.1));
 				}
 				Expr::Bind {
 					mutable: false,
@@ -1593,9 +1594,14 @@ impl<M: Module> Compiler<M> {
 			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 				.with_consts(consts)
 				.with_scope(scope);
-			let typ = match &annot {
-				Some((t, s)) => types.resolve(t, *s)?,
-				None => static_typ(&init.0, &types, span)?,
+			let typ = match (&annot, &init) {
+				(Some((t, s)), _) => types.resolve(t, *s)?,
+				(None, Some(init)) => static_typ(&init.0, &types, span)?,
+				(None, None) => {
+					let msg = format!("static `{}` needs a type annotation", display_name(&name));
+					return Err(Diagnostic::new(msg, span.into_range())
+						.with_label("cannot infer a type without an initializer"));
+				}
 			};
 			let sym = oi_symbol(&format!("static_{name}"));
 			self.module
@@ -1603,7 +1609,7 @@ impl<M: Module> Compiler<M> {
 				.expect("declare static");
 			define_data(&mut self.module, &sym, vec![0; 8]);
 			self.statics.insert(name.clone(), (sym, typ));
-			self.static_inits.push((name, init));
+			self.static_inits.push((name, span, init));
 		}
 
 		// gather loose top-level statements
