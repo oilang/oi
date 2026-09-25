@@ -61,6 +61,29 @@ fn doc_inside_fn() {
 }
 
 #[test]
+fn doc_on_struct_and_enum_members() {
+	let src = indoc! {"
+		E :: enum {
+			## the red one
+			red,
+			## record variant
+			rgb {
+				## channel
+				r: int
+			},
+		}
+		P :: struct {
+			## x coord
+			x: int,
+		}
+		e := E.red
+		p := P.{ 1 }
+		p.x
+	"};
+	check(src, "1");
+}
+
+#[test]
 fn doc_top_level() {
 	check("## a note\n1 + 1", "2");
 }

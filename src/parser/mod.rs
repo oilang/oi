@@ -707,6 +707,7 @@ where
 
 	// item bindings
 	let item_head = def_name.clone().then(type_params.clone()).then_ignore(just(Token::DoubleColon));
+	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 
 	// fn defs
 	let func = item_head
@@ -763,14 +764,19 @@ where
 	let struct_def = item_head
 		.clone()
 		.then_ignore(just(Token::Struct))
-		.then(brace(loose_list(
-			struct_field
-				.clone()
-				.map(Member::Field)
-				.or(func.clone().map(Member::Fn))
-				.or(attr_macro.clone().map(Member::Fn))
-				.or(embedded.map(Member::Field)),
-		)))
+		.then(brace(
+			loose_list(
+				fill_docs.clone().ignore_then(
+					struct_field
+						.clone()
+						.map(Member::Field)
+						.or(func.clone().map(Member::Fn))
+						.or(attr_macro.clone().map(Member::Fn))
+						.or(embedded.map(Member::Field)),
+				),
+			)
+			.then_ignore(fill_docs.clone()),
+		))
 		.map_with(|((name, type_params), members), ex| {
 			let (fields, fills, _) = split_members(members);
 			(
@@ -812,7 +818,14 @@ where
 		(Expr::String(s), _) => (None, Some(s)),
 		e => (Some(e), None),
 	});
-	let fields = brace(loose_list(ident().then_ignore(just(Token::Colon)).then(annot.clone())));
+	let fields = brace(
+		loose_list(
+			fill_docs
+				.clone()
+				.ignore_then(ident().then_ignore(just(Token::Colon)).then(annot.clone())),
+		)
+		.then_ignore(fill_docs.clone()),
+	);
 	let backing = just(Token::DoubleColon).to(None).or(just(Token::Colon)
 		.ignore_then(annot.clone())
 		.then_ignore(just(Token::Colon))
@@ -843,12 +856,17 @@ where
 		.then(type_params.clone())
 		.then(backing)
 		.then_ignore(just(Token::Enum))
-		.then(brace(loose_list(
-			func.clone()
-				.or(unquote.clone())
-				.map(Member::Fn)
-				.or(variant.map(Member::Variant)),
-		)))
+		.then(brace(
+			loose_list(
+				fill_docs.clone().ignore_then(
+					func.clone()
+						.or(unquote.clone())
+						.map(Member::Fn)
+						.or(variant.map(Member::Variant)),
+				),
+			)
+			.then_ignore(fill_docs.clone()),
+		))
 		.validate(|(((name, type_params), backing), members), ex, emitter| {
 			let (_, fills, variants) = split_members(members);
 			if backing.is_none() && variants.iter().any(|v| v.raw.is_some()) {
@@ -953,7 +971,6 @@ where
 				ex.span(),
 			)
 		});
-	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 	let fill = just(Token::Pub)
 		.or_not()
 		.then(func.clone().or(unquote.clone()).or(bare_fill).or(const_fill))
