@@ -108,6 +108,7 @@ pub(crate) fn fill_from_decl(
 pub(super) fn promote_embeds<'p>(
 	structs: &HashMap<String, Vec<FieldDef>>,
 	impls: &mut HashSet<(String, String)>,
+	claims: &[TraitBody<'p>],
 	scope_of: impl Fn(&str) -> &'p Scope,
 ) -> Vec<TraitBody<'p>> {
 	let (mut out, mut settled) = (vec![], usize::MAX);
@@ -119,18 +120,22 @@ pub(super) fn promote_embeds<'p>(
 				// a trait object claims its own trait
 				let tns: Vec<String> = match f.typ {
 					Typ::Struct(..) => (impls.iter().filter(|(t, _)| *t == sn)).map(|(_, tn)| tn.clone()).collect(),
-					Typ::Trait(_) | Typ::Error => vec![sn],
+					Typ::Trait(_) | Typ::Error => vec![sn.clone()],
 					_ => continue,
 				};
 				for tn in tns {
 					if is_hook_trait(&tn) || !impls.insert((typ.clone(), tn.clone())) {
 						continue;
 					}
+					// a promoted claim inherits the embedded type's type arguments
+					let args = (claims.iter().chain(out.iter()))
+						.find(|b| b.typ == sn && b.trait_name == tn)
+						.map_or(&[][..], |b| b.args);
 					out.push(TraitBody {
 						span: Span::default(),
 						typ: Box::leak(typ.clone().into_boxed_str()),
 						trait_name: tn,
-						args: &[],
+						args,
 						via: Some(Box::leak(f.name.clone().into_boxed_str())),
 						methods: &[],
 						scope: scope_of(typ),
@@ -165,6 +170,7 @@ pub(super) fn check_impls<'p>(
 	} in trait_bodies
 	{
 		// vias
+		let mut lent = None;
 		if let Some(field) = via {
 			let held = (types.structs.get(typ)).and_then(|fs| fs.iter().find(|f| f.name == field));
 			let Some(sn) = held.map(lends) else {
@@ -176,6 +182,7 @@ pub(super) fn check_impls<'p>(
 				let msg = format!("`{sn}` does not claim `{tn}`, so `{typ}` cannot delegate to it");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
 			}
+			lent = Some(sn);
 		}
 		if is_hook_trait(&tn) {
 			let hook = hook_method(&tn);
@@ -327,25 +334,38 @@ pub(super) fn check_impls<'p>(
 				continue;
 			}
 			// vias
-			if let Some(field) = via {
+			if let (Some(field), Some(lent)) = (via, &lent) {
 				let s = |e| (e, span);
-				let recv = Expr::Field {
-					tuple: Box::new(s(Expr::Ident("self".into()))),
-					field: field.into(),
+				// a method without `self` belongs to the lent type, not the instance
+				let lent_fn = params.first().is_none_or(|p| p.name != "self");
+				let recv = match lent_fn {
+					true => Expr::Ident(lent.clone()),
+					false => Expr::Field { tuple: Box::new(s(Expr::Ident("self".into()))), field: field.into() },
 				};
 				let call = Expr::MethodCall {
 					recv: Box::new(s(recv)),
 					method: name.clone(),
 					type_args: vec![],
-					args: params.iter().skip(1).map(|p| s(Expr::Ident(p.name.clone()))).collect(),
+					args: params.iter().skip(!lent_fn as usize).map(|p| s(Expr::Ident(p.name.clone()))).collect(),
 				};
+				let body = match lent_fn && matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self") {
+					true => Expr::StructLit {
+						name: typ.into(),
+						type_args: vec![],
+						fields: vec![(Some(field.into()), s(call))],
+					},
+					false => call,
+				};
+				let by: Vec<_> = (tparams.iter().zip(args).map(|(p, (te, _))| (p.name.clone(), te.clone())))
+					.chain([("Self".to_string(), TypeExpr::Name(typ.into()))])
+					.collect();
 				others.push(FnItem {
 					key: format!("{typ}.{name}"),
 					scope,
-					params: params.clone(),
+					params: params.iter().map(|p| Param { typ: subst(&p.typ, &by), ..p.clone() }).collect(),
 					params_tuple: *params_tuple,
-					ret: ret.clone(),
-					body: Box::leak(Box::new([s(call)])),
+					ret: ret.as_ref().map(|(te, sp)| (subst(te, &by), *sp)),
+					body: Box::leak(Box::new([s(body)])),
 				});
 				continue;
 			}

@@ -50,6 +50,7 @@ type EnumItem<'a> = (&'a str, Option<&'a Spanned<TypeExpr>>, &'a [EnumVariant]);
 struct Fills<'a, 'b> {
 	decls: &'b [TraitFn<'a>],
 	generic: bool,
+	targs: &'b [(String, TypeExpr)],
 }
 
 #[derive(Clone)]
@@ -419,25 +420,17 @@ fn ref_guarded(typ: &Typ, placeholders: &HashSet<String>) -> bool {
 	}
 }
 
-// Rewrite `Self` type refs to the owning type.
-fn replace_self(te: &TypeExpr, self_ty: &TypeExpr) -> TypeExpr {
-	match te {
-		TypeExpr::Name(n) if n == "Self" => self_ty.clone(),
-		TypeExpr::Array(e) => TypeExpr::Array(Box::new(replace_self(e, self_ty))),
-		TypeExpr::FixedArray(e, n) => TypeExpr::FixedArray(Box::new(replace_self(e, self_ty)), n.clone()),
-		TypeExpr::Variadic(e) => TypeExpr::Variadic(Box::new(replace_self(e, self_ty))),
-		TypeExpr::Tuple(fs) => TypeExpr::Tuple(fs.iter().map(|(n, t)| (n.clone(), replace_self(t, self_ty))).collect()),
-		TypeExpr::Annotated(a, t) => TypeExpr::Annotated(a.clone(), Box::new(replace_self(t, self_ty))),
-		TypeExpr::Fn(ps, r) => TypeExpr::Fn(
-			ps.iter().map(|(n, a, p)| (n.clone(), *a, replace_self(p, self_ty))).collect(),
-			Box::new(replace_self(r, self_ty)),
-		),
-		TypeExpr::Map(k, v) => TypeExpr::Map(Box::new(replace_self(k, self_ty)), Box::new(replace_self(v, self_ty))),
-		TypeExpr::Generic(name, args) => {
-			TypeExpr::Generic(name.clone(), args.iter().map(|a| replace_self(a, self_ty)).collect())
+// Rewrite the type names standing in for something else, like `Self`.
+pub(crate) fn subst(te: &TypeExpr, by: &[(String, TypeExpr)]) -> TypeExpr {
+	let mut te = te.clone();
+	te.walk_mut(&mut |t| {
+		if let TypeExpr::Name(n) = t
+			&& let Some((_, to)) = by.iter().find(|(from, _)| from == n)
+		{
+			*t = to.clone();
 		}
-		other => other.clone(),
-	}
+	});
+	te
 }
 
 #[derive(Clone)]
@@ -790,6 +783,8 @@ impl<M: Module> Compiler<M> {
 					}
 					None => (params.clone(), *params_tuple, ret.clone()),
 				};
+				let params = params.iter().map(|p| Param { typ: subst(&p.typ, claim.targs), ..p.clone() }).collect();
+				let ret = ret.map(|(te, span)| (subst(&te, claim.targs), span));
 				others.push(FnItem {
 					key,
 					scope,
@@ -810,14 +805,15 @@ impl<M: Module> Compiler<M> {
 					TypeExpr::Generic(typ.to_string(), args)
 				}
 			};
+			let by = [("Self".to_string(), self_ty)];
 			let params = params
 				.iter()
 				.map(|p| Param {
-					typ: replace_self(&p.typ, &self_ty),
+					typ: subst(&p.typ, &by),
 					..p.clone()
 				})
 				.collect();
-			let ret = ret.as_ref().map(|(te, span)| (replace_self(te, &self_ty), *span));
+			let ret = ret.as_ref().map(|(te, span)| (subst(te, &by), *span));
 			let mut all_params = type_params.to_vec();
 			all_params.extend(mtp.clone());
 			qualify_bounds(scope, &mut all_params);
@@ -1091,7 +1087,12 @@ impl<M: Module> Compiler<M> {
 						.filter_map(|(tn, _)| traits.get(tn.as_str()))
 						.flat_map(|(.., ms)| trait_fns(ms))
 						.collect();
-					let claim = Fills { decls: &decls, generic };
+					let targs: Vec<_> = (claimed.iter())
+						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| tps.iter().zip(*args)))
+						.flatten()
+						.map(|(p, (te, _))| (p.name.clone(), te.clone()))
+						.collect();
+					let claim = Fills { decls: &decls, generic, targs: &targs };
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
 				Expr::Fn { name, body, ret, .. } if name == "main" => {
@@ -1348,7 +1349,9 @@ impl<M: Module> Compiler<M> {
 			return Err(Diagnostic::new(msg, b.span.into_range()).with_label("claim `Drop` too"));
 		}
 
-		trait_bodies.extend(promote_embeds(&structs, &mut self.trait_impls, scope_of));
+		let promoted = promote_embeds(&structs, &mut self.trait_impls, &trait_bodies, scope_of);
+		trait_bodies.extend(promoted);
+
 		check_impls(
 			trait_bodies,
 			&traits,

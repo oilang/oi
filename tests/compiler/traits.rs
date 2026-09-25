@@ -714,3 +714,25 @@ fn embedded_trait_object_promotes_its_claim() {
 	"#};
 	check(src, ["disk on fire", "save: disk on fire"]);
 }
+
+#[test]
+fn embedding_promotes_a_parameterized_claim() {
+	let src = indoc! {r#"
+		P :: struct { b: int }
+		P : From[int] < { from :: fn(v: int) P { P.{ v } } }
+		C :: struct { P, c: int }
+		print(C.from(7).P.b)
+	"#};
+	check(src, "7");
+}
+
+#[test]
+fn a_claim_binds_its_trait_type_params_in_fills() {
+	let src = indoc! {r#"
+		Pair[T] :: trait { pair: fn(self, v: T) []T }
+		P :: struct { b: int }
+		P : Pair[int] < { pair :: fn(self, v) []int { [self.b v] } }
+		print(P.{7}.pair(8))
+	"#};
+	check(src, "[7, 8]");
+}
