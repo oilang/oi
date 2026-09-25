@@ -439,16 +439,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		let shape = if is_result { "!T" } else { "?T" };
 		let panic_in_main = self.ret.is_none() && self.is_main;
 		let mut target_err = err_typ.clone();
+		let mut from = None;
 		let declared = self.ret.as_ref().map(|(t, _)| t.clone());
 		let target = match &declared {
 			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
 				if e != err_typ && !(e == Typ::Error && self.open_error(&err_typ)) {
-					let msg = format!("cannot propagate `{err_typ}` into a fn returning {d}");
-					let label = match e == Typ::Error {
-						true => format!("`{err_typ}` does not claim Error"),
-						false => "mismatched error type".to_string(),
-					};
-					return Err(Diagnostic::new(msg, span.into_range()).with_label(label));
+					if self.claims(&e, "core::From") {
+						from = self.find_fill(&format!("{e}.from"), 0, &err_typ);
+					}
+					if from.is_none() {
+						let msg = format!("cannot propagate `{err_typ}` into a fn returning {d}");
+						let diag = Diagnostic::new(msg, span.into_range());
+						return Err(match e == Typ::Error {
+							true => diag.with_label(format!("`{err_typ}` does not claim Error")),
+							false => diag
+								.with_label("mismatched error type")
+								.with_note(format!("claim `{e} : From[{err_typ}]`")),
+						});
+					}
 				}
 				target_err = e;
 				t
@@ -489,10 +497,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			let sad_val = if is_result {
 				let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-				let e = if err_typ == target_err {
-					e
-				} else {
-					self.box_error(e, &err_typ)
+				let e = match &from {
+					Some(sig) => self.emit_call(sig, &[e]).0,
+					None if err_typ == target_err => e,
+					None => self.box_error(e, &err_typ),
 				};
 				let variants = self.variants_of(&target_typ);
 				self.make_enum(&variants, 1, &[e])

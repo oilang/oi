@@ -136,3 +136,16 @@ fn requires_matching_enclosing_return_result() {
 	"#};
 	fail(src, "needs an enclosing fn returning `!T`");
 }
+
+#[test]
+fn question_converts_via_from() {
+	let src = indoc! {"
+		A :: struct { code: int }
+		B :: struct { code: int }
+		B : From[A] < { from :: fn(a: A) Self { B.{ code = a.code + 1 } } }
+		inner :: fn() A!int { return A.{ code = 7 } }
+		outer :: fn() B!int { inner()? }
+		print(outer() or { $.code })
+	"};
+	check(src, "8");
+}
