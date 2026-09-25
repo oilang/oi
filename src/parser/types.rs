@@ -111,9 +111,15 @@ where
 		});
 
 		base.clone()
-			.then(same_line.clone().ignore_then(just(Token::Not)).ignore_then(base).or_not())
+			.then(
+				same_line
+					.clone()
+					.ignore_then(just(Token::Not))
+					.ignore_then(base.or_not())
+					.or_not(),
+			)
 			.map(|(e, ok)| match ok {
-				Some(ok) => result_of(ok, Some(e)),
+				Some(ok) => result_of(ok.unwrap_or(TypeExpr::Tuple(vec![])), Some(e)),
 				None => e,
 			})
 			.separated_by(just(Token::Pipe))

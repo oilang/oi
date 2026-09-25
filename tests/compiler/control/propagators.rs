@@ -104,6 +104,12 @@ fn bang_main() {
 		main :: fn() ! { print(load()?) }
 	"#};
 	fail_rt(bad, "error: missing");
+	let pinned = indoc! {r#"
+		A :: struct { m: string }
+		A :< Error
+		main :: fn() A! { return A.{ m = "boom" } }
+	"#};
+	fail_rt(pinned, r#"error: A.{m = "boom"}"#);
 	fail("main :: fn() int { 5 }", "`main` cannot return `int`");
 }
 
