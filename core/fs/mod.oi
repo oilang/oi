@@ -77,3 +77,23 @@ pub mkdir :: fn(path: string) ! {
 		return error("cannot create {path}")
 	}
 }
+
+## Get list of entries in a directory.
+pub list :: fn(path: string) ![]string {
+	d := unsafe opendir(path.cstr())
+	if d.is_null() do return error("cannot open {path}")
+
+	out: []string
+	loop {
+		e := unsafe readdir(d)
+		if e.is_null() do break
+
+		# ponytail: glibc dirent d_name offset
+		name :: unsafe cstr.(e.offset(19)).str()
+		if name != "." && name != ".." {
+			out << name
+		}
+	}
+	_ := unsafe closedir(d)
+	out
+}

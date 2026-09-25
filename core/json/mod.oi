@@ -14,6 +14,57 @@ pub parse :: fn(s: string) !Json {
 	v
 }
 
+Json :< {
+	## Compact JSON text.
+	pub str :: fn(self) string {
+		match self {
+			:null => "null",
+			b @ bool => b.str(),
+			f @ float => {
+				if f > -1e15 && f < 1e15 && float.(int.(f)) == f {
+					int.(f).str()
+				} else {
+					f.str()
+				}
+			},
+			s @ string => quote(s),
+			a @ Arr => {
+				parts: []string
+				loop v in a {
+					parts << v.str()
+				}
+				"[" + parts.join(",") + "]"
+			},
+			o @ Obj => {
+				parts: []string = []
+				loop (k, v) in o { parts << quote(k) + ":" + v.str() }
+				"{{" + parts.join(",") + "}}"
+			},
+		}
+	}
+}
+
+hex :: "0123456789abcdef"
+
+## Quote and escape a string.
+quote :: fn(s: string) string {
+	out := "\""
+	loop c in s {
+		out += match c {
+			34 => "\\\"",
+			92 => "\\\\",
+			10 => "\\n",
+			13 => "\\r",
+			9 => "\\t",
+			else => if c < 32 {
+				n :: int.(c)
+				"\\u00" + hex[(n / 16)..(n / 16 + 1)] + hex[(n % 16)..(n % 16 + 1)]
+			} else { string.([c]) },
+		}
+	}
+	out + "\""
+}
+
 P :: struct { s: string, i: int }
 
 P :< {

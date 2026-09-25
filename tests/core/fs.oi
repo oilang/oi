@@ -12,6 +12,7 @@ test! "write" {
 	fs.write("{d}/a.txt", "hi\n")
 	fs.append("{d}/a.txt", "yo")
 	assert! fs.read("{d}/a.txt") == !string.("hi\nyo")
+	assert! (fs.list(d) or []) == [ "a.txt" ]
 	fs.remove("{d}/a.txt")
 	fs.remove(d)
 	assert! !fs.exists(d)

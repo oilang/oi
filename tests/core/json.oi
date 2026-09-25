@@ -43,3 +43,8 @@ test! "malformed" {
 	assert! text(parse("[1, 2") or { $.message() }) == "expected a comma at 5"
 	assert! text(parse("{{\"a\": }}") or { $.message() }) == "invalid number at 6"
 }
+
+test! "str" {
+	src :: "{{\"a\":[1,2.5,true,null,\"x\\ny\"]}}"
+	assert! (parse(src) or { :null }).str() == src
+}
