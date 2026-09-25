@@ -114,12 +114,13 @@ pub(super) fn promote_embeds<'p>(
 	while out.len() != settled {
 		settled = out.len();
 		for (typ, fields) in structs {
-			for f in fields {
-				let Some(sn) = embed_name(f) else { continue };
+			for f in fields.iter().filter(|f| f.embedded) {
+				let sn = lends(f);
 				// a trait object claims its own trait
 				let tns: Vec<String> = match f.typ {
-					Typ::Struct(..) => (impls.iter().filter(|(t, _)| t == sn)).map(|(_, tn)| tn.clone()).collect(),
-					_ => vec![sn.to_string()],
+					Typ::Struct(..) => (impls.iter().filter(|(t, _)| *t == sn)).map(|(_, tn)| tn.clone()).collect(),
+					Typ::Trait(_) | Typ::Error => vec![sn],
+					_ => continue,
 				};
 				for tn in tns {
 					if is_hook_trait(&tn) || !impls.insert((typ.clone(), tn.clone())) {
@@ -165,13 +166,13 @@ pub(super) fn check_impls<'p>(
 	{
 		// vias
 		if let Some(field) = via {
-			let inner = (types.structs.get(typ)).and_then(|fs| fs.iter().find(|f| f.name == field).and_then(embed_name));
-			let Some(sn) = inner else {
-				let msg = format!("`{typ}` has no embedded field `{field}` to route `{tn}` through");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("not an embedded field"));
+			let held = (types.structs.get(typ)).and_then(|fs| fs.iter().find(|f| f.name == field));
+			let Some(sn) = held.map(lends) else {
+				let msg = format!("`{typ}` has no field `{field}` to route `{tn}` through");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
 			};
 			// check whether a via actually claims the mentioned trait
-			if sn != tn && !trait_impls.contains(&(sn.to_string(), tn.to_string())) {
+			if sn != tn && !trait_impls.contains(&(sn.clone(), tn.to_string())) {
 				let msg = format!("`{sn}` does not claim `{tn}`, so `{typ}` cannot delegate to it");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
 			}

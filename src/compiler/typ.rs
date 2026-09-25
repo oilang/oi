@@ -101,13 +101,11 @@ pub(crate) fn embeds(fields: &[FieldDef]) -> impl Iterator<Item = (usize, &str, 
 	})
 }
 
-// What an embedded field lends its struct.
-// A trait object lends its trait, a struct lends its own name.
-pub(crate) fn embed_name(f: &FieldDef) -> Option<&str> {
+// The name a field routes claims through, embedded or stated by a `via`.
+pub(crate) fn lends(f: &FieldDef) -> String {
 	match &f.typ {
-		Typ::Struct(n, _) | Typ::Trait(n) if f.embedded => Some(n),
-		Typ::Error if f.embedded => Some(role::ERROR),
-		_ => None,
+		Typ::Error => role::ERROR.into(),
+		t => t.to_string(),
 	}
 }
 

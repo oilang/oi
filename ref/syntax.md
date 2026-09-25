@@ -749,7 +749,7 @@ Point :< Copy
 
 ## delegation
 
-# `via` routes a claim through an embedded field that already satisfies it
+# `via` routes a claim through any field that already satisfies it
 Horn :: struct { kind: string }
 Horn : Animal < {
 	speak :: fn(self) string { "honk" }
@@ -761,6 +761,8 @@ Car :< Animal via Horn
 
 # a `via` claim may override individual methods, routing the rest through the stated field
 Car : Animal via Horn < { speak :: fn(self) string { "HONK HONK" } }
+Wagon :: struct { horn: Horn }
+Wagon :< Animal via horn
 
 # embedding trait objects promotes their claims
 Ctx :: struct {

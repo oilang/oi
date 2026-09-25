@@ -351,6 +351,7 @@ const CAR_HORN: &str = indoc! {r#"
 
 #[test]
 fn via_delegation() {
+	// via through embedded struct
 	let src = indoc! {r#"
 		Car :< Animal via Horn
 		zoo : []Animal : [ Car.{ Horn = Horn.{ kind = "vroom" } } ]
@@ -361,6 +362,14 @@ fn via_delegation() {
 	let over = r#"Car : Animal via Horn < { speak :: fn(self) string { "HONK HONK" } }
 	Car.{ kind = "vroom" }.speak()"#;
 	check([ANIMAL_KIND, CAR_HORN, over], "HONK HONK");
+
+	// via through named field
+	let named = indoc! {r#"
+		Wagon :: struct { horn: Horn, kind: string }
+		Wagon :< Animal via horn
+		print(Wagon.{ Horn.{ "vroom" }, "wagon" }.speak())
+	"#};
+	check([ANIMAL_KIND, CAR_HORN, named], "honk");
 }
 
 #[test]
