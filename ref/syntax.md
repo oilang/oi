@@ -1533,6 +1533,16 @@ main :: fn() {
 		panic!("refused")
 	}
 
+	# sum types may be used for errors, either named type aliases or inline
+	load :: fn(path: string) (io.Error | ParseError)!Config {
+		src := fs.read(path)?
+		parse(src)?
+	}
+	cfg := load(path) or match $ {
+		e @ ParseError => panic!("bad config at {e.line}"),
+		_ => Config.{},
+	}
+
 	# the "error" type can be anything
 	lookup : fn() Result[int, string]
 

@@ -596,3 +596,50 @@ fn a_member_returns_through_a_result() {
 		"true",
 	);
 }
+
+#[test]
+fn sums_as_errors() {
+	let types = indoc! {"
+		A :: struct { m: string }
+		B :: struct { n: int }
+		E :: A | B
+	"};
+
+	check(
+		[
+			types,
+			indoc! {r#"
+				pick :: fn(x: int) E!int {
+					if x < 0 { return A.{ m = "neg" } }
+					if x == 0 { return B.{ n = 0 } }
+					x * 2
+				}
+				show :: fn(x: int) int {
+					pick(x) or match $ {
+						a @ A => { print(a.m) 1 }
+						b @ B => { print(b.n) 2 }
+					}
+				}
+				print(show(3))
+				print(show(-1))
+				print(show(0))
+			"#},
+		],
+		["6", "neg", "1", "0", "2"],
+	);
+	check(
+		[
+			types,
+			indoc! {r#"
+				inner :: fn() A!int { return A.{ m = "boom" } }
+				outer :: fn() E!int { inner()? + 1 }
+				print(outer() or match $ {
+					a @ A => { print(a.m) 1 }
+					b @ B => 2,
+				})
+			"#},
+		],
+		["boom", "1"],
+	);
+	check([types, "f :: fn() (A | B)!int { 2 }"], "")
+}

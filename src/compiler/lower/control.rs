@@ -443,7 +443,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let declared = self.ret.as_ref().map(|(t, _)| t.clone());
 		let target = match &declared {
 			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
-				if e != err_typ && !(e == Typ::Error && self.open_error(&err_typ)) {
+				let in_sum = self.through_sum(Some(&e), |t| *t == err_typ).as_ref() == Some(&err_typ);
+				if e != err_typ && !in_sum && !(e == Typ::Error && self.open_error(&err_typ)) {
 					if self.claims(&e, "core::From") {
 						from = self.find_fill(&format!("{e}.from"), 0, &err_typ);
 					}
@@ -499,8 +500,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
 				let e = match &from {
 					Some(sig) => self.emit_call(sig, &[e]).0,
-					None if err_typ == target_err => e,
-					None => self.box_error(e, &err_typ),
+					None => self.coerce(e, &err_typ, &target_err, span)?.0,
 				};
 				let variants = self.variants_of(&target_typ);
 				self.make_enum(&variants, 1, &[e])

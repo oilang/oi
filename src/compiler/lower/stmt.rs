@@ -428,14 +428,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((val, typ));
 		};
 		let (val, typ) = self.coerce(val, &typ, &ok, span)?;
+		let (val, typ) = match typ == ok {
+			true => (val, typ),
+			false => self.coerce(val, &typ, &err, span)?,
+		};
 		let variants = self.variants_of(&ret);
 		Ok(if typ == ok {
 			(self.make_enum(&variants, 0, &[val]), ret)
 		} else if typ == err {
 			(self.make_enum(&variants, 1, &[val]), ret)
-		} else if err == Typ::Error && self.open_error(&typ) {
-			let boxed = self.box_error(val, &typ);
-			(self.make_enum(&variants, 1, &[boxed]), ret)
 		} else {
 			(val, typ)
 		})
