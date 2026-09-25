@@ -161,6 +161,31 @@ fn implicit_trait() {
 }
 
 #[test]
+fn is_on_a_trait_object() {
+	let src = indoc! {r#"
+		Animal :: trait {}
+		Dog :: struct {}
+		Dog :< Animal
+		Cat :: struct {}
+		Cat :< Animal
+		a := Animal.(Dog.{})
+		print(a is Dog, a is Cat, a is not Dog)
+	"#};
+	check(src, "true false false");
+}
+
+#[test]
+fn is_on_an_error() {
+	let src = indoc! {r#"
+		Bad :: struct {}
+		Bad : Error < { message :: fn(self) string { "bad" } }
+		e := Error.(Bad.{})
+		print(e is Bad)
+	"#};
+	check(src, "true");
+}
+
+#[test]
 fn is_expression_unknown_type() {
 	fail(
 		indoc! {"

@@ -79,16 +79,38 @@ impl<'a, M: Module> Translator<'a, M> {
 				trait_name,
 				negated,
 			} => {
-				let Expr::Ident(name) = &subject.0 else {
-					return Err(Diagnostic::new(
-						"`is` takes a type name on the left",
-						subject.1.into_range(),
-					));
+				if let Expr::Ident(name) = &subject.0
+					&& !self.vars.contains_key(name)
+				{
+					let typ = self.types().resolve(&TypeExpr::Name(name.clone()), subject.1)?;
+					let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
+					let holds = self.claims(&typ, tn) ^ negated;
+					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
+				}
+				let (obj, vt) = self.expr(subject)?;
+				let tn = match &vt {
+					Typ::Trait(tn) => tn.clone(),
+					Typ::Error => role::ERROR.to_string(),
+					_ => {
+						return Err(Diagnostic::new(
+							"`is` takes a type name or a trait object on the left",
+							subject.1.into_range(),
+						)
+						.with_label(format!("this is {vt}")));
+					}
 				};
-				let typ = self.types().resolve(&TypeExpr::Name(name.clone()), subject.1)?;
-				let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
-				let holds = self.claims(&typ, tn) ^ negated;
-				Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool))
+				let typ = self.types().resolve(&TypeExpr::Name(trait_name.clone()), expr.1)?;
+				if !self.trait_impls.contains(&(typ.key(), tn.clone())) {
+					return Ok((self.b.ins().iconst(self.int, *negated as i64), Typ::Bool));
+				}
+				let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
+				let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
+				let cc = match negated {
+					true => IntCC::NotEqual,
+					false => IntCC::Equal,
+				};
+				let hit = self.b.ins().icmp(cc, got, want);
+				Ok((self.b.ins().uextend(self.int, hit), Typ::Bool))
 			}
 
 			Expr::Negative(e) => {
