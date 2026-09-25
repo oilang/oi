@@ -114,13 +114,15 @@ pub(super) fn promote_embeds<'p>(
 	while out.len() != settled {
 		settled = out.len();
 		for (typ, fields) in structs {
-			for (o, sn, _) in embeds(fields) {
-				let tns: Vec<String> = (impls.iter())
-					.filter(|(t, tn)| t == sn && !is_hook_trait(tn))
-					.map(|(_, tn)| tn.clone())
-					.collect();
+			for f in fields {
+				let Some(sn) = embed_name(f) else { continue };
+				// a trait object claims its own trait
+				let tns: Vec<String> = match f.typ {
+					Typ::Struct(..) => (impls.iter().filter(|(t, _)| t == sn)).map(|(_, tn)| tn.clone()).collect(),
+					_ => vec![sn.to_string()],
+				};
 				for tn in tns {
-					if !impls.insert((typ.clone(), tn.clone())) {
+					if is_hook_trait(&tn) || !impls.insert((typ.clone(), tn.clone())) {
 						continue;
 					}
 					out.push(TraitBody {
@@ -128,7 +130,7 @@ pub(super) fn promote_embeds<'p>(
 						typ: Box::leak(typ.clone().into_boxed_str()),
 						trait_name: tn,
 						args: &[],
-						via: Some(Box::leak(fields[o].name.clone().into_boxed_str())),
+						via: Some(Box::leak(f.name.clone().into_boxed_str())),
 						methods: &[],
 						scope: scope_of(typ),
 					});
@@ -163,15 +165,13 @@ pub(super) fn check_impls<'p>(
 	{
 		// vias
 		if let Some(field) = via {
-			let inner = types
-				.structs
-				.get(typ)
-				.and_then(|fs| embeds(fs).find_map(|(o, sn, _)| (fs[o].name == field).then_some(sn)));
+			let inner = (types.structs.get(typ)).and_then(|fs| fs.iter().find(|f| f.name == field).and_then(embed_name));
 			let Some(sn) = inner else {
 				let msg = format!("`{typ}` has no embedded field `{field}` to route `{tn}` through");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("not an embedded field"));
 			};
-			if !trait_impls.contains(&(sn.to_string(), tn.to_string())) {
+			// check whether a via actually claims the mentioned trait
+			if sn != tn && !trait_impls.contains(&(sn.to_string(), tn.to_string())) {
 				let msg = format!("`{sn}` does not claim `{tn}`, so `{typ}` cannot delegate to it");
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
 			}

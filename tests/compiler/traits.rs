@@ -690,3 +690,18 @@ fn embedded_err_promotes_error_claim() {
 	"#};
 	check(src, ["parse error at line 4", "disk on fire"]);
 }
+
+#[test]
+fn embedded_trait_object_promotes_its_claim() {
+	let src = indoc! {r#"
+		Io :: struct { Error }
+		Ctx :: struct { Error, where: string }
+		Ctx : Error < { message :: fn(self) string { "{self.where}: {self.Error.message()}" } }
+		boom :: fn(n: int) !int {
+			if n == 0 { return Io.{ Error = error("disk on fire") } }
+			return Ctx.{ Error = error("disk on fire"), where = "save" }
+		}
+		loop n in 0..2 { boom(n) or { print($.message()) 0 } }
+	"#};
+	check(src, ["disk on fire", "save: disk on fire"]);
+}

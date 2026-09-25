@@ -101,6 +101,16 @@ pub(crate) fn embeds(fields: &[FieldDef]) -> impl Iterator<Item = (usize, &str, 
 	})
 }
 
+// What an embedded field lends its struct.
+// A trait object lends its trait, a struct lends its own name.
+pub(crate) fn embed_name(f: &FieldDef) -> Option<&str> {
+	match &f.typ {
+		Typ::Struct(n, _) | Typ::Trait(n) if f.embedded => Some(n),
+		Typ::Error if f.embedded => Some(role::ERROR),
+		_ => None,
+	}
+}
+
 // A field's encoded vtable slot.
 pub(crate) fn field_slot<'f>(fields: &'f [FieldDef], name: &str) -> Option<(i64, &'f FieldDef)> {
 	let direct = fields.iter().position(|f| f.name == name).map(|i| ((i * 8) as i64, &fields[i]));

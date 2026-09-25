@@ -762,6 +762,13 @@ Car :< Animal via Horn
 # a `via` claim may override individual methods, routing the rest through the stated field
 Car : Animal via Horn < { speak :: fn(self) string { "HONK HONK" } }
 
+# embedding trait objects promotes their claims
+Ctx :: struct {
+	Error
+	where: string
+}
+Ctx : Error < { message :: fn(self) string { "{self.where}: {self.Error.message()}" } }
+
 ## composite types
 
 #{
