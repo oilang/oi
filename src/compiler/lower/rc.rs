@@ -96,7 +96,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Projections borrow.
 	pub fn move_out(&mut self, e: &Spanned<Expr>, typ: &Typ) -> Result<(), Diagnostic> {
 		match &e.0 {
-			Expr::Ident(n) => {
+			Expr::Ident(n) if n != "none" => {
 				let local = self.local(n, e.1.into_range())?;
 				self.move_local(n, &local, e.1.into_range())?;
 			}

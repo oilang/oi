@@ -96,12 +96,30 @@ fn pure_fns_cannot_touch_statics() {
 fn top_level_const_works_alongside_main() {
 	let src = indoc! {r#"
 		N :: 3
+		A :: 1 + 2
 		GREETING :: "hi"
+		E :: enum { red green }
+		RED :: E.green
 
 		main :: fn() {
 			buf : [N]int
-			print("{GREETING} {buf.len}")
+			print("{GREETING} {buf.len} {A}")
+			print(match RED {
+				E.red => "r",
+				E.green => "g",
+			})
 		}
 	"#};
-	check(src, "hi 3");
+	check(src, ["hi 3 3", "g"]);
+}
+
+#[test]
+fn const_enum_variant_crosses_modules() {
+	Project::new()
+		.file("main.oi", ["use mem", "main :: fn() { print(mem.RED == mem.E.green) }"])
+		.file(
+			"mem.oi",
+			["module mem", "pub E :: enum { red green }", "pub RED :: E.green"],
+		)
+		.check("true");
 }

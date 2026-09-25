@@ -241,6 +241,9 @@ fn is_const_value(e: &Expr) -> bool {
 	match e {
 		Expr::Tuple(fields) => fields.is_empty(),
 		Expr::StructLit { fields, .. } => fields.iter().all(|(_, v)| is_literal(&v.0)),
+		Expr::Field { tuple, .. } => {
+			matches!(&tuple.0, Expr::Ident(n) if n.rsplit("::").next().is_some_and(|t| t.starts_with(char::is_uppercase)))
+		}
 		_ => is_literal(e),
 	}
 }
@@ -312,6 +315,21 @@ impl Loader {
 			self.publics.insert(name.clone());
 		}
 		Ok(())
+	}
+
+	// Fold a const initializer to a literal, qualifying any type name it carries.
+	fn const_value(&self, v: &Spanned<Expr>, scope: &Scope) -> Option<Spanned<Expr>> {
+		let mut e = fold_const(&v.0, &self.consts, scope).or_else(|| is_const_value(&v.0).then(|| v.0.clone()))?;
+		match &mut e {
+			Expr::StructLit { name, .. } if !name.is_empty() => *name = scope.qualify_name(name),
+			Expr::Field { tuple, .. } => {
+				if let Expr::Ident(n) = &mut tuple.0 {
+					*n = scope.qualify_name(n);
+				}
+			}
+			_ => {}
+		}
+		Some((e, v.1))
 	}
 
 	// Validate a file and fold its items into the module, qualifying names as they land.
@@ -493,16 +511,10 @@ impl Loader {
 					typ,
 					value,
 				} if !main || matches!(value.as_deref(), Some((Expr::Foreign, _))) => {
-					if let Some(v) = value.as_deref_mut() {
-						if let Some(f) = fold_const(&v.0, &self.consts, &m.scope) {
-							v.0 = f;
-						}
-						if *mutable
-							&& let Expr::StructLit { name: n, .. } = &mut v.0
-							&& !n.is_empty()
-						{
-							*n = m.scope.qualify_name(n);
-						}
+					if let Some(v) = value.as_deref_mut()
+						&& let Some(c) = self.const_value(v, &m.scope)
+					{
+						*v = c;
 					}
 					let bad = match (*mutable, typ.is_some(), value.as_deref()) {
 						(true, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
@@ -524,13 +536,8 @@ impl Loader {
 							Some(("type annotations on consts aren't supported yet", "drop the annotation"))
 						}
 						(_, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
+							let v = v.clone();
 							self.define(m, name, true, public, span)?;
-							let mut v = v.clone();
-							if let Expr::StructLit { name: n, .. } = &mut v.0
-								&& !n.is_empty()
-							{
-								*n = m.scope.qualify_name(n);
-							}
 							self.consts.insert(name.clone(), v);
 							continue;
 						}
@@ -549,14 +556,10 @@ impl Loader {
 					name,
 					typ: None,
 					value: Some(v),
-				} if is_const_value(&v.0) => {
-					let mut c = (**v).clone();
-					if let Expr::StructLit { name: n, .. } = &mut c.0
-						&& !n.is_empty()
-					{
-						*n = m.scope.qualify_name(n);
+				} => {
+					if let Some(c) = self.const_value(v, &m.scope) {
+						self.consts.insert(name.clone(), c);
 					}
-					self.consts.insert(name.clone(), c);
 				}
 				Expr::Claim { typ, fills, .. } => {
 					if !main && !crate::compiler::TypeCtx::builtin_type(typ) {
@@ -564,17 +567,10 @@ impl Loader {
 					}
 					// pull const fills out as associated consts, keyed `Type::name`
 					for (n, v) in fills.iter().filter_map(|f| const_fill(&f.0)) {
-						let mut lit = fold_const(&v.0, &self.consts, &m.scope)
-							.or_else(|| is_const_value(&v.0).then(|| v.0.clone()))
-							.ok_or_else(|| {
-								err("cannot evaluate this at compile time", v.1, "not a const expression")
-							})?;
-						if let Expr::StructLit { name: sn, .. } = &mut lit
-							&& !sn.is_empty()
-						{
-							*sn = m.scope.qualify_name(sn);
-						}
-						self.consts.insert(format!("{typ}::{n}"), (lit, v.1));
+						let lit = self.const_value(v, &m.scope).ok_or_else(|| {
+							err("cannot evaluate this at compile time", v.1, "not a const expression")
+						})?;
+						self.consts.insert(format!("{typ}::{n}"), lit);
 					}
 					fills.retain(|f| const_fill(&f.0).is_none());
 				}
