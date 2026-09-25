@@ -296,6 +296,23 @@ fn claimed_error_bare_return() {
 }
 
 #[test]
+fn error_message_defaults_to_str() {
+	let src = indoc! {r#"
+		NetError :: enum { timeout refused }
+		NetError :< Error
+		Io :: struct {}
+		Io :< Error
+		e :: fn() !int { return NetError.timeout }
+		a :: fn() !int { return :oops }
+		i :: fn() !int { return Io.{} }
+		e() or { print($.message()) 0 }
+		a() or { print($.message()) 0 }
+		i() or { print($.message()) 0 }
+	"#};
+	check(src, ["timeout", ":oops", "Io.{}", "0"]);
+}
+
+#[test]
 fn claimed_error_wrapped() {
 	let src = indoc! {r#"
 		NetError :: enum { timeout refused }

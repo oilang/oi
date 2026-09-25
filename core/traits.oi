@@ -38,13 +38,14 @@ pub TryFrom[T] :: trait { try_from: fn(v: T) !Self }
 # errors
 
 pub Error :: trait {
-	message: fn(self) string
+	message :: fn(self) string { self.str() }
 	cause :: fn(self) ?Error { none }
 }
 
 string : Error < {
 	message :: fn(self) string { self }
 }
+atom :< Error
 
 pub Err :: struct { pub msg: string }
 Err : Error < {

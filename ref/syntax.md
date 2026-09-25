@@ -1534,14 +1534,13 @@ main :: fn() {
 	}
 
 	# custom error types
-	# embed Error for default impls, only override what you need
+	# claim Error, only override what you need
 
 	ParseError :: struct {
-		Error
 		line: int
 		col: int
 	}
-	ParseError :< {
+	ParseError : Error < {
 		message :: fn(self) string { "parse error at {self.line}:{self.col}" }
 	}
 
@@ -1551,6 +1550,14 @@ main :: fn() {
 	}
 
 	parse(src) or { panic!($.message()) }
+
+	# error `message` fn defaults to `self.str()`
+	NetError :: enum { timeout refused }
+	NetError :< Error
+	fetch :: fn(url: string) NetError!Response {
+		return :timeout
+	}
+	fetch(url) or { panic!($.message()) } # "timeout"
 
 	# error chaining via cause()
 	WrappedError :: struct {
