@@ -266,6 +266,12 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => return Ok(None),
 				},
 
+				Expr::MacroCall { name, .. } if matches!(name.as_str(), "panic" | "todo" | "unreachable") => {
+					self.expr(stmt)?;
+					self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+					return Ok(None);
+				},
+
 				// TODO: revisit after adding the Iterator trait
 				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body)?,
 

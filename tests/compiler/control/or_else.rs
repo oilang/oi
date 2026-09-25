@@ -64,6 +64,12 @@ fn fallback_can_diverge() {
 }
 
 #[test]
+fn fallback_can_panic() {
+	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
+	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");
+}
+
+#[test]
 fn type_mismatch_errors() {
 	fail(
 		r#"?int.(42) or { "wrong" }"#,

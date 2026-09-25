@@ -1965,6 +1965,11 @@ impl<M: Module> Compiler<M> {
 				trans.move_resource(e, &typ)?;
 			}
 			trans.emit_return(val, typ, span)?;
+		} else if trans.b.func.signature.returns.is_empty()
+			&& let Some((ret, _)) = &trans.ret
+			&& !ret.is_unit()
+		{
+			trans.b.func.signature.returns.push(AbiParam::new(cl_type(ret, trans.int)));
 		}
 		trans.b.finalize();
 
