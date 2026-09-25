@@ -155,6 +155,7 @@ tags: []
 ## consider
 - `nil`
 - [ ] fn math? f + g, if both return strings, concats strings?
+- allowing quotes/AST outside of macros, for code generators and stuff
 - [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
 - `let-else` `rust`
 - submodules `use raylib.math`

@@ -51,6 +51,21 @@ fn widening_casts() {
 }
 
 #[test]
+fn assertion_casts() {
+	let src = indoc! {r#"
+		Animal :: trait {}
+		Dog :: struct {}
+		Dog :< Animal
+		Cat :: struct {}
+		Cat :< Animal
+		a := Animal.(Dog.{})
+		print(match Dog.(a) { d => "dog", else => "?" })
+		print(match Cat.(a) { c => "cat", else => "?" })
+	"#};
+	check(src, ["dog", "?"]);
+}
+
+#[test]
 fn result_casts() {
 	check("!int.(7)", "ok.(7)");
 	check(r#"!int.(error("oops"))"#, r#"err.("oops")"#);

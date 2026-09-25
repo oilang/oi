@@ -155,6 +155,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if typ == *target {
 			return Ok((val, typ));
 		}
+		if let Some(out) = self.assert_cast(val, &typ, target)? {
+			return Ok(out);
+		}
 		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
 			&& p == role::PTR
 		{
@@ -195,6 +198,26 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((out, target.clone()));
 		}
 		Err(Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label("no conversion"))
+	}
+
+	// Assertion casts.
+	fn assert_cast(&mut self, obj: Value, typ: &Typ, target: &Typ) -> Result<Option<TypedVal>, Diagnostic> {
+		let tn = match typ {
+			Typ::Trait(tn) => tn.clone(),
+			Typ::Error => role::ERROR.to_string(),
+			_ => return Ok(None),
+		};
+		let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(target));
+		let none = self.make_option(&opt, None);
+		if !self.trait_impls.contains(&(target.key(), tn.clone())) {
+			return Ok(Some((none, opt)));
+		}
+		let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())));
+		let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
+		let same = self.b.ins().icmp(IntCC::Equal, got, want);
+		let data = self.b.ins().load(self.int, MemFlags::new(), obj, 8);
+		let some = self.make_option(&opt, Some(data));
+		Ok(Some((self.b.ins().select(same, some, none), opt)))
 	}
 
 	// Numeric and string casts.
