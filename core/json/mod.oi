@@ -46,6 +46,24 @@ Json :< {
 
 hex :: "0123456789abcdef"
 
+## Value of a hex digit 0-9a-fA-F.
+hex_digit :: fn(c: u8) !int {
+	if c >= 48 && c <= 57 { return int.(c) - 48 }
+	if c >= 97 && c <= 102 { return int.(c) - 87 }
+	if c >= 65 && c <= 70 { return int.(c) - 55 }
+	error("invalid hex digit")
+}
+
+## Encode a Unicode code point as UTF-8 bytes.
+utf8_encode :: fn(cp: int) string {
+	if cp < 0x80 { return string.([u8.(cp)]) }
+	if cp < 0x800 { return string.([u8.(0xc0 | cp >> 6), u8.(0x80 | cp & 0x3f)]) }
+	if cp < 0x10000 {
+		return string.([u8.(0xe0 | cp >> 12), u8.(0x80 | cp >> 6 & 0x3f), u8.(0x80 | cp & 0x3f)])
+	}
+	string.([u8.(0xf0 | cp >> 18), u8.(0x80 | cp >> 12 & 0x3f), u8.(0x80 | cp >> 6 & 0x3f), u8.(0x80 | cp & 0x3f)])
+}
+
 ## Quote and escape a string.
 quote :: fn(s: string) string {
 	out := "\""
@@ -105,6 +123,15 @@ P :< {
 		parse_float(self.s[a..self.i]) or { return error("invalid number at {a}") }
 	}
 
+	## Decode 4 hex digits at the cursor into a code point.
+	hex4 :: fn(mut self) !int {
+		if self.i + 4 > self.s.len { return error("truncated \\u escape at {self.i}") }
+		cp := 0
+		loop j in 0..4 { cp = cp * 16 + hex_digit(self.s[self.i + j])? }
+		self.i += 4
+		cp
+	}
+
 	str :: fn(mut self) !string {
 		self.word("\"")?
 		out := ""
@@ -121,11 +148,18 @@ P :< {
 			e :: self.at()
 			self.i += 1
 
-			# support `\uXXXX` format
 			out += match e {
 				"n" => "\n", "t" => "\t", "r" => "\r", "b" => string.([u8.(8)]), "f" => string.([u8.(12)]),
 				"\"", "\\", "/" => e,
-				"u" => "\\u",
+				"u" => {
+					cp := self.hex4()?
+					if cp >= 0xd800 && cp <= 0xdbff && self.s[self.i..].starts_with("\\u") {
+						self.i += 2
+						lo :: self.hex4()?
+						cp = 0x10000 + (cp - 0xd800) * 0x400 + (lo - 0xdc00)
+					}
+					utf8_encode(cp)
+				},
 				else => { return error("invalid escape at {self.i - 1}") },
 			}
 

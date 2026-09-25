@@ -36,7 +36,8 @@ test! "extension api" {
 }
 
 test! "escapes" {
-	assert! text(parse("\"a\\n\\\"b\\u00e9\"") or { :null }) == "a\n\"b\\u00e9"
+	assert! text(parse("\"a\\n\\\"b\\u00e9\"") or { :null }) == "a\n\"bé"
+	assert! text(parse("\"\\ud83d\\ude00\"") or { :null }) == "😀"
 }
 
 test! "malformed" {
