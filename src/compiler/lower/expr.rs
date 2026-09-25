@@ -781,6 +781,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let v = self.b.ins().load(self.int, MemFlags::new(), ptr, (i * 8) as i32);
 					self.b.ins().store(MemFlags::new(), v, boxp, (i * 8) as i32);
 				}
+				self.untemp(ptr);
 				let typ = Typ::Ref(Box::new(typ.clone()));
 				self.temp(boxp, &typ);
 				Ok((boxp, typ))

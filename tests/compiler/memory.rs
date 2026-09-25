@@ -151,12 +151,13 @@ fn defer_releases_after_the_body_runs() {
 }
 
 #[test]
-fn struct_field_leak_is_bounded() {
-	let src = indoc! {"
+fn struct_literal_owns_its_field_handles() {
+	assert_clean(indoc! {"
 		Bag :: struct { items: []int }
 		s :: Bag.{ items = [ 1 2 ] }
 		print(s.items[0])
-	"};
-	// TODO: revisit
-	assert_eq!(leaks(src), 2);
+	"});
+	let plain = "Bag :: struct { n: int }\nmk :: fn() Bag { Bag.{ n = 1 } }\nprint(mk().n)";
+	let held = "Bag :: struct { items: []int }\nmk :: fn() Bag { Bag.{ items = [ 1 2 ] } }\nprint(mk().items[0])";
+	assert_eq!(leaks(held), leaks(plain));
 }

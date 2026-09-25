@@ -227,7 +227,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Register a producer's fresh handle with the innermost scope.
 	pub(super) fn temp(&mut self, val: Value, typ: &Typ) {
-		if handle_fns(typ).is_some() || self.is_resource(typ) {
+		if releasable(typ) || self.is_resource(typ) {
 			let var = self.b.declare_var(self.int);
 			self.b.def_var(var, val);
 			self.temps.insert(val, var);
