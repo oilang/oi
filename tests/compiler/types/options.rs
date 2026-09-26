@@ -87,6 +87,22 @@ fn match_none_arm() {
 }
 
 #[test]
+fn match_binder_narrows_some() {
+	let src = indoc! {"
+		Node :: struct { val: int }
+		f :: fn(o: ?Node) int {
+			match o {
+				n @ Node => n.val,
+				_ => -1,
+			}
+		}
+		print(f(?Node.(Node.{ val = 7 })))
+		print(f(?Node.(none)))
+	"};
+	check(src, ["7", "-1"]);
+}
+
+#[test]
 fn match_non_exhaustive_errors() {
 	fail(
 		indoc! {r"

@@ -481,6 +481,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			let t = self.types().resolve(&te, pat.1).ok()?;
 			return Some((name.clone(), t, 8));
 		}
+		let happy = self
+			.types()
+			.option_inner(st)
+			.or_else(|| self.types().result_parts(st).map(|(ok, _)| ok));
+		if let Some(inner) = happy {
+			return Some((name.clone(), inner, 8));
+		}
 		let Typ::Sum(..) = st else { return None };
 		let (variants, disp) = (self.variants_of(st), self.sum_display(&te, pat.1).ok()?);
 		let vi = variants.iter().find(|x| x.name == disp && x.payload.len() == 1)?;
