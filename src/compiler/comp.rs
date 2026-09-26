@@ -185,11 +185,17 @@ fn fold(
 		.modules
 		.iter()
 		.map(|m| {
-			let mut items: Vec<Spanned<Expr>> = expanded
-				.get_mut(&m.name)
-				.expect("every module is expanded")
+			let raw = expanded.get_mut(&m.name).expect("every module is expanded");
+			let has_main = raw.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
+			let mut items: Vec<Spanned<Expr>> = raw
 				.iter_mut()
-				.filter_map(|it| (is_def(&it.0) && !has_comp(&mut it.0)).then(|| it.clone()))
+				.filter_map(|it| {
+					let keep = match &it.0 {
+						Expr::Bind { mutable: true, .. } => has_main || m.name != "main",
+						_ => is_def(&it.0),
+					};
+					(keep && !has_comp(&mut it.0)).then(|| it.clone())
+				})
 				.collect();
 			if m.name == target {
 				items.push(thunk.clone());
@@ -221,7 +227,8 @@ fn fold(
 	};
 	let compiler = stage0.get_or_insert_with(Compiler::default);
 	compiler.roots = vec![name.clone()];
-	compiler.compile(&synthetic)?;
+	let entry = compiler.compile(&synthetic)?;
+	unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
 	let f = compiler.module.get_finalized_function(compiler.hoisted[&name].id);
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(f)() };

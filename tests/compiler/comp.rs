@@ -122,6 +122,28 @@ fn comp_folds_in_an_imported_module() {
 }
 
 #[test]
+fn comp_seeds_module_statics_before_use() {
+	Project::new()
+		.file(
+			"main.oi",
+			[
+				"use seenmod",
+				r#"V :: comp { seenmod.bump("k") seenmod.seen }"#,
+				"print(V)",
+			],
+		)
+		.file(
+			"seenmod.oi",
+			[
+				"module seenmod",
+				r#"pub seen := """#,
+				"pub bump :: fn(k: string) { seen = seen + k }",
+			],
+		)
+		.check("k");
+}
+
+#[test]
 fn struct_fields_are_typed_asts() {
 	check(
 		indoc! {r#"
