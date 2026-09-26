@@ -357,6 +357,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => self.check_args(&access[self_n..], None, &slots)?,
 		}
 		let fills = slots.iter().any(Option::is_none);
+		let mut lent = Vec::new();
+		let mut given: Vec<Option<TypedVal>> = Vec::with_capacity(slots.len());
+		for (i, p) in params.iter().enumerate().skip(self_n) {
+			given.push(match slots[i - self_n] {
+				Some(arg) => {
+					let (val, typ, entry) = self.arg_value(access[i], arg, Some(access_peel(&p.typ)))?;
+					lent.extend(entry.map(|e| (val, e)));
+					Some((val, typ))
+				}
+				None => None,
+			});
+		}
 		let saved: Vec<_> = match fills {
 			true => (params.iter().filter_map(|p| p.name.as_ref()))
 				.map(|n| (n.clone(), self.vars.remove(n)))
@@ -365,16 +377,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let mut vals = Vec::with_capacity(params.len());
 		vals.extend(recv);
-		let mut lent = Vec::new();
 		for (i, p) in params.iter().enumerate() {
 			let want = access_peel(&p.typ);
 			if i >= self_n {
-				let (val, typ) = match slots[i - self_n] {
-					Some(arg) => {
-						let (val, typ, entry) = self.arg_value(access[i], arg, Some(want))?;
-						lent.extend(entry.map(|e| (val, e)));
-						(val, typ)
-					}
+				let (val, typ) = match given[i - self_n].take() {
+					Some(arg) => arg,
 					None => {
 						let Some(default) = &p.default else {
 							let msg = format!(

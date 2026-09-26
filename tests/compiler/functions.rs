@@ -215,6 +215,16 @@ fn default_param_refs_earlier_param() {
 }
 
 #[test]
+fn default_param_names_do_not_shadow_the_caller() {
+	let src = indoc! {r#"
+		f :: fn(a: int, b: int, c: int = 3) int { a * 100 + b * 10 + c }
+		a := 9
+		print("{f(a, 1)} {f(1, a)}")
+	"#};
+	check(src, "913 193");
+}
+
+#[test]
 fn default_param_not_trailing() {
 	let src = indoc! {"
 		add :: fn(x: int = 1, y: int) int { x + y }
