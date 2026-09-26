@@ -121,6 +121,21 @@ fn mismatched_branches() {
 }
 
 #[test]
+fn discarded_branch_mismatch_is_allowed() {
+	let src = indoc! {r#"
+		f :: fn(n: int) []int {
+			if n < 0 { print("bad") }
+			else if n == 0 { [0] }
+			else { [n] }
+			[n, n]
+		}
+		print(f(5))
+		print(f(-1))
+	"#};
+	check(src, ["[5, 5]", "bad", "[-1, -1]"]);
+}
+
+#[test]
 fn do_body() {
 	check(r#"if 2 > 1 do "yes" else do "no""#, "yes");
 }

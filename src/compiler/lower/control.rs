@@ -17,9 +17,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		&mut self,
 		expr: &Spanned<Expr>,
 		hint: Option<&Typ>,
+		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		match &expr.0 {
-			Expr::If { cond, then, els } => self.conditional(cond, then, els.as_deref(), hint, expr.1),
+			Expr::If { cond, then, els } => self.conditional(cond, then, els.as_deref(), hint, expr.1, want),
 			Expr::Match {
 				subject,
 				arms,
@@ -40,6 +41,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		els: Option<&[Spanned<Expr>]>,
 		target: Option<&Typ>,
 		span: Span,
+		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		if infallible(&cond.0) {
 			if let Some([first, ..]) = els {
@@ -75,20 +77,48 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let merge = self.b.create_block();
 		let mut result: Option<(Variable, Typ)> = None;
+		let mut reached = false;
 
 		self.b.switch_to_block(then_block);
 		let then_flow = self.scoped(|s| s.block_tail(then, target))?;
 		if let Some(vt) = then_flow {
-			self.contribute("if", vt, &mut result, merge, span)?;
+			self.join_branch(want, vt, &mut result, &mut reached, merge, span)?;
 		}
 
 		self.b.switch_to_block(else_block);
 		let else_flow = self.else_default(els, &result, target, span)?;
 		if let Some(vt) = else_flow {
-			self.contribute("if", vt, &mut result, merge, span)?;
+			self.join_branch(want, vt, &mut result, &mut reached, merge, span)?;
 		}
 
+		if !want {
+			return Ok(reached.then(|| {
+				self.b.switch_to_block(merge);
+				self.b.seal_block(merge);
+				self.unit_value()
+			}));
+		}
 		Ok(self.finish_merge(merge, result))
+	}
+
+	// Route a branch's tail value.
+	fn join_branch(
+		&mut self,
+		want: bool,
+		vt: TypedVal,
+		result: &mut Option<(Variable, Typ)>,
+		reached: &mut bool,
+		merge: Block,
+		span: Span,
+	) -> Result<(), Diagnostic> {
+		if want {
+			return self.contribute("if", vt, result, merge, span);
+		}
+		let (v, t) = vt;
+		self.release_value(v, &t);
+		self.b.ins().jump(merge, &[]);
+		*reached = true;
+		Ok(())
 	}
 
 	// The else arm.

@@ -11,7 +11,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub fn block_tail(&mut self, stmts: &[Spanned<Expr>], tail: Option<&Typ>) -> Result<Option<TypedVal>, Diagnostic> {
 		let mut last = self.unit_value();
 		for (i, stmt) in stmts.iter().enumerate() {
-			let stmt_target = if i + 1 == stmts.len() { tail } else { None };
+			let want = i + 1 == stmts.len();
+			let stmt_target = if want { tail } else { None };
 			let zeroed;
 			let stmt = match &stmt.0 {
 				Expr::Claim { typ, traits, .. } => {
@@ -256,10 +257,12 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
-				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => match self.branching(stmt, stmt_target)? {
-					Some((v, t)) => last = (v, t),
-					None => return Ok(None),
-				},
+				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => {
+					match self.branching(stmt, stmt_target, want)? {
+						Some((v, t)) => last = (v, t),
+						None => return Ok(None),
+					}
+				}
 
 				Expr::Block(body) if stmt_target.is_none() => match self.scoped(|s| s.block_tail(body, None))? {
 					Some((v, t)) => last = (v, t),

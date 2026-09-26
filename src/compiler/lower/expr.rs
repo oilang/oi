@@ -725,7 +725,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok((out, typ))
 			}
 
-			Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => match self.branching(expr, hint)? {
+			Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => match self.branching(expr, hint, true)? {
 				Some(vt) => Ok(vt),
 				None => {
 					let (kw, why) = match &expr.0 {
