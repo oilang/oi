@@ -1104,9 +1104,9 @@ impl<M: Module> Compiler<M> {
 						.flat_map(|(.., ms)| trait_fns(ms))
 						.collect();
 					let targs: Vec<_> = (claimed.iter())
-						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| tps.iter().zip(*args)))
-						.flatten()
-						.map(|(p, (te, _))| (p.name.clone(), te.clone()))
+						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
+						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
+						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
 						.collect();
 					let claim = Fills { decls: &decls, generic, targs: &targs };
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
@@ -1562,10 +1562,13 @@ impl<M: Module> Compiler<M> {
 				continue;
 			}
 			let (_, tparams, tfields, tmethods) = traits[tn.as_str()];
-			if !tparams.is_empty() {
+			if tparams.iter().any(|p| p.default.is_none()) {
 				continue;
 			}
 			let methods: Vec<&str> = trait_fns(tmethods).map(|(n, ..)| n).collect();
+			if methods.iter().any(|n| !funcs.contains_key(&format!("{typ}.{n}"))) {
+				continue;
+			}
 			let m = methods.len();
 			let f = tfields.len();
 			let mut bytes = vec![0u8; (m + f + 1) * 8];

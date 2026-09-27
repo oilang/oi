@@ -215,12 +215,13 @@ pub(super) fn check_impls<'p>(
 		let Some((supers, tparams, tfields, tmethods)) = traits.get(tn.as_str()) else {
 			return Err(Diagnostic::new(format!("unknown trait `{tn}`"), span.into_range()).with_label("no such trait"));
 		};
-		if args.len() != tparams.len() {
-			let msg = format!(
-				"trait `{tn}` takes {} type argument(s), got {}",
-				tparams.len(),
-				args.len()
-			);
+		let required = tparams.iter().filter(|p| p.default.is_none()).count();
+		if args.len() > tparams.len() || args.len() < required {
+			let want = match required == tparams.len() {
+				true => required.to_string(),
+				false => format!("{required} to {}", tparams.len()),
+			};
+			let msg = format!("trait `{tn}` takes {want} type argument(s), got {}", args.len());
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of type arguments"));
 		}
 		for s in supers {
@@ -230,8 +231,11 @@ pub(super) fn check_impls<'p>(
 			}
 		}
 		let mut sig_params = types.type_params.clone();
-		for (p, (te, sp)) in tparams.iter().zip(args) {
-			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(te, *sp)?);
+		let me = [("Self".to_string(), TypeExpr::Name(typ.into()))];
+		for (i, p) in tparams.iter().enumerate() {
+			let arg = (args.get(i).cloned()).or_else(|| p.default.as_ref().map(|(te, sp)| (subst(te, &me), *sp)));
+			let Some((te, sp)) = arg else { continue };
+			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(&te, sp)?);
 		}
 		for tf in *tfields {
 			if is_assoc_type(tf) {

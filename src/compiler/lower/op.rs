@@ -368,10 +368,18 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if let Typ::Struct(name, _) | Typ::Enum(name) = &lt {
 			// overloads
-			let Some(sig) = self.fill(name, tn, method, 2) else {
+			let key = format!("{name}.{method}");
+			let plain = self.fill(name, tn, method, 2);
+			let picked = (plain.clone().filter(|s| s.params[1].typ == rt))
+				.or_else(|| self.find_fill(&key, 1, &rt))
+				.or(plain);
+			let Some(sig) = picked else {
+				let label = match self.funcs.keys().any(|k| k.starts_with(&format!("{key}#"))) {
+					true => format!("`{name}` claims no `{tn}[{rt}]`"),
+					false => format!("implement `{tn}` for `{name}` to overload `{op}`"),
+				};
 				return Err(
-					Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range())
-						.with_label(format!("implement `{tn}` for `{name}` to overload `{op}`")),
+					Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range()).with_label(label),
 				);
 			};
 			if rt != sig.params[1].typ {
@@ -388,8 +396,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		if matches!(op, BinOp::Add | BinOp::Mul)
 			&& matches!(lt, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_))
 			&& let Typ::Struct(name, _) | Typ::Enum(name) = &rt
-			&& let Some(sig) = self.fill(name, tn, method, 2)
-			&& sig.params[1].typ == lt
+			&& let Some(sig) = (self.fill(name, tn, method, 2).filter(|s| s.params[1].typ == lt))
+				.or_else(|| self.find_fill(&format!("{name}.{method}"), 1, &lt))
 		{
 			return Ok(self.emit_call(&sig, &[rv, lv]));
 		}
