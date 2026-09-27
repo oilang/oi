@@ -493,10 +493,7 @@ fn array_of_trait_objects_renders() {
 		Cat : Animal < { speak :: fn(self) string { "meow" } }
 		print(Animal.[ Dog.{ "collie" }, Cat.{ "mau" } ])
 	"#};
-	check(
-		[ANIMAL_DOG_KIND, src],
-		r#"[Dog.{kind = "collie"}, Cat.{kind = "mau"}]"#,
-	);
+	check([ANIMAL_DOG_KIND, src], r#"[Dog.{kind = "collie"}, Cat.{kind = "mau"}]"#);
 }
 
 #[test]
@@ -735,4 +732,45 @@ fn a_claim_binds_its_trait_type_params_in_fills() {
 		print(P.{7}.pair(8))
 	"#};
 	check(src, "[7, 8]");
+}
+
+#[test]
+fn associated_types() {
+	let src = indoc! {r#"
+		Iterator :: trait {
+			Item: type
+			next: fn(mut self) ?Item
+		}
+		Count :: struct { n: int, end: int }
+		Count : Iterator < {
+			Item :: int
+			next :: fn(mut self) ?int {
+				if self.n >= self.end { return none }
+				self.n = self.n + 1
+				self.n - 1
+			}
+		}
+		c := Count.{ n = 1, end = 4 }
+		loop {
+			match c.next() {
+				.some.(v) => print(v),
+				.none => break,
+			}
+		}
+	"#};
+	check(src, ["1", "2", "3"]);
+
+	let src = indoc! {r#"
+		It :: trait {
+			Item: type
+			get: fn(self) Item
+		}
+		R :: struct { n: int }
+		R : It < {
+			Item :: int
+			get :: fn(self) string { "no" }
+		}
+		print(R.{1}.get())
+	"#};
+	fail(src, "`R.get` is `fn(R) string`, trait `It` declares `fn(R) int`");
 }

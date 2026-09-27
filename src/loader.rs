@@ -491,6 +491,7 @@ impl Loader {
 				self.consts.insert(name.clone(), (Expr::Int(v), span));
 				continue;
 			}
+			let mut assoc_types = vec![];
 			match &mut item.0 {
 				Expr::Fn { name, .. }
 				| Expr::StructDef { name, .. }
@@ -568,10 +569,14 @@ impl Loader {
 					}
 					// pull const fills out as associated consts, keyed `Type::name`
 					for (n, v) in fills.iter().filter_map(|f| const_fill(&f.0)) {
-						let lit = self.const_value(v, &m.scope).ok_or_else(|| {
-							err("cannot evaluate this at compile time", v.1, "not a const expression")
-						})?;
-						self.consts.insert(format!("{typ}::{n}"), lit);
+						let key = format!("{typ}::{n}");
+						if let Some(lit) = self.const_value(v, &m.scope) {
+							self.consts.insert(key, lit);
+						} else if let Some(te) = TypeExpr::from_expr(&v.0) {
+							assoc_types.push((Expr::TypeAlias { name: key, typ: te }, v.1));
+						} else {
+							return Err(err("cannot evaluate this at compile time", v.1, "not a const expression"));
+						}
 					}
 					fills.retain(|f| const_fill(&f.0).is_none());
 				}
@@ -586,6 +591,7 @@ impl Loader {
 				_ => {}
 			}
 			m.items.push(item);
+			m.items.append(&mut assoc_types);
 		}
 		Ok(())
 	}

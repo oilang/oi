@@ -1395,7 +1395,7 @@ impl<M: Module> Compiler<M> {
 		for item in &others {
 			let mut aliases = aliases.clone();
 			if let Some(t) = item.key.rsplit_once('.').map(|(t, _)| t) {
-				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
+				bind_self(&mut aliases, t);
 			}
 			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 				.with_consts(consts)
@@ -1573,6 +1573,10 @@ impl<M: Module> Compiler<M> {
 				TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
 			let mut const_slots = Vec::new();
 			for (i, tf) in tfields.iter().enumerate() {
+				// leave a hole because associated types have no runtime slot
+				if is_assoc_type(tf) {
+					continue;
+				}
 				match structs.get(typ.as_str()).and_then(|fs| field_slot(fs, &tf.name)) {
 					Some((enc, _)) => bytes[(m + i) * 8..(m + i + 1) * 8].copy_from_slice(&enc.to_le_bytes()),
 					None => {
@@ -1683,7 +1687,7 @@ impl<M: Module> Compiler<M> {
 				let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
 				let mut aliases = aliases.clone();
 				if let Some(t) = self_type {
-					aliases.insert("Self".into(), TypeExpr::Name(t.into()));
+					bind_self(&mut aliases, t);
 				}
 				let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
 					.with_consts(consts)

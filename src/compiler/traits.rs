@@ -39,6 +39,21 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	}
 }
 
+// A trait slot annotated `type` is an associated type, filled per claim as an alias.
+pub(crate) fn is_assoc_type(p: &Param) -> bool {
+	matches!(&p.typ, TypeExpr::Name(n) if n == "type")
+}
+
+// Bind `Self`, plus this type's associated types under their bare slot names.
+pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
+	aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
+	let prefix = format!("{typ}::");
+	let slots: Vec<_> = (aliases.iter())
+		.filter_map(|(k, v)| Some((k.strip_prefix(&prefix)?.to_string(), v.clone())))
+		.collect();
+	aliases.extend(slots);
+}
+
 pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = TraitFn<'_>> {
 	methods.iter().filter_map(|m| match &m.0 {
 		Expr::Fn { name, params, ret, .. } => Some((name.as_str(), params.as_slice(), ret)),
@@ -219,6 +234,13 @@ pub(super) fn check_impls<'p>(
 			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(te, *sp)?);
 		}
 		for tf in *tfields {
+			if is_assoc_type(tf) {
+				if !types.aliases.contains_key(&format!("{typ}::{}", tf.name)) {
+					let msg = format!("`{typ}` is missing associated type `{}` of trait `{tn}`", tf.name);
+					return Err(Diagnostic::new(msg, span.into_range()).with_label("fill it in the claim"));
+				}
+				continue;
+			}
 			let want = types.with_type_params(&sig_params).resolve(&tf.typ, tf.span)?;
 			// let embedded structs satisfy field requirements
 			let stored = types
@@ -255,7 +277,7 @@ pub(super) fn check_impls<'p>(
 			}
 		}
 		let mut sig_aliases = types.aliases.clone();
-		sig_aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
+		bind_self(&mut sig_aliases, typ);
 		let sig_types = TypeCtx::new(
 			types.structs,
 			types.enums,
