@@ -511,14 +511,24 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 		Expr::Array(elems) => {
 			let non_spread = elems.iter().filter(|(e, _)| !matches!(e, Expr::Spread(_))).collect::<Vec<_>>();
 			if non_spread.is_empty() {
-				return Err(Diagnostic::new("cannot tell what type this static is", span.into_range())
-					.with_label(elems.is_empty().then(|| "an empty array needs a type annotation").unwrap_or("annotate it, or give the array a literal element")));
+				return Err(
+					Diagnostic::new("cannot tell what type this static is", span.into_range()).with_label(
+						elems
+							.is_empty()
+							.then(|| "an empty array needs a type annotation")
+							.unwrap_or("annotate it, or give the array a literal element"),
+					),
+				);
 			}
 			let elem = static_typ(&non_spread[0].0, types, span)?;
 			for (e, espan) in non_spread.iter().skip(1) {
 				if let Ok(other) = static_typ(e, types, *espan) {
 					if other != elem {
-						return Err(Diagnostic::new(format!("array elements are {elem} and {other}"), espan.into_range()).with_label("mixed element types"));
+						return Err(Diagnostic::new(
+							format!("array elements are {elem} and {other}"),
+							espan.into_range(),
+						)
+						.with_label("mixed element types"));
 					}
 				}
 			}
@@ -799,7 +809,13 @@ impl<M: Module> Compiler<M> {
 					}
 					None => (params.clone(), *params_tuple, ret.clone()),
 				};
-				let params = params.iter().map(|p| Param { typ: subst(&p.typ, claim.targs), ..p.clone() }).collect();
+				let params = params
+					.iter()
+					.map(|p| Param {
+						typ: subst(&p.typ, claim.targs),
+						..p.clone()
+					})
+					.collect();
 				let ret = ret.map(|(te, span)| (subst(&te, claim.targs), span));
 				others.push(FnItem {
 					key,
@@ -1108,7 +1124,11 @@ impl<M: Module> Compiler<M> {
 						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
 						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
 						.collect();
-					let claim = Fills { decls: &decls, generic, targs: &targs };
+					let claim = Fills {
+						decls: &decls,
+						generic,
+						targs: &targs,
+					};
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
 				Expr::Fn { name, body, ret, .. } if name == "main" => {

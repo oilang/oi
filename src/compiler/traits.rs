@@ -366,13 +366,20 @@ pub(super) fn check_impls<'p>(
 				let lent_fn = params.first().is_none_or(|p| p.name != "self");
 				let recv = match lent_fn {
 					true => Expr::Ident(lent.clone()),
-					false => Expr::Field { tuple: Box::new(s(Expr::Ident("self".into()))), field: field.into() },
+					false => Expr::Field {
+						tuple: Box::new(s(Expr::Ident("self".into()))),
+						field: field.into(),
+					},
 				};
 				let call = Expr::MethodCall {
 					recv: Box::new(s(recv)),
 					method: name.clone(),
 					type_args: vec![],
-					args: params.iter().skip(!lent_fn as usize).map(|p| s(Expr::Ident(p.name.clone()))).collect(),
+					args: params
+						.iter()
+						.skip(!lent_fn as usize)
+						.map(|p| s(Expr::Ident(p.name.clone())))
+						.collect(),
 				};
 				let body = match lent_fn && matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self") {
 					true => Expr::StructLit {
@@ -388,7 +395,13 @@ pub(super) fn check_impls<'p>(
 				others.push(FnItem {
 					key: format!("{typ}.{name}"),
 					scope,
-					params: params.iter().map(|p| Param { typ: subst(&p.typ, &by), ..p.clone() }).collect(),
+					params: params
+						.iter()
+						.map(|p| Param {
+							typ: subst(&p.typ, &by),
+							..p.clone()
+						})
+						.collect(),
 					params_tuple: *params_tuple,
 					ret: ret.as_ref().map(|(te, sp)| (subst(te, &by), *sp)),
 					body: Box::leak(Box::new([s(body)])),

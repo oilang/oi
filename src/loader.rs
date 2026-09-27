@@ -575,7 +575,11 @@ impl Loader {
 						} else if let Some(te) = TypeExpr::from_expr(&v.0) {
 							assoc_types.push((Expr::TypeAlias { name: key, typ: te }, v.1));
 						} else {
-							return Err(err("cannot evaluate this at compile time", v.1, "not a const expression"));
+							return Err(err(
+								"cannot evaluate this at compile time",
+								v.1,
+								"not a const expression",
+							));
 						}
 					}
 					fills.retain(|f| const_fill(&f.0).is_none());
