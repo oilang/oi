@@ -132,3 +132,37 @@ fn const_enum_variant_crosses_modules() {
 		)
 		.check("true");
 }
+
+#[test]
+fn array_static_takes_its_element_type_from_its_literal() {
+	let src = indoc! {r#"
+		idk := [ "foo" "bar" ]
+
+		peek :: fn() { print(idk) }
+
+		main :: fn() {
+			peek()
+			idk << "baz"
+			print(idk.len)
+		}
+	"#};
+	check(src, [r#"["foo", "bar"]"#, "3"]);
+}
+
+#[test]
+fn array_static_rejects_mixed_element_types() {
+	let src = indoc! {r#"
+		idk := [ "foo" 3 ]
+		main :: fn() { print(idk) }
+	"#};
+	fail(src, "array elements are string and int");
+}
+
+#[test]
+fn empty_array_static_needs_an_annotation() {
+	let src = indoc! {"
+		idk := []
+		main :: fn() { print(idk) }
+	"};
+	fail(src, "an empty array needs a type annotation");
+}

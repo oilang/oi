@@ -508,6 +508,22 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 		Expr::Float(_) => Ok(Typ::Float(64)),
 		Expr::Bool(_) => Ok(Typ::Bool),
 		Expr::String(_) => Ok(Typ::Str),
+		Expr::Array(elems) => {
+			let non_spread = elems.iter().filter(|(e, _)| !matches!(e, Expr::Spread(_))).collect::<Vec<_>>();
+			if non_spread.is_empty() {
+				return Err(Diagnostic::new("cannot tell what type this static is", span.into_range())
+					.with_label(elems.is_empty().then(|| "an empty array needs a type annotation").unwrap_or("annotate it, or give the array a literal element")));
+			}
+			let elem = static_typ(&non_spread[0].0, types, span)?;
+			for (e, espan) in non_spread.iter().skip(1) {
+				if let Ok(other) = static_typ(e, types, *espan) {
+					if other != elem {
+						return Err(Diagnostic::new(format!("array elements are {elem} and {other}"), espan.into_range()).with_label("mixed element types"));
+					}
+				}
+			}
+			Ok(Typ::Array(Box::new(elem)))
+		}
 		Expr::StructLit { name, .. } if !name.is_empty() => types.resolve(&TypeExpr::Name(name.clone()), span),
 		_ => Err(
 			Diagnostic::new("cannot tell what type this static is", span.into_range())
