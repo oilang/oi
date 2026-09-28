@@ -2254,6 +2254,9 @@ main :: fn() {
 	sql! :: fn(body: Tokens) Ast { ... }
 	sql! { SELECT * FROM users WHERE id = %id AND n > %{a.b + 1} }
 
+	# `parse` reads Oi source as an `Ast`, for codegen from strings and files
+	schema :: comp parse(fs.read("schema.oi")?)
+
 	# reflection in `comp`
 	debug_print[T] :: fn(value: T) {
 		comp loop field in type_info(T).fields {

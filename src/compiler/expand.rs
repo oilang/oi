@@ -813,6 +813,20 @@ pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spa
 	Box::into_raw(Box::new((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0))))
 }
 
+// A process symbol.
+#[unsafe(export_name = "oi_ast_parse")]
+pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
+	let src = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) }).into_owned();
+	let node = match crate::loader::parse_file(&src, 0, &HashSet::new()) {
+		Ok(stmts) => one(stmts, (0..0).into()),
+		Err(ds) => {
+			flag(ds.first().map_or("parse failed", Diagnostic::message));
+			(Expr::Tuple(vec![]), Span::from(0..0))
+		}
+	};
+	Box::into_raw(Box::new(node))
+}
+
 // A field as the Ast a param hole takes.
 fn field_ast(f: &Param) -> Expr {
 	let bind = Expr::Bind {

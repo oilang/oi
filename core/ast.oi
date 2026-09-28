@@ -11,3 +11,8 @@ pub ident :: fn(s: string) Ast {
 pub gensym :: fn(prefix: string) Ast {
 	unsafe rt.oi_ast_gensym(prefix)
 }
+
+## Oi source read as an Ast.
+pub parse :: fn(src: string) Ast {
+	unsafe rt.oi_ast_parse(src)
+}

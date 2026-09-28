@@ -77,6 +77,10 @@ impl Diagnostic {
 		}
 	}
 
+	pub fn message(&self) -> &str {
+		&self.message
+	}
+
 	pub fn with_label(mut self, label: impl Into<String>) -> Self {
 		self.label = Some(label.into());
 		self

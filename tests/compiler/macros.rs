@@ -682,6 +682,29 @@ fn raw_body_escapes_back_to_oi() {
 }
 
 #[test]
+fn parse_reads_source_into_an_ast() {
+	check(
+		indoc! {r#"
+			gen! :: fn(src: Ast) Ast { parse(src.str()) }
+			print(gen!("a := 40
+			a + 2"))
+		"#},
+		"42",
+	);
+}
+
+#[test]
+fn parse_reports_a_bad_fragment_at_the_call_site() {
+	fail(
+		indoc! {r#"
+			gen! :: fn() Ast { parse("40 +") }
+			print(gen!())
+		"#},
+		"while running `gen!`",
+	);
+}
+
+#[test]
 fn tokens_param_takes_a_raw_body() {
 	check(
 		indoc! {r#"

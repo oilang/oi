@@ -544,8 +544,18 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 	}
 }
 
+// Whether `Ast` appears anywhere in a type.
+fn ast(t: &TypeExpr) -> bool {
+	match t {
+		TypeExpr::Name(n) => n == "Ast",
+		TypeExpr::Array(t) | TypeExpr::FixedArray(t, _) | TypeExpr::Ref(t) | TypeExpr::Variadic(t) => ast(t),
+		TypeExpr::Annotated(_, t) => ast(t),
+		TypeExpr::Generic(_, ts) | TypeExpr::Sum(ts) => ts.iter().any(ast),
+		_ => false,
+	}
+}
+
 fn comptime_only(e: &Expr) -> bool {
-	let ast = |t: &TypeExpr| matches!(t, TypeExpr::Name(n) if n == "Ast");
 	match e {
 		Expr::Pub(inner) | Expr::Annotated(_, inner) => comptime_only(&inner.0),
 		Expr::Fn { params, ret, .. } => params.iter().any(|p| ast(&p.typ)) || ret.as_ref().is_some_and(|r| ast(&r.0)),
