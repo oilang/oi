@@ -165,11 +165,11 @@ fn named_result() {
 #[test]
 fn default_param() {
 	let src = indoc! {"
-		add :: fn(x: int, y: int = 10, z := 100) int { x + y + z }
+		add :: fn(x: int, y: int = 10, z := 100, w := [-1]) int { x + y + z + w[0] }
 		print(add(1))
 		print(add(1, 2, 3))
 	"};
-	check(src, ["111", "6"]);
+	check(src, ["110", "5"]);
 }
 
 #[test]

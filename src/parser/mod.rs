@@ -67,17 +67,6 @@ enum Member {
 	Variant(EnumVariant),
 }
 
-// The type a binding default's literal names.
-fn literal_typ(e: &Expr) -> Option<&'static str> {
-	match e {
-		Expr::Bool(_) => Some("bool"),
-		Expr::Int(_) => Some("int"),
-		Expr::Float(_) => Some("float"),
-		Expr::String(_) => Some("string"),
-		_ => None,
-	}
-}
-
 fn split_members(members: Vec<Member>) -> (Vec<Param>, Vec<Spanned<Expr>>, Vec<EnumVariant>) {
 	let (mut fields, mut fns, mut variants) = (vec![], vec![], vec![]);
 	for m in members {
@@ -276,14 +265,7 @@ where
 	);
 
 	// defaults
-	let default_value = expr
-		.clone()
-		.try_map(|(value, span), _| {
-			let typ = literal_typ(&value)
-				.ok_or_else(|| Rich::custom(span, "an inferred default must be a literal, or name the type"))?;
-			Ok((TypeExpr::Name(typ.into()), Some((value, span))))
-		})
-		.boxed();
+	let default_value = expr.clone().map(|v| (TypeExpr::Infer(Box::new(v.clone())), Some(v))).boxed();
 	let bind_default = just(Token::Bind).ignore_then(default_value.clone()).boxed();
 
 	let param_type = just(Token::Colon)

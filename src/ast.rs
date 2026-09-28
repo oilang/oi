@@ -607,6 +607,7 @@ pub enum TypeExpr {
 	Variadic(Box<TypeExpr>),
 	Unquote(Box<Spanned<Expr>>),
 	Const(i64),
+	Infer(Box<Spanned<Expr>>),
 }
 
 impl TypeExpr {
@@ -632,7 +633,11 @@ impl TypeExpr {
 			}
 			TypeExpr::Sum(types) | TypeExpr::Generic(_, types) => types.iter_mut().for_each(|t| t.walk_mut(f)),
 			TypeExpr::AnonStruct(fields) => fields.iter_mut().for_each(|p| p.typ.walk_mut(f)),
-			TypeExpr::Name(_) | TypeExpr::AtomSum(_) | TypeExpr::Unquote(_) | TypeExpr::Const(_) => {}
+			TypeExpr::Name(_)
+			| TypeExpr::AtomSum(_)
+			| TypeExpr::Unquote(_)
+			| TypeExpr::Const(_)
+			| TypeExpr::Infer(_) => {}
 		}
 	}
 

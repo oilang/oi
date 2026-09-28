@@ -218,6 +218,7 @@ impl TypeCtx<'_> {
 			TypeExpr::Unquote(_) => {
 				Err(Diagnostic::new("unquote outside a macro template", span.into_range()).with_label("stray unquote"))
 			}
+			TypeExpr::Infer(e) => super::static_typ(&e.0, self, e.1),
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
 			TypeExpr::Const(n) => Ok(Typ::Const(*n)),
 			TypeExpr::FixedArray(elem, len) => {
