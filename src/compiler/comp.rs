@@ -21,6 +21,8 @@ pub(crate) const TAG_BOOL: i64 = 2;
 pub(crate) const TAG_STR: i64 = 3;
 pub(crate) const TAG_UNIT: i64 = 4;
 pub(crate) const TAG_ARRAY: i64 = 5;
+pub(crate) const TAG_AST: i64 = 6;
+pub(crate) const TAG_AST_SEQ: i64 = 7;
 
 enum Entry {
 	Scalar(i64, i64),
@@ -99,6 +101,8 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 		TAG_BOOL => Expr::Bool(v != 0),
 		// SAFETY: `v` is a str handle the runtime just produced
 		TAG_STR => Expr::String(String::from_utf8_lossy(unsafe { runtime::str_bytes(v as *const _) }).into_owned()),
+		// SAFETY: `v` is an Ast handle, a box the quote runtime leaked
+		TAG_AST => unsafe { (*(v as *mut Spanned<Expr>)).0.clone() },
 		_ => Expr::Tuple(vec![]),
 	}
 }
@@ -113,6 +117,10 @@ fn reify(span: Span) -> Expr {
 					Entry::Scalar(TAG_ARRAY, n) => {
 						let at = exprs.len() - n as usize;
 						Expr::Array(exprs.split_off(at).into_iter().map(|e| (e, span)).collect())
+					}
+					Entry::Scalar(TAG_AST_SEQ, n) => {
+						let at = exprs.len() - n as usize;
+						super::expand::one(exprs.split_off(at).into_iter().map(|e| (e, span)).collect(), span).0
 					}
 					Entry::Scalar(tag, v) => scalar(tag, v),
 					Entry::Struct(name, nfields) => {
@@ -144,7 +152,7 @@ fn fold(
 	// conditional compilation
 	while let Expr::If { cond, then, els } = inner.0 {
 		let span = cond.1;
-		let mut arm = match fold(*cond, target, expanded, consts, program, stage0)? {
+		let arm = match fold(*cond, target, expanded, consts, program, stage0)? {
 			Expr::Bool(true) => then,
 			Expr::Bool(false) if matches!(els.as_deref(), Some([(Expr::If { .. }, _)])) => {
 				inner = els.expect("guard matched").remove(0);
@@ -153,11 +161,7 @@ fn fold(
 			Expr::Bool(false) => els.unwrap_or_default(),
 			_ => return Err(Diagnostic::new("`comp if` needs a bool condition", span.into_range())),
 		};
-		return Ok(if arm.len() == 1 {
-			arm.remove(0).0
-		} else {
-			Expr::Block(arm)
-		});
+		return Ok(super::expand::one(arm, span).0);
 	}
 	let span = inner.1;
 	// every needs its own name
@@ -191,10 +195,11 @@ fn fold(
 				.iter_mut()
 				.filter_map(|it| {
 					let keep = match &it.0 {
+						Expr::Fn { name, .. } => name != "main",
 						Expr::Bind { mutable: true, .. } => has_main || m.name != "main",
-						_ => is_def(&it.0),
+						_ => is_def(&it.0) && !has_comp(&mut it.0),
 					};
-					(keep && !has_comp(&mut it.0)).then(|| it.clone())
+					keep.then(|| it.clone())
 				})
 				.collect();
 			if m.name == target {
@@ -227,6 +232,7 @@ fn fold(
 	};
 	let compiler = stage0.get_or_insert_with(Compiler::default);
 	compiler.roots = vec![name.clone()];
+	compiler.stage0 = true;
 	let entry = compiler.compile(&synthetic)?;
 	unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
 	let f = compiler.module.get_finalized_function(compiler.hoisted[&name].id);

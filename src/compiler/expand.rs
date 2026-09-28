@@ -36,6 +36,8 @@ struct Expander {
 	publics: HashSet<String>,
 	// keeps the stage-0 JIT and its code alive for every call this pass makes
 	stage0: Option<Compiler>,
+	// inside comp, where quotes are allowed
+	in_comp: bool,
 }
 
 // Every name a pattern binds.
@@ -322,6 +324,13 @@ impl Expander {
 				}
 				match &e.0 {
 					Expr::Fn { name, .. } if name.contains('!') => Ok(()),
+					Expr::Comp(_) => {
+						let outer = std::mem::replace(&mut self.in_comp, true);
+						let r = e.0.try_children(|c| self.expand(c, scope, depth));
+						self.in_comp = outer;
+						r
+					}
+					Expr::Quote(_) if self.in_comp => Ok(()),
 					Expr::Quote(_) => fail("quotes are only allowed inside macro definitions", e.1, "stray quote"),
 					Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {
 						fail("unquotes only make sense inside a macro template", e.1, "stray unquote")
@@ -340,9 +349,10 @@ impl Expander {
 type Expansion = (HashMap<String, Vec<Spanned<Expr>>>, Option<Compiler>);
 
 // Expand all macro calls across a program's modules.
-pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
+pub fn expand(program: &Program, stage0: bool) -> Result<Expansion, Diagnostic> {
 	let mut ex = Expander {
 		publics: program.publics.clone(),
+		in_comp: stage0,
 		..Default::default()
 	};
 	let mut rest: HashMap<String, Vec<Spanned<Expr>>> = HashMap::new();
@@ -735,7 +745,7 @@ pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, l
 }
 
 // Wrap loose stmts into a block when more than one.
-fn one(mut stmts: Vec<Spanned<Expr>>, span: Span) -> Spanned<Expr> {
+pub(crate) fn one(mut stmts: Vec<Spanned<Expr>>, span: Span) -> Spanned<Expr> {
 	match stmts.len() {
 		1 => stmts.pop().unwrap(),
 		_ => (Expr::Block(stmts), span),

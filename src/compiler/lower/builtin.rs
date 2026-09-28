@@ -180,8 +180,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					err = err.take().or(s.comp_yield(ev, &elem, span).err())
 				});
 				err.map_or(Ok(()), Err)?;
-				(comp::TAG_ARRAY, self.array_parts(val, typ).1)
+				let tag = if elem == Typ::Ast {
+					comp::TAG_AST_SEQ
+				} else {
+					comp::TAG_ARRAY
+				};
+				(tag, self.array_parts(val, typ).1)
 			}
+			Typ::Ast => (comp::TAG_AST, val),
 			Typ::Bool => (comp::TAG_BOOL, val),
 			Typ::Str => (comp::TAG_STR, val),
 			Typ::Int(w) if narrow(*w) => (comp::TAG_INT, self.b.ins().sextend(self.int, val)),

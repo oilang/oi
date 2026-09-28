@@ -90,6 +90,31 @@ fn comp_if_is_conditional_compilation() {
 }
 
 #[test]
+fn comp_site_in_a_fn_the_program_calls() {
+	let src = indoc! {"
+		f :: fn(x: int) {
+			n :: comp { 1 + 1 }
+			print(n + x)
+		}
+		main :: fn() { f(3) }
+	"};
+	check(src, "5");
+}
+
+#[test]
+fn comp_yields_an_ast() {
+	let src = indoc! {r#"
+		comp { `print("spliced")` }
+		comp {
+			out: []Ast = []
+			loop i in 1..4 { out << `print(%i)` }
+			out
+		}
+	"#};
+	check(src, ["spliced", "1", "2", "3"]);
+}
+
+#[test]
 fn comp_rejects_unreifiable_type() {
 	fail(r#"A :: comp ["a" = 1]"#, "can't use this type in `comp` yet");
 }

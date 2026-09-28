@@ -495,6 +495,7 @@ pub struct Compiler<M: Module = JITModule> {
 	pub(crate) include_tests: bool,
 	pub(crate) tests: Vec<(String, String, bool)>,
 	pub(crate) roots: Vec<String>,
+	pub(crate) stage0: bool,
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
 	cache: Option<cache::Store>,
@@ -734,6 +735,7 @@ impl<M: Module> Compiler<M> {
 			include_tests: false,
 			tests: Vec::new(),
 			roots: Vec::new(),
+			stage0: false,
 			link_libs: Vec::new(),
 			exports: HashMap::new(),
 			cache: None,
@@ -934,7 +936,7 @@ impl<M: Module> Compiler<M> {
 
 		// expand user macros to AST
 		let t = Instant::now();
-		let (mut expanded, mut stage0) = expand(program)?;
+		let (mut expanded, mut stage0) = expand(program, self.stage0)?;
 		self.timings.push(("expand", t.elapsed()));
 		for m in &program.modules {
 			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
@@ -956,13 +958,15 @@ impl<M: Module> Compiler<M> {
 		}
 		// fold `comp` expressions to literals
 		let t = Instant::now();
-		comp::eval(
-			&mut expanded,
-			&mut self.annotations,
-			&mut self.consts,
-			program,
-			&mut stage0,
-		)?;
+		if !self.stage0 {
+			comp::eval(
+				&mut expanded,
+				&mut self.annotations,
+				&mut self.consts,
+				program,
+				&mut stage0,
+			)?;
+		}
 		self.timings.push(("comp", t.elapsed()));
 		if self.aot {
 			expanded.values_mut().for_each(|items| items.retain(|(e, _)| !comptime_only(e)));
