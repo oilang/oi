@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt;
 
 use chumsky::span::SimpleSpan;
@@ -415,6 +416,73 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 	}
 	toks.push((Token::RParen, span));
 	toks
+}
+
+// Look for certain macros and imports before parsing.
+pub fn prescan(toks: &[(Token, SimpleSpan)]) -> (Vec<String>, Vec<String>) {
+	let (mut raw, mut imports) = (vec![], vec![]);
+	let at = |i: usize| toks.get(i).map(|(t, _)| t);
+	for (i, (tok, _)) in toks.iter().enumerate() {
+		match (tok, at(i + 1)) {
+			(Token::Use, Some(Token::Ident(m))) => imports.push(m.clone()),
+			(Token::Ident(n), Some(Token::Not))
+				if at(i + 2) == Some(&Token::DoubleColon)
+					&& at(i + 3) == Some(&Token::Fn)
+					&& toks[i + 4..]
+						.iter()
+						.take_while(|(t, _)| *t != Token::RParen)
+						.any(|(t, _)| matches!(t, Token::Ident(p) if p == "Tokens")) =>
+			{
+				raw.push(n.clone())
+			}
+			_ => {}
+		}
+	}
+	(raw, imports)
+}
+
+// Rewrite macros that produce tokens into the normal call form.
+pub fn splice_raw(
+	toks: Vec<(Token, SimpleSpan)>,
+	raw: &HashSet<String>,
+	src: &str,
+	base: usize,
+) -> Result<Vec<(Token, SimpleSpan)>, SimpleSpan> {
+	let mut out = Vec::with_capacity(toks.len());
+	let mut i = 0;
+	while i < toks.len() {
+		let open = match (&toks[i].0, toks.get(i + 1), toks.get(i + 2)) {
+			(Token::Ident(n), Some((Token::Not, bang)), Some((Token::LBrace, open))) if raw.contains(n) => {
+				out.extend_from_slice(&toks[i..i + 2]);
+				out.push((Token::LParen, (bang.end..bang.end).into()));
+				out.push((Token::LBracket, *open));
+				*open
+			}
+			_ => {
+				out.push(toks[i].clone());
+				i += 1;
+				continue;
+			}
+		};
+		let (mut depth, mut covered) = (1i32, open.end);
+		i += 3;
+		loop {
+			let (tok, span) = toks.get(i).ok_or(open)?;
+			i += 1;
+			if span.start < covered {
+				continue;
+			}
+			covered = span.end;
+			depth += i32::from(*tok == Token::LBrace) - i32::from(*tok == Token::RBrace);
+			if depth == 0 {
+				out.push((Token::RBracket, *span));
+				out.push((Token::RParen, *span));
+				break;
+			}
+			out.push((Token::String(src[span.start - base..span.end - base].into()), *span));
+		}
+	}
+	Ok(out)
 }
 
 // Lex `src`, shifting every span by `base` so a file lexed in isolation lands at its offset in the `Program`.

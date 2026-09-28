@@ -84,7 +84,7 @@ fn reedline() -> reedline::Reedline {
 
 // The source of `line`'s definitions, one per line. Ran every subsequent turn.
 fn defs(line: &str) -> String {
-	parse_file(line, 0)
+	parse_file(line, 0, &Default::default())
 		.unwrap_or_default()
 		.iter()
 		.filter(|(e, _)| is_def(e))

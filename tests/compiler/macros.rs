@@ -46,7 +46,11 @@ fn unknown_macro_errors() {
 #[test]
 fn macro_shares_a_name_with_a_value() {
 	check(
-		"test :: struct { n: int }\ntest! :: fn() Ast { `1` }\nprint(test.{ n = 1 }.n + test!())",
+		[
+			"test :: struct { n: int }",
+			"test! :: fn() Ast { `1` }",
+			"print(test.{ n = 1 }.n + test!())",
+		],
 		"2",
 	);
 }
@@ -658,5 +662,45 @@ fn attr_macro_sees_fills() {
 			P :< { pub g :: fn(self) int { 3 } }
 		"#},
 		["f", "1", "g", "1"],
+	);
+}
+
+#[test]
+fn tokens_param_takes_a_raw_body() {
+	check(
+		indoc! {r#"
+			sql! :: fn(body: Tokens) Ast {
+				out := ""
+				loop t in body.items { out = out + t.str() + "|" }
+				`%out`
+			}
+			print(sql! { SELECT * FROM users WHERE id = 7 })
+		"#},
+		"SELECT|*|FROM|users|WHERE|id|=|7|",
+	);
+}
+
+#[test]
+fn raw_body_crosses_a_module() {
+	Project::new()
+		.file(
+			"dsl/mod.oi",
+			indoc! {r"
+				module dsl
+				pub words! :: fn(body: Tokens) Ast { `%{body.items.len}` }
+			"},
+		)
+		.file("main.oi", indoc! {"use dsl\nprint(dsl.words! { a b { c } })"})
+		.check("5");
+}
+
+#[test]
+fn raw_body_must_close() {
+	fail(
+		indoc! {r"
+			sql! :: fn(body: Tokens) Ast { `0` }
+			sql! { SELECT
+		"},
+		"unterminated raw macro body",
 	);
 }

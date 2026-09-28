@@ -11,7 +11,7 @@ use include_dir::{Dir, include_dir};
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Expr, Span, Spanned, TypeExpr, UseItem};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::lexer::lex_at;
+use crate::lexer::{lex_at, prescan, splice_raw};
 use crate::parser::parser;
 
 static CORE: Dir = include_dir!("$CARGO_MANIFEST_DIR/core");
@@ -263,8 +263,9 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 }
 
 // Lex and parse one file's source at its base offset.
-pub fn parse_file(src: &str, base: usize) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
-	let toks = lex_at(src, base);
+pub fn parse_file(src: &str, base: usize, raw: &HashSet<String>) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
+	let toks = splice_raw(lex_at(src, base), raw, src, base)
+		.map_err(|span| vec![err("unterminated raw macro body", span, "this `{` never closes")])?;
 	let eoi = (base + src.len()..base + src.len()).into();
 	parser(src, base)
 		.parse(Stream::from_iter(toks).map(eoi, |t| t))
@@ -287,6 +288,8 @@ struct Loader {
 	selected: Vec<(String, String, Span)>,
 	// modules loaded from the embedded core tree, allowed to import internal mods
 	core_origin: HashSet<String>,
+	raw_macros: HashSet<String>,
+	prescanned: HashSet<String>,
 }
 
 impl Loader {
@@ -615,10 +618,11 @@ impl Loader {
 	fn load_files(&mut self, name: &str, files: Vec<(String, String)>) -> Result<(), Reported> {
 		let mut module = Module::new(name);
 		let mut imports = vec![];
+		self.prescan_module(name, &files);
 		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.map.push(file, src)).collect();
-		let map = &self.map;
+		let (map, raw) = (&self.map, &self.raw_macros);
 		let parsed: Vec<_> = std::thread::scope(|s| {
-			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b))).collect();
+			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b, raw))).collect();
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
 		});
 		for result in parsed {
@@ -645,6 +649,15 @@ impl Loader {
 		}
 		// resolve core's imports from internal files
 		let from_core = self.loading.last().is_some_and(|m| self.core_origin.contains(m));
+		let files = self.module_files(name, from_core);
+		if files.is_empty() {
+			return Err(self.report(err(format!("cannot find module `{name}`"), span, "no such module")));
+		}
+		self.load_files(name, files)
+	}
+
+	// Find a module's files on disk, falling back to the embedded core tree.
+	fn module_files(&mut self, name: &str, from_core: bool) -> Vec<(String, String)> {
 		let file = format!("{name}.oi");
 		let has = |r: &&PathBuf| {
 			r.join(name).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
@@ -687,10 +700,27 @@ impl Loader {
 				self.core_origin.insert(name.to_string());
 			}
 		}
-		if files.is_empty() {
-			return Err(self.report(err(format!("cannot find module `{name}`"), span, "no such module")));
+		files
+	}
+
+	// LOok (recursively) for raw-stream macros within a module.
+	fn prescan_module(&mut self, name: &str, files: &[(String, String)]) {
+		if !self.prescanned.insert(name.to_string()) {
+			return;
 		}
-		self.load_files(name, files)
+		let mut imports = vec![];
+		for (_, src) in files {
+			let (raw, used) = prescan(&lex_at(src, 0));
+			self.raw_macros.extend(raw);
+			imports.extend(used);
+		}
+		let from_core = self.core_origin.contains(name);
+		for m in imports {
+			if !self.prescanned.contains(&m) {
+				let inner = self.module_files(&m, from_core);
+				self.prescan_module(&m, &inner);
+			}
+		}
 	}
 
 	// Collapse `pub use` chains to their final targets, then point every binding at them.
@@ -808,6 +838,8 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		loading: vec![],
 		selected: vec![],
 		core_origin: HashSet::from(["core".to_string()]),
+		raw_macros: HashSet::new(),
+		prescanned: HashSet::new(),
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;

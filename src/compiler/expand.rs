@@ -132,12 +132,13 @@ impl Expander {
 	fn define(
 		&mut self,
 		name: String,
-		params: Vec<Param>,
+		mut params: Vec<Param>,
 		ret: Option<Spanned<TypeExpr>>,
 		body: Vec<Spanned<Expr>>,
 		span: Span,
 	) -> Result<(), Diagnostic> {
 		let ast = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Ast");
+		let param = |te: &TypeExpr| ast(te) || matches!(te, TypeExpr::Name(n) if n == "Tokens");
 		let bare = name.rsplit("::").next().unwrap_or(&name);
 		if BUILTINS.contains(&bare.trim_end_matches('!')) {
 			return fail(format!("`{name}` is a builtin macro"), span, "reserved name");
@@ -145,9 +146,10 @@ impl Expander {
 		if self.macros.contains_key(&name) {
 			return fail(format!("`{name}` is already defined"), span, "duplicate macro");
 		}
-		if let Some(p) = params.iter().find(|p| !ast(&p.typ)) {
-			return fail("macro params must be `Ast`", p.span, "not Ast");
+		if let Some(p) = params.iter().find(|p| !param(&p.typ)) {
+			return fail("macro params must be `Ast` or `Tokens`", p.span, "not Ast");
 		}
+		params.iter_mut().for_each(|p| p.typ = TypeExpr::Name("Ast".into()));
 		if params.len() > MAX_PARAMS {
 			return fail("macros take at most 4 arguments for now", span, "too many parameters");
 		}
