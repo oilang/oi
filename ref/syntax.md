@@ -2140,7 +2140,6 @@ main :: fn() {
 		if xs.len == 0 { none } else { Some(xs[0]) }
 	}
 	# a value param names the type it holds, and callers pass it positionally
-	# TODO: for now only multi value params are supported, because of a syntax clash with indicies
 	repeat[T, N: int] :: fn(x: T) [N]T { ... }
 	Matrix[R: int, C: int] :: struct { cells: [R][C]float }
 	threes := repeat[int, 3](0)

@@ -338,10 +338,12 @@ impl TypeCtx<'_> {
 		}
 	}
 
+	// A bound that names a type rather than a trait makes the param a value.
 	pub fn value_param(&self, p: &TypeParam) -> bool {
-		p.bound
-			.as_deref()
-			.is_some_and(|b| !self.traits.contains_key(b) && self.named(b, (0..0).into()).is_ok())
+		p.bound.as_deref().is_some_and(|b| {
+			!self.traits.contains_key(b)
+				&& (self.named(b, (0..0).into()).is_ok() || Self::builtin_type(b.rsplit("::").next().unwrap_or(b)))
+		})
 	}
 
 	// Check that value params take literals and type param take types.
@@ -465,8 +467,7 @@ impl TypeCtx<'_> {
 	pub fn builtin_type(name: &str) -> bool {
 		matches!(
 			name,
-			"int"
-				| "isize" | "usize"
+			"int" | "isize" | "usize"
 				| "float" | "bool"
 				| "string" | "cstr"
 				| "atom" | "any"

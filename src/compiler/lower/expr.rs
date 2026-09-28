@@ -230,6 +230,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Apply { callee, args } => {
+				// a lone value arg parsed as an index, because only the resolver knows what a name is
+				if let Expr::Index { collection, index } = &callee.0
+					&& let (Expr::Ident(n), Expr::Int(v)) = (&collection.0, &index.0)
+					&& !self.vars.contains_key(n)
+					&& let Some(def) = self.generic_fns.get(self.qualify(n).as_ref()).cloned()
+				{
+					let key = self.qualify(n).to_string();
+					return self.call_generic(&key, &def, &[(TypeExpr::Const(*v), index.1)], args, None, expr.1);
+				}
 				let (val, typ) = self.expr(callee)?;
 				self.call_value(&typ.to_string(), Callee::Object(val), &typ, args, None, expr.1)
 			}

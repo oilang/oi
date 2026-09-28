@@ -195,7 +195,7 @@ where
 
 	let call_tail = call_type_args
 		.clone()
-		.filter(|a: &Vec<Spanned<TypeExpr>>| types::unambiguous(a.len(), &a[0].0))
+		.filter(|a: &Vec<Spanned<TypeExpr>>| types::settled_by_parser(a.len(), &a[0].0))
 		.or_not()
 		.then(args.clone());
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {

@@ -18,9 +18,8 @@ where
 	select! { Token::Int(n) => TypeExpr::Const(n) }.or(te).boxed()
 }
 
-// For now only multi arg comp values are supported.
-// TODO: I need to think about how I'm going to support single args.
-pub(super) fn unambiguous(len: usize, first: &TypeExpr) -> bool {
+// Can be settled by the parser without the resolver.
+pub(super) fn settled_by_parser(len: usize, first: &TypeExpr) -> bool {
 	len > 1 || !matches!(first, TypeExpr::Const(_))
 }
 
@@ -105,7 +104,7 @@ where
 						.at_least(1)
 						.collect::<Vec<_>>(),
 				))
-				.filter(|(_, args): &(String, Vec<TypeExpr>)| unambiguous(args.len(), &args[0]))
+				.filter(|(_, args): &(String, Vec<TypeExpr>)| settled_by_parser(args.len(), &args[0]))
 				.map(|(name, args)| TypeExpr::Generic(name, args));
 
 			let hole = unquote.clone().map(|u| TypeExpr::Unquote(Box::new(u)));

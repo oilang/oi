@@ -1,3 +1,4 @@
+use crate::common::Project;
 use crate::helpers::*;
 use indoc::indoc;
 
@@ -15,6 +16,24 @@ fn value_params() {
 		print(m.cells.len, m.cells[0].len)
 	"#};
 	check(src, [r#"["hi", "hi"]"#, "2 4"]);
+}
+
+#[test]
+fn a_value_param_crosses_a_module() {
+	Project::new()
+		.file("g/mod.oi", "module g\npub zeros[N: int] :: fn() [N]int { out: [N]int; out }")
+		.file("main.oi", "use g\nprint(g.zeros[3]().len)")
+		.check("3");
+}
+
+#[test]
+fn a_lone_value_arg_beats_indexing() {
+	let src = indoc! {r"
+		zeros[N: int] :: fn() [N]int { out: [N]int; out }
+		fs: []fn() int = .[fn() int { 7 }]
+		print(zeros[3]().len, fs[0]())
+	"};
+	check(src, "3 7");
 }
 
 #[test]
