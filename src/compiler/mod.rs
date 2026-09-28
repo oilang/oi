@@ -120,9 +120,10 @@ pub(crate) fn check_ann_typ(names: &[String], typ: &Typ, span: Span) -> Result<(
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig("@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => Err(Diagnostic::new("`@c` fns can't capture", span.into_range())
 			.with_label("C has nowhere to keep an environment")),
+		([n], Typ::Fn(..)) if n == role::PURE => Ok(()),
 		_ => Err(
 			Diagnostic::new(format!("`{}{typ}` isn't a type", marks(names)), span.into_range())
-				.with_label("only `@c` on a fn, so far"),
+				.with_label("only `@c` or `@pure` on a fn, so far"),
 		),
 	}
 }
@@ -138,6 +139,7 @@ pub(crate) struct GenericFnDef {
 	pub captures: Vec<(String, Typ, bool)>,
 	pub self_name: Option<String>,
 	pub module: String,
+	pub pure: bool,
 }
 
 // A monomorphized instance whose sig is declared but body not yet compiled.
@@ -860,6 +862,7 @@ impl<M: Module> Compiler<M> {
 					captures: vec![],
 					self_name: None,
 					module: scope.module.clone(),
+					pure: false,
 				},
 			);
 		}
@@ -1156,6 +1159,7 @@ impl<M: Module> Compiler<M> {
 							captures: vec![],
 							self_name: None,
 							module: scope.module.clone(),
+							pure: false,
 						},
 					);
 				}
@@ -1754,6 +1758,7 @@ impl<M: Module> Compiler<M> {
 					ret,
 					body: &def.body,
 					captures: &def.captures,
+					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
 					..FnDef::default()
 				},

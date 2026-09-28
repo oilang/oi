@@ -846,6 +846,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Annotated(anns, inner) => {
+				if matches!(inner.0, Expr::AnonFn { .. }) && is_pure(&ann_names(self.types.scope, anns)) {
+					let was = std::mem::replace(&mut self.pure, true);
+					let out = self.expr(inner);
+					self.pure = was;
+					return out;
+				}
 				let (names, (val, typ)) = (ann_names(self.types.scope, anns), self.expr(inner)?);
 				check_ann_typ(&names, &typ, expr.1)?;
 				let addr = self.b.ins().load(self.int, MemFlags::new(), val, 0);

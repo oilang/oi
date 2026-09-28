@@ -36,6 +36,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				&inferred
 			}
 		};
+		if self.pure && !captures.is_empty() {
+			let msg = "a `@pure` fn can't capture";
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("it only sees its params"));
+		}
 		let owns = !captures.is_empty() && captures.iter().all(|c| matches!(c, Capture::Move(_)));
 		let mut resolved = Vec::with_capacity(captures.len());
 		for c in captures {
@@ -106,12 +110,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
 			self_name,
 			module: self.types.scope.module.clone(),
+			pure: self.pure,
 		};
 		let sym = format!("anon${}_{}", span.start, self.mono.len());
 		let sig = self.declare_instance(&sym, &def, subst)?;
 		let params = sig.value_params();
 		if resolved.is_empty() {
-			return Ok((self.fn_object(sig.id), Typ::Fn(params, Box::new(sig.ret))));
+			let typ = Typ::Fn(params, Box::new(sig.ret));
+			let typ = match self.pure {
+				true => Typ::Annotated(vec![role::PURE.into()], typ.into()),
+				false => typ,
+			};
+			return Ok((self.fn_object(sig.id), typ));
 		}
 
 		self.wanted.push(sig.id);

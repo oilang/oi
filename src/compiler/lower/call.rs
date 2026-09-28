@@ -577,6 +577,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		recv: Option<Value>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
+		let (typ, pure) = match typ {
+			Typ::Annotated(anns, inner) if is_pure(anns) => (&**inner, true),
+			typ => (typ, false),
+		};
 		if let Typ::Annotated(_, inner) = typ {
 			let (Callee::Object(addr) | Callee::Addr(addr)) = callee;
 			return self.call_value(name, Callee::Addr(addr), inner, args, recv, span);
@@ -588,7 +592,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					.with_label(format!("this is {typ}, not a function")));
 			}
 		};
-		self.require_pure(name, span)?;
+		if !pure {
+			self.require_pure(name, span)?;
+		}
 		let (mut vals, lent) = self.call_args(name, params, recv, None, args, span)?;
 		let mut sig = self.module.make_signature();
 		sig.params

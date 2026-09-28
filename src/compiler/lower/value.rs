@@ -822,6 +822,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if let Typ::Annotated(anns, inner) = target
 			&& let Typ::Fn(ps, _) = &**inner
+			&& !is_pure(anns)
 		{
 			let value = match &value.0 {
 				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,
@@ -858,10 +859,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			let v = VariantInfo::new(from.key(), id, vec![from.clone()]);
 			return Ok((self.make_enum(&[v], id, &[val]), Typ::Any));
 		}
-		if let Typ::Annotated(_, inner) = from
+		if let Typ::Annotated(anns, inner) = from
 			&& **inner == *to
 		{
-			return Ok((self.fn_cell(val), to.clone()));
+			let val = if is_pure(anns) { val } else { self.fn_cell(val) };
+			return Ok((val, to.clone()));
 		}
 		// fixed arrays widen to dynamic
 		if let (Typ::FixedArray(e, n), Typ::Array(t)) = (from, to)

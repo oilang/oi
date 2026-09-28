@@ -442,6 +442,36 @@ fn pure_fn_rejects_impure_calls() {
 }
 
 #[test]
+fn pure_fn_values() {
+	check(
+		indoc! {"
+			apply :: fn(f: @pure fn(int) int, x: int) int { f(x) }
+			@pure
+			twice :: fn(x: int) int {
+				step := fn(y: int) int { y + 1 }
+				step(step(x))
+			}
+			print(apply(@pure fn(x: int) int { x * x }, 4))
+			print(twice(1))
+		"},
+		["16", "3"],
+	);
+	// the nested literal inherits purity, and a marked one can't capture
+	fail(
+		[
+			"@pure",
+			"f :: fn(x: int) int { g := fn(y: int) int { print(y) y } g(x) }",
+			"f(1)",
+		],
+		"isn't allowed in a `@pure` fn",
+	);
+	fail(
+		["k := 3", "sq := @pure fn(x: int) int { x * k }", "sq(2)"],
+		"can't capture",
+	);
+}
+
+#[test]
 fn unknown_attr_macro_errors() {
 	fail(
 		indoc! {"

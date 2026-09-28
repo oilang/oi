@@ -132,3 +132,8 @@ pub(super) fn cmp_cc(op: BinOp) -> (IntCC, FloatCC) {
 		_ => unreachable!("non-comparison op in cmp_cc"),
 	}
 }
+
+// Whether a list of annotations carry the `@pure` contract.
+pub(super) fn is_pure(anns: &[String]) -> bool {
+	anns.iter().any(|a| a == role::PURE)
+}
