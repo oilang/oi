@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::io::IsTerminal as _;
 
 use oi::Reported;
 use oi::ast::Expr;
 use oi::driver::{DebugOpts, run_source};
+use oi::lexer::{lex_at, prescan};
 use oi::loader::parse_file;
 
 use crate::cli::VERSION;
@@ -57,9 +59,10 @@ pub fn run() -> Result<(), Reported> {
 			":clear" | ":c" => session.clear(),
 			_ => {
 				let src = format!("{session}{line}\n");
+				let raw = prescan(&lex_at(&src, 0)).0.into_iter().collect();
 				let entry = vec![("<repl>".into(), src)];
 				if run_source(entry, std::path::Path::new("."), &[], DebugOpts::default()).is_ok() {
-					session.push_str(&defs(&line));
+					session.push_str(&defs(&line, &raw));
 				}
 			}
 		}
@@ -83,8 +86,8 @@ fn reedline() -> reedline::Reedline {
 }
 
 // The source of `line`'s definitions, one per line. Ran every subsequent turn.
-fn defs(line: &str) -> String {
-	parse_file(line, 0, &Default::default())
+fn defs(line: &str, raw: &HashSet<String>) -> String {
+	parse_file(line, 0, raw)
 		.unwrap_or_default()
 		.iter()
 		.filter(|(e, _)| is_def(e))

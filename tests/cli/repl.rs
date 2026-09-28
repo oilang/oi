@@ -16,6 +16,16 @@ fn only_definitions_replay() {
 }
 
 #[test]
+fn raw_macro_body_replays() {
+	let src = indoc::indoc! {r#"
+		r! :: fn(body: Tokens) Ast { `%{body.items.len}` }
+		n := r! { a "}" b }
+		print(n)
+	"#};
+	assert_eq!(repl(src), "3\n3");
+}
+
+#[test]
 fn clear_resets_the_session() {
 	assert_eq!(repl("x := 1\n:c\nprint x\n"), "1");
 }
