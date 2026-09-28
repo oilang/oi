@@ -36,6 +36,7 @@ pub(crate) enum Typ {
 	Ref(Box<Typ>),
 	Ast,
 	Any,
+	Const(i64),
 }
 
 // Annotation names.
@@ -293,6 +294,7 @@ impl fmt::Display for Typ {
 			Typ::Ref(inner) => write!(f, "&{inner}"),
 			Typ::Ast => write!(f, "Ast"),
 			Typ::Any => write!(f, "any"),
+			Typ::Const(n) => write!(f, "{n}"),
 		}
 	}
 }

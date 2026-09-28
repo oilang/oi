@@ -205,7 +205,7 @@ fn mentions(te: &TypeExpr, name: &str) -> bool {
 		TypeExpr::AnonStruct(fs) => fs.iter().any(|f| mentions(&f.typ, name)),
 		TypeExpr::Map(k, v) => mentions(k, name) || mentions(v, name),
 		TypeExpr::Ref(e) => mentions(e, name),
-		TypeExpr::AtomSum(_) | TypeExpr::Unquote(_) => false,
+		TypeExpr::AtomSum(_) | TypeExpr::Unquote(_) | TypeExpr::Const(_) => false,
 	}
 }
 

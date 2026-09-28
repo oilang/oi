@@ -2135,21 +2135,19 @@ main :: fn() {
 		assert!(max_connections > 0 && max_connections <= 65535)
 	}
 
-	# function calls can have comptime args
-	open_typed :: fn(comp T: type, path: string) !T {
-		raw := open(path)?
-		deserialize(T, raw)
-	}
-
-	# generics are sugar for comp type params
+	# params in `[]` are comptime types/values
 	first[T] :: fn(xs []T) ?T {
 		if xs.len == 0 { none } else { Some(xs[0]) }
 	}
+	# a value param names the type it holds, and callers pass it positionally
+	# TODO: for now only multi value params are supported, because of a syntax clash with indicies
+	repeat[T, N: int] :: fn(x: T) [N]T { ... }
+	Matrix[R: int, C: int] :: struct { cells: [R][C]float }
+	threes := repeat[int, 3](0)
 	# generics can have trait guards
 	max[T Ord] :: fn(a: T, b: T) T {
 		if a > b { a } else { b }
 	}
-	max :: fn(comp T: type, a: T, b: T) T where T is Ord { ... }
 
 	## annotations
 

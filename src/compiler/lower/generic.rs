@@ -115,7 +115,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			.with_label("wrong number of type arguments"));
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
-			subst.insert(param.name.clone(), self.types().resolve(te, *te_span)?);
+			let typ = self.types().resolve(te, *te_span)?;
+			self.types().check_arg(param, &typ, *te_span)?;
+			subst.insert(param.name.clone(), typ);
 		}
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
@@ -138,14 +140,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.type_defaults(def, &mut subst)?;
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
+			let kind = if self.types().value_param(missing) {
+				"value"
+			} else {
+				"type"
+			};
 			return Err(Diagnostic::new(
-				format!("cannot infer type parameter `{}`", missing.name),
+				format!("cannot infer {kind} parameter `{}`", missing.name),
 				span.into_range(),
 			)
 			.with_label("not determined by any argument"));
 		}
 		for p in &def.type_params {
 			let Some(bound) = &p.bound else { continue };
+			if self.types().value_param(p) {
+				continue;
+			}
 			if !self.types.traits.contains_key(bound.as_str()) {
 				return Err(
 					Diagnostic::new(format!("unknown trait `{bound}`"), span.into_range()).with_label("no such trait")

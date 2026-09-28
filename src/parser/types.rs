@@ -10,6 +10,20 @@ pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
 	TypeExpr::Generic("Result".into(), vec![ok, err])
 }
 
+// One entry in a `[]` param list: a type, or a comptime value as in `Matrix[2, 3]`.
+pub(super) fn type_arg<'token, I>(te: P<'token, I, TypeExpr>) -> P<'token, I, TypeExpr>
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+{
+	select! { Token::Int(n) => TypeExpr::Const(n) }.or(te).boxed()
+}
+
+// For now only multi arg comp values are supported.
+// TODO: I need to think about how I'm going to support single args.
+pub(super) fn unambiguous(len: usize, first: &TypeExpr) -> bool {
+	len > 1 || !matches!(first, TypeExpr::Const(_))
+}
+
 // The type-expression grammar, boxed so its types stop at this fn boundary.
 pub(super) fn type_expr<'token, I>(
 	dotted_name: P<'token, I, String>,
@@ -83,11 +97,15 @@ where
 				.ignore_then(brace(anon_fields.clone()))
 				.map(TypeExpr::AnonStruct);
 
-			// generic struct instantiation
+			// generic structs
 			let generic_instance = ident()
 				.then(bracket(
-					te.clone().separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>(),
+					type_arg(te.clone().boxed())
+						.separated_by(just(Token::Comma))
+						.at_least(1)
+						.collect::<Vec<_>>(),
 				))
+				.filter(|(_, args): &(String, Vec<TypeExpr>)| unambiguous(args.len(), &args[0]))
 				.map(|(name, args)| TypeExpr::Generic(name, args));
 
 			let hole = unquote.clone().map(|u| TypeExpr::Unquote(Box::new(u)));

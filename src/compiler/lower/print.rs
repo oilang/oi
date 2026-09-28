@@ -232,6 +232,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					| Typ::Access(..)
 					| Typ::Ast
 					| Typ::Any
+					| Typ::Const(_)
 					| Typ::Ref(_) => {
 						unreachable!("handled above")
 					}

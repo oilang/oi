@@ -66,7 +66,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						let visible = key.contains("::") || !self.script;
 						match visible.then(|| self.types.consts.map.get(key.as_ref()).cloned()).flatten() {
 							Some(c) => self.expr(&c),
-							None => Err(e),
+							None => match self.types.type_params.get(name) {
+								Some(&Typ::Const(n)) => Ok((self.b.ins().iconst(self.int, n), Typ::Int(64))),
+								_ => Err(e),
+							},
 						}
 					}
 				},

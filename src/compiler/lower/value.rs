@@ -173,6 +173,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Annotated(..) | Typ::Closure(..) | Typ::Trait(_) | Typ::Ref(_) => self.b.ins().iconst(self.int, 0),
 			Typ::Access(..) => unreachable!("an access mod only marks params inside a fn"),
+			Typ::Const(_) => unreachable!("a comptime value param is never a runtime slot"),
 			Typ::Enum(_) if rc::opt_ref(typ) => self.b.ins().iconst(self.int, 0),
 			// default to first variant, with zeroed payload fields
 			Typ::Enum(_) | Typ::Sum(..) => {

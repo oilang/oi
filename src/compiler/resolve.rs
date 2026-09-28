@@ -219,11 +219,16 @@ impl TypeCtx<'_> {
 				Err(Diagnostic::new("unquote outside a macro template", span.into_range()).with_label("stray unquote"))
 			}
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
+			TypeExpr::Const(n) => Ok(Typ::Const(*n)),
 			TypeExpr::FixedArray(elem, len) => {
 				if let Expr::Ident(name) = &len.0
 					&& let Ok(k) = self.named(name, span)
 				{
-					return Ok(Typ::Map(Box::new(k), Box::new(self.resolve(elem, span)?)));
+					let elem = Box::new(self.resolve(elem, span)?);
+					return match k {
+						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
+						_ => Ok(Typ::Map(Box::new(k), elem)),
+					};
 				}
 				Ok(Typ::FixedArray(
 					Box::new(self.resolve(elem, span)?),
@@ -332,6 +337,25 @@ impl TypeCtx<'_> {
 		}
 	}
 
+	pub fn value_param(&self, p: &TypeParam) -> bool {
+		p.bound
+			.as_deref()
+			.is_some_and(|b| !self.traits.contains_key(b) && self.named(b, (0..0).into()).is_ok())
+	}
+
+	// Check that value params take literals and type param take types.
+	pub fn check_arg(&self, p: &TypeParam, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
+		let want = self.value_param(p);
+		if want == matches!(typ, Typ::Const(_)) {
+			return Ok(());
+		}
+		let kind = if want { "value" } else { "type" };
+		Err(
+			Diagnostic::new(format!("`{}` is a {kind} parameter", p.name), span.into_range())
+				.with_label(format!("got `{typ}`")),
+		)
+	}
+
 	// Resolve `args` against `params`.
 	fn generic_subst(
 		&self,
@@ -349,7 +373,9 @@ impl TypeCtx<'_> {
 		}
 		let mut subst = HashMap::new();
 		for (param, arg) in params.iter().zip(args) {
-			subst.insert(param.name.clone(), self.resolve(arg, span)?);
+			let typ = self.resolve(arg, span)?;
+			self.check_arg(param, &typ, span)?;
+			subst.insert(param.name.clone(), typ);
 		}
 		Ok(subst)
 	}

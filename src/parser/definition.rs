@@ -152,9 +152,9 @@ where
 	let struct_field_entry = ident().then_ignore(just(Token::Assign)).or_not().then(p.expr.clone());
 	let struct_body = brace(loose_list(struct_field_entry.clone()));
 
-	// explicit generic types
+	// explicit generic args
 	let call_type_args = bracket(
-		spanned(p.type_expr.clone())
+		spanned(types::type_arg(p.type_expr.clone()))
 			.separated_by(just(Token::Comma))
 			.at_least(1)
 			.collect::<Vec<_>>(),
@@ -193,7 +193,11 @@ where
 		.then_ignore(dot().rewind())
 		.map(|(name, args)| Expr::TypePat(TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect())));
 
-	let call_tail = call_type_args.clone().or_not().then(args.clone());
+	let call_tail = call_type_args
+		.clone()
+		.filter(|a: &Vec<Spanned<TypeExpr>>| types::unambiguous(a.len(), &a[0].0))
+		.or_not()
+		.then(args.clone());
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {
 		Some((type_args, args)) => Expr::Call {
 			name,
