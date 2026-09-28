@@ -194,6 +194,22 @@ fn fns_claims_and_notes_are_typed_asts() {
 }
 
 #[test]
+fn type_info_reflects_a_definition() {
+	check(
+		indoc! {r#"
+			Point :: struct { x: int, y: []float @required }
+			Color :: enum { red, green, blue }
+			comp {
+				t := type_info(Point)
+				print(t.name.str(), t.items[0].name.str(), t.items[0].typ.str(), t.items[1].notes.len)
+				print(type_info(Color).items[2].str())
+			}
+		"#},
+		["Point x int 1", "blue"],
+	);
+}
+
+#[test]
 fn macros_and_comp_share_one_stage0() {
 	let src = indoc! {"
 		twice! :: fn(e: Ast) Ast { `%e + %e` }

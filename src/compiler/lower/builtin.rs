@@ -1,3 +1,4 @@
+use crate::ast::{EnumVariant, Param};
 use crate::compiler::{comp, role};
 
 use super::*;
@@ -83,6 +84,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some((self.intcast(tag, types::I64, true), Typ::Int(64))))
 			}
 
+			"type_info" => {
+				let [(Expr::Ident(name), at)] = args else {
+					return Err(Diagnostic::new("`type_info` takes one type name", span.into_range())
+						.with_label("expected a struct or enum"));
+				};
+				let def = self.type_def(name, *at)?;
+				Ok(Some(self.quote(&[(def, *at)], *at)?))
+			}
+
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
 			"__comp_yield" => {
 				let (val, typ) = self.expr(&args[0])?;
@@ -103,6 +113,47 @@ impl<'a, M: Module> Translator<'a, M> {
 			field("line", Expr::Int(line as i64)),
 		];
 		self.struct_lit(role::SRC, &[], &fields, span, None)
+	}
+
+	// Rebuild a named type's definition as an Ast.
+	fn type_def(&self, name: &str, span: Span) -> Result<Expr, Diagnostic> {
+		let field = |f: &FieldDef| Param {
+			name: f.name.clone(),
+			typ: type_expr(&f.typ).unwrap_or_else(|| TypeExpr::Name(f.typ.to_string())),
+			span,
+			default: f.default.clone(),
+			annotations: f.annotations.clone(),
+			access: Access::Read,
+			mutable: false,
+			public: false,
+		};
+		Ok(match self.peeled(&self.types.named(name, span)?) {
+			Typ::Struct(n, fields) => Expr::StructDef {
+				name: display_name(&n).into(),
+				type_params: vec![],
+				fields: fields.iter().map(field).collect(),
+				fills: vec![],
+			},
+			// variants reflect without payloads for now
+			Typ::Enum(n) => Expr::EnumDef {
+				name: display_name(&n).into(),
+				backing: None,
+				type_params: vec![],
+				variants: (self.enum_variants(&n).iter())
+					.map(|v| EnumVariant {
+						name: v.name.clone(),
+						..Default::default()
+					})
+					.collect(),
+				fills: vec![],
+			},
+			t => {
+				return Err(
+					Diagnostic::new(format!("`{t}` has no definition to reflect"), span.into_range())
+						.with_label("not a struct or enum"),
+				);
+			}
+		})
 	}
 
 	// Yield a value to the `comp` host (recursive).
