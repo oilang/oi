@@ -601,6 +601,29 @@ impl<'a, M: Module> Translator<'a, M> {
 					{
 						return self.check_expr(&c, &typ);
 					}
+					// an uncalled method is a closure over its receiver
+					if !sfields.iter().any(|f| f.name == *field)
+						&& let Some(sig) = self.funcs.get(&format!("{sname}.{field}")).cloned()
+						&& sig.params.first().is_some_and(|p| p.name.as_deref() == Some("self"))
+					{
+						let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
+						let recv = format!("$recv{}", self.vars.len());
+						let var = self.b.declare_var(self.b.func.dfg.value_type(ptr));
+						self.b.def_var(var, ptr);
+						self.vars.insert(recv.clone(), Local::plain(var, typ.clone(), false));
+						let args = (0..rest.len()).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
+						let body = [(
+							Expr::MethodCall {
+								recv: Box::new((Expr::Ident(recv), span)),
+								method: field.clone(),
+								type_args: vec![],
+								args,
+							},
+							span,
+						)];
+						let fsig = AnonSig::Inferred(Typ::Fn(rest, Box::new(sig.ret)));
+						return self.declare_anon_fn(&None, &[], false, fsig, &body, span);
+					}
 				}
 
 				// a newtype has no heap block

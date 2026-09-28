@@ -125,6 +125,20 @@ fn wrong_arg_count() {
 }
 
 #[test]
+fn bound_method_is_a_value() {
+	let src = indoc! {"
+		Point :: struct { x: int, y: int }
+		Point :< {
+			scaled :: fn(self, k: int) int { (self.x + self.y) * k }
+		}
+		p :: Point.{3, 4}
+		f :: p.scaled
+		f(10)
+	"};
+	check(src, "70");
+}
+
+#[test]
 fn builtin_amendment() {
 	check(r#"print("".is_empty())"#, "true");
 	check(r#"print("hi".is_empty())"#, "false");
