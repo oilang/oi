@@ -221,20 +221,24 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Assertion casts.
 	fn assert_cast(&mut self, obj: Value, typ: &Typ, target: &Typ) -> Result<Option<TypedVal>, Diagnostic> {
-		let tn = match typ {
-			Typ::Trait(tn) => tn.clone(),
-			Typ::Error => role::ERROR.to_string(),
-			_ => return Ok(None),
-		};
+		if !matches!(typ, Typ::Any | Typ::Trait(_) | Typ::Error) {
+			return Ok(None);
+		}
 		let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(target));
 		let none = self.make_option(&opt, None);
-		if !self.trait_impls.contains(&(target.key(), tn.clone())) {
-			return Ok(Some((none, opt)));
-		}
-		let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())));
+		// `any` is tagged by typeid, a trait object by its vtable.
+		let want = if *typ == Typ::Any {
+			self.b.ins().iconst(self.int, typeid(target))
+		} else {
+			let tn = if let Typ::Trait(tn) = typ { tn } else { role::ERROR };
+			if !self.trait_impls.contains(&(target.key(), tn.to_string())) {
+				return Ok(Some((none, opt)));
+			}
+			self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())))
+		};
 		let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
 		let same = self.b.ins().icmp(IntCC::Equal, got, want);
-		let data = self.b.ins().load(self.int, MemFlags::new(), obj, 8);
+		let data = self.load_bind(obj, typ, target, 8);
 		let some = self.make_option(&opt, Some(data));
 		Ok(Some((self.b.ins().select(same, some, none), opt)))
 	}
@@ -255,6 +259,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			.with_label("not yet implemented"));
 		}
 		let (val, typ) = self.expr(value)?;
+		if typ == Typ::Any {
+			return self.assert_cast(val, &typ, target);
+		}
 		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
 		if typ == *target {
 			return Ok(Some((val, typ)));
