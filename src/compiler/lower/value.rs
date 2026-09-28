@@ -117,7 +117,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => n.as_str(),
 			_ => return None,
 		};
-		if is_nozero(self.types.consts.anns, rc::base_name(name)) {
+		if has_ann(self.types.consts.anns, rc::base_name(name), role::NOZERO) {
 			return Some(name);
 		}
 		match typ {
@@ -1070,6 +1070,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			})?,
 			_ => self.qualify(name).to_string(),
 		};
+		self.check_noinit(&name, span)?;
 		if self.types.enums.borrow().contains_key(name.as_str()) {
 			if !fields.is_empty() {
 				return Err(Diagnostic::new(

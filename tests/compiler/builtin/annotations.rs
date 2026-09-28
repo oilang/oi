@@ -1,3 +1,4 @@
+use crate::common::Project;
 use crate::helpers::*;
 
 #[test]
@@ -42,4 +43,22 @@ fn nozero_failures() {
 		"#},
 		"`Handle` has no zero value",
 	);
+}
+
+#[test]
+fn noinit() {
+	let net = indoc! {r#"
+		module net
+		@noinit
+		pub Handle :: struct { pub fd: int }
+		pub new :: fn(fd: int) Handle { Handle.{ fd = fd } }
+	"#};
+	Project::new()
+		.file("main.oi", ["use net", "print(net.new(3).fd)"])
+		.file("net.oi", net)
+		.check("3");
+	Project::new()
+		.file("main.oi", ["use net.{ Handle }", "print(Handle.{ fd = 3 }.fd)"])
+		.file("net.oi", net)
+		.fail_with("can't build `Handle` outside module `net`");
 }

@@ -28,3 +28,6 @@ pub pure :: ()
 
 ## Ensures a type is always explicitly initialized.
 pub nozero :: ()
+
+## Bans struct literals for this type outside its own module.
+pub noinit :: ()

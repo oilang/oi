@@ -65,6 +65,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		Err(Diagnostic::new(msg, span.into_range()).with_label("not public"))
 	}
 
+	// Enforce `@noinit`.
+	pub(super) fn check_noinit(&self, name: &str, span: Span) -> Result<(), Diagnostic> {
+		let base = rc::base_name(name);
+		let owner = base.split_once("::").map_or("", |(m, _)| m);
+		if owner == self.types.scope.module || !has_ann(self.types.consts.anns, base, role::NOINIT) {
+			return Ok(());
+		}
+		let msg = format!("can't build `{}` outside module `{owner}`", display_name(name));
+		Err(Diagnostic::new(msg, span.into_range()).with_label("use a factory fn"))
+	}
+
 	// Search embedded structs for `wanted`.
 	// Returns the embed slot path.
 	pub(super) fn pierce<T>(

@@ -248,14 +248,13 @@ pub(crate) fn ann_names(scope: &Scope, anns: &[Annotation]) -> Vec<String> {
 	qualify_anns(scope, anns).iter().filter_map(name).collect()
 }
 
-pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -> bool {
-	let mut anns = anns.get(name).into_iter().flatten();
-	anns.any(|a| ann(a, role::C).is_some())
+// Whether a type is marked with a given annotation.
+pub(crate) fn has_ann(anns: &HashMap<String, Vec<Annotation>>, name: &str, role: &str) -> bool {
+	anns.get(name).into_iter().flatten().any(|a| ann(a, role).is_some())
 }
 
-pub(crate) fn is_nozero(anns: &HashMap<String, Vec<Annotation>>, name: &str) -> bool {
-	let mut anns = anns.get(name).into_iter().flatten();
-	anns.any(|a| ann(a, role::NOZERO).is_some())
+pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -> bool {
+	has_ann(anns, name, role::C)
 }
 
 // Check that every struct marked `@c` has a C layout.
