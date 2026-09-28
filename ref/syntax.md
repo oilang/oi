@@ -2199,7 +2199,7 @@ main :: fn() {
 	trims_empty :: fn() { assert! trim("") == "" }
 
 	# TODO: the comp and reflection stuff not fleshed out yet
-	comp for note in typeinfo(yell).annotations { ... }
+	comp loop note in typeinfo(yell).annotations { ... }
 
 	## macros
 
@@ -2259,7 +2259,7 @@ main :: fn() {
 
 	# reflection in `comp`
 	debug_print[T] :: fn(value: T) {
-		comp for field in type_info(T).fields {
+		comp loop field in type_info(T).fields {
 			println("{field.name} = {value.(field.name)}")
 		}
 	}
