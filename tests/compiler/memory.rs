@@ -161,3 +161,8 @@ fn struct_literal_owns_its_field_handles() {
 	let held = "Bag :: struct { items: []int }\nmk :: fn() Bag { Bag.{ items = [ 1 2 ] } }\nprint(mk().items[0])";
 	assert_eq!(leaks(held), leaks(plain));
 }
+
+#[test]
+fn omitted_handle_field_has_one_owner() {
+	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len)"]);
+}

@@ -137,6 +137,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	pub(super) fn zero(&mut self, typ: &Typ) -> Value {
+		let val = self.zero_val(typ);
+		self.untemp(val);
+		val
+	}
+
+	fn zero_val(&mut self, typ: &Typ) -> Value {
 		let typ = typ.newtype().unwrap_or(typ);
 		match typ {
 			Typ::Float(16) => self.b.ins().f16const(Ieee16::with_bits(0)),
@@ -1132,7 +1138,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							.with_label("type mismatch"),
 					);
 				}
-				self.assign_fields(val, ptr, &struct_fields, false);
+				self.assign_fields(val, ptr, &struct_fields, true);
 				continue;
 			}
 			let (idx, ftyp, base) = match field_name.as_deref() {
@@ -1175,6 +1181,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
+			if rc::releasable(&ftyp) {
+				// drop the zero/default this slot already owns
+				let old = self
+					.b
+					.ins()
+					.load(cl_type(&ftyp, self.int), MemFlags::new(), base, (idx * 8) as i32);
+				self.release_value(old, &ftyp);
+			}
 			self.b.ins().store(MemFlags::new(), val, base, (idx * 8) as i32);
 		}
 		check_required(&name, &struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
