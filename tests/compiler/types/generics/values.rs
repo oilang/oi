@@ -21,7 +21,10 @@ fn value_params() {
 #[test]
 fn a_value_param_crosses_a_module() {
 	Project::new()
-		.file("g/mod.oi", "module g\npub zeros[N: int] :: fn() [N]int { out: [N]int; out }")
+		.file(
+			"g/mod.oi",
+			"module g\npub zeros[N: int] :: fn() [N]int { out: [N]int; out }",
+		)
 		.file("main.oi", "use g\nprint(g.zeros[3]().len)")
 		.check("3");
 }

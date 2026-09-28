@@ -849,6 +849,10 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			flag("`.int()` needs an Ast holding an Int literal");
 			0
 		}
+		// the variant name, lowercased
+		(b"kind", e) => ast(Expr::Ident(
+			format!("{e:?}").split(['(', ' ']).next().unwrap().to_lowercase(),
+		)),
 		(b"str", e) => {
 			let s = match e {
 				Expr::Ident(s) | Expr::String(s) => s.clone(),

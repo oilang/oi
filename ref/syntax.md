@@ -2252,7 +2252,7 @@ main :: fn() {
 
 	# a Tokens param opts a macro into the raw stream, for embedded DSLs whose bodies aren't valid Oi
 	sql! :: fn(body: Tokens) Ast { ... }
-	sql! { SELECT * FROM users WHERE id = {id} }
+	sql! { SELECT * FROM users WHERE id = %id AND n > %{a.b + 1} }
 
 	# reflection in `comp`
 	debug_print[T] :: fn(value: T) {

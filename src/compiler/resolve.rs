@@ -467,7 +467,8 @@ impl TypeCtx<'_> {
 	pub fn builtin_type(name: &str) -> bool {
 		matches!(
 			name,
-			"int" | "isize" | "usize"
+			"int"
+				| "isize" | "usize"
 				| "float" | "bool"
 				| "string" | "cstr"
 				| "atom" | "any"

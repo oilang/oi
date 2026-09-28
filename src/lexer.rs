@@ -473,6 +473,23 @@ pub fn splice_raw(
 				continue;
 			}
 			covered = span.end;
+			// `%name` / `%{expr}` escapes back to Oi
+			if *tok == Token::Percent
+				&& let Some((next, at)) = toks.get(i)
+				&& at.start == span.end
+			{
+				let group = *next == Token::LBrace;
+				let (from, mut d) = (i + usize::from(group), i32::from(group));
+				i += 1;
+				while d > 0 {
+					let (t, _) = toks.get(i).ok_or(open)?;
+					i += 1;
+					d += i32::from(*t == Token::LBrace) - i32::from(*t == Token::RBrace);
+				}
+				out.extend_from_slice(&toks[from..i - usize::from(group)]);
+				covered = toks[i - 1].1.end;
+				continue;
+			}
 			depth += i32::from(*tok == Token::LBrace) - i32::from(*tok == Token::RBrace);
 			if depth == 0 {
 				out.push((Token::RBracket, *span));

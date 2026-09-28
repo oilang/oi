@@ -666,6 +666,22 @@ fn attr_macro_sees_fills() {
 }
 
 #[test]
+fn raw_body_escapes_back_to_oi() {
+	check(
+		indoc! {r#"
+			sum! :: fn(body: Tokens) Ast {
+				out := `0`
+				loop t in body.items { if t.kind != "string" { out = `%out + %t` } }
+				out
+			}
+			id := 7
+			print(sum! { a %id b % 2 c %{id * 2} })
+		"#},
+		"21",
+	);
+}
+
+#[test]
 fn tokens_param_takes_a_raw_body() {
 	check(
 		indoc! {r#"
