@@ -513,25 +513,24 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 		Expr::Array(elems) => {
 			let non_spread = elems.iter().filter(|(e, _)| !matches!(e, Expr::Spread(_))).collect::<Vec<_>>();
 			if non_spread.is_empty() {
+				let hint = if elems.is_empty() {
+					"an empty array needs a type annotation"
+				} else {
+					"annotate it, or give the array a literal element"
+				};
 				return Err(
-					Diagnostic::new("cannot tell what type this static is", span.into_range()).with_label(
-						elems
-							.is_empty()
-							.then(|| "an empty array needs a type annotation")
-							.unwrap_or("annotate it, or give the array a literal element"),
-					),
+					Diagnostic::new("cannot tell what type this static is", span.into_range()).with_label(hint),
 				);
 			}
 			let elem = static_typ(&non_spread[0].0, types, span)?;
 			for (e, espan) in non_spread.iter().skip(1) {
-				if let Ok(other) = static_typ(e, types, *espan) {
-					if other != elem {
-						return Err(Diagnostic::new(
-							format!("array elements are {elem} and {other}"),
-							espan.into_range(),
-						)
-						.with_label("mixed element types"));
-					}
+				if let Ok(other) = static_typ(e, types, *espan)
+					&& other != elem
+				{
+					return Err(
+						Diagnostic::new(format!("array elements are {elem} and {other}"), espan.into_range())
+							.with_label("mixed element types"),
+					);
 				}
 			}
 			Ok(Typ::Array(Box::new(elem)))
