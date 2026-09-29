@@ -114,6 +114,11 @@ fn string_to_bytes_copies() {
 }
 
 #[test]
+fn only_bytes_cast_to_string() {
+	fail("string.(42)", "`.str()` formats a value");
+}
+
+#[test]
 fn strings_do_not_parse() {
 	fail(r#"int.("42")"#, "cannot cast string to int");
 	fail(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");

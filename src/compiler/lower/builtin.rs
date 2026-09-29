@@ -320,6 +320,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.assert_cast(val, &typ, target);
 		}
 		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
+		if *target == Str && !matches!(typ, Str | Array(_)) {
+			return Err(
+				Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range())
+					.with_label("`.str()` formats a value"),
+			);
+		}
 		if typ == *target {
 			return Ok(Some((val, typ)));
 		}
