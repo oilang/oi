@@ -940,12 +940,10 @@ main :: fn() {
 	normal := "NORMAL mode"
 	raw := r"there is no\nescape"
 	regex := r"\d+\.\d+"
-	# a body starting on its own line is dedented to its shallowest line, losing its opening and closing lines
 	multiline := "
 		strings are multiline
-			by default
 	"
-	assert! multiline == "strings are multiline\n\tby default"
+	assert! multiline == "\n\t\tstrings are multiline\n\t"
 
 	# escape characters
 	# \n \t \r \0 \\ \" \e \a \b \f \v, \xNN (2 hex digits, ASCII) and \u{H..}
@@ -954,6 +952,13 @@ main :: fn() {
 	# `"""` needs no `"` escaping, takes the same prefixes, and closes at the first unescaped `"""`
 	quoted := """he said "hi" and left"""
 	quoted_raw := r"""a \d+ "regex" pattern"""
+
+	# a `"""` body starting on its own line dedents, to its shallowest line, losing its opening and closing lines
+	block := """
+		indentation is stripped
+			but relative depth is kept
+	"""
+	assert! block == "indentation is stripped\n\tbut relative depth is kept"
 
 	# any run of three or more quotes opens one, so a body can hold a shorter run
 	holds_a_run := """"a """ inside""""
@@ -994,10 +999,10 @@ main :: fn() {
 	print("use {{braces}} like this")
 
 	# works in multiline strings
-	msg := "
+	msg := """
 		dear {who},
 		your balance is {amount}.
-	"
+	"""
 	# but no interpolation in raw strings
 	path := r"C:\Users\{who}" # {who} is not interpolated
 

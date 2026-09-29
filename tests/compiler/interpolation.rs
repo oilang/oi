@@ -43,11 +43,11 @@ fn multiline() {
 	let src = indoc! {r#"
 		who :: "mom"
 		amount :: 5
-		print("
+		print("""
 			dear {who},
 			you owe:
 				{amount}
-		")
+			""")
 	"#};
 	check(src, ["dear mom,", "you owe:", "\t5"]);
 }

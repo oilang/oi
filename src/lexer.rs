@@ -27,7 +27,7 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 	lex.bump(i);
 }
 
-// Dedent a body that starts on its own line, to its shallowest line.
+// Dedent a `"""` body that starts on its own line, to its shallowest line.
 fn dedent(s: &str) -> String {
 	let Some((_, body)) = s.split_once('\n').filter(|(head, _)| head.trim().is_empty()) else {
 		return s.into();
@@ -79,10 +79,10 @@ pub enum Token {
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
 	Float(String),
 	#[regex(r#""{3,}"#, |lex| lex_long(lex, true))]
-	#[regex(r#""([^"\\]|\\.)*""#, |lex| dedent(&lex.slice()[1..lex.slice().len() - 1]))]
+	#[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len() - 1].to_string())]
 	String(String),
 	#[regex(r#"r"{3,}"#, |lex| lex_long(lex, false))]
-	#[regex(r#"r"[^"]*""#, |lex| dedent(&lex.slice()[2..lex.slice().len() - 1]))]
+	#[regex(r#"r"[^"]*""#, |lex| lex.slice()[2..lex.slice().len() - 1].to_string())]
 	RawString(String),
 	#[regex(r":\p{XID_Continue}+", |lex| lex.slice()[1..].to_string())]
 	Atom(String),

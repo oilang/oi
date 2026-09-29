@@ -113,9 +113,10 @@ fn triple_quoted() {
 
 #[test]
 fn dedent() {
-	check("print(\"\n\t\tone\n\t\t  two\n\t\")", ["one", "  two"]);
-	check("print(\"\n\t\t\\tone\n\t\")", "\tone");
-	check("print(\"one\n\t\ttwo\")", ["one", "\t\ttwo"]);
+	check("print(\"\"\"\n\t\tone\n\t\t  two\n\t\t\"\"\")", ["one", "  two"]);
+	check("print(\"\"\"\n\t\t\\tone\n\t\t\"\"\")", "\tone");
+	check("print(\"\"\"one\n\t\ttwo\"\"\")", ["one", "\t\ttwo"]);
+	check("print(\"\n\tone\n\" == \"\\n\\tone\\n\")", "true");
 }
 
 #[test]
