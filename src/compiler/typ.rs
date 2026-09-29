@@ -16,6 +16,7 @@ pub(crate) enum Typ {
 	USize,
 	Float(u16),
 	Bool,
+	Rune,
 	Str,
 	CStr,
 	Atom,
@@ -244,6 +245,7 @@ impl fmt::Display for Typ {
 			Typ::Float(64) => write!(f, "float"),
 			Typ::Float(w) => write!(f, "f{w}"),
 			Typ::Bool => write!(f, "bool"),
+			Typ::Rune => write!(f, "rune"),
 			Typ::Str => write!(f, "string"),
 			Typ::CStr => write!(f, "cstr"),
 			Typ::Atom => write!(f, "atom"),
@@ -412,6 +414,7 @@ pub(crate) fn cl_int_for_width(w: u16) -> types::Type {
 pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 	match typ.newtype().unwrap_or(typ) {
 		Typ::Int(w) | Typ::UInt(w) => cl_int_for_width(*w),
+		Typ::Rune => types::I32,
 		Typ::ISize | Typ::USize => int,
 		Typ::Float(w) => match w {
 			16 => types::F16,
@@ -427,6 +430,7 @@ pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 pub(crate) fn elem_size(typ: &Typ) -> i64 {
 	match typ.newtype().unwrap_or(typ) {
 		Typ::Int(w) | Typ::UInt(w) => cl_int_for_width(*w).bytes() as i64,
+		Typ::Rune => 4,
 		Typ::Float(w) => (*w as i64) / 8,
 		_ => 8,
 	}

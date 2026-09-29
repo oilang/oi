@@ -50,3 +50,15 @@ test! "parsing" {
 	assert! (int.try_from("42") or 0) == 42
 	assert! (float.try_from("nope") or 1.5) == 1.5
 }
+
+test! "runes" {
+	snow : rune : '\u{2603}'
+	assert! snow.bytes() == [ u8.(0xe2), u8.(0x98), u8.(0x83) ]
+
+	# one rune of each encoded width
+	s :: "a\u{e9}\u{2603}\u{1F600}"
+	assert! s.len == 10
+	assert! s.runes().len == 4
+	assert! s.runes()[2] == snow
+	assert! s.runes().join("") == s
+}

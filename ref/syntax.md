@@ -1010,6 +1010,18 @@ main :: fn() {
 	# but no interpolation in raw strings
 	path := r"C:\Users\{who}" # {who} is not interpolated
 
+	# runes
+
+	# `'c'` is one Unicode codepoint, taking the same escapes strings do
+	snowman : rune : '\u{2603}'
+	quote : rune : '\''
+
+	# strings are bytes, so decoding is explicit
+	assert!(snowman.str() == "\u{2603}")
+	assert!(snowman.bytes() == [u8.(0xe2), u8.(0x98), u8.(0x83)])
+	assert!("h\u{2603}i".runes().len == 3)
+	assert!("h\u{2603}i".runes().join("") == "h\u{2603}i")
+
 	# arrays
 
 	# collection of 0-indexed elements of the same type

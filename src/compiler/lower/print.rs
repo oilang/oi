@@ -208,6 +208,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_print(s, &Typ::Str, quote, sink);
 			}
 
+			Typ::Rune => {
+				if let Some(s) = self.str_impl("rune", val, typ) {
+					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+				}
+				let n = self.b.ins().uextend(self.int, val);
+				self.emit_frag(runtime::Tag::UInt, n, 0, quote, sink);
+			}
+
 			_ => {
 				let tag = match typ {
 					Typ::Bool => runtime::Tag::Bool,
@@ -232,6 +240,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					| Typ::Access(..)
 					| Typ::Ast
 					| Typ::Any
+					| Typ::Rune
 					| Typ::Const(_)
 					| Typ::Ref(_) => {
 						unreachable!("handled above")

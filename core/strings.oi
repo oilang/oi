@@ -119,6 +119,51 @@ string :< {
 	cstr :: fn(self) cstr {
 		unsafe rt.oi_str_cstr(self)
 	}
+
+	## The codepoints of this string, decoded from UTF-8.
+	runes :: fn(self) out: []rune {
+		i := 0
+		loop i < self.len {
+			lead :: int.(self[i])
+			n :: match true {
+				lead < 0x80 => 1,
+				lead < 0xe0 => 2,
+				lead < 0xf0 => 3,
+				else => 4
+			}
+			if i + n > self.len do break # truncated tail
+			c := if n == 1 { lead } else { lead & (0x7f >> n) }
+			loop k in 1..n {
+				c = (c << 6) | (int.(self[i + k]) & 0x3f)
+			}
+			out << rune.(c)
+			i += n
+		}
+		out
+	}
+}
+
+rune :< {
+	## UTF-8 encoding of this codepoint.
+	bytes :: fn(self) []u8 {
+		c :: int.(self)
+		tail :: fn(shift: int) u8 { u8.(0x80 | ((c >> shift) & 0x3f)) }
+		if c < 0x80 {
+			return [ u8.(c) ]
+		}
+		if c < 0x800 {
+			return [ u8.(0xc0 | (c >> 6)), tail(0) ]
+		}
+		if c < 0x10000 {
+			return [ u8.(0xe0 | (c >> 12)), tail(6), tail(0) ]
+		}
+		[ u8.(0xf0 | (c >> 18)), tail(12), tail(6), tail(0) ]
+	}
+
+	## This codepoint as a one-rune string.
+	str :: fn(self) string {
+		string.(self.bytes())
+	}
 }
 
 cstr :< {

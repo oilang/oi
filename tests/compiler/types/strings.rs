@@ -97,6 +97,17 @@ fn unknown_escape_fails() {
 }
 
 #[test]
+fn runes() {
+	check(r"print('a' + 1, '\n', '\u{2603}')", "98 10 9731");
+	check(r#"print("aloha"[0] == 'a')"#, "true");
+	check(["c : rune : 'z'", "print(c)"], "z");
+	fail("r : rune : 1114112", "out of range for rune");
+	fail("print('')", "");
+	fail("print('ab')", "");
+	fail(r"print('\z')", "");
+}
+
+#[test]
 fn raw_strings() {
 	check(r#"print(r"no\nescape")"#, r"no\nescape");
 	check(r#"print(r"C:\Users\{who}")"#, r"C:\Users\{who}");

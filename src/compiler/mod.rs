@@ -399,7 +399,7 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 		Expr::Bool(_) => matches!(typ, Typ::Bool),
 		Expr::Int(_) => matches!(
 			typ,
-			Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_)
+			Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Rune
 		),
 		Expr::Float(_) => matches!(typ, Typ::Float(_)),
 		Expr::String(_) => matches!(typ, Typ::Str),

@@ -65,7 +65,7 @@ pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = Trait
 fn literal_fits(lit: &Expr, want: &Typ) -> bool {
 	use Typ::*;
 	match lit {
-		Expr::Int(_) => matches!(want, Int(_) | UInt(_) | ISize | USize | Float(_)),
+		Expr::Int(_) => matches!(want, Int(_) | UInt(_) | ISize | USize | Float(_) | Rune),
 		Expr::Float(_) => matches!(want, Float(_)),
 		Expr::String(_) => matches!(want, Str),
 		Expr::Bool(_) => matches!(want, Bool),

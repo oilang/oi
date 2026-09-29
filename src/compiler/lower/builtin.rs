@@ -302,8 +302,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Numeric and string casts.
 	fn cast_prim(&mut self, target: &Typ, value: &Spanned<Expr>, span: Span) -> Result<Option<TypedVal>, Diagnostic> {
-		use Typ::{Array, Float, ISize, Int, Str, UInt, USize};
-		if !matches!(target, Int(_) | UInt(_) | ISize | USize | Float(_) | Str) {
+		use Typ::{Array, Float, ISize, Int, Rune, Str, UInt, USize};
+		if !matches!(target, Int(_) | UInt(_) | ISize | USize | Float(_) | Rune | Str) {
 			return Ok(None);
 		}
 		if let Float(w) = target
@@ -346,7 +346,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.truncate(wide, target, to_signed)
 			}
-			(_, Int(_) | UInt(_) | ISize | USize) => self.truncate(val, target, signed),
+			(_, Int(_) | UInt(_) | ISize | USize | Rune) => self.truncate(val, target, signed),
 			_ => {
 				let label = if typ == Str {
 					format!("`{target}.try_from(...)` parses strings")

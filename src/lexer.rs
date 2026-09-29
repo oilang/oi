@@ -60,6 +60,46 @@ fn parse_radix(lex: &mut Lexer<Token>, radix: u32) -> Option<i64> {
 	i64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix).ok()
 }
 
+// One escape, where `i` is the backslash's byte offset into a string and `it` sits just past it.
+fn escape(s: &str, i: usize, it: &mut std::str::CharIndices) -> Option<char> {
+	Some(match it.next()?.1 {
+		'n' => '\n',
+		't' => '\t',
+		'r' => '\r',
+		'0' => '\0',
+		'e' => '\x1b',
+		'a' => '\x07',
+		'b' => '\x08',
+		'f' => '\x0c',
+		'v' => '\x0b',
+		e @ ('\\' | '"' | '\'') => e,
+		k @ ('x' | 'u') => {
+			let rest = &s[i + 2..];
+			let hex = match k {
+				'x' => rest.get(..2),
+				_ => rest.strip_prefix('{').and_then(|r| r.split_once('}')).map(|(h, _)| h),
+			};
+			let hex = hex.filter(|h| (1..=6).contains(&h.len()))?;
+			let code = hex.chars().try_fold(0u32, |n, c| Some(n * 16 + c.to_digit(16)?));
+			let c = code.filter(|&n| k == 'u' || n < 0x80).and_then(char::from_u32)?;
+			it.nth(hex.len() + 2 * (k == 'u') as usize - 1);
+			c
+		}
+		_ => return None,
+	})
+}
+
+// Lex a rune literal.
+fn lex_rune(lex: &mut Lexer<Token>) -> Option<i64> {
+	let body = &lex.slice()[1..lex.slice().len() - 1];
+	let mut it = body.char_indices();
+	let c = match it.next()? {
+		(i, '\\') => escape(body, i, &mut it)?,
+		(_, c) => c,
+	};
+	it.next().is_none().then_some(c as i64)
+}
+
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 pub enum Token {
@@ -73,6 +113,7 @@ pub enum Token {
 	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_radix(lex, 16))]
 	#[regex(r"0[bB][01][01_]*", |lex| parse_radix(lex, 2))]
 	#[regex(r"0[oO][0-7][0-7_]*", |lex| parse_radix(lex, 8))]
+	#[regex(r"'([^'\\]|\\.)*'", lex_rune)]
 	Int(i64),
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
@@ -406,34 +447,9 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 				lit.push(c);
 				it.next();
 			}
-			'\\' => match it.next().map(|(_, e)| e) {
-				Some('n') => lit.push('\n'),
-				Some('t') => lit.push('\t'),
-				Some('r') => lit.push('\r'),
-				Some('0') => lit.push('\0'),
-				Some('e') => lit.push('\x1b'),
-				Some('a') => lit.push('\x07'),
-				Some('b') => lit.push('\x08'),
-				Some('f') => lit.push('\x0c'),
-				Some('v') => lit.push('\x0b'),
-				Some(e @ ('\\' | '"')) => lit.push(e),
-				Some(k @ ('x' | 'u')) => {
-					let rest = &s[i + 2..];
-					let hex = match k {
-						'x' => rest.get(..2),
-						_ => rest.strip_prefix('{').and_then(|r| r.split_once('}')).map(|(h, _)| h),
-					};
-					let Some(hex) = hex.filter(|h| (1..=6).contains(&h.len())) else {
-						return bad();
-					};
-					let code = hex.chars().try_fold(0u32, |n, c| Some(n * 16 + c.to_digit(16)?));
-					let Some(c) = code.filter(|&n| k == 'u' || n < 0x80).and_then(char::from_u32) else {
-						return bad();
-					};
-					it.nth(hex.len() + 2 * (k == 'u') as usize - 1);
-					lit.push(c);
-				}
-				_ => return bad(),
+			'\\' => match escape(s, i, &mut it) {
+				Some(e) => lit.push(e),
+				None => return bad(),
 			},
 			'}' => return bad(),
 			'{' => {

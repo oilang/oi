@@ -322,7 +322,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							Typ::Int(_)
 								| Typ::UInt(_) | Typ::Float(_)
 								| Typ::Bool | Typ::ISize | Typ::USize
-								| Typ::Str | Typ::Struct(..)
+								| Typ::Rune | Typ::Str | Typ::Struct(..)
 								| Typ::TupleStruct(..) | Typ::Enum(_)
 								| Typ::Array(_) | Typ::Map(..)
 						)
@@ -342,7 +342,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					let has_str_impl = matches!(
 						recv_typ,
-						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::Sum(..) | Typ::CStr
+						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::Sum(..) | Typ::CStr | Typ::Rune
 					);
 					if method == "str" && args.is_empty() && !has_str_impl {
 						return Ok((self.derived_str(recv_val, &recv_typ), Typ::Str));
@@ -359,7 +359,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) | Typ::Sum(name, _) => {
 							(name.clone(), Some((recv_val, recv_typ)))
 						}
-						Typ::Str | Typ::CStr => (recv_typ.to_string(), Some((recv_val, recv_typ))),
+						Typ::Str | Typ::CStr | Typ::Rune => (recv_typ.to_string(), Some((recv_val, recv_typ))),
 						Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize => {
 							(recv_typ.to_string(), Some((recv_val, recv_typ)))
 						}

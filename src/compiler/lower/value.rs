@@ -161,6 +161,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Atom => self.atom_const(""),
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
+			Typ::Rune => self.b.ins().iconst(types::I32, 0),
 			Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr => self.b.ins().iconst(self.int, 0),
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
@@ -284,6 +285,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Err(oob(n));
 				}
 				self.b.ins().iconst(self.int, n)
+			}
+			(Expr::Int(n), Typ::Rune) => {
+				let n = if neg { -*n } else { *n };
+				u32::try_from(n).ok().and_then(char::from_u32).ok_or_else(|| oob(n))?;
+				self.b.ins().iconst(types::I32, n)
 			}
 			(Expr::Int(n), Typ::Float(w)) => self.float_lit((if neg { -*n } else { *n }) as f64, *w, value.1)?,
 			(Expr::Float(x), Typ::Float(w)) => self.float_lit(if neg { -*x } else { *x }, *w, value.1)?,
