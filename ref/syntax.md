@@ -940,14 +940,19 @@ main :: fn() {
 	normal := "NORMAL mode"
 	raw := r"there is no\nescape"
 	regex := r"\d+\.\d+"
+	# a body starting on its own line is dedented to its shallowest line, losing its opening and closing lines
 	multiline := "
 		strings are multiline
-		by default
+			by default
 	"
+	assert! multiline == "strings are multiline\n\tby default"
 
 	# `"""` needs no `"` escaping, takes the same prefixes, and closes at the first unescaped `"""`
 	quoted := """he said "hi" and left"""
 	quoted_raw := r"""a \d+ "regex" pattern"""
+
+	# any run of three or more quotes opens one, so a body can hold a shorter run
+	holds_a_run := """"a """ inside""""
 	trailing := """ends in a quote: \""""
 
 	# strings are immutable bytes behind a pointer+length handle

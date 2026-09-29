@@ -105,6 +105,14 @@ fn triple_quoted() {
 	check(r#"who := "mom"; print("""say "hi" to {who}""")"#, r#"say "hi" to mom"#);
 	check(r#"print(r"""raw "q" {who} \n""")"#, r#"raw "q" {who} \n"#);
 	check(r#"print("""ends in \"""")"#, r#"ends in ""#);
+	check(r#"print(""""holds a """ run"""")"#, r#"holds a """ run"#);
+}
+
+#[test]
+fn dedent() {
+	check("print(\"\n\t\tone\n\t\t  two\n\t\")", ["one", "  two"]);
+	check("print(\"\n\t\t\\tone\n\t\")", "\tone");
+	check("print(\"one\n\t\ttwo\")", ["one", "\t\ttwo"]);
 }
 
 #[test]

@@ -27,14 +27,29 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 	lex.bump(i);
 }
 
-// Body of a `"""` literal.
-fn lex_triple(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
+// Dedent a body that starts on its own line, to its shallowest line.
+fn dedent(s: &str) -> String {
+	let Some((_, body)) = s.split_once('\n').filter(|(head, _)| head.trim().is_empty()) else {
+		return s.into();
+	};
+	let body = body.trim_end_matches([' ', '\t']);
+	let cols = body
+		.lines()
+		.filter(|l| !l.trim().is_empty())
+		.map(|l| l.len() - l.trim_start().len());
+	let n = cols.min().unwrap_or(0);
+	body.lines().map(|l| l.get(n..).unwrap_or("")).collect::<Vec<_>>().join("\n")
+}
+
+// Body of an N-quote literal, closed by the first run of N.
+fn lex_long(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
+	let n = lex.slice().bytes().filter(|&b| b == b'"').count();
 	let rest = lex.remainder();
 	let (b, mut i) = (rest.as_bytes(), 0);
-	while let Some(w) = b.get(i..i + 3) {
-		if w == br#"""""# {
-			lex.bump(i + 3);
-			return Some(rest[..i].into());
+	while let Some(w) = b.get(i..i + n) {
+		if w.iter().all(|&c| c == b'"') {
+			lex.bump(i + n);
+			return Some(dedent(&rest[..i]));
 		}
 		i += 1 + usize::from(escaped && w[0] == b'\\');
 	}
@@ -63,11 +78,11 @@ pub enum Token {
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
 	Float(String),
-	#[token(r#"""""#, |lex| lex_triple(lex, true))]
-	#[regex(r#""([^"\\]|\\.)*""#, |lex| { let s = lex.slice(); s[1..s.len() - 1].to_string() })]
+	#[regex(r#""{3,}"#, |lex| lex_long(lex, true))]
+	#[regex(r#""([^"\\]|\\.)*""#, |lex| dedent(&lex.slice()[1..lex.slice().len() - 1]))]
 	String(String),
-	#[token(r#"r""""#, |lex| lex_triple(lex, false))]
-	#[regex(r#"r"[^"]*""#, |lex| { let s = lex.slice(); s[2..s.len() - 1].to_string() })]
+	#[regex(r#"r"{3,}"#, |lex| lex_long(lex, false))]
+	#[regex(r#"r"[^"]*""#, |lex| dedent(&lex.slice()[2..lex.slice().len() - 1]))]
 	RawString(String),
 	#[regex(r":\p{XID_Continue}+", |lex| lex.slice()[1..].to_string())]
 	Atom(String),
@@ -383,7 +398,7 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 		toks.push((t, span));
 	};
 	// width of the open delimiter
-	let open = (span.end - span.start - s.len()) / 2;
+	let open = src[span.start..].bytes().take_while(|&b| b == b'"').count();
 	let (mut toks, mut lit) = (vec![(Token::LParen, span)], String::new());
 	let mut it = s.char_indices();
 	while let Some((i, c)) = it.next() {

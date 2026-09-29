@@ -44,11 +44,12 @@ fn multiline() {
 		who :: "mom"
 		amount :: 5
 		print("
-		dear {who},
-		you owe {amount}.
+			dear {who},
+			you owe:
+				{amount}
 		")
 	"#};
-	check(src, ["", "dear mom,", "you owe 5.", ""]);
+	check(src, ["dear mom,", "you owe:", "\t5"]);
 }
 
 #[test]
