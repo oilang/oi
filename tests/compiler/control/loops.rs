@@ -236,9 +236,11 @@ fn for_struct_and_array_patterns() {
 #[test]
 fn for_each_string_bytes_and_map_entries() {
 	let src = indoc! {r#"
-		loop b in "hi" { print(b) }
+		loop i in 0.."hi".len { print("hi"[i]) }
 		sum := 0
-		loop (k, v) in ["a" = 1, "bb" = 2] { sum += k.len * v }
+		loop (k, v) in [ "a" = 1, "bb" = 2 ] {
+			sum += k.len * v
+		}
 		sum
 	"#};
 	check(src, ["104", "105", "5"]);

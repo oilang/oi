@@ -108,6 +108,18 @@ fn runes() {
 }
 
 #[test]
+fn string_iterates_by_rune() {
+	check(
+		indoc! {r#"
+			s :: "h\u{2603}"
+			loop r in s { print(r) }
+			loop i in 0..s.len { print(s[i]) }
+		"#},
+		["h", "\u{2603}", "104", "226", "152", "131"],
+	);
+}
+
+#[test]
 fn raw_strings() {
 	check(r#"print(r"no\nescape")"#, r"no\nescape");
 	check(r#"print(r"C:\Users\{who}")"#, r"C:\Users\{who}");

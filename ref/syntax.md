@@ -1022,6 +1022,11 @@ main :: fn() {
 	assert!("h\u{2603}i".runes().len == 3)
 	assert!("h\u{2603}i".runes().join("") == "h\u{2603}i")
 
+	# iterating a string walks its codepoints. index it to walk the bytes.
+	value :: "h\u{2603}i"
+	loop r in value { print(r) } # h ☃ i
+	loop i in 0..value.len { print(value[i]) } # 104 226 152 131 105
+
 	# arrays
 
 	# collection of 0-indexed elements of the same type

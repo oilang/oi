@@ -67,7 +67,8 @@ utf8_encode :: fn(cp: int) string {
 ## Quote and escape a string.
 quote :: fn(s: string) string {
 	out := "\""
-	loop c in s {
+	loop i in 0..s.len {
+		c :: s[i]
 		out += match c {
 			34 => "\\\"",
 			92 => "\\\\",

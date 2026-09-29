@@ -61,4 +61,8 @@ test! "runes" {
 	assert! s.runes().len == 4
 	assert! s.runes()[2] == snow
 	assert! s.runes().join("") == s
+
+	out: []rune
+	loop r in s { out << r }
+	assert! out == s.runes()
 }

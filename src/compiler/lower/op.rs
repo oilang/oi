@@ -8,7 +8,7 @@ fn comparable(t: &Typ) -> bool {
 	t.is_enumish() && *t != Any
 		|| matches!(
 			t,
-			Int(_) | UInt(_) | ISize | USize | Bool | Atom | Float(_) | Str | Error
+			Int(_) | UInt(_) | ISize | USize | Bool | Rune | Atom | Float(_) | Str | Error
 		)
 }
 

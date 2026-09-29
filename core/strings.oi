@@ -53,7 +53,8 @@ string :< {
 	## Return string in uppercase.
 	upper :: fn(self) string {
 		out: []u8 = []
-		loop c in self {
+		loop i in 0..self.len {
+			c :: self[i]
 			out << if c >= 97 && c <= 122 { c - 32 } else { c }
 		}
 		string.(out)
@@ -62,7 +63,8 @@ string :< {
 	## Return string in lowercase.
 	lower :: fn(self) string {
 		out: []u8 = []
-		loop c in self {
+		loop i in 0..self.len {
+			c :: self[i]
 			out << if c >= 65 && c <= 90 { c + 32 } else { c }
 		}
 		string.(out)
@@ -122,25 +124,39 @@ string :< {
 
 	## The codepoints of this string, decoded from UTF-8.
 	runes :: fn(self) out: []rune {
-		i := 0
-		loop i < self.len {
-			lead :: int.(self[i])
-			n :: match true {
-				lead < 0x80 => 1,
-				lead < 0xe0 => 2,
-				lead < 0xf0 => 3,
-				else => 4
-			}
-			if i + n > self.len do break # truncated tail
-			c := if n == 1 { lead } else { lead & (0x7f >> n) }
-			loop k in 1..n {
-				c = (c << 6) | (int.(self[i + k]) & 0x3f)
-			}
-			out << rune.(c)
-			i += n
+		loop r in self {
+			out << r
 		}
 		out
 	}
+}
+
+## Cursor over a string's codepoints.
+pub Runes :: struct { s: string, at: int }
+
+Runes : Iterator[rune] < {
+	next :: fn(mut self) ?rune {
+		if self.at >= self.s.len do return none
+		lead :: int.(self.s[self.at])
+		n :: match true {
+			lead < 0x80 => 1,
+			lead < 0xe0 => 2,
+			lead < 0xf0 => 3,
+			else => 4
+		}
+		if self.at + n > self.s.len do return none # truncated tail
+		c := if n == 1 { lead } else { lead & (0x7f >> n) }
+		loop k in 1..n {
+			c = (c << 6) | (int.(self.s[self.at + k]) & 0x3f)
+		}
+		self.at += n
+		rune.(c)
+	}
+}
+
+## Iterating a string walks its codepoints.
+string : Iterable[Runes] < {
+	iter :: fn(self) Runes { Runes.{ self, 0 } }
 }
 
 rune :< {
@@ -202,8 +218,8 @@ digits[T] :: fn(s: string, neg: bool) ?T {
 	if s.len == 0 { return }
 	wraps :: T.(1) / T.(2) == 0  # only ints wrap on overflow
 	out: T = 0
-	loop c in s {
-		d :: int.(c) - 48
+	loop i in 0..s.len {
+		d :: int.(s[i]) - 48
 		if d < 0 || d > 9 { return }
 		n :: if neg { out * 10 - T.(d) } else { out * 10 + T.(d) }
 		if wraps && n / 10 != out { return }
