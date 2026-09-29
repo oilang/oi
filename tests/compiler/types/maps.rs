@@ -398,3 +398,15 @@ fn equality_is_order_independent() {
 		["true", "false", "false", "false", "false"],
 	);
 }
+
+#[test]
+fn equality_rejects_a_missing_key() {
+	check(
+		indoc! {r#"
+			a := ["p" = "v", "q" = "v", "r" = "v", "s" = "v"]
+			print a == ["p" = "v", "q" = "v", "r" = "v", "z" = "v"]
+			print a == ["p" = "v", "q" = "v", "r" = "v", "s" = "v"]
+		"#},
+		["false", "true"],
+	);
+}

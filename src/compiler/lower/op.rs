@@ -218,17 +218,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let (owner, kt) = (typ.to_string(), Typ::Array(k.clone()));
 		let tag = map_key_tag(k).expect("map keys are taggable");
-		let same_keys = self.rt_call("map_keys_eq", &[a, b]).unwrap();
-		let seed = self.b.ins().icmp_imm(IntCC::NotEqual, same_keys, 0);
+		let (la, lb) = (
+			self.rt_call("map_len", &[a]).unwrap(),
+			self.rt_call("map_len", &[b]).unwrap(),
+		);
+		let seed = self.b.ins().icmp(IntCC::Equal, la, lb);
 		let keys = self.map_entries(a, true, k);
 		self.temp(keys, &kt);
+
 		let (data, n) = self.array_parts(keys, &kt);
+		let slot = self.stack_slot(8);
+
 		self.emit_scan(n, true, seed, |s, i| {
 			let key = s.load_nth(data, i, k);
 			let bits = s.map_bits(key);
-			let (ga, gb) = (s.call_map_get(a, tag, bits), s.call_map_get(b, tag, bits));
+			let ga = s.call_map_get(a, tag, bits);
+			s.b.ins().store(MemFlags::new(), ga, slot, 0);
+
+			let hit = s.call_map_find(b, tag, bits, slot);
+			let gb = s.b.ins().load(s.int, MemFlags::new(), slot, 0);
 			let (va, vb) = (s.unmap_bits(ga, v), s.unmap_bits(gb, v));
-			s.emit_val_eq(va, vb, v, &owner, span)
+			let same = s.emit_val_eq(va, vb, v, &owner, span)?;
+			let same = s.b.ins().icmp_imm(IntCC::NotEqual, same, 0);
+			let hit = s.b.ins().icmp_imm(IntCC::NotEqual, hit, 0);
+			Ok(s.b.ins().band(same, hit))
 		})
 	}
 

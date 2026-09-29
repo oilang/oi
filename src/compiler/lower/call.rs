@@ -695,6 +695,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("map_get", &[map, tag_v, bits]).unwrap()
 	}
 
+	// Write the value at `bits` into `out`, returning whether the key was there at all.
+	pub(super) fn call_map_find(&mut self, map: Value, tag: runtime::Tag, bits: Value, out: Value) -> Value {
+		let tag_v = self.b.ins().iconst(self.int, tag as i64);
+		self.rt_call("map_find", &[map, tag_v, bits, out]).unwrap()
+	}
+
 	pub(super) fn call_map_set(&mut self, map: Value, tag: runtime::Tag, bits: Value, value: Value) -> Value {
 		let tag_v = self.b.ins().iconst(self.int, tag as i64);
 		self.rt_call("map_set", &[map, tag_v, bits, value]).unwrap()

@@ -112,6 +112,8 @@ tags: []
 - [ ] swizzle `odin`
 ## consider
 - `nil`
+- using `#` for annotations despite comment clash
+- indent stripping as part of the literal, rather than macros like Rust's `indoc!` or functions like V's `.strip_indent()` `C# swift`
 - [ ] fn math? f + g, if both return strings, concats strings?
 - allowing quotes/AST outside of macros, for code generators and stuff
 - [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
