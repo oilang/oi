@@ -86,11 +86,14 @@ fn string_from_ptr_copies() {
 fn escapes() {
 	check(r#"print("a\nb\tc")"#, ["a", "b\tc"]);
 	check(r#"print("q: \" back: \\")"#, r#"q: " back: \"#);
+	check(r#"print("\u{41}\u{1F600}\x41\e")"#, "A\u{1F600}A\u{1b}");
 }
 
 #[test]
 fn unknown_escape_fails() {
 	fail(r#"print("\z")"#, "");
+	fail(r#"print("\u{41")"#, "");
+	fail(r#"print("\xff")"#, "");
 }
 
 #[test]

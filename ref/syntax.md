@@ -947,6 +947,10 @@ main :: fn() {
 	"
 	assert! multiline == "strings are multiline\n\tby default"
 
+	# escape characters
+	# \n \t \r \0 \\ \" \e \a \b \f \v, \xNN (2 hex digits, ASCII) and \u{H..}
+	assert! "\x41\u{1F600}" == "A😀"
+
 	# `"""` needs no `"` escaping, takes the same prefixes, and closes at the first unescaped `"""`
 	quoted := """he said "hi" and left"""
 	quoted_raw := r"""a \d+ "regex" pattern"""

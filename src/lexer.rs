@@ -407,14 +407,35 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 				lit.push(c);
 				it.next();
 			}
-			'\\' => lit.push(match it.next().map(|(_, e)| e) {
-				Some('n') => '\n',
-				Some('t') => '\t',
-				Some('r') => '\r',
-				Some('0') => '\0',
-				Some(e @ ('\\' | '"')) => e,
+			'\\' => match it.next().map(|(_, e)| e) {
+				Some('n') => lit.push('\n'),
+				Some('t') => lit.push('\t'),
+				Some('r') => lit.push('\r'),
+				Some('0') => lit.push('\0'),
+				Some('e') => lit.push('\x1b'),
+				Some('a') => lit.push('\x07'),
+				Some('b') => lit.push('\x08'),
+				Some('f') => lit.push('\x0c'),
+				Some('v') => lit.push('\x0b'),
+				Some(e @ ('\\' | '"')) => lit.push(e),
+				Some(k @ ('x' | 'u')) => {
+					let rest = &s[i + 2..];
+					let hex = match k {
+						'x' => rest.get(..2),
+						_ => rest.strip_prefix('{').and_then(|r| r.split_once('}')).map(|(h, _)| h),
+					};
+					let Some(hex) = hex.filter(|h| (1..=6).contains(&h.len())) else {
+						return bad();
+					};
+					let code = hex.chars().try_fold(0u32, |n, c| Some(n * 16 + c.to_digit(16)?));
+					let Some(c) = code.filter(|&n| k == 'u' || n < 0x80).and_then(char::from_u32) else {
+						return bad();
+					};
+					it.nth(hex.len() + 2 * (k == 'u') as usize - 1);
+					lit.push(c);
+				}
 				_ => return bad(),
-			}),
+			},
 			'}' => return bad(),
 			'{' => {
 				let mut depth = 1;
