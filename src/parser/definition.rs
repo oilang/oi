@@ -1,5 +1,5 @@
-use super::{P, Rec, brace, bracket, ident, loose_list, paren, shadow_params, spanned, types};
-use crate::ast::{Access, BinOp, Capture, Expr, MatchArm, Param, Span, Spanned, TypeExpr, record_args};
+use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, shadow_params, spanned, types};
+use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -61,34 +61,9 @@ fn or_else((value, body): (Spanned<Expr>, Option<Vec<Spanned<Expr>>>), span: Spa
 	}
 }
 
-// Parsers used by the definition grammar.
-pub(super) struct DefinitionParsers<'token, I>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
-	pub(super) access: P<'token, I, Access>,
-	pub(super) dotted_name: P<'token, I, String>,
-	pub(super) same_line: P<'token, I, ()>,
-	pub(super) adjacent: P<'token, I, ()>,
-	pub(super) unquote: P<'token, I, Spanned<Expr>>,
-	pub(super) annotation: P<'token, I, Spanned<Expr>>,
-	pub(super) type_expr: P<'token, I, TypeExpr>,
-	pub(super) params: P<'token, I, (Vec<Param>, bool)>,
-	pub(super) ret: P<'token, I, Option<Spanned<TypeExpr>>>,
-	pub(super) pat: P<'token, I, Spanned<Expr>>,
-	pub(super) pat_name: P<'token, I, Spanned<Expr>>,
-	pub(super) lit_path: P<'token, I, String>,
-	pub(super) block_ast: P<'token, I, Spanned<Expr>>,
-	pub(super) place: P<'token, I, Spanned<Expr>>,
-	pub(super) stmt: P<'token, I, Spanned<Expr>>,
-	pub(super) item: P<'token, I, Spanned<Expr>>,
-	pub(super) block: P<'token, I, Vec<Spanned<Expr>>>,
-	pub(super) expr: P<'token, I, Spanned<Expr>>,
-}
-
 // The core expr/atom/pratt grammar.
 pub(super) fn definition<'token, I>(
-	p: DefinitionParsers<'token, I>,
+	p: &Parsers<'token, I>,
 	binds: impl FnOnce(
 		P<'token, I, Spanned<Expr>>,
 		P<'token, I, Spanned<Expr>>,
@@ -352,7 +327,7 @@ where
 		.boxed();
 
 	let for_expr = just(Token::Loop)
-		.ignore_then(p.pat.clone().or(p.pat_name))
+		.ignore_then(p.pat.clone().or(p.pat_name.clone()))
 		.then_ignore(just(Token::In))
 		.then(header_expr.clone().map(Box::new))
 		.then(p.block.clone())
@@ -569,7 +544,7 @@ where
 				(e, ex.span())
 			}),
 			// applying a fn value
-			postfix(13, p.adjacent.ignore_then(args.clone()), |lhs, args, ex| {
+			postfix(13, p.adjacent.clone().ignore_then(args.clone()), |lhs, args, ex| {
 				let callee = Box::new(lhs);
 				(Expr::Apply { callee, args }, ex.span())
 			}),
@@ -669,6 +644,7 @@ where
 	let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
 	let with_lead = p
 		.same_line
+		.clone()
 		.ignore_then(header_expr.clone())
 		.then(trailing.or_not())
 		.map(|(l, t)| (Some(l), t))
