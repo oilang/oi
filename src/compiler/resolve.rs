@@ -359,6 +359,24 @@ impl TypeCtx<'_> {
 		)
 	}
 
+	// Resolve one bracket argument.
+	pub fn arg_typ(&self, p: &TypeParam, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
+		let typ = match self.resolve(te, span) {
+			Ok(typ) => typ,
+			Err(e) => match te {
+				TypeExpr::Name(n) if self.value_param(p) => {
+					match fold_const(&Expr::Ident(n.clone()), self.consts.map, self.scope) {
+						Some(Expr::Int(v)) => Typ::Const(v),
+						_ => return Err(e),
+					}
+				}
+				_ => return Err(e),
+			},
+		};
+		self.check_arg(p, &typ, span)?;
+		Ok(typ)
+	}
+
 	// Resolve `args` against `params`.
 	fn generic_subst(
 		&self,
@@ -376,9 +394,7 @@ impl TypeCtx<'_> {
 		}
 		let mut subst = HashMap::new();
 		for (param, arg) in params.iter().zip(args) {
-			let typ = self.resolve(arg, span)?;
-			self.check_arg(param, &typ, span)?;
-			subst.insert(param.name.clone(), typ);
+			subst.insert(param.name.clone(), self.arg_typ(param, arg, span)?);
 		}
 		Ok(subst)
 	}

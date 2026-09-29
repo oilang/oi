@@ -40,6 +40,17 @@ fn a_lone_value_arg_beats_indexing() {
 }
 
 #[test]
+fn a_value_param_takes_a_const() {
+	let src = indoc! {r"
+		N :: 3
+		repeat[T, N: int] :: fn(x: T) [N]T { out: [N]T; out }
+		Matrix[R: int, C: int] :: struct { cells: [R][C]float }
+		print(repeat[int, N](0), Matrix[N, N].{}.cells[0].len)
+	"};
+	check(src, "[0, 0, 0] 3");
+}
+
+#[test]
 fn a_type_where_a_value_belongs() {
 	fail(
 		indoc! {"

@@ -115,9 +115,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.with_label("wrong number of type arguments"));
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
-			let typ = self.types().resolve(te, *te_span)?;
-			self.types().check_arg(param, &typ, *te_span)?;
-			subst.insert(param.name.clone(), typ);
+			subst.insert(param.name.clone(), self.types().arg_typ(param, te, *te_span)?);
 		}
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
