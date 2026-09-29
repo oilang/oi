@@ -31,17 +31,19 @@ fn nozero_failures() {
 			@nozero
 			Handle :: struct { fd: int }
 			h: Handle
+			print(h.fd)
 		"#},
-		"`Handle` has no zero value",
+		"`h` is not assigned on every path",
 	);
 	fail(
 		indoc! {r#"
 			@nozero
 			Handle :: struct { fd: int }
 			Conn :: struct { handle: Handle }
-			c: Conn
+			conn: Conn
+			print(conn.handle.fd)
 		"#},
-		"`Handle` has no zero value",
+		"`conn` is not assigned on every path",
 	);
 }
 

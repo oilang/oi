@@ -13,7 +13,8 @@ fn construct_err() {
 
 #[test]
 fn nozero_leaves_no_zero_value() {
-	fail("r: !int; r", "`!int` has no zero value");
+	fail("r: !int; r", "`r` is not assigned on every path");
+	fail("f :: fn() !int { return }; f()", "`!int` has no zero value");
 }
 
 #[test]

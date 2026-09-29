@@ -159,8 +159,29 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(local)
 	}
 
+	// A loop body may never run, so nothing it assigns settles a slot.
+	pub(super) fn looped<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, Diagnostic>) -> Result<T, Diagnostic> {
+		let outer = self.slots.clone();
+		let out = f(self);
+		self.slots = outer;
+		out
+	}
+
+	// Rewind to `outer` for the next conditional path, carrying over what this one left unassigned.
+	pub(super) fn rejoin(&mut self, outer: &[String], live: &mut Vec<String>, diverged: bool) {
+		for name in std::mem::replace(&mut self.slots, outer.to_vec()) {
+			if !diverged && outer.contains(&name) && !live.contains(&name) {
+				live.push(name);
+			}
+		}
+	}
+
 	// Look up a variable.
 	pub(super) fn local(&self, name: &str, span: Range<usize>) -> Result<Local, Diagnostic> {
+		if self.slots.iter().any(|s| s == name) {
+			let msg = format!("`{name}` is not assigned on every path");
+			return Err(Diagnostic::new(msg, span).with_label("read before assignment"));
+		}
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
 			if name == "none" {
 				Diagnostic::new("cannot infer the type", span.clone()).with_label("`none` needs type context")

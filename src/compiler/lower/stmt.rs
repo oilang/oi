@@ -61,7 +61,11 @@ impl<'a, M: Module> Translator<'a, M> {
 									Diagnostic::new(msg, stmt.1.into_range()).with_label("no zero value for `&T`")
 								);
 							}
-							(self.zero_or_err(&target, stmt.1)?, target)
+							// a nozero binding starts unassigned, and stays unreadable until assigned
+							if self.nozero(&target).is_some() {
+								self.slots.push(name.clone());
+							}
+							(self.zero(&target), target)
 						}
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
@@ -97,6 +101,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						.with_label("type mismatch"));
 					}
 					self.move_resource(value, &typ)?;
+					self.slots.retain(|s| s != name);
 					if let Typ::Struct(_, ref fields) = typ {
 						let fields = fields.clone();
 						let dst = self.read_local(&local);
@@ -276,7 +281,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// TODO: revisit after adding the Iterator trait
-				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body)?,
+				Expr::For { pat, iter, body } => last = self.looped(|s| s.for_loop(pat, iter, body))?,
 
 				Expr::FieldAssign { name, field, value } => {
 					self.check_static_write(name, field, stmt.1)?;

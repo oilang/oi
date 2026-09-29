@@ -78,6 +78,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub script: bool,
 	pub self_name: Option<String>,
 	pub pure: bool,
+	pub slots: Vec<String>,
 }
 
 // A statement that writes through an existing, mutable binding.

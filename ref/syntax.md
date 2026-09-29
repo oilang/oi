@@ -2179,7 +2179,9 @@ main :: fn() {
 	# `@nozero` requires a type to be explicitly initialized
 	@nozero
 	Handle :: struct { fd: int }
-	h: Handle # error: `Handle` has no zero value
+	h: Handle # declares an empty slot, error to read until every path assigns it
+	if ok { h = Handle.{ fd = 1 } } else { h = Handle.{ fd = 2 } }
+	print(h.fd) # fine, both arms assigned it
 
 	# annotations attach to definitions and struct fields
 	GetProc :: @c fn(name: cstr) ptr

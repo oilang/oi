@@ -53,6 +53,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let val = self.read_local(&local);
 					Ok((val, local.typ))
 				}
+				Err(e) if self.vars.contains_key(name) => Err(e),
 				Err(e) => match self.funcs.get(self.qualify(name).as_ref()).cloned() {
 					Some(sig) => {
 						if sig.unsafe_call {
@@ -780,7 +781,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::OrElse { value, body } => self.or_else(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
-			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body),
+			Expr::For { pat, iter, body } => self.looped(|s| s.for_loop(pat, iter, body)),
 
 			Expr::Block(body) => match hint {
 				// bare blocks are treated as fn literals when they match an expected/inferred fn type

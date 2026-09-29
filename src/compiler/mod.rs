@@ -1964,6 +1964,7 @@ impl<M: Module> Compiler<M> {
 			script: def.script,
 			pure: def.pure,
 			self_name: None,
+			slots: vec![],
 		};
 
 		(trans, block)

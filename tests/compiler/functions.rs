@@ -319,6 +319,22 @@ fn named_tuple_result() {
 }
 
 #[test]
+fn nozero_named_result() {
+	let src = indoc! {r#"
+		@nozero
+		Handle :: struct { fd: int }
+		open :: fn(ok: bool) h: Handle {
+			if ok { h = Handle.{ fd = 1 } } else { h = Handle.{ fd = 2 } }
+			return
+		}
+		print(open(false).fd)
+	"#};
+	check(src, "2");
+	let partial = src.replace(" else { h = Handle.{ fd = 2 } }", "");
+	fail(&partial, "`h` is not assigned on every path");
+}
+
+#[test]
 fn named_result_cannot_shadow_a_param() {
 	let src = indoc! {"
 		f :: fn(n: int) n: int { return }
