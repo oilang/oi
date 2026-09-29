@@ -620,7 +620,7 @@ where
 		.clone()
 		.then_ignore(adjacent)
 		.then_ignore(just(Token::Not))
-		.then_ignore(adjacent.then(just(Token::LParen)).not())
+		.then_ignore(adjacent.not())
 		.then(
 			expr.clone()
 				.then(same_line.ignore_then(block_ast.clone()).or_not())
