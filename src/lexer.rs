@@ -27,6 +27,21 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 	lex.bump(i);
 }
 
+// Body of a `"""` literal.
+fn lex_triple(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
+	let rest = lex.remainder();
+	let (b, mut i) = (rest.as_bytes(), 0);
+	while let Some(w) = b.get(i..i + 3) {
+		if w == br#"""""# {
+			lex.bump(i + 3);
+			return Some(rest[..i].into());
+		}
+		i += 1 + usize::from(escaped && w[0] == b'\\');
+	}
+	lex.bump(rest.len());
+	None
+}
+
 fn parse_radix(lex: &mut Lexer<Token>, radix: u32) -> Option<i64> {
 	i64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix).ok()
 }
@@ -48,8 +63,10 @@ pub enum Token {
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
 	Float(String),
+	#[token(r#"""""#, |lex| lex_triple(lex, true))]
 	#[regex(r#""([^"\\]|\\.)*""#, |lex| { let s = lex.slice(); s[1..s.len() - 1].to_string() })]
 	String(String),
+	#[token(r#"r""""#, |lex| lex_triple(lex, false))]
 	#[regex(r#"r"[^"]*""#, |lex| { let s = lex.slice(); s[2..s.len() - 1].to_string() })]
 	RawString(String),
 	#[regex(r":\p{XID_Continue}+", |lex| lex.slice()[1..].to_string())]
@@ -365,6 +382,8 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 		}
 		toks.push((t, span));
 	};
+	// width of the open delimiter
+	let open = (span.end - span.start - s.len()) / 2;
 	let (mut toks, mut lit) = (vec![(Token::LParen, span)], String::new());
 	let mut it = s.char_indices();
 	while let Some((i, c)) = it.next() {
@@ -395,7 +414,7 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 					part(&mut toks, Token::String(std::mem::take(&mut lit)));
 				}
 				part(&mut toks, Token::LParen);
-				toks.extend(raw_lex(&s[i + 1..end], span.start + i + 2));
+				toks.extend(raw_lex(&s[i + 1..end], span.start + open + i + 1));
 				let tail = [
 					Token::RParen,
 					Token::Dot,

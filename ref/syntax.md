@@ -945,6 +945,11 @@ main :: fn() {
 		by default
 	"
 
+	# `"""` needs no `"` escaping, takes the same prefixes, and closes at the first unescaped `"""`
+	quoted := """he said "hi" and left"""
+	quoted_raw := r"""a \d+ "regex" pattern"""
+	trailing := """ends in a quote: \""""
+
 	# strings are immutable bytes behind a pointer+length handle
 	# (the buffer keeps a trailing NUL outside `len`, so it passes to C as-is)
 	assert!("hello".len == 5)

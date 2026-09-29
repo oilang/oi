@@ -101,6 +101,13 @@ fn raw_strings() {
 }
 
 #[test]
+fn triple_quoted() {
+	check(r#"who := "mom"; print("""say "hi" to {who}""")"#, r#"say "hi" to mom"#);
+	check(r#"print(r"""raw "q" {who} \n""")"#, r#"raw "q" {who} \n"#);
+	check(r#"print("""ends in \"""")"#, r#"ends in ""#);
+}
+
+#[test]
 fn len_and_index() {
 	check(r#"print("hello".len)"#, "5");
 	check(r#"print("abc"[1])"#, "98");
