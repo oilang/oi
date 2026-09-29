@@ -616,19 +616,6 @@ where
 			)
 		});
 
-	let defer_stmt = just(Token::Defer)
-		.ignore_then(just(Token::Or).or_not())
-		.then(juxt_expr.clone())
-		.map_with(|(or, body), ex| {
-			(
-				Expr::Defer {
-					body: Box::new(body),
-					on_err: or.is_some(),
-				},
-				ex.span(),
-			)
-		});
-
 	let macro_stmt = dotted_name
 		.clone()
 		.then_ignore(adjacent)
@@ -650,6 +637,19 @@ where
 		.or(index_assign)
 		.or(map_delete)
 		.boxed();
+
+	let defer_stmt = just(Token::Defer)
+		.ignore_then(just(Token::Or).or_not())
+		.then(place.clone().or(juxt_expr.clone()))
+		.map_with(|(or, body), ex| {
+			(
+				Expr::Defer {
+					body: Box::new(body),
+					on_err: or.is_some(),
+				},
+				ex.span(),
+			)
+		});
 
 	// statements
 	let stmt = doc

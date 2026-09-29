@@ -19,6 +19,19 @@ fn runs_lifo_on_every_exit() {
 }
 
 #[test]
+fn body_can_be_an_assignment() {
+	let src = indoc! {"
+		x := 0
+		loop {
+			defer x += 1
+			if x >= 2 { break }
+		}
+		print(x)
+	"};
+	check(src, "3");
+}
+
+#[test]
 fn dollar_is_the_returned_value_or_its_error() {
 	let src = indoc! {r#"
 		f :: fn(bad: bool) !int {
