@@ -32,12 +32,11 @@ fn dedent(s: &str) -> String {
 	let Some((_, body)) = s.split_once('\n').filter(|(head, _)| head.trim().is_empty()) else {
 		return s.into();
 	};
+	let indent = |l: &str| l.len() - l.trim_start().len();
+	let closer = indent(body.rsplit('\n').next().unwrap_or_default());
+	let cols = body.lines().filter(|l| !l.trim().is_empty()).map(indent);
+	let n = cols.chain([closer]).min().unwrap_or(0);
 	let body = body.trim_end_matches([' ', '\t']);
-	let cols = body
-		.lines()
-		.filter(|l| !l.trim().is_empty())
-		.map(|l| l.len() - l.trim_start().len());
-	let n = cols.min().unwrap_or(0);
 	body.lines().map(|l| l.get(n..).unwrap_or("")).collect::<Vec<_>>().join("\n")
 }
 

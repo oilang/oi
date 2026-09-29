@@ -953,12 +953,16 @@ main :: fn() {
 	quoted := """he said "hi" and left"""
 	quoted_raw := r"""a \d+ "regex" pattern"""
 
-	# a `"""` body starting on its own line dedents, to its shallowest line, losing its opening and closing lines
+	# a `"""` body starting on its own line dedents to its shallowest line, losing its opening and closing lines
 	block := """
 		indentation is stripped
-			but relative depth is kept
+			but deeper lines keep their depth
+		"""
+	assert! block == "indentation is stripped\n\tbut deeper lines keep their depth"
+	indented := """
+		kept
 	"""
-	assert! block == "indentation is stripped\n\tbut relative depth is kept"
+	assert! indented == "\tkept"
 
 	# any run of three or more quotes opens one, so a body can hold a shorter run
 	holds_a_run := """"a """ inside""""
@@ -1002,7 +1006,7 @@ main :: fn() {
 	msg := """
 		dear {who},
 		your balance is {amount}.
-	"""
+		"""
 	# but no interpolation in raw strings
 	path := r"C:\Users\{who}" # {who} is not interpolated
 
