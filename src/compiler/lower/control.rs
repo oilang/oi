@@ -533,7 +533,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else {
 				self.str_const("unwrapped `none`")
 			};
-			self.rt_call("panic", &[msg]);
+			self.ctx_panic("panic", msg, span)?;
 			self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		} else {
 			let sad_val = if is_result {

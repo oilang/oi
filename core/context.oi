@@ -54,7 +54,7 @@ pub Context :: struct {
 	pub alloc: Allocator
 	pub temp: Allocator
 	pub log: Logger
-	pub panic: ptr
+	pub panic: fn(msg: string, at: Src)
 	pub rand: ptr
 	pub thread: int
 }

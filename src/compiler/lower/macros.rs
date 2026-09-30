@@ -91,15 +91,23 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Call the runtime panic path with `msg` and mark the current block unreachable.
-	fn abort(&mut self, msg: Value) -> TypedVal {
-		self.rt_call("panic", &[msg]);
+	fn abort(&mut self, msg: Value, span: Span) -> Result<TypedVal, Diagnostic> {
+		self.ctx_panic("panic", msg, span)?;
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		// unreachable paths
 		let dead = self.b.create_block();
 		self.b.seal_block(dead);
 		self.b.switch_to_block(dead);
-		self.unit_value()
+		Ok(self.unit_value())
+	}
+
+	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from.
+	pub(super) fn ctx_panic(&mut self, rt: &str, msg: Value, span: Span) -> Result<(), Diagnostic> {
+		let (at, _) = self.src_lit(span)?;
+		let ctx = self.ctx_value();
+		self.rt_call(rt, &[ctx, msg, at]);
+		Ok(())
 	}
 
 	// The optional message argument for the aborting macros.
@@ -177,7 +185,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.seal_block(ok_block);
 
 				self.b.switch_to_block(fail_block);
-				self.rt_call("assert_fail", &[msg]);
+				self.ctx_panic("assert_fail", msg, span)?;
 				self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 				self.b.switch_to_block(ok_block);
@@ -191,7 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					_ => "entered unreachable code",
 				};
 				let msg = self.msg_arg(name, args.first(), default)?;
-				Ok(self.abort(msg))
+				self.abort(msg, span)
 			}
 		}
 	}

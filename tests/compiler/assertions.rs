@@ -45,3 +45,12 @@ fn panic_wrong_arg_count() {
 fn panic_non_str_message() {
 	fail("panic!(42)", "must be Str");
 }
+#[test]
+fn panic_hook_runs_first() {
+	let src = indoc! {r#"
+		hook :: fn(msg: string, at: Src) { eprint("caught: {msg}") }
+		ctx :: Context.{ ..ctx, panic = hook }
+		panic!("uh oh")
+	"#};
+	fail_rt(src, "caught: uh oh");
+}

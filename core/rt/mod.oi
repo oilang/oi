@@ -54,7 +54,7 @@ pub oi_write_sep : fn(i: isize, sink: isize) : foreign
 pub oi_trait_field : fn(data: ptr, off: isize) isize : foreign
 pub oi_pow_int : fn(base: isize, exp: isize) isize : foreign
 pub oi_pow_float : fn(base: float, exp: float) float : foreign
-pub oi_panic : fn(msg: string) : foreign
+pub oi_panic : fn(ctx: ptr, msg: string, at: Src) : foreign
 pub oi_fail : fn(msg: string) : foreign
-pub oi_panic_oob : fn(index: isize, len: isize) : foreign
-pub oi_assert_fail : fn(msg: string) : foreign
+pub oi_panic_oob : fn(ctx: ptr, index: isize, len: isize) : foreign
+pub oi_assert_fail : fn(ctx: ptr, msg: string, at: Src) : foreign

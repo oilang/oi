@@ -105,7 +105,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(bad);
 		let msg = self.str_const(msg);
-		self.rt_call("panic", &[msg]);
+		let ctx = self.ctx_value();
+		let at = self.b.ins().iconst(self.int, 0);
+		self.rt_call("panic", &[ctx, msg, at]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok);
@@ -386,7 +388,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(ok_block);
 
 		self.b.switch_to_block(panic_block);
-		self.rt_call("panic_oob", &[idx, len]);
+		let ctx = self.ctx_value();
+		self.rt_call("panic_oob", &[ctx, idx, len]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok_block);

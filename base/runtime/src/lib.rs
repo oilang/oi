@@ -154,11 +154,18 @@ pub extern "C" fn write_sep(i: i64, sink: i64) {
 	}
 }
 
-// Panic with an out-of-bounds message.
+/// Panic with an out-of-bounds message.
+/// # Safety
+/// `ctx` must be null or point to a valid `Context` record.
 #[unsafe(export_name = "oi_panic_oob")]
-pub extern "C" fn panic_oob(index: i64, len: i64) {
-	eprintln!("index out of range: the length is {len} but the index is {index}");
-	die();
+pub unsafe extern "C" fn panic_oob(ctx: *const i64, index: i64, len: i64) -> ! {
+	let text = format!("index out of range: the length is {len} but the index is {index}");
+	// borrowed, not allocated
+	let msg = StrHeader {
+		data: text.as_ptr() as i64,
+		len: text.len() as i64,
+	};
+	unsafe { abort_with(ctx, std::ptr::null(), "", &msg) }
 }
 
 // Wrap integer exponents.
@@ -177,7 +184,14 @@ pub extern "C" fn pow_float(base: f64, exp: f64) -> f64 {
 }
 
 // Print `{prefix}{msg}` and abort.
-unsafe fn abort_with(prefix: &str, msg: *const StrHeader) -> ! {
+unsafe fn abort_with(ctx: *const i64, at: *const i64, prefix: &str, msg: *const StrHeader) -> ! {
+	let obj = if ctx.is_null() { 0 } else { unsafe { *ctx.add(3) } };
+	if obj != 0 {
+		let hook: extern "C" fn(i64, i64, i64, i64) = unsafe { std::mem::transmute(*(obj as *const i64)) };
+		let stub = [0i64; 2];
+		let at = if at.is_null() { stub.as_ptr() } else { at };
+		hook(msg as i64, at as i64, ctx as i64, obj);
+	}
 	let msg = unsafe { str_lossy(msg) };
 	eprintln!("{prefix}{msg}");
 	die();
@@ -185,18 +199,18 @@ unsafe fn abort_with(prefix: &str, msg: *const StrHeader) -> ! {
 
 /// Print an assertion failure message and abort.
 /// # Safety
-/// `msg` must be a valid string handle.
+/// `ctx` must be null or a valid `Context` record, and `msg` and `at` must be valid handles.
 #[unsafe(export_name = "oi_assert_fail")]
-pub unsafe extern "C" fn assert_fail(msg: *const StrHeader) {
-	unsafe { abort_with("assertion failed: ", msg) }
+pub unsafe extern "C" fn assert_fail(ctx: *const i64, msg: *const StrHeader, at: *const i64) {
+	unsafe { abort_with(ctx, at, "assertion failed: ", msg) }
 }
 
 /// Print a panic message and abort.
 /// # Safety
-/// `msg` must be a valid string handle.
+/// `ctx` must be null or a valid `Context` record, and `msg` and `at` must be valid handles.
 #[unsafe(export_name = "oi_panic")]
-pub unsafe extern "C" fn panic(msg: *const StrHeader) {
-	unsafe { abort_with("panic: ", msg) }
+pub unsafe extern "C" fn panic(ctx: *const i64, msg: *const StrHeader, at: *const i64) {
+	unsafe { abort_with(ctx, at, "panic: ", msg) }
 }
 
 /// Report main's error and exit 1.
