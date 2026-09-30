@@ -14,8 +14,7 @@ fn hex() {
 	check("0x7B", "123");
 	check("0xFF", "255");
 	check("0xFF_00", "65280");
-	// TODO: add once we support 64-bit numbers
-	// check("0xFF80_0000_0000_0000", "0xFF80000000000000");
+	check("x : u64 : 0xFF80_0000_0000_0000", "18410715276690587648");
 }
 
 #[test]

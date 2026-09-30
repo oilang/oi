@@ -273,7 +273,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			(Expr::Int(n), Typ::UInt(w)) => {
 				let n = if neg { -*n } else { *n };
-				if n < 0 || (*w < 64 && n > uint_max(*w)) {
+				if (n < 0 && (neg || *w < 64)) || (*w < 64 && n > uint_max(*w)) {
 					return Err(oob(n));
 				}
 				self.b.ins().iconst(cl_int_for_width(*w), n)

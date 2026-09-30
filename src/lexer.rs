@@ -56,8 +56,11 @@ fn lex_long(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
 	None
 }
 
+// A radix literal is a bit pattern, so the whole 64-bit range is in range.
 fn parse_radix(lex: &mut Lexer<Token>, radix: u32) -> Option<i64> {
-	i64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix).ok()
+	u64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix)
+		.ok()
+		.map(|n| n as i64)
 }
 
 // One escape, where `i` is the backslash's byte offset into a string and `it` sits just past it.
