@@ -53,6 +53,23 @@ fn an_installed_allocator_sees_every_allocation() {
 }
 
 #[test]
+fn an_arena_rewinds_to_its_first_chunk() {
+	for a in ["ctx.temp", "arena()"] {
+		check(
+			[
+				&format!("ctx :: Context.{{ ..ctx, alloc = {a} }}"),
+				"xs := [1 2 3]",
+				"at :: xs.ptr",
+				"ctx.alloc.free_all()",
+				"ys := [4 5 6]",
+				"print(ys.ptr == at)",
+			],
+			"true",
+		);
+	}
+}
+
+#[test]
 fn modules_amend_the_context() {
 	Project::new()
 		.file("physics.oi", ["module physics", "Context :< { dt: float = 0.5 }"])

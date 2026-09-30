@@ -344,8 +344,10 @@ pub struct Allocator {
 }
 
 // `proc` modes, shared with core/context.oi.
+// TODO: make this an enum, but need to add enums to C ABI first
 const ALLOC: i64 = 0;
 const FREE: i64 = 1;
+const FREE_ALL: i64 = 3;
 
 // `alloc` prefixes each block with its size and its allocator, so `free` needs no ctx.
 const PREFIX: usize = 16;
@@ -354,15 +356,18 @@ fn layout(size: i64) -> std::alloc::Layout {
 	std::alloc::Layout::from_size_align(size.max(1) as usize, 8).unwrap()
 }
 
+fn record(proc: AllocProc, data: i64) -> *const Allocator {
+	Box::leak(Box::new(Allocator {
+		proc: proc as i64,
+		data,
+	}))
+}
+
 /// The system heap, and what the root context allocates from.
 #[unsafe(export_name = "oi_system_allocator")]
 pub extern "C" fn system_allocator() -> *const Allocator {
 	static SYSTEM: OnceLock<usize> = OnceLock::new();
-	let rec = Allocator {
-		proc: sys_proc as AllocProc as i64,
-		data: 0,
-	};
-	*SYSTEM.get_or_init(|| Box::leak(Box::new(rec)) as *const Allocator as usize) as *const Allocator
+	*SYSTEM.get_or_init(|| record(sys_proc, 0) as usize) as *const Allocator
 }
 
 unsafe extern "C" fn sys_proc(_: *mut u8, mode: i64, size: i64, _: i64, old: *mut u8, old_size: i64) -> *mut u8 {
@@ -374,6 +379,67 @@ unsafe extern "C" fn sys_proc(_: *mut u8, mode: i64, size: i64, _: i64, old: *mu
 		},
 		_ => std::ptr::null_mut(),
 	}
+}
+
+const CHUNK: usize = 8192;
+
+// A bump arena.
+// Chunks are word-aligned and never handed back, so `free` is a no-op and `free_all` rewinds to the first chunk, reusing what is already there.
+// TODO: I might be able to move this to Oi land, but need to experiment a little first.
+#[derive(Default)]
+struct Arena {
+	chunks: Vec<Vec<u64>>,
+	chunk: usize,
+	next: usize,
+}
+
+impl Arena {
+	fn bump(&mut self, size: i64) -> *mut u8 {
+		let words = (size.max(1) as usize).div_ceil(8);
+		loop {
+			match self.chunks.get_mut(self.chunk) {
+				Some(c) if self.next + words <= c.len() => {
+					let out = c[self.next..].as_mut_ptr();
+					self.next += words;
+					return out.cast();
+				}
+				Some(_) => (self.chunk, self.next) = (self.chunk + 1, 0),
+				None => self.chunks.push(vec![0; words.max(CHUNK)]),
+			}
+		}
+	}
+}
+
+thread_local! {
+	static TEMP: RefCell<Arena> = RefCell::new(Arena::default());
+}
+
+// A null data is the thread's `ctx.temp`, and anything else is an arena from `oi_arena`.
+unsafe extern "C" fn arena_proc(data: *mut u8, mode: i64, size: i64, _: i64, _: *mut u8, _: i64) -> *mut u8 {
+	let run = |a: &mut Arena| match mode {
+		ALLOC => a.bump(size),
+		FREE_ALL => {
+			(a.chunk, a.next) = (0, 0);
+			std::ptr::null_mut()
+		}
+		_ => std::ptr::null_mut(),
+	};
+	match data.is_null() {
+		true => TEMP.with_borrow_mut(run),
+		false => run(unsafe { &mut *data.cast() }),
+	}
+}
+
+// One shared `ctx.temp` record.
+fn temp_record() -> *const Allocator {
+	static TEMP_REC: OnceLock<usize> = OnceLock::new();
+	*TEMP_REC.get_or_init(|| record(arena_proc, 0) as usize) as *const Allocator
+}
+
+/// A fresh bump arena.
+#[unsafe(export_name = "oi_arena")]
+pub extern "C" fn arena() -> *const Allocator {
+	record(arena_proc, Box::leak(Box::new(Arena::default())) as *mut Arena as i64)
 }
 
 /// Drive an allocator's proc.
@@ -807,7 +873,7 @@ pub extern "C" fn ctx_root() -> *mut i64 {
 		let root: *mut i64 = c.as_ptr().cast();
 		unsafe {
 			*root = system_allocator() as i64;
-			*root.add(1) = system_allocator() as i64;
+			*root.add(1) = temp_record() as i64;
 		}
 		root
 	})
