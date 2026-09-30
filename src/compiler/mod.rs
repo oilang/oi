@@ -34,6 +34,9 @@ pub(crate) use resolve::*;
 pub(crate) use traits::*;
 pub(crate) use typ::*;
 
+// The implicit context, reserved as a binding name.
+pub(crate) const CTX: &str = "ctx";
+
 struct FnItem<'a> {
 	key: String,
 	scope: &'a Scope,
@@ -72,6 +75,15 @@ impl FnSig {
 			..p.clone()
 		};
 		self.params.iter().zip(&self.access).map(fold).collect()
+	}
+}
+
+// Only a shadow may rebind the implicit context.
+pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
+	match name == CTX {
+		true => Err(Diagnostic::new("`ctx` is reserved", span.into_range())
+			.with_label("shadow it with `ctx :: .{ ..ctx, .. }` instead")),
+		false => Ok(()),
 	}
 }
 
@@ -160,6 +172,7 @@ struct FnDef<'a> {
 	self_fn: Option<(&'a str, &'a FnSig)>,
 	foreign: bool,
 	pure: bool,
+	ctx: bool,
 }
 
 // A generic struct definition.
@@ -1471,8 +1484,11 @@ impl<M: Module> Compiler<M> {
 				is_c_fn = true;
 			}
 			let (sym, linkage) = self.symbol(&item.key);
-			let mut sig = self.declare_fn(&sym, linkage, params, access, ret);
-			sig.foreign = self.exports.contains_key(&item.key) || is_c_fn;
+			// context-less fns
+			let foreign = self.exports.contains_key(&item.key)
+				|| is_c_fn || self.roots.contains(&item.key)
+				|| self.tests.iter().any(|(n, ..)| *n == item.key);
+			let mut sig = self.declare_fn(&sym, linkage, params, access, ret, foreign);
 			sig.unsafe_call = is_unsafe;
 			sig.pure = pure.is_some();
 			funcs.insert(item.key.clone(), sig);
@@ -1545,8 +1561,7 @@ impl<M: Module> Compiler<M> {
 					check_c_sig(bare, ps, r, span)?;
 				}
 			}
-			let mut sig = self.declare_fn(bare, Linkage::Import, params, access, ret);
-			sig.foreign = true;
+			let sig = self.declare_fn(bare, Linkage::Import, params, access, ret, true);
 			funcs.insert(name.clone(), sig);
 		}
 
@@ -1741,6 +1756,7 @@ impl<M: Module> Compiler<M> {
 						body: item.body,
 						self_type,
 						foreign: funcs[&item.key].foreign,
+						ctx: !funcs[&item.key].foreign,
 						pure: funcs[&item.key].pure,
 						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
 						..FnDef::default()
@@ -1770,6 +1786,7 @@ impl<M: Module> Compiler<M> {
 					ret,
 					body: &def.body,
 					captures: &def.captures,
+					ctx: true,
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
 					..FnDef::default()
@@ -1833,10 +1850,14 @@ impl<M: Module> Compiler<M> {
 		params: Vec<FnParam>,
 		access: Vec<Access>,
 		ret: Typ,
+		foreign: bool,
 	) -> FnSig {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
 		sig.params.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, int))));
+		if !foreign {
+			sig.params.push(AbiParam::new(int));
+		}
 		if !ret.is_unit() {
 			sig.returns.push(AbiParam::new(cl_type(&ret, int)));
 		}
@@ -1846,7 +1867,7 @@ impl<M: Module> Compiler<M> {
 			params,
 			access,
 			ret,
-			foreign: false,
+			foreign,
 			unsafe_call: linkage == Linkage::Import,
 			pure: false,
 		}
@@ -1915,6 +1936,9 @@ impl<M: Module> Compiler<M> {
 			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
 		}
 		if !def.captures.is_empty() {
+			b.func.signature.params.push(AbiParam::new(int));
+		}
+		if def.ctx {
 			b.func.signature.params.push(AbiParam::new(int));
 		}
 		let block = b.create_block();
@@ -2003,6 +2027,15 @@ impl<M: Module> Compiler<M> {
 			trans.params.push(local);
 		}
 		trans.bind_dollar(def.params_tuple);
+
+		let ctx = match def.ctx {
+			true => param_vals[def.params.len() + !def.captures.is_empty() as usize],
+			false => trans.ctx_value(),
+		};
+		let typ = trans.types.named("core::Context", (0..0).into())?;
+		let var = trans.b.declare_var(trans.int);
+		trans.b.def_var(var, ctx);
+		trans.vars.insert(CTX.into(), Local::plain(var, typ, false));
 
 		if !def.captures.is_empty() {
 			let env = param_vals[def.params.len()];

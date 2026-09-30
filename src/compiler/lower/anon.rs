@@ -29,7 +29,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => {
 				let mut names: Vec<_> = free_vars(body)
 					.into_iter()
-					.filter(|n| self.vars.contains_key(n) && !params.iter().any(|p| &p.name == n))
+					.filter(|n| n != CTX && self.vars.contains_key(n) && !params.iter().any(|p| &p.name == n))
 					.collect();
 				names.sort();
 				inferred = names.into_iter().map(Capture::ReadOnly).collect::<Vec<_>>();
@@ -47,6 +47,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Capture::Mut(name) => (name, true),
 				Capture::ReadOnly(name) | Capture::Move(name) => (name, false),
 			};
+			check_reserved(name, span)?;
 			let local = self.local(name, span.into_range())?;
 			let val = match c {
 				Capture::Mut(_) => self.box_local(name, &local, span.into_range())?,

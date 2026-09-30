@@ -44,6 +44,7 @@ pub oi_ast_gensym : fn(prefix: string) Ast : foreign
 pub oi_ast_parse : fn(src: string) Ast : foreign
 
 # misc
+pub oi_ctx_root : fn() ptr : foreign
 pub oi_argc : fn() int : foreign
 pub oi_argv : fn(i: int) cstr : foreign
 pub oi_write : fn(tag: isize, bits: isize, width: isize, quote: isize, sink: isize) : foreign

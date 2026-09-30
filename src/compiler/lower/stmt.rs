@@ -44,6 +44,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					{
 						continue;
 					}
+					if *mutable {
+						check_reserved(name, stmt.1)?;
+					}
 					let annot = typ.as_ref().map(|(t, span)| self.types().resolve(t, *span)).transpose()?;
 					if !*mutable && matches!(value.as_deref(), Some((Expr::AnonFn { .. }, _))) {
 						self.self_name = Some(name.clone());

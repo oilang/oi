@@ -221,6 +221,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
+		sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
 		if !ret.is_unit() {
 			sig.returns.push(AbiParam::new(cl_type(&ret, self.int)));
 		}

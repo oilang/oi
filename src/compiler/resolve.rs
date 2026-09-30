@@ -681,6 +681,7 @@ impl TypeCtx<'_> {
 		params
 			.iter()
 			.map(|p| {
+				check_reserved(&p.name, p.span)?;
 				let typ = self.param(&p.typ, p.span)?;
 				let lendable = matches!(
 					typ,

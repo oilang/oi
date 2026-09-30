@@ -22,9 +22,9 @@ Result[T, E] :< {
 
 	## Wrap any error with additional context.
 	## TODO: structured ctx rather than string
-	pub context :: fn(self, ctx: string) !T {
+	pub context :: fn(self, msg: string) !T {
 		self or {
-			return error(Ctx.{ Error = $, ctx = ctx })
+			return error(Ctx.{ Error = $, ctx = msg })
 		}
 	}
 }

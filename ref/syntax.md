@@ -2317,6 +2317,40 @@ main :: fn() {
 # main may also specify any of these return types: (), !, E!
 # main :: fn() ! { serve(load_config("app.oi")?) }
 
+## context
+
+# every fn body has an implicit `ctx: core::Context` borrow
+Context :: struct {
+	# every heap byte: buffers, strings, maps, `&T`, closure envs
+	alloc: Allocator
+	# per-thread arena, `ctx.temp.free_all()` once a frame
+	temp: Allocator
+	# `log.info(..)` forwards here. default: stderr, level filter
+	log: Logger
+	# assert!/panic!/oob. default prints and aborts
+	panic: fn(msg: string, at: Src)
+	# seeded per thread, `rand.int()` reads it
+	rand: Rng
+	# 0 in main
+	thread: int
+}
+
+# a call passes the innermost binding
+frame :: fn() {
+	# every callee down this block sees the shadow
+	ctx :: .{ ..ctx, alloc = arena.allocator() }
+	update()
+	# caller's ctx again once the block exits
+}
+draw()
+
+# amendments may add fields to Context
+Context :< { world: ?&World = none, dt: float = 0 }
+step :: fn() { ctx.world?.tick(ctx.dt) }
+
+# `@c` fns take/pass no ctx, instead getting the thread's root context
+@c
+on_tick :: fn(dt: f32) { ctx.thread }
 
 ## core
 

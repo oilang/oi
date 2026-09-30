@@ -553,11 +553,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(name)
 	}
 
+	// The innermost context.
+	pub(crate) fn ctx_value(&mut self) -> Value {
+		match self.vars.get(CTX).cloned() {
+			Some(local) => self.read_local(&local),
+			None => self.rt_call("ctx_root", &[]).expect("`oi_ctx_root` returns a pointer"),
+		}
+	}
+
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		self.wanted.push(sig.id);
+		let mut vals = vals.to_vec();
+		if !sig.foreign {
+			let ctx = self.ctx_value();
+			vals.push(ctx);
+		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
-		let call = self.b.ins().call(func, vals);
+		let call = self.b.ins().call(func, &vals);
 		let ret_val = if sig.ret.is_unit() {
 			self.b.ins().iconst(self.int, 0)
 		} else {
@@ -577,6 +590,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		recv: Option<Value>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
+		let c_abi = matches!(typ, Typ::Annotated(anns, _) if anns.iter().any(|a| a == role::C));
 		let (typ, pure) = match typ {
 			Typ::Annotated(anns, inner) if is_pure(anns) => (&**inner, true),
 			typ => (typ, false),
@@ -607,6 +621,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.ins().load(self.int, MemFlags::new(), obj, 0)
 			}
 		};
+		if !c_abi {
+			sig.params.push(AbiParam::new(self.int));
+			let ctx = self.ctx_value();
+			vals.push(ctx);
+		}
 		let is_unit = ret.is_unit();
 		if !is_unit {
 			sig.returns.push(AbiParam::new(cl_type(ret, self.int)));

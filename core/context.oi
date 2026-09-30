@@ -1,0 +1,11 @@
+module core
+
+# The implicit `ctx` every non-`@c` fn carries.
+pub Context :: struct {
+	pub alloc: ptr
+	pub temp: ptr
+	pub log: ptr
+	pub panic: ptr
+	pub rand: ptr
+	pub thread: int
+}

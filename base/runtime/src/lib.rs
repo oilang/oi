@@ -709,6 +709,16 @@ pub extern "C" fn epilogue() {
 	}
 }
 
+thread_local! {
+	static CTX_ROOT: RefCell<[i64; 6]> = const { RefCell::new([0; 6]) };
+}
+
+// The thread's root `core.Context`, bound by `main`, `@test` and `@c` bodies.
+#[unsafe(export_name = "oi_ctx_root")]
+pub extern "C" fn ctx_root() -> *mut i64 {
+	CTX_ROOT.with(|c| c.as_ptr().cast())
+}
+
 static ARGS: OnceLock<Vec<CString>> = OnceLock::new();
 
 /// Record the process arguments, once, for `os.args`.
