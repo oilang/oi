@@ -1064,18 +1064,25 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		}
+		let mut leading_spread = match fields.first() {
+			Some((_, (Expr::Spread(src), _))) => Some(self.expr(src)?),
+			_ => None,
+		};
 		// `Self {}` inside a method resolves to the impl's type
 		let mut name = match name {
 			"" => match target {
 				Some(Typ::Struct(n, _)) => n.clone(),
 				// anonymous structs
 				_ if fields.iter().all(|f| f.0.is_some()) => return self.infer_anon(fields),
-				_ => {
-					return Err(
-						Diagnostic::new("cannot infer the struct type of `.{}` here", span.into_range())
-							.with_label("name the literal: `Name.{ ... }`"),
-					);
-				}
+				_ => match &leading_spread {
+					Some((_, Typ::Struct(n, _))) => n.clone(),
+					_ => {
+						return Err(
+							Diagnostic::new("cannot infer the struct type of `.{}` here", span.into_range())
+								.with_label("name the literal: `Name.{ ... }`"),
+						);
+					}
+				},
 			},
 			"Self" => self.self_type.clone().ok_or_else(|| {
 				Diagnostic::new("`Self` is only valid in an impl block", span.into_range())
@@ -1138,7 +1145,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Err(Diagnostic::new("spread requires named fields", span.into_range())
 						.with_label("`..` cannot be mixed with positional values"));
 				}
-				let (val, typ) = self.expr(src)?;
+				let (val, typ) = match leading_spread.take() {
+					Some(tv) => tv,
+					None => self.expr(src)?,
+				};
 				if !matches!(&typ, Typ::Struct(n, _) if *n == name) {
 					return Err(
 						Diagnostic::new(format!("cannot spread {typ} into `{name}`"), src.1.into_range())

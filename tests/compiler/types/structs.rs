@@ -465,6 +465,17 @@ fn spread_is_overwritten_by_later_fields() {
 }
 
 #[test]
+fn leading_spread_infers_literal_type() {
+	let src = indoc! {"
+		Point :: struct { x: int, y: int }
+		p :: Point.{ x = 1, y = 2 }
+		q :: .{ ..p, y = 9 }
+		q.x + q.y
+	"};
+	check(src, "10");
+}
+
+#[test]
 fn spread_of_other_struct_error() {
 	fail(
 		"A :: struct { x: int }
