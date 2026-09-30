@@ -860,6 +860,16 @@ pub extern "C" fn epilogue() {
 	}
 }
 
+// The root context's `core.Logger`.
+fn logger_record() -> *const i64 {
+	static LOGGER: OnceLock<usize> = OnceLock::new();
+	*LOGGER.get_or_init(|| {
+		let rec = Box::leak(Box::new([0i64; 5])).as_mut_ptr();
+		unsafe { *rec = rec.add(3) as i64 };
+		rec as usize
+	}) as *const i64
+}
+
 // A slot per `core.Context` field, with room for amendments.
 pub const CTX_FIELDS: usize = 28;
 thread_local! {
@@ -874,6 +884,7 @@ pub extern "C" fn ctx_root() -> *mut i64 {
 		unsafe {
 			*root = system_allocator() as i64;
 			*root.add(1) = temp_record() as i64;
+			*root.add(2) = logger_record() as i64;
 		}
 		root
 	})

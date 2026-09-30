@@ -35,10 +35,25 @@ pub arena :: fn() Allocator {
 	unsafe rt.oi_arena()
 }
 
+## Log severity, ordered.
+pub Level :: enum { debug = -1, info = 0, warn = 1, error = 2 }
+
+## Where `log.info(..)` and friends end up.
+pub Logger :: struct {
+	pub proc: ?fn(data: ptr, level: Level, msg: string)
+	pub level: Level = .info
+	pub data: ptr
+}
+
+## The root context's logger.
+pub default_log :: fn(data: ptr, level: Level, msg: string) {
+	eprint("[{level}] {msg}")
+}
+
 pub Context :: struct {
 	pub alloc: Allocator
 	pub temp: Allocator
-	pub log: ptr
+	pub log: Logger
 	pub panic: ptr
 	pub rand: ptr
 	pub thread: int

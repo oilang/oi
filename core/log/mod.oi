@@ -1,0 +1,16 @@
+module log
+
+emit :: fn(level: Level, msg: string) {
+	if int.(level) >= int.(ctx.log.level) {
+		proc :: match ctx.log.proc {
+			.some.(p) => p,
+			.none => default_log,
+		}
+		proc(ctx.log.data, level, msg)
+	}
+}
+
+pub debug :: fn(msg: string) { emit(.debug, msg) }
+pub info :: fn(msg: string) { emit(.info, msg) }
+pub warn :: fn(msg: string) { emit(.warn, msg) }
+pub error :: fn(msg: string) { emit(.error, msg) }

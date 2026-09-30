@@ -1,0 +1,19 @@
+use log
+
+test! "a hooked logger sees everything at or above its level" {
+	seen := ""
+	hook :: fn [mut seen] (data: ptr, level: Level, msg: string) () {
+		seen = seen + "[{level}] {msg}\n"
+	}
+	ctx :: .{ ..ctx, log = Logger.{ proc = hook, data = ptr(0), level = .warn } }
+	log.debug("quiet")
+	log.info("quiet")
+	log.warn("careful")
+	log.error("boom")
+	assert! seen == "[warn] careful\n[error] boom\n"
+}
+
+test! "the root logger defaults to .info" {
+	assert! ctx.log.level == .info
+	log.warn("straight off the root context")
+}
