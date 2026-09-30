@@ -113,7 +113,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.get(&key)
 			.unwrap_or_else(|| panic!("`{key}` is not declared in `core/rt`"));
 		let (id, unit) = (sig.id, sig.ret.is_unit());
-		let allocs = matches!(sig.params.first().map(|p| &p.typ), Some(Typ::Struct(n, _)) if n == role::ALLOCATOR);
+		let allocs = matches!(sig.params.first().map(|p| &p.typ), Some(Typ::Struct(n, _)) if n == role::ALLOC);
 		let routed;
 		let args = match allocs {
 			true => {

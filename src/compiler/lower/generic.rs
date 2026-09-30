@@ -50,7 +50,7 @@ pub(super) fn unify(
 }
 
 // A monomorph cache key.
-fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[TypeParam]) -> String {
+pub(super) fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[TypeParam]) -> String {
 	let mut sym = oi_symbol(name);
 	for p in order {
 		sym.push('$');

@@ -21,6 +21,7 @@ pub(crate) const CONTAINS: &str = "core::Contains";
 pub(crate) const ITERATOR: &str = "core::Iterator";
 pub(crate) const ITERABLE: &str = "core::Iterable";
 pub(crate) const ERROR: &str = "core::Error";
+pub(crate) const ALLOCATOR: &str = "core::Allocator";
 
 // types
 pub(crate) const OPTION: &str = "core::Option";
@@ -28,10 +29,11 @@ pub(crate) const RESULT: &str = "core::Result";
 pub(crate) const PTR: &str = "core::ptr";
 pub(crate) const RANGE: &str = "core::Range";
 pub(crate) const SRC: &str = "core::Src";
-pub(crate) const ALLOCATOR: &str = "core::Allocator";
+pub(crate) const ALLOC: &str = "core::Alloc";
 
 // fns
 pub(crate) const ZERO: &str = "core::zero";
+pub(crate) const ALLOC_SHIM: &str = "core::alloc_shim";
 pub(crate) const STR_CONTAINS: &str = "string.contains";
 pub(crate) const ORIGIN: &str = "core::origin";
 pub(crate) const RAISE: &str = "core::raise";

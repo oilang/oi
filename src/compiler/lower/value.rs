@@ -1,4 +1,4 @@
-use super::generic::unify;
+use super::generic::{mangle, unify};
 use super::*;
 use crate::ast::record_args;
 use crate::compiler::role;
@@ -871,6 +871,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::Trait(tn) = to {
 			return self.make_trait_object(val, from, tn, span);
 		}
+		if to.key() == role::ALLOC && self.trait_impls.contains(&(from.key(), role::ALLOCATOR.into())) {
+			return Ok((self.alloc_record(val, from)?, to.clone()));
+		}
 		if *to == Typ::Error && self.open_error(from) {
 			return Ok((self.box_error(val, from), Typ::Error));
 		}
@@ -927,6 +930,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		Ok((val, from.clone()))
+	}
+
+	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.
+	fn alloc_record(&mut self, val: Value, typ: &Typ) -> Result<Value, Diagnostic> {
+		let def = self.generic_fns[role::ALLOC_SHIM].clone();
+		let subst = HashMap::from([(def.type_params[0].name.clone(), typ.clone())]);
+		let sym = mangle(role::ALLOC_SHIM, &subst, &def.type_params);
+		let sig = self.declare_instance(role::ALLOC_SHIM, &def, subst)?;
+		self.roots.push(sym);
+		self.wanted.push(sig.id);
+		let fref = self.module.declare_func_in_func(sig.id, self.b.func);
+		let proc = self.b.ins().func_addr(self.int, fref);
+		let rec = self.call_alloc(2);
+		self.b.ins().store(MemFlags::new(), proc, rec, 0);
+		self.b.ins().store(MemFlags::new(), val, rec, 8);
+		Ok(rec)
 	}
 
 	// Box a struct behind its vtable.

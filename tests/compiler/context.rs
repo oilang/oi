@@ -44,12 +44,34 @@ fn an_installed_allocator_sees_every_allocation() {
 
 		main :: fn() {
 			xs := [ 1 2 3 ]
-			ctx :: Context.{ ..ctx, alloc = Allocator.{ proc = counting, data = ptr(0) } }
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr(0) } }
 			xs << 4
 			print(xs, count > 0)
 		}
 	"};
 	check(src, "[1, 2, 3, 4] true");
+}
+
+#[test]
+fn an_allocator_claimer_installs_as_ctx_alloc() {
+	let src = indoc! {"
+		Counter :: struct { hits: int }
+
+		Counter : Allocator < {
+			alloc :: fn(mut self, size: int, align: int) ptr {
+				self.hits = self.hits + 1
+				sys :: system_allocator()
+				sys.proc(sys.data, ALLOC, size, align, ptr(0), 0)
+			}
+		}
+
+		c :: Counter.{ 0 }
+		xs := [ 1 2 3 ]
+		ctx :: Context.{ ..ctx, alloc = c }
+		xs << 4
+		print(c.hits > 0)
+	"};
+	check(src, "true");
 }
 
 #[test]

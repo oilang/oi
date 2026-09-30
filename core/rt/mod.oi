@@ -1,30 +1,30 @@
 module rt
 
 # strings
-pub oi_str_concat : fn(alloc: Allocator, a: string, b: string) string : foreign
+pub oi_str_concat : fn(alloc: Alloc, a: string, b: string) string : foreign
 pub oi_str_eq : fn(a: string, b: string) isize : foreign
-pub oi_str_slice : fn(alloc: Allocator, s: string, start: isize, end: isize) string : foreign
-pub oi_str_from_bytes : fn(alloc: Allocator, bytes: ptr) string : foreign
+pub oi_str_slice : fn(alloc: Alloc, s: string, start: isize, end: isize) string : foreign
+pub oi_str_from_bytes : fn(alloc: Alloc, bytes: ptr) string : foreign
 pub oi_str_mark : fn() isize : foreign
-pub oi_str_take : fn(alloc: Allocator, mark: isize) string : foreign
+pub oi_str_take : fn(alloc: Alloc, mark: isize) string : foreign
 pub oi_str_cstr : fn(s: string) cstr : foreign
-pub oi_cstr_str : fn(alloc: Allocator, p: cstr) string : foreign
-pub oi_ptr_string : fn(alloc: Allocator, p: ptr, len: int) string : foreign
+pub oi_cstr_str : fn(alloc: Alloc, p: cstr) string : foreign
+pub oi_ptr_string : fn(alloc: Alloc, p: ptr, len: int) string : foreign
 
 # arrays
-pub oi_alloc : fn(alloc: Allocator, size: isize) ptr : foreign
-pub oi_ptr_buffer : fn(alloc: Allocator, data: ptr, bytes: isize) ptr : foreign
-pub oi_slice : fn(alloc: Allocator, h: ptr, start: isize, end: isize, elem_size: isize) ptr : foreign
-pub oi_array_cow : fn(alloc: Allocator, h: ptr, elem_size: isize) : foreign
-pub oi_array_reserve : fn(alloc: Allocator, h: ptr, min_cap: isize, elem_size: isize) : foreign
-pub oi_array_extend : fn(alloc: Allocator, dst: ptr, src: ptr, elem_size: isize) : foreign
+pub oi_alloc : fn(alloc: Alloc, size: isize) ptr : foreign
+pub oi_ptr_buffer : fn(alloc: Alloc, data: ptr, bytes: isize) ptr : foreign
+pub oi_slice : fn(alloc: Alloc, h: ptr, start: isize, end: isize, elem_size: isize) ptr : foreign
+pub oi_array_cow : fn(alloc: Alloc, h: ptr, elem_size: isize) : foreign
+pub oi_array_reserve : fn(alloc: Alloc, h: ptr, min_cap: isize, elem_size: isize) : foreign
+pub oi_array_extend : fn(alloc: Alloc, dst: ptr, src: ptr, elem_size: isize) : foreign
 pub oi_array_write_back : fn(parent: ptr, lo: isize, len: isize, src: ptr, elem_size: isize) : foreign
 
 # maps
-pub oi_map_new : fn(alloc: Allocator) ptr : foreign
+pub oi_map_new : fn(alloc: Alloc) ptr : foreign
 pub oi_map_get : fn(m: ptr, tag: isize, bits: isize) isize : foreign
-pub oi_map_set : fn(alloc: Allocator, m: ptr, tag: isize, bits: isize, value: isize) ptr : foreign
-pub oi_map_delete : fn(alloc: Allocator, m: ptr, tag: isize, bits: isize) ptr : foreign
+pub oi_map_set : fn(alloc: Alloc, m: ptr, tag: isize, bits: isize, value: isize) ptr : foreign
+pub oi_map_delete : fn(alloc: Alloc, m: ptr, tag: isize, bits: isize) ptr : foreign
 pub oi_map_len : fn(m: ptr) isize : foreign
 pub oi_map_entries : fn(m: ptr, keys: isize, width: isize) ptr : foreign
 pub oi_map_find : fn(m: ptr, tag: isize, bits: isize, out: ptr) isize : foreign
@@ -45,8 +45,8 @@ pub oi_ast_parse : fn(src: string) Ast : foreign
 
 # misc
 pub oi_ctx_root : fn() ptr : foreign
-pub oi_system_allocator : fn() Allocator : foreign
-pub oi_arena : fn() Allocator : foreign
+pub oi_system_allocator : fn() Alloc : foreign
+pub oi_arena : fn() Alloc : foreign
 pub oi_rand_seed : fn(seed: u64) : foreign
 pub oi_argc : fn() int : foreign
 pub oi_argv : fn(i: int) cstr : foreign

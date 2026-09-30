@@ -2322,9 +2322,9 @@ main :: fn() {
 # every fn body has an implicit `ctx: core::Context` borrow
 Context :: struct {
 	# every heap byte: buffers, strings, maps, `&T`, closure envs
-	alloc: Allocator
+	alloc: Alloc
 	# per-thread arena, `ctx.temp.free_all()` once a frame
-	temp: Allocator
+	temp: Alloc
 	# `log.info(..)` forwards here. default: stderr, level filter
 	log: Logger
 	# assert!/panic!/oob. default prints and aborts
@@ -2338,7 +2338,7 @@ Context :: struct {
 # a call passes the innermost binding
 frame :: fn() {
 	# every callee down this block sees the shadow
-	ctx :: .{ ..ctx, alloc = arena.allocator() }
+	ctx :: .{ ..ctx, alloc = arena() }
 	update()
 	# caller's ctx again once the block exits
 }

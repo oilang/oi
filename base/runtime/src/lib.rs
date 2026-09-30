@@ -350,7 +350,7 @@ pub fn leaked() -> i64 {
 
 type AllocProc = unsafe extern "C" fn(*mut u8, i64, i64, i64, *mut u8, i64) -> *mut u8;
 
-/// `core.Allocator`, a C-callable proc plus the state it owns.
+/// `core.Alloc`, a C-callable proc plus the state it owns.
 #[repr(C)]
 pub struct Allocator {
 	proc: i64,
