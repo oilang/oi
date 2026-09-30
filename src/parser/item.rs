@@ -310,6 +310,8 @@ where
 		None => f,
 	});
 	let fill = attr_macro.clone().or(fill);
+	// field amendments
+	let fill = fill.map(Member::Fn).or(struct_field.clone().map(Member::Field));
 	let fill_block = brace(
 		fill_docs
 			.clone()
@@ -317,7 +319,11 @@ where
 			.repeated()
 			.collect::<Vec<_>>()
 			.then_ignore(fill_docs),
-	);
+	)
+	.map(|ms| {
+		let (fields, fills, _) = split_members(ms);
+		(fills, fields)
+	});
 	let via = just(Token::Via).ignore_then(ident()).or_not();
 	let trait_ref = ident()
 		.then(bracket(list(spanned(p.type_expr.clone()))).or_not())
@@ -348,8 +354,8 @@ where
 			.then_ignore(just(Token::Lt))
 			.then(trait_ref.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>())
 			.then(via)
-			.map(|(head, via)| ((head, via), vec![])))
-		.map_with(|((((typ, type_params), traits), via), fills), ex| {
+			.map(|(head, via)| ((head, via), (vec![], vec![]))))
+		.map_with(|((((typ, type_params), traits), via), (fills, fields)), ex| {
 			(
 				Expr::Claim {
 					typ,
@@ -357,6 +363,7 @@ where
 					traits,
 					via,
 					fills,
+					fields,
 				},
 				ex.span(),
 			)

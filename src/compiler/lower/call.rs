@@ -577,6 +577,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
 	}
 
+	/// The thread root, each amended default stored over its zeroed slot.
+	/// Idempotent, so every entrypoint can redo it instead of the runtime holding comptime values.
+	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
+		let root = self.ctx_value();
+		let Typ::Struct(_, fields) = typ else { return Ok(root) };
+		for (i, f) in fields.clone().iter().enumerate() {
+			let Some(default) = &f.default else { continue };
+			let val = self.check_typed(default, &f.typ, "not a valid default for this field")?;
+			let val = self.copy_in(val, &f.typ);
+			self.b.ins().store(MemFlags::new(), val, root, (i * 8) as i32);
+		}
+		Ok(root)
+	}
+
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		self.wanted.push(sig.id);

@@ -1,3 +1,4 @@
+use crate::common::Project;
 use crate::helpers::*;
 
 #[test]
@@ -49,4 +50,13 @@ fn an_installed_allocator_sees_every_allocation() {
 		}
 	"};
 	check(src, "[1, 2, 3, 4] true");
+}
+
+#[test]
+fn modules_amend_the_context() {
+	Project::new()
+		.file("physics.oi", ["module physics", "Context :< { dt: float = 0.5 }"])
+		.file("game.oi", ["module game", "Context :< { level: int = 1 }"])
+		.file("main.oi", ["use physics", "use game", "print(ctx.dt, ctx.level)"])
+		.check("0.5 1");
 }

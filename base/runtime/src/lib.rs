@@ -794,8 +794,10 @@ pub extern "C" fn epilogue() {
 	}
 }
 
+// A slot per `core.Context` field, with room for amendments.
+pub const CTX_FIELDS: usize = 28;
 thread_local! {
-	static CTX_ROOT: RefCell<[i64; 6]> = const { RefCell::new([0; 6]) };
+	static CTX_ROOT: RefCell<[i64; CTX_FIELDS]> = const { RefCell::new([0; CTX_FIELDS]) };
 }
 
 // The thread's root `core.Context`, bound by `main`, `@test` and `@c` bodies.

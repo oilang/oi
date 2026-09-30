@@ -34,8 +34,9 @@ pub(crate) use resolve::*;
 pub(crate) use traits::*;
 pub(crate) use typ::*;
 
-// The implicit context, reserved as a binding name.
+// The implicit context and the type it binds to.
 pub(crate) const CTX: &str = "ctx";
+const CONTEXT: &str = "core::Context";
 
 struct FnItem<'a> {
 	key: String,
@@ -994,6 +995,31 @@ impl<M: Module> Compiler<M> {
 		if self.aot {
 			expanded.values_mut().for_each(|items| items.retain(|(e, _)| !comptime_only(e)));
 		}
+		// field amendments
+		let mut added = vec![];
+		for (e, span) in program.modules.iter().flat_map(|m| &expanded[&m.name]) {
+			let Expr::Claim { typ, fields, .. } = e else { continue };
+			if !fields.is_empty() && typ != CONTEXT {
+				let msg = format!("`{typ}` can't gain fields");
+				return Err(
+					Diagnostic::new(msg, span.into_range()).with_label("only `Context` may be amended with fields")
+				);
+			}
+			if let Some(f) = fields.iter().find(|f| f.default.is_none()) {
+				let msg = format!("context field `{}` needs a default", f.name);
+				return Err(Diagnostic::new(msg, f.span.into_range()).with_label("the root context has to fill it"));
+			}
+			added.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
+		}
+		if let Some((Expr::StructDef { fields, .. }, span)) = (expanded.values_mut().flatten())
+			.find(|(e, _)| matches!(e, Expr::StructDef { name, .. } if name == CONTEXT))
+		{
+			if fields.len() + added.len() > runtime::CTX_FIELDS {
+				let msg = format!("a context holds at most {} fields", runtime::CTX_FIELDS);
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("too many amendments"));
+			}
+			fields.append(&mut added);
+		}
 		let items = || {
 			program
 				.modules
@@ -1099,6 +1125,7 @@ impl<M: Module> Compiler<M> {
 					traits: ts,
 					via,
 					fills,
+					..
 				} if fills.is_empty()
 					&& type_params.is_empty()
 					&& via.is_none()
@@ -1113,6 +1140,7 @@ impl<M: Module> Compiler<M> {
 					traits: claimed,
 					via,
 					fills,
+					..
 				} => {
 					let claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
 						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
@@ -2033,11 +2061,11 @@ impl<M: Module> Compiler<M> {
 		}
 		trans.bind_dollar(def.params_tuple);
 
+		let typ = trans.types.named(CONTEXT, (0..0).into())?;
 		let ctx = match def.ctx && !def.root_ctx {
 			true => param_vals[def.params.len()],
-			false => trans.ctx_value(),
+			false => trans.root_ctx(&typ)?,
 		};
-		let typ = trans.types.named("core::Context", (0..0).into())?;
 		let var = trans.b.declare_var(trans.int);
 		trans.b.def_var(var, ctx);
 		trans.vars.insert(CTX.into(), Local::plain(var, typ, false));

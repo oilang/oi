@@ -248,6 +248,7 @@ pub enum Expr {
 		traits: Vec<TraitRef>,
 		via: Option<String>,
 		fills: Vec<Spanned<Expr>>,
+		fields: Vec<Param>,
 	},
 
 	// `trait Name {}`
