@@ -87,15 +87,15 @@ tags: []
 		t :: T.((2 "ciea" 2)) # no
 		```
 	- [x] `::` in fn params should make immutable defaults for consistency
-	- [ ] zero enum values `none`?
+	- [x] allow `none` in enums
 	- [x] `10..-2..` `revo`
 	- [x] `if let`/`while let` `rust`
 	- [ ] `loop let`/?`match let` `rust`
 	- [ ] Julia/V style REPL banner `julia v`
 	- [ ] `:h <topic>` `vim revo`
-	- [ ] `r#""#` `rust`
+	- [x] ~`r#""#` `rust`~ `""""`/`r"""` `odin c# swift java`
 - [ ] `comp assert`
-- [ ] implicit context `jai`
+- [x] implicit context `jai`
 - [ ] computed values `swift gdscript`
 - [ ] thread version through repl and cli and docs and everything
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
@@ -103,12 +103,11 @@ tags: []
 - [ ] make an `@implicit` trait that expects `str() string`, and use that for the "str/print everything "stuff
 - [ ] channels
 - [ ] units and unit conversion
-- [ ] primitive data type for paths
-- [ ] `@noinit` `v`
+- [x] `@noinit` `v`
 - [ ] `discard` and/or `pass`
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
-- [ ] more types (`any`, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `rune`, `char`) `odin v rust`
+- [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`) `odin v rust`
 - [ ] swizzle `odin`
 ## consider
 - `nil`
