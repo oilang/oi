@@ -884,6 +884,23 @@ fn logger_record() -> *const i64 {
 	}) as *const i64
 }
 
+// The root context's `core.Rng`.
+// fastrand's per-thread wyrand, seeded from OS entropy.
+fn rng_record() -> *const i64 {
+	static RNG: OnceLock<usize> = OnceLock::new();
+	*RNG.get_or_init(|| Box::leak(Box::new([rng_proc as *const () as i64, 0])).as_ptr() as usize) as *const i64
+}
+
+extern "C" fn rng_proc(_: *mut u8) -> u64 {
+	fastrand::u64(..)
+}
+
+/// Reseed this thread's root generator. No effect on a custom `ctx.rand`.
+#[unsafe(export_name = "oi_rand_seed")]
+pub extern "C" fn rand_seed(seed: u64) {
+	fastrand::seed(seed)
+}
+
 // A slot per `core.Context` field, with room for amendments.
 pub const CTX_FIELDS: usize = 28;
 thread_local! {
@@ -899,6 +916,7 @@ pub extern "C" fn ctx_root() -> *mut i64 {
 			*root = system_allocator() as i64;
 			*root.add(1) = temp_record() as i64;
 			*root.add(2) = logger_record() as i64;
+			*root.add(4) = rng_record() as i64;
 		}
 		root
 	})

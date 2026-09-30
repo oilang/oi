@@ -1,0 +1,30 @@
+module rand
+
+## Random.
+
+use rt
+
+## A random `int`, uniform over the full 64-bit range.
+pub int :: fn() int {
+	int.(raw())
+}
+
+## A random `float` in `0..1`.
+pub float :: fn() float {
+	float.(raw() >> 11) / 2**53
+}
+
+## A random `int` in `lo..hi`.
+pub range :: fn(lo: int, hi: int) int {
+	assert!(lo < hi, "rand.range: lo ({lo}) must be < hi ({hi})")
+	lo + int.(raw() % u64.(hi - lo))
+}
+
+## Reseed this thread's root generator. No effect on a custom `ctx.rand`.
+pub seed :: fn(s: u64) {
+	unsafe rt.oi_rand_seed(s)
+}
+
+raw :: fn() u64 {
+	ctx.rand.proc(ctx.rand.data)
+}

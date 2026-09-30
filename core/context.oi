@@ -50,11 +50,17 @@ pub default_log :: fn(data: ptr, level: Level, msg: string) {
 	eprint("[{level}] {msg}")
 }
 
+## A C-callable generator.
+pub Rng :: struct {
+	pub proc: @c fn(data: ptr) u64
+	pub data: ptr
+}
+
 pub Context :: struct {
 	pub alloc: Allocator
 	pub temp: Allocator
 	pub log: Logger
 	pub panic: fn(msg: string, at: Src)
-	pub rand: ptr
+	pub rand: Rng
 	pub thread: int
 }
