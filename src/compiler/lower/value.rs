@@ -841,7 +841,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,
 				_ => value,
 			};
-			let (val, vt) = self.check_expr(value, inner)?;
+			if let Expr::Ident(n) = &value.0 {
+				let key = self.qualify(n).into_owned();
+				self.roots.push(key);
+			}
+			self.c_callback = true;
+			let checked = self.check_expr(value, inner);
+			self.c_callback = false;
+			let (val, vt) = checked?;
 			if vt != **inner {
 				return Ok((val, vt));
 			}

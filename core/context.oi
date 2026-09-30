@@ -1,9 +1,29 @@
 module core
 
-# The implicit `ctx` every non-`@c` fn carries.
+## The implicit `ctx` carried by most functions.
+
+use rt
+
+# `Allocator.proc` modes.
+# TODO: make this an enum, but need to add enums to C ABI first
+pub ALLOC :: 0
+pub FREE :: 1
+
+## A C-callable allocator record.
+pub Allocator :: struct {
+	pub proc: @c fn(data: ptr, mode: int, size: int, align: int, old: ptr, old_size: int) ptr
+	pub data: ptr
+}
+
+## The system heap, what the root context allocates from.
+## Delegate to it from a custom allocator.
+pub system_allocator :: fn() Allocator {
+	unsafe rt.oi_system_allocator()
+}
+
 pub Context :: struct {
-	pub alloc: ptr
-	pub temp: ptr
+	pub alloc: Allocator
+	pub temp: Allocator
 	pub log: ptr
 	pub panic: ptr
 	pub rand: ptr

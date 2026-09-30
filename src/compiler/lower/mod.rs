@@ -62,6 +62,8 @@ pub(super) struct Translator<'a, M: Module> {
 	pub mono: &'a mut HashMap<String, FnSig>,
 	pub pending: &'a mut Vec<Pending>,
 	pub wanted: &'a mut Vec<FuncId>,
+	pub roots: &'a mut Vec<String>,
+	pub c_callback: bool,
 	pub printers: &'a mut Vec<(String, Typ, bool, runtime::Sink)>,
 	pub descs: &'a mut HashMap<String, DataId>,
 	pub string_idx: &'a mut usize,

@@ -173,6 +173,7 @@ struct FnDef<'a> {
 	foreign: bool,
 	pure: bool,
 	ctx: bool,
+	root_ctx: bool,
 }
 
 // A generic struct definition.
@@ -1757,6 +1758,7 @@ impl<M: Module> Compiler<M> {
 						self_type,
 						foreign: funcs[&item.key].foreign,
 						ctx: !funcs[&item.key].foreign,
+						root_ctx: self.roots.contains(&item.key),
 						pure: funcs[&item.key].pure,
 						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
 						..FnDef::default()
@@ -1787,6 +1789,7 @@ impl<M: Module> Compiler<M> {
 					body: &def.body,
 					captures: &def.captures,
 					ctx: true,
+					root_ctx: self.roots.contains(&sym),
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
 					..FnDef::default()
@@ -1935,10 +1938,10 @@ impl<M: Module> Compiler<M> {
 		for (_, typ, _) in def.params {
 			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
 		}
-		if !def.captures.is_empty() {
+		if def.ctx {
 			b.func.signature.params.push(AbiParam::new(int));
 		}
-		if def.ctx {
+		if !def.captures.is_empty() {
 			b.func.signature.params.push(AbiParam::new(int));
 		}
 		let block = b.create_block();
@@ -1971,6 +1974,8 @@ impl<M: Module> Compiler<M> {
 			mono: &mut self.mono,
 			pending: &mut self.pending,
 			wanted: &mut self.wanted,
+			roots: &mut self.roots,
+			c_callback: false,
 			printers: &mut self.printers,
 			descs: &mut self.descs,
 			string_idx: &mut self.string_idx,
@@ -2028,8 +2033,8 @@ impl<M: Module> Compiler<M> {
 		}
 		trans.bind_dollar(def.params_tuple);
 
-		let ctx = match def.ctx {
-			true => param_vals[def.params.len() + !def.captures.is_empty() as usize],
+		let ctx = match def.ctx && !def.root_ctx {
+			true => param_vals[def.params.len()],
 			false => trans.ctx_value(),
 		};
 		let typ = trans.types.named("core::Context", (0..0).into())?;
@@ -2038,7 +2043,7 @@ impl<M: Module> Compiler<M> {
 		trans.vars.insert(CTX.into(), Local::plain(var, typ, false));
 
 		if !def.captures.is_empty() {
-			let env = param_vals[def.params.len()];
+			let env = param_vals[def.params.len() + 1];
 			for (i, (name, typ, boxed)) in def.captures.iter().enumerate() {
 				let cl = if *boxed { trans.int } else { cl_type(typ, trans.int) };
 				let val = trans.b.ins().load(cl, MemFlags::new(), env, ((i + 1) * 8) as i32);
@@ -2059,7 +2064,7 @@ impl<M: Module> Compiler<M> {
 		if let Some((name, sig)) = def.self_fn {
 			let val = match def.captures.is_empty() {
 				true => trans.fn_object(sig.id),
-				false => param_vals[def.params.len()],
+				false => param_vals[def.params.len() + 1],
 			};
 			let typ = Typ::Fn(sig.value_params(), Box::new(sig.ret.clone()));
 			trans.bind_local(name, val, typ, false);

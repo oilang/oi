@@ -114,6 +114,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			pure: self.pure,
 		};
 		let sym = format!("anon${}_{}", span.start, self.mono.len());
+		if self.c_callback {
+			self.roots.push(oi_symbol(&sym));
+		}
 		let sig = self.declare_instance(&sym, &def, subst)?;
 		let params = sig.value_params();
 		if resolved.is_empty() {

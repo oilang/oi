@@ -28,6 +28,7 @@ pub(crate) const RESULT: &str = "core::Result";
 pub(crate) const PTR: &str = "core::ptr";
 pub(crate) const RANGE: &str = "core::Range";
 pub(crate) const SRC: &str = "core::Src";
+pub(crate) const ALLOCATOR: &str = "core::Allocator";
 
 // fns
 pub(crate) const ZERO: &str = "core::zero";

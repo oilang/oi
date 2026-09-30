@@ -113,6 +113,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			.get(&key)
 			.unwrap_or_else(|| panic!("`{key}` is not declared in `core/rt`"));
 		let (id, unit) = (sig.id, sig.ret.is_unit());
+		let allocs = matches!(sig.params.first().map(|p| &p.typ), Some(Typ::Struct(n, _)) if n == role::ALLOCATOR);
+		let routed;
+		let args = match allocs {
+			true => {
+				routed = [&[self.ctx_alloc()], args].concat();
+				&routed[..]
+			}
+			false => args,
+		};
 		self.wanted.push(id);
 		let func = self.module.declare_func_in_func(id, self.b.func);
 		let call = self.b.ins().call(func, args);
@@ -561,6 +570,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	/// The innermost context's allocator record.
+	/// NOTE: `Context.alloc` is field 0.
+	fn ctx_alloc(&mut self) -> Value {
+		let ctx = self.ctx_value();
+		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
+	}
+
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		self.wanted.push(sig.id);
@@ -613,18 +629,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut sig = self.module.make_signature();
 		sig.params
 			.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, self.int))));
-		let addr = match callee {
-			Callee::Addr(addr) => addr,
-			Callee::Object(obj) => {
-				sig.params.push(AbiParam::new(self.int));
-				vals.push(obj);
-				self.b.ins().load(self.int, MemFlags::new(), obj, 0)
-			}
+		let (addr, env) = match callee {
+			Callee::Addr(addr) => (addr, None),
+			Callee::Object(obj) => (self.b.ins().load(self.int, MemFlags::new(), obj, 0), Some(obj)),
 		};
 		if !c_abi {
 			sig.params.push(AbiParam::new(self.int));
 			let ctx = self.ctx_value();
 			vals.push(ctx);
+		}
+		if let Some(obj) = env {
+			sig.params.push(AbiParam::new(self.int));
+			vals.push(obj);
 		}
 		let is_unit = ret.is_unit();
 		if !is_unit {

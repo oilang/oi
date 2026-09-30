@@ -878,7 +878,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 					String::new()
 				}
 			};
-			runtime::str_new(s.as_bytes()) as i64
+			runtime::str_new(runtime::system_allocator(), s.as_bytes()) as i64
 		}
 		(
 			b"name",

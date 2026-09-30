@@ -218,10 +218,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut sig = self.module.make_signature();
 		sig.params
 			.extend(params.iter().map(|(_, t, _)| AbiParam::new(cl_type(t, self.int))));
+		sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
-		sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
 		if !ret.is_unit() {
 			sig.returns.push(AbiParam::new(cl_type(&ret, self.int)));
 		}

@@ -56,7 +56,7 @@ ptr :< {
 	## Copy `len` bytes into an owned string.
 	@unsafe
 	pub string :: fn(self, len: int) string {
-		unsafe rt.oi_ptr_string(self, len)
+		unsafe rt.oi_ptr_string(ctx.alloc, self, len)
 	}
 
 	## The pointer `n` bytes further along.

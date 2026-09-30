@@ -29,3 +29,24 @@ fn c_fn_reads_the_root_ctx() {
 fn ctx_cannot_be_rebound() {
 	fail("ctx := 1", "`ctx` is reserved");
 }
+
+#[test]
+fn an_installed_allocator_sees_every_allocation() {
+	let src = indoc! {"
+		count := 0
+
+		@c counting :: fn(data: ptr, mode: int, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == ALLOC { count = count + 1 }
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+
+		main :: fn() {
+			xs := [ 1 2 3 ]
+			ctx :: Context.{ ..ctx, alloc = Allocator.{ proc = counting, data = ptr(0) } }
+			xs << 4
+			print(xs, count > 0)
+		}
+	"};
+	check(src, "[1, 2, 3, 4] true");
+}

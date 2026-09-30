@@ -106,14 +106,15 @@ unsafe fn str_lossy<'a>(header: *const StrHeader) -> std::borrow::Cow<'a, str> {
 }
 
 /// Allocate a fresh string handle owning a copy of `bytes`, plus a trailing NUL for C interop.
-pub fn str_new(bytes: &[u8]) -> *const StrHeader {
-	let mut buf = bytes.to_vec();
-	buf.push(0);
-	let data = Box::leak(buf.into_boxed_slice()).as_ptr() as i64;
-	Box::leak(Box::new(StrHeader {
-		data,
-		len: bytes.len() as i64,
-	})) as *const StrHeader
+pub fn str_new(a: *const Allocator, bytes: &[u8]) -> *const StrHeader {
+	let len = bytes.len() as i64;
+	unsafe {
+		let data = raw_alloc(a, len + 1);
+		std::ptr::copy_nonoverlapping(bytes.as_ptr(), data, bytes.len());
+		let out = raw_alloc(a, size_of::<StrHeader>() as i64) as *mut StrHeader;
+		*out = StrHeader { data: data as i64, len };
+		out
+	}
 }
 
 // Render one value to a string.
@@ -212,12 +213,14 @@ pub unsafe extern "C" fn fail(msg: *const StrHeader) {
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_str_from_bytes")]
-pub unsafe extern "C" fn str_from_bytes(header: *const Header) -> *const StrHeader {
+pub unsafe extern "C" fn str_from_bytes(a: *const Allocator, header: *const Header) -> *const StrHeader {
 	let Header { data, len, .. } = unsafe { *header };
 	if data == 0 {
-		return str_new(&[]);
+		return str_new(a, &[]);
 	}
-	str_new(unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) })
+	str_new(a, unsafe {
+		std::slice::from_raw_parts(data as *const u8, len as usize)
+	})
 }
 
 /// Compare two string handles.
@@ -234,13 +237,17 @@ pub unsafe extern "C" fn str_eq(a: *const StrHeader, b: *const StrHeader) -> i64
 /// # Safety
 /// `a` and `b` must be valid string handles.
 #[unsafe(export_name = "oi_str_concat")]
-pub unsafe extern "C" fn str_concat(a: *const StrHeader, b: *const StrHeader) -> *const StrHeader {
+pub unsafe extern "C" fn str_concat(
+	alloc: *const Allocator,
+	a: *const StrHeader,
+	b: *const StrHeader,
+) -> *const StrHeader {
 	let a = unsafe { str_bytes(a) };
 	let b = unsafe { str_bytes(b) };
 	let mut out = Vec::with_capacity(a.len() + b.len());
 	out.extend_from_slice(a);
 	out.extend_from_slice(b);
-	str_new(&out)
+	str_new(alloc, &out)
 }
 
 /// NUL-terminated pointer to the string's bytes.
@@ -262,32 +269,34 @@ pub unsafe extern "C" fn str_cstr(header: *const StrHeader) -> i64 {
 /// # Safety
 /// `ptr` must be null or point to a valid NUL-terminated C string.
 #[unsafe(export_name = "oi_cstr_str")]
-pub unsafe extern "C" fn cstr_str(ptr: i64) -> *const StrHeader {
+pub unsafe extern "C" fn cstr_str(a: *const Allocator, ptr: i64) -> *const StrHeader {
 	if ptr == 0 {
-		return str_new(&[]);
+		return str_new(a, &[]);
 	}
 	let bytes = unsafe { std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char) }.to_bytes();
-	str_new(bytes)
+	str_new(a, bytes)
 }
 
 /// Build a string handle by copying `len` bytes from `data`.
 /// # Safety
 /// `data` must be null or point to at least `len` readable bytes.
 #[unsafe(export_name = "oi_ptr_string")]
-pub unsafe extern "C" fn ptr_string(data: i64, len: i64) -> *const StrHeader {
+pub unsafe extern "C" fn ptr_string(a: *const Allocator, data: i64, len: i64) -> *const StrHeader {
 	if data == 0 || len <= 0 {
-		return str_new(&[]);
+		return str_new(a, &[]);
 	}
-	str_new(unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) })
+	str_new(a, unsafe {
+		std::slice::from_raw_parts(data as *const u8, len as usize)
+	})
 }
 
 /// Copy bytes from `data` into a fresh rc'd array buffer.
 /// # Safety
 /// `data` must be null or point to at least `bytes` readable bytes.
 #[unsafe(export_name = "oi_ptr_buffer")]
-pub unsafe extern "C" fn ptr_buffer(data: i64, bytes: i64) -> i64 {
+pub unsafe extern "C" fn ptr_buffer(a: *const Allocator, data: i64, bytes: i64) -> i64 {
 	let bytes = if data == 0 { 0 } else { bytes.max(0) };
-	let buf = buffer_alloc(bytes);
+	let buf = unsafe { buffer_alloc(a, bytes) };
 	if bytes > 0 {
 		unsafe { std::ptr::copy_nonoverlapping(data as *const u8, buf, bytes as usize) };
 	}
@@ -314,8 +323,8 @@ pub extern "C" fn str_mark() -> i64 {
 
 // Split the buffer tail from `mark` into a fresh string handle.
 #[unsafe(export_name = "oi_str_take")]
-pub extern "C" fn str_take(mark: i64) -> *const StrHeader {
-	BUF.with(|b| str_new(b.borrow_mut().split_off(mark as usize).as_bytes()))
+pub extern "C" fn str_take(a: *const Allocator, mark: i64) -> *const StrHeader {
+	BUF.with(|b| str_new(a, b.borrow_mut().split_off(mark as usize).as_bytes()))
 }
 
 // Active managed allocations, for leak checks.
@@ -325,36 +334,101 @@ pub fn leaked() -> i64 {
 	LIVE.load(Ordering::Relaxed)
 }
 
-// Allocate `size` zeroed bytes for a composite value (e.g. a tuple's field slots).
-#[unsafe(export_name = "oi_alloc")]
-pub extern "C" fn alloc(size: i64) -> *mut u8 {
-	let size = size.max(1) as usize + 8;
-	let layout = std::alloc::Layout::from_size_align(size, 8).unwrap();
-	LIVE.fetch_add(1, Ordering::Relaxed);
-	unsafe {
-		let base = std::alloc::alloc_zeroed(layout);
-		*(base as *mut i64) = size as i64;
-		base.add(8)
+type AllocProc = unsafe extern "C" fn(*mut u8, i64, i64, i64, *mut u8, i64) -> *mut u8;
+
+/// `core.Allocator`, a C-callable proc plus the state it owns.
+#[repr(C)]
+pub struct Allocator {
+	proc: i64,
+	data: i64,
+}
+
+// `proc` modes, shared with core/context.oi.
+const ALLOC: i64 = 0;
+const FREE: i64 = 1;
+
+// `alloc` prefixes each block with its size and its allocator, so `free` needs no ctx.
+const PREFIX: usize = 16;
+
+fn layout(size: i64) -> std::alloc::Layout {
+	std::alloc::Layout::from_size_align(size.max(1) as usize, 8).unwrap()
+}
+
+/// The system heap, and what the root context allocates from.
+#[unsafe(export_name = "oi_system_allocator")]
+pub extern "C" fn system_allocator() -> *const Allocator {
+	static SYSTEM: OnceLock<usize> = OnceLock::new();
+	let rec = Allocator {
+		proc: sys_proc as AllocProc as i64,
+		data: 0,
+	};
+	*SYSTEM.get_or_init(|| Box::leak(Box::new(rec)) as *const Allocator as usize) as *const Allocator
+}
+
+unsafe extern "C" fn sys_proc(_: *mut u8, mode: i64, size: i64, _: i64, old: *mut u8, old_size: i64) -> *mut u8 {
+	match mode {
+		ALLOC => unsafe { std::alloc::alloc_zeroed(layout(size)) },
+		FREE => unsafe {
+			std::alloc::dealloc(old, layout(old_size));
+			std::ptr::null_mut()
+		},
+		_ => std::ptr::null_mut(),
 	}
 }
 
-// Free an `alloc` result.
+/// Drive an allocator's proc.
+/// Procs zero what they hand back and return null only on failure.
+unsafe fn call_proc(a: *const Allocator, mode: i64, size: i64, old: *mut u8, old_size: i64) -> *mut u8 {
+	let p: AllocProc = unsafe { std::mem::transmute((*a).proc) };
+	let out = unsafe { p((*a).data as *mut u8, mode, size, 8, old, old_size) };
+	if mode == ALLOC && out.is_null() {
+		eprintln!("allocator returned null for {size} bytes");
+		die();
+	}
+	out
+}
+
+/// Bytes straight from the given allocator, with no `alloc` prefix.
+unsafe fn raw_alloc(a: *const Allocator, size: i64) -> *mut u8 {
+	unsafe { call_proc(a, ALLOC, size, std::ptr::null_mut(), 0) }
+}
+
+/// Allocate `size` zeroed bytes for a composite value (e.g. a tuple's field slots).
+/// # Safety
+/// `a` must point to a valid allocator record.
+#[unsafe(export_name = "oi_alloc")]
+pub unsafe extern "C" fn alloc(a: *const Allocator, size: i64) -> *mut u8 {
+	let size = size.max(1) + PREFIX as i64;
+	LIVE.fetch_add(1, Ordering::Relaxed);
+	unsafe {
+		let base = raw_alloc(a, size);
+		*(base as *mut i64) = size;
+		*(base.add(8) as *mut *const Allocator) = a;
+		base.add(PREFIX)
+	}
+}
+
+// Free an `alloc` result through the allocator in its prefix.
 unsafe fn free(ptr: *mut u8) {
 	if ptr.is_null() {
 		return;
 	}
 	LIVE.fetch_sub(1, Ordering::Relaxed);
 	unsafe {
-		let base = ptr.sub(8);
-		let size = *(base as *const i64) as usize;
-		std::alloc::dealloc(base, std::alloc::Layout::from_size_align_unchecked(size, 8));
+		let base = ptr.sub(PREFIX);
+		call_proc(owner(ptr), FREE, 0, base, *(base as *const i64));
 	}
 }
 
+// The allocator an `alloc` result came from.
+unsafe fn owner(ptr: *const u8) -> *const Allocator {
+	unsafe { *(ptr.sub(PREFIX).add(8) as *const *const Allocator) }
+}
+
 // Allocate an element buffer with its refcount at data[-8], count starting at 1.
-fn buffer_alloc(bytes: i64) -> *mut u8 {
-	let base = alloc(bytes + 8);
+unsafe fn buffer_alloc(a: *const Allocator, bytes: i64) -> *mut u8 {
 	unsafe {
+		let base = alloc(a, bytes + 8);
 		*(base as *mut i64) = 1;
 		base.add(8)
 	}
@@ -378,7 +452,7 @@ pub unsafe extern "C" fn array_share(header: *const Header) -> *const Header {
 	if h.data != 0 {
 		unsafe { *((h.data - 8) as *mut i64) += 1 };
 	}
-	let out = alloc(size_of::<Header>() as i64) as *mut Header;
+	let out = unsafe { alloc(owner(header.cast()), size_of::<Header>() as i64) } as *mut Header;
 	unsafe { *out = h };
 	out
 }
@@ -408,12 +482,12 @@ pub unsafe extern "C" fn array_release(header: *mut Header) {
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_array_cow")]
-pub unsafe extern "C" fn array_cow(header: *mut Header, elem_size: i64) {
+pub unsafe extern "C" fn array_cow(a: *const Allocator, header: *mut Header, elem_size: i64) {
 	let Header { data, len, .. } = unsafe { *header };
 	if data == 0 || unsafe { *((data - 8) as *const i64) } <= 1 {
 		return;
 	}
-	let new_data = buffer_alloc(len * elem_size);
+	let new_data = unsafe { buffer_alloc(a, len * elem_size) };
 	unsafe {
 		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
 		*((data - 8) as *mut i64) -= 1;
@@ -425,13 +499,13 @@ pub unsafe extern "C" fn array_cow(header: *mut Header, elem_size: i64) {
 /// A fresh array owning `elems`, each packed into `width` bytes.
 pub fn array_of(elems: &[i64], width: i64) -> *const Header {
 	let len = elems.len() as i64;
-	let data = buffer_alloc(len * width);
+	let data = unsafe { buffer_alloc(system_allocator(), len * width) };
 	for (i, v) in elems.iter().enumerate() {
 		unsafe {
 			std::ptr::copy_nonoverlapping(v.to_le_bytes().as_ptr(), data.add(i * width as usize), width as usize)
 		};
 	}
-	let out = alloc(size_of::<Header>() as i64) as *mut Header;
+	let out = unsafe { alloc(system_allocator(), size_of::<Header>() as i64) } as *mut Header;
 	unsafe {
 		*out = Header {
 			data: data as i64,
@@ -459,15 +533,21 @@ pub unsafe fn array_elems<'a>(header: *const Header) -> &'a [i64] {
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_slice")]
-pub unsafe extern "C" fn slice(header: *const Header, start: i64, end: i64, elem_size: i64) -> *const Header {
+pub unsafe extern "C" fn slice(
+	a: *const Allocator,
+	header: *const Header,
+	start: i64,
+	end: i64,
+	elem_size: i64,
+) -> *const Header {
 	let Header { data, len, .. } = unsafe { *header };
 	if start < 0 || start > end || end > len {
 		eprintln!("slice range {start}..{end} out of bounds for array of length {len}");
 		die();
 	}
 	let view_len = end - start;
-	let new_data = buffer_alloc(view_len * elem_size);
-	let out = alloc(size_of::<Header>() as i64) as *mut Header;
+	let new_data = unsafe { buffer_alloc(a, view_len * elem_size) };
+	let out = unsafe { alloc(a, size_of::<Header>() as i64) } as *mut Header;
 	unsafe {
 		let src = (data + start * elem_size) as *const u8;
 		std::ptr::copy_nonoverlapping(src, new_data, (view_len * elem_size) as usize);
@@ -484,13 +564,18 @@ pub unsafe extern "C" fn slice(header: *const Header, start: i64, end: i64, elem
 /// # Safety
 /// `header` must point to a valid string header.
 #[unsafe(export_name = "oi_str_slice")]
-pub unsafe extern "C" fn str_slice(header: *const StrHeader, start: i64, end: i64) -> *const StrHeader {
+pub unsafe extern "C" fn str_slice(
+	a: *const Allocator,
+	header: *const StrHeader,
+	start: i64,
+	end: i64,
+) -> *const StrHeader {
 	let StrHeader { data, len } = unsafe { *header };
 	if start < 0 || start > end || end > len {
 		eprintln!("slice range {start}..{end} out of bounds for string of length {len}");
 		die();
 	}
-	let out = alloc(size_of::<StrHeader>() as i64) as *mut StrHeader;
+	let out = unsafe { alloc(a, size_of::<StrHeader>() as i64) } as *mut StrHeader;
 	unsafe {
 		*out = StrHeader {
 			data: data + start,
@@ -521,13 +606,13 @@ pub unsafe extern "C" fn array_write_back(parent: *mut Header, lo: i64, len: i64
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_array_reserve")]
-pub unsafe extern "C" fn array_reserve(header: *mut Header, min_cap: i64, elem_size: i64) {
+pub unsafe extern "C" fn array_reserve(a: *const Allocator, header: *mut Header, min_cap: i64, elem_size: i64) {
 	let Header { data, len, cap } = unsafe { *header };
 	if min_cap <= cap {
 		return;
 	}
 	let new_cap = (cap.max(1) * 2).max(min_cap);
-	let new_data = buffer_alloc(new_cap * elem_size);
+	let new_data = unsafe { buffer_alloc(a, new_cap * elem_size) };
 	unsafe {
 		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
 		(*header).data = new_data as i64;
@@ -542,14 +627,14 @@ pub unsafe extern "C" fn array_reserve(header: *mut Header, min_cap: i64, elem_s
 /// # Safety
 /// `dst` and `src` must point to valid array headers.
 #[unsafe(export_name = "oi_array_extend")]
-pub unsafe extern "C" fn array_extend(dst: *mut Header, src: *const Header, elem_size: i64) {
+pub unsafe extern "C" fn array_extend(a: *const Allocator, dst: *mut Header, src: *const Header, elem_size: i64) {
 	let dst_len = unsafe { (*dst).len };
 	let Header {
 		data: src_data,
 		len: src_len,
 		..
 	} = unsafe { *src };
-	unsafe { array_reserve(dst, dst_len + src_len, elem_size) };
+	unsafe { array_reserve(a, dst, dst_len + src_len, elem_size) };
 	unsafe {
 		let dst_data = (*dst).data as *mut u8;
 		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
@@ -716,7 +801,14 @@ thread_local! {
 // The thread's root `core.Context`, bound by `main`, `@test` and `@c` bodies.
 #[unsafe(export_name = "oi_ctx_root")]
 pub extern "C" fn ctx_root() -> *mut i64 {
-	CTX_ROOT.with(|c| c.as_ptr().cast())
+	CTX_ROOT.with(|c| {
+		let root: *mut i64 = c.as_ptr().cast();
+		unsafe {
+			*root = system_allocator() as i64;
+			*root.add(1) = system_allocator() as i64;
+		}
+		root
+	})
 }
 
 static ARGS: OnceLock<Vec<CString>> = OnceLock::new();
@@ -761,13 +853,26 @@ pub struct OiMap {
 	rc: i64,
 }
 
+// Only the box routes through the given allocator. The entries stay on the heap.
+unsafe fn map_box(a: *const Allocator, map: OiMap) -> *mut OiMap {
+	unsafe {
+		let out = alloc(a, size_of::<OiMap>() as i64) as *mut OiMap;
+		std::ptr::write(out, map);
+		out
+	}
+}
+
 #[unsafe(export_name = "oi_map_new")]
-pub extern "C" fn map_new() -> *mut OiMap {
-	LIVE.fetch_add(1, Ordering::Relaxed);
-	Box::into_raw(Box::new(OiMap {
-		entries: HashMap::new(),
-		rc: 1,
-	}))
+pub unsafe extern "C" fn map_new(a: *const Allocator) -> *mut OiMap {
+	unsafe {
+		map_box(
+			a,
+			OiMap {
+				entries: HashMap::new(),
+				rc: 1,
+			},
+		)
+	}
 }
 
 /// Drop one ref to a map.
@@ -781,8 +886,10 @@ pub unsafe extern "C" fn map_release(map: *mut OiMap) {
 	}
 	unsafe { (*map).rc -= 1 };
 	if unsafe { (*map).rc } == 0 {
-		LIVE.fetch_sub(1, Ordering::Relaxed);
-		drop(unsafe { Box::from_raw(map) });
+		unsafe {
+			std::ptr::drop_in_place(map);
+			free(map.cast());
+		}
 	}
 }
 
@@ -797,14 +904,13 @@ pub unsafe extern "C" fn map_share(map: *mut OiMap) -> *mut OiMap {
 }
 
 // Give a shared map its own entries before a write.
-unsafe fn map_cow(map: *mut OiMap) -> *mut OiMap {
+unsafe fn map_cow(a: *const Allocator, map: *mut OiMap) -> *mut OiMap {
 	if unsafe { (*map).rc } <= 1 {
 		return map;
 	}
 	unsafe { (*map).rc -= 1 };
 	let entries = unsafe { (*map).entries.clone() };
-	LIVE.fetch_add(1, Ordering::Relaxed);
-	Box::into_raw(Box::new(OiMap { entries, rc: 1 }))
+	unsafe { map_box(a, OiMap { entries, rc: 1 }) }
 }
 
 /// # Safety
@@ -825,8 +931,8 @@ pub unsafe extern "C" fn map_get(map: *mut OiMap, tag: i64, bits: i64) -> i64 {
 /// # Safety
 /// `map` must be a valid, live `OiMap` pointer.
 #[unsafe(export_name = "oi_map_set")]
-pub unsafe extern "C" fn map_set(map: *mut OiMap, tag: i64, bits: i64, value: i64) -> *mut OiMap {
-	let map = unsafe { map_cow(map) };
+pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64, value: i64) -> *mut OiMap {
+	let map = unsafe { map_cow(a, map) };
 	unsafe { &mut *map }.entries.insert(map_key(Tag::from_i64(tag), bits), value);
 	map
 }
@@ -835,8 +941,8 @@ pub unsafe extern "C" fn map_set(map: *mut OiMap, tag: i64, bits: i64, value: i6
 /// # Safety
 /// `map` must be a valid, live `OiMap` pointer.
 #[unsafe(export_name = "oi_map_delete")]
-pub unsafe extern "C" fn map_delete(map: *mut OiMap, tag: i64, bits: i64) -> *mut OiMap {
-	let map = unsafe { map_cow(map) };
+pub unsafe extern "C" fn map_delete(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64) -> *mut OiMap {
+	let map = unsafe { map_cow(a, map) };
 	unsafe { &mut *map }.entries.remove(&map_key(Tag::from_i64(tag), bits));
 	map
 }
@@ -869,7 +975,7 @@ pub unsafe extern "C" fn map_entries(map: *mut OiMap, keys: i64, width: i64) -> 
 	let map = unsafe { &*map };
 	let key_bits = |k: &MapKey| match k {
 		MapKey::Raw(bits) => *bits,
-		MapKey::Str(bytes) => str_new(bytes) as i64,
+		MapKey::Str(bytes) => str_new(system_allocator(), bytes) as i64,
 	};
 	let bits: Vec<i64> = match keys {
 		0 => map.entries.values().copied().collect(),
