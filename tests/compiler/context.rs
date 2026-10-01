@@ -1,4 +1,3 @@
-use crate::common::Project;
 use crate::helpers::*;
 
 #[test]
@@ -125,13 +124,4 @@ fn an_arena_grows_past_its_first_chunk() {
 		print(sum(a, 100000), sum(a, 10), sum(a, 200000))
 	"};
 	check(src, "4999950000 45 19999900000");
-}
-
-#[test]
-fn modules_amend_the_context() {
-	Project::new()
-		.file("physics.oi", ["module physics", "Context :< { dt: float = 0.5 }"])
-		.file("game.oi", ["module game", "Context :< { level: int = 1 }"])
-		.file("main.oi", ["use physics", "use game", "print(ctx.dt, ctx.level)"])
-		.check("0.5 1");
 }

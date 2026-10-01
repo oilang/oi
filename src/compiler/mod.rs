@@ -993,29 +993,29 @@ impl<M: Module> Compiler<M> {
 			expanded.values_mut().for_each(|items| items.retain(|(e, _)| !comptime_only(e)));
 		}
 		// field amendments
-		let mut added = vec![];
+		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
 		for (e, span) in program.modules.iter().flat_map(|m| &expanded[&m.name]) {
 			let Expr::Claim { typ, fields, .. } = e else { continue };
-			if !fields.is_empty() && typ != CONTEXT {
+			let open = has_ann(&self.annotations, typ, role::OPEN);
+			if !fields.is_empty() && !open {
 				let msg = format!("`{typ}` can't gain fields");
-				return Err(
-					Diagnostic::new(msg, span.into_range()).with_label("only `Context` may be amended with fields")
-				);
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("only `@open` structs gain fields"));
 			}
 			if let Some(f) = fields.iter().find(|f| f.default.is_none()) {
-				let msg = format!("context field `{}` needs a default", f.name);
-				return Err(Diagnostic::new(msg, f.span.into_range()).with_label("the root context has to fill it"));
+				let msg = format!("field `{}` needs a default", f.name);
+				return Err(Diagnostic::new(msg, f.span.into_range()).with_label("the defining module has to fill it"));
 			}
-			added.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
+			added
+				.entry(typ.clone())
+				.or_default()
+				.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
 		}
-		if let Some((Expr::StructDef { fields, .. }, span)) = (expanded.values_mut().flatten())
-			.find(|(e, _)| matches!(e, Expr::StructDef { name, .. } if name == CONTEXT))
-		{
-			if fields.len() + added.len() > runtime::CTX_FIELDS {
-				let msg = format!("a context holds at most {} fields", runtime::CTX_FIELDS);
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("too many amendments"));
+		for (e, _) in expanded.values_mut().flatten() {
+			if let Expr::StructDef { name, fields, .. } = e
+				&& let Some(extra) = added.remove(name.as_str())
+			{
+				fields.extend(extra);
 			}
-			fields.append(&mut added);
 		}
 		let items = || {
 			program

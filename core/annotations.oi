@@ -31,3 +31,6 @@ pub nozero :: ()
 
 ## Bans struct literals for this type outside its own module.
 pub noinit :: ()
+
+## Lets other modules add defaulted fields to a struct with `:<`.
+pub open :: ()

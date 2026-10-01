@@ -1,3 +1,4 @@
+use crate::common::Project;
 use crate::helpers::*;
 use indoc::indoc;
 
@@ -688,4 +689,37 @@ fn quoted_struct_def_in_fn_body_errors() {
 		"#},
 		"definitions are only allowed at the top level",
 	);
+}
+
+#[test]
+fn open_structs_gain_fields_from_modules() {
+	Project::new()
+		.file(
+			"cfg.oi",
+			["module cfg", "@open", "pub Config :: struct { name: string }"],
+		)
+		.file(
+			"physics.oi",
+			["module physics", "use cfg.{ Config }", "Config :< { dt: float = 0.5 }"],
+		)
+		.file(
+			"game.oi",
+			["module game", "use cfg.{ Config }", "Config :< { level: int = 1 }"],
+		)
+		.file(
+			"main.oi",
+			[
+				"use cfg.{ Config }",
+				"use physics",
+				"use game",
+				"c :: Config.{}",
+				"print(c.dt, c.level)",
+			],
+		)
+		.check("0.5 1");
+}
+
+#[test]
+fn closed_structs_reject_fields() {
+	fail("Context :< { x: int = 0 }", "`core::Context` can't gain fields");
 }
