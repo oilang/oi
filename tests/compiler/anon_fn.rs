@@ -77,6 +77,16 @@ fn capture_read_only() {
 }
 
 #[test]
+fn capture_inferred_from_a_call() {
+	let src = indoc! {"
+		f := fn(x: int) int { x + 1 }
+		g := fn() int { f(2) }
+		g()
+	"};
+	check(src, "3");
+}
+
+#[test]
 fn capture_move() {
 	let src = indoc! {"
 		factor :: 3

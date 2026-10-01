@@ -505,7 +505,7 @@ impl Expr {
 	// Every referenced identifier.
 	pub fn idents(&self, out: &mut std::collections::HashSet<String>) {
 		self.clone().walk(&mut |e| match e {
-			Expr::Ident(n) => {
+			Expr::Ident(n) | Expr::Call { name: n, .. } => {
 				out.insert(n.clone());
 			}
 			Expr::AnonFn {
