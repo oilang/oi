@@ -8,8 +8,8 @@ use rt
 pub AllocMode :: enum {
 	alloc,
 	free,
-	resize,
-	free_all,
+	# resize,
+	free_all = 3,
 }
 
 ## A C-callable allocator record.
