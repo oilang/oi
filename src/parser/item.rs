@@ -254,6 +254,14 @@ where
 	let supers = just(Token::DoubleColon)
 		.to(vec![])
 		.or(just(Token::Colon).ignore_then(list(ident())).then_ignore(just(Token::Colon)));
+	let default_fn = func.clone().map(|(mut e, sp)| {
+		if let Expr::Fn { body, .. } = &mut e
+			&& body.is_empty()
+		{
+			body.push((Expr::Tuple(vec![]), sp));
+		}
+		(e, sp)
+	});
 	let trait_def = ident()
 		.then(p.type_params.clone())
 		.then(supers)
@@ -261,7 +269,7 @@ where
 		.then(brace(loose_list(choice((
 			slot_fn.map(Member::Fn),
 			struct_field.clone().map(Member::Field),
-			func.clone().map(Member::Fn),
+			default_fn.map(Member::Fn),
 		)))))
 		.map_with(|(((name, type_params), supers), members), ex| {
 			let (fields, methods, _) = split_members(members);

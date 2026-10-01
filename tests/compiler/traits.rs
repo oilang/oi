@@ -115,6 +115,22 @@ fn default_methods() {
 }
 
 #[test]
+fn empty_default_method() {
+	let src = indoc! {r#"
+		Counter :: trait {
+			bump: fn(mut self) int
+			reset :: fn(mut self) {}
+		}
+		Tally :: struct { n: int }
+		Tally : Counter < { bump :: fn(mut self) int { self.n += 1; self.n } }
+		t := Tally.{ 5 }
+		t.reset()
+		t.bump()
+	"#};
+	check(src, "6");
+}
+
+#[test]
 fn field_requirement_satisfied() {
 	let src = indoc! {r#"
 		Animal :: trait { kind: string }
