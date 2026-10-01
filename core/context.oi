@@ -4,22 +4,24 @@ module core
 
 use rt
 
-# `Alloc.proc` modes.
-# TODO: make this an enum, but need to add enums to C ABI first
-pub ALLOC :: 0
-pub FREE :: 1
-pub FREE_ALL :: 3
+## `Alloc.proc` modes.
+pub AllocMode :: enum {
+	alloc,
+	free,
+	resize,
+	free_all,
+}
 
 ## A C-callable allocator record.
 pub Alloc :: struct {
-	pub proc: @c fn(data: ptr, mode: int, size: int, align: int, old: ptr, old_size: int) ptr
+	pub proc: @c fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr
 	pub data: ptr
 }
 
 Alloc :< {
 	## Hand back everything allocated so far, for allocators that free everything at once.
 	pub free_all :: fn(self) {
-		_ := self.proc(self.data, FREE_ALL, 0, 0, ptr(0), 0)
+		_ := self.proc(self.data, .free_all, 0, 0, ptr(0), 0)
 	}
 }
 
@@ -31,20 +33,22 @@ pub Allocator :: trait {
 }
 
 # `Alloc.proc` for a claimer `T` behind `data`.
-pub alloc_shim[T: Allocator] :: fn(data: ptr, mode: int, size: int, align: int, old: ptr, old_size: int) ptr {
-	if mode == ALLOC {
-		return unsafe T.(data).alloc(size, align)
+pub alloc_shim[T: Allocator] :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+	match mode {
+		.alloc => unsafe T.(data).alloc(size, align),
+		.free => {
+			unsafe T.(data).free(old, old_size)
+			ptr(0)
+		},
+		.free_all => {
+			unsafe T.(data).free_all()
+			ptr(0)
+		},
 	}
-	if mode == FREE {
-		unsafe T.(data).free(old, old_size)
-	} else {
-		unsafe T.(data).free_all()
-	}
-	ptr(0)
 }
 
 ## The system heap, what the root context allocates from.
-## Delegate to it from a custom allocator.
+## Delegate to it from custom allocators.
 pub system_allocator :: fn() Alloc {
 	unsafe rt.oi_system_allocator()
 }

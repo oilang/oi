@@ -36,8 +36,8 @@ fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0
 
-		@c counting :: fn(data: ptr, mode: int, size: int, align: int, old: ptr, old_size: int) ptr {
-			if mode == ALLOC { count = count + 1 }
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc { count = count + 1 }
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
 		}
@@ -61,7 +61,7 @@ fn an_allocator_claimer_installs_as_ctx_alloc() {
 			alloc :: fn(mut self, size: int, align: int) ptr {
 				self.hits = self.hits + 1
 				sys :: system_allocator()
-				sys.proc(sys.data, ALLOC, size, align, ptr(0), 0)
+				sys.proc(sys.data, .alloc, size, align, ptr(0), 0)
 			}
 		}
 

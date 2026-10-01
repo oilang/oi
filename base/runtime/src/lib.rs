@@ -358,7 +358,6 @@ pub struct Allocator {
 }
 
 // `proc` modes, shared with core/context.oi.
-// TODO: make this an enum, but need to add enums to C ABI first
 const ALLOC: i64 = 0;
 const FREE: i64 = 1;
 const FREE_ALL: i64 = 3;
