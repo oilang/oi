@@ -47,6 +47,7 @@ pub oi_ast_parse : fn(src: string) Ast : foreign
 # misc
 pub oi_ctx_root : fn() ptr : foreign
 pub oi_system_allocator : fn() Alloc : foreign
+pub oi_root_allocator : fn() ptr : foreign
 pub oi_rand_seed : fn(seed: u64) : foreign
 pub oi_argc : fn() int : foreign
 pub oi_argv : fn(i: int) cstr : foreign

@@ -350,7 +350,7 @@ type AllocProc = unsafe extern "C" fn(*mut u8, i64, i64, i64, *mut u8, i64) -> *
 
 /// `core.Alloc`, a C-callable proc plus the state it owns.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Allocator {
 	proc: i64,
 	data: i64,
@@ -359,7 +359,6 @@ pub struct Allocator {
 // `proc` modes, shared with core/context.oi.
 const ALLOC: i64 = 0;
 const FREE: i64 = 1;
-const FREE_ALL: i64 = 3;
 
 // `alloc` prefixes each block with its size and a copy of its allocator, so `free` outlives both ctx and record.
 const PREFIX: usize = 24;
@@ -382,6 +381,13 @@ pub extern "C" fn system_allocator() -> *const Allocator {
 	*SYSTEM.get_or_init(|| record(sys_proc, 0) as usize) as *const Allocator
 }
 
+/// The system heap, untracked by LIVE, for the root context's defaults.
+#[unsafe(export_name = "oi_root_allocator")]
+pub extern "C" fn root_allocator() -> *const Allocator {
+	static ROOT: OnceLock<usize> = OnceLock::new();
+	*ROOT.get_or_init(|| record(sys_proc, 1) as usize) as *const Allocator
+}
+
 unsafe extern "C" fn sys_proc(_: *mut u8, mode: i64, size: i64, _: i64, old: *mut u8, old_size: i64) -> *mut u8 {
 	match mode {
 		ALLOC => unsafe { std::alloc::alloc_zeroed(layout(size)) },
@@ -391,57 +397,6 @@ unsafe extern "C" fn sys_proc(_: *mut u8, mode: i64, size: i64, _: i64, old: *mu
 		},
 		_ => std::ptr::null_mut(),
 	}
-}
-
-const CHUNK: usize = 8192;
-
-// A bump arena.
-// Chunks are word-aligned and never handed back, so `free` is a no-op and `free_all` rewinds to the first chunk, reusing what is already there.
-// TODO: I might be able to move this to Oi land, but need to experiment a little first.
-#[derive(Default)]
-struct Arena {
-	chunks: Vec<Vec<u64>>,
-	chunk: usize,
-	next: usize,
-}
-
-impl Arena {
-	fn bump(&mut self, size: i64) -> *mut u8 {
-		let words = (size.max(1) as usize).div_ceil(8);
-		loop {
-			match self.chunks.get_mut(self.chunk) {
-				Some(c) if self.next + words <= c.len() => {
-					let out = c[self.next..].as_mut_ptr();
-					self.next += words;
-					return out.cast();
-				}
-				Some(_) => (self.chunk, self.next) = (self.chunk + 1, 0),
-				None => self.chunks.push(vec![0; words.max(CHUNK)]),
-			}
-		}
-	}
-}
-
-thread_local! {
-	static TEMP: RefCell<Arena> = RefCell::new(Arena::default());
-}
-
-// The thread's `ctx.temp`.
-unsafe extern "C" fn arena_proc(_: *mut u8, mode: i64, size: i64, _: i64, _: *mut u8, _: i64) -> *mut u8 {
-	TEMP.with_borrow_mut(|a| match mode {
-		ALLOC => a.bump(size),
-		FREE_ALL => {
-			(a.chunk, a.next) = (0, 0);
-			std::ptr::null_mut()
-		}
-		_ => std::ptr::null_mut(),
-	})
-}
-
-// One shared `ctx.temp` record.
-fn temp_record() -> *const Allocator {
-	static TEMP_REC: OnceLock<usize> = OnceLock::new();
-	*TEMP_REC.get_or_init(|| record(arena_proc, 0) as usize) as *const Allocator
 }
 
 /// Drive an allocator's proc.
@@ -467,8 +422,10 @@ unsafe fn raw_alloc(a: *const Allocator, size: i64) -> *mut u8 {
 #[unsafe(export_name = "oi_alloc")]
 pub unsafe extern "C" fn alloc(a: *const Allocator, size: i64) -> *mut u8 {
 	let size = size.max(1) + PREFIX as i64;
-	LIVE.fetch_add(1, Ordering::Relaxed);
 	unsafe {
+		if *a != *root_allocator() {
+			LIVE.fetch_add(1, Ordering::Relaxed);
+		}
 		let base = raw_alloc(a, size);
 		*(base as *mut i64) = size;
 		*(base.add(8) as *mut Allocator) = *a;
@@ -484,8 +441,10 @@ pub unsafe extern "C" fn free(ptr: *mut u8) {
 	if ptr.is_null() {
 		return;
 	}
-	LIVE.fetch_sub(1, Ordering::Relaxed);
 	unsafe {
+		if *owner(ptr) != *root_allocator() {
+			LIVE.fetch_sub(1, Ordering::Relaxed);
+		}
 		let base = ptr.sub(PREFIX);
 		call_proc(owner(ptr), FREE, 0, base, *(base as *const i64));
 	}
@@ -900,10 +859,11 @@ pub extern "C" fn ctx_root() -> *mut i64 {
 	CTX_ROOT.with(|c| {
 		let root: *mut i64 = c.as_ptr().cast();
 		unsafe {
-			*root = system_allocator() as i64;
-			*root.add(1) = temp_record() as i64;
-			*root.add(2) = logger_record() as i64;
-			*root.add(4) = rng_record() as i64;
+			if *root == 0 {
+				*root = system_allocator() as i64;
+				*root.add(2) = logger_record() as i64;
+				*root.add(4) = rng_record() as i64;
+			}
 		}
 		root
 	})

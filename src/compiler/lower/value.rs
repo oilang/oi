@@ -519,7 +519,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			unreachable!("core `Range` is a struct")
 		};
 		let fields = fields.clone();
-		let ptr = self.struct_slot(&fields)?;
+		let ptr = self.struct_slot(&fields, &[])?;
 		let end = end.map(|v| self.intcast(v, types::I64, true));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let end = self.make_option(&opt_typ, end);
@@ -1104,6 +1104,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let args = record_args(fields.to_vec(), span);
 			return self.construct_variant(&ename, &variant, &args, span);
 		}
+
 		for (i, (fname, value)) in fields.iter().enumerate() {
 			// ensure no duplicate named fields
 			if let Some(fname) = fname
@@ -1114,10 +1115,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		}
+
 		let mut leading_spread = match fields.first() {
 			Some((_, (Expr::Spread(src), _))) => Some(self.expr(src)?),
 			_ => None,
 		};
+
 		// `Self {}` inside a method resolves to the impl's type
 		let mut name = match name {
 			"" => match target {
@@ -1140,7 +1143,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			})?,
 			_ => self.qualify(name).to_string(),
 		};
+
 		self.check_noinit(&name, span)?;
+
 		if self.types.enums.borrow().contains_key(name.as_str()) {
 			if !fields.is_empty() {
 				return Err(Diagnostic::new(
@@ -1152,6 +1157,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let typ = Typ::Enum(name.clone());
 			return Ok((self.zero(&typ), typ));
 		}
+
 		// explicit generics
 		let mut explicit = None;
 		if !type_args.is_empty() {
@@ -1160,6 +1166,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				(name, explicit) = (n, Some(fs));
 			}
 		}
+
 		// anonymous structs are named by their shape
 		let anon = target.and_then(|t| match t {
 			Typ::Struct(n, fs) if *n == name => Some(fs.clone()),
@@ -1175,9 +1182,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			},
 		};
+
+		// fields the literal sets skip their defaults
+		let spread = fields.iter().any(|(_, v)| matches!(v.0, Expr::Spread(_)));
+		let set = |i: usize, f: &FieldDef| {
+			(fields.iter().enumerate()).any(|(j, (n, _))| n.as_ref().map_or(j == i, |n| *n == f.name))
+		};
+		let given: Vec<bool> = (struct_fields.iter().enumerate()).map(|(i, f)| !spread && set(i, f)).collect();
 		let ptr = match leading_spread {
 			Some(_) => self.stack_slot((struct_fields.len() * 8) as u32),
-			None => self.struct_slot(&struct_fields)?,
+			None => self.struct_slot(&struct_fields, &given)?,
 		};
 
 		let arity = |got: usize| {
@@ -1251,7 +1265,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
-			if rc::owns(&ftyp) {
+			if rc::owns(&ftyp) && !(base == ptr && given[idx]) {
 				// drop the zero/default this slot already owns
 				let old = self
 					.b
@@ -1291,17 +1305,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((ptr, Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields)))
 	}
 
-	// Allocate a struct on the stack, initializing each field to its default.
-	pub(super) fn struct_slot(&mut self, struct_fields: &[FieldDef]) -> Result<Value, Diagnostic> {
+	// Allocate a struct on the stack, initializing each field to its default, or null where `given`.
+	pub(super) fn struct_slot(&mut self, struct_fields: &[FieldDef], given: &[bool]) -> Result<Value, Diagnostic> {
 		let ptr = self.stack_slot((struct_fields.len() * 8) as u32);
 		for (i, f) in struct_fields.iter().enumerate() {
-			let init = if let Some(default_expr) = &f.default {
+			let init = if given.get(i) == Some(&true) {
+				self.b.ins().iconst(self.int, 0)
+			} else if let Some(default_expr) = &f.default {
 				let val = self.check_typed(default_expr, &f.typ, "not a valid default for this field")?;
 				self.copy_in(val, &f.typ)
 			} else if let Typ::Struct(_, inner) = &f.typ {
 				// apply field defaults of inner structs
 				let inner = inner.clone();
-				let slot = self.struct_slot(&inner)?;
+				let slot = self.struct_slot(&inner, &[])?;
 				let heap = self.call_alloc(inner.len());
 				self.fixed_move(heap, slot, &Typ::Int(64), inner.len());
 				heap
@@ -1400,7 +1416,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			unreachable!()
 		};
 		check_required(name, struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
-		let ptr = self.struct_slot(struct_fields)?;
+		let ptr = self.struct_slot(struct_fields, &[])?;
 		for (idx, val, vtyp, vspan) in provided {
 			let expected = &struct_fields[idx].typ;
 			if &vtyp != expected {

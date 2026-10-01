@@ -230,7 +230,7 @@ fn fold(
 		roots: program.roots.clone(),
 		core_origin: program.core_origin.clone(),
 	};
-	let compiler = stage0.get_or_insert_with(Compiler::default);
+	let mut compiler = stage0.take().unwrap_or_default();
 	compiler.roots = vec![name.clone()];
 	compiler.stage0 = true;
 	let entry = compiler.compile(&synthetic)?;
@@ -238,6 +238,7 @@ fn fold(
 	let f = compiler.module.get_finalized_function(compiler.hoisted[&name].id);
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(f)() };
+	*stage0 = Some(compiler);
 	Ok(reify(span))
 }
 

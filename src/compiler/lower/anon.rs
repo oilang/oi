@@ -109,8 +109,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut needs = false;
 		Expr::Block(body.to_vec()).walk(&mut |e| {
 			needs |= match e {
-				Expr::Field { tuple, field } => matches!(&tuple.0, Expr::Ident(n) if n == CTX)
-					&& !matches!(&base, Typ::Struct(_, fs) if fs.iter().any(|f| f.name == *field)),
+				Expr::Field { tuple, field } => {
+					matches!(&tuple.0, Expr::Ident(n) if n == CTX)
+						&& !matches!(&base, Typ::Struct(_, fs) if fs.iter().any(|f| f.name == *field))
+				}
 				Expr::Call { name, .. } => (self.funcs.get(self.qualify(name).as_ref()))
 					.is_some_and(|s| s.ctx.as_deref().is_some_and(|c| c != CONTEXT)),
 				_ => false,

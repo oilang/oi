@@ -143,7 +143,7 @@ pub Rng :: struct {
 
 pub Context :: struct {
 	pub alloc: Alloc
-	pub temp: Alloc
+	pub temp: Alloc = arena()
 	pub log: Logger
 	pub panic: fn(msg: string, at: Src)
 	pub rand: Rng

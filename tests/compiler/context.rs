@@ -233,3 +233,13 @@ fn an_arena_grows_past_its_first_chunk() {
 	"};
 	check(src, "4999950000 45 19999900000");
 }
+
+#[test]
+fn temp_is_made_once_per_thread() {
+	let src = indoc! {"
+		@c
+		same :: fn(p: ptr) bool { ctx.temp.data == p }
+		print(same(ctx.temp.data))
+	"};
+	check(src, "true");
+}

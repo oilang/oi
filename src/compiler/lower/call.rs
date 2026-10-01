@@ -595,17 +595,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
 	}
 
-	/// The thread root, each amended default stored over its zeroed slot.
-	/// Idempotent, so every entrypoint can redo it instead of the runtime holding comptime values.
+	/// The thread root, its field defaults filled on the thread's first entry.
 	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
 		let root = self.ctx_value(CONTEXT);
 		let Typ::Struct(_, fields) = typ else { return Ok(root) };
+		let Some(first) = fields.iter().position(|f| f.default.is_some()) else {
+			return Ok(root);
+		};
+		let (fill, done) = (self.b.create_block(), self.b.create_block());
+		let slot = self.b.ins().load(self.int, MemFlags::new(), root, (first * 8) as i32);
+		self.b.ins().brif(slot, done, &[], fill, &[]);
+		self.b.seal_block(fill);
+		self.b.switch_to_block(fill);
+		// defaults live as long as the thread
+		let sys = self.b.ins().load(self.int, MemFlags::new(), root, 0);
+		let owner = self.rt_call("root_allocator", &[]).unwrap();
+		self.b.ins().store(MemFlags::new(), owner, root, 0);
 		for (i, f) in fields.clone().iter().enumerate() {
 			let Some(default) = &f.default else { continue };
 			let val = self.check_typed(default, &f.typ, "not a valid default for this field")?;
 			let val = self.copy_in(val, &f.typ);
 			self.b.ins().store(MemFlags::new(), val, root, (i * 8) as i32);
 		}
+		self.b.ins().store(MemFlags::new(), sys, root, 0);
+		self.b.ins().jump(done, &[]);
+		self.b.seal_block(done);
+		self.b.switch_to_block(done);
 		Ok(root)
 	}
 
