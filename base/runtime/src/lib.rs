@@ -864,11 +864,7 @@ pub extern "C" fn epilogue() {
 // The root context's `core.Logger`.
 fn logger_record() -> *const i64 {
 	static LOGGER: OnceLock<usize> = OnceLock::new();
-	*LOGGER.get_or_init(|| {
-		let rec = Box::leak(Box::new([0i64; 5])).as_mut_ptr();
-		unsafe { *rec = rec.add(3) as i64 };
-		rec as usize
-	}) as *const i64
+	*LOGGER.get_or_init(|| Box::leak(Box::new([0i64; 3])).as_ptr() as usize) as *const i64
 }
 
 // The root context's `core.Rng`.

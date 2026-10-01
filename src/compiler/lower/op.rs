@@ -98,7 +98,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			t if eq_slots(t).is_some() => self.emit_slots_eq(a, b, t, span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
 			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
-			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_ref(t) => {
+			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_niche(t) => {
 				self.emit_enum_eq(a, b, t, span)
 			}
 			t if comparable(t) => Ok(self.emit_eq(a, b, t)),
@@ -570,7 +570,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };
 					let less = self.emit_call(&sig, &[a, b]).0;
 					self.b.ins().icmp_imm(cc, less, 0)
-				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || rc::opt_ref(l)) {
+				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || rc::opt_niche(l)) {
 					self.b.ins().icmp(icc, lv, rv)
 				} else {
 					let claimable = matches!(l, Typ::Struct(..)) || matches!(l, Typ::Enum(n) if sugar(n).is_none());

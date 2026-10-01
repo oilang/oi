@@ -385,8 +385,16 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 }
 
 // Whether `typ` is a `?&T`.
-pub(super) fn opt_ref(typ: &Typ) -> bool {
+fn opt_ref(typ: &Typ) -> bool {
 	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[&")))
+}
+
+// Whether a type is a `?&T` or `?fn`, whose none is a null pointer.
+pub(super) fn opt_niche(typ: &Typ) -> bool {
+	let Typ::Enum(n) = typ else { return false };
+	let arg = n.strip_prefix(role::OPTION).and_then(|a| a.strip_prefix('['));
+	let bare = arg.and_then(|a| a.split(' ').find(|w| !w.starts_with('@')));
+	opt_ref(typ) || bare.is_some_and(|w| w.starts_with("fn("))
 }
 
 // Is type a ref pointer?

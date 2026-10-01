@@ -175,7 +175,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Annotated(..) | Typ::Closure(..) | Typ::Trait(_) | Typ::Ref(_) => self.b.ins().iconst(self.int, 0),
 			Typ::Access(..) => unreachable!("an access mod only marks params inside a fn"),
 			Typ::Const(_) => unreachable!("a comptime value param is never a runtime slot"),
-			Typ::Enum(_) if rc::opt_ref(typ) => self.b.ins().iconst(self.int, 0),
+			Typ::Enum(_) if rc::opt_niche(typ) => self.b.ins().iconst(self.int, 0),
 			// default to first variant, with zeroed payload fields
 			Typ::Enum(_) | Typ::Sum(..) => {
 				let variants = self.variants_of(typ);
@@ -363,7 +363,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn enum_tag(&mut self, typ: &Typ, val: Value) -> Value {
 		if *typ == Typ::Any {
 			self.b.ins().load(self.int, MemFlags::new(), val, 0)
-		} else if rc::opt_ref(typ) {
+		} else if rc::opt_niche(typ) {
 			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, 0);
 			self.b.ins().uextend(self.int, nz)
 		} else if enum_boxed(&self.variants_of(typ)) {
@@ -375,7 +375,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Build an Option value.
 	pub(super) fn make_option(&mut self, typ: &Typ, some: Option<Value>) -> Value {
-		if rc::opt_ref(typ) {
+		if rc::opt_niche(typ) {
 			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
 		}
 		let variants = self.variants_of(typ);
@@ -387,7 +387,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A payload slot of a variant.
 	pub(super) fn opt_payload(&mut self, val: Value, typ: &Typ, inner: &Typ, off: i32) -> Value {
-		if rc::opt_ref(typ) {
+		if rc::opt_niche(typ) {
 			val
 		} else {
 			self.b.ins().load(cl_type(inner, self.int), MemFlags::new(), val, off)

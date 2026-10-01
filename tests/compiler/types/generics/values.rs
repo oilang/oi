@@ -5,8 +5,7 @@ use indoc::indoc;
 #[test]
 fn value_params() {
 	let src = indoc! {r#"
-		repeat[T, N: int] :: fn(x: T) [N]T {
-			out: [N]T
+		repeat[T, N: int] :: fn(x: T) out: [N]T {
 			loop i in 0..N { out[i] = x }
 			out
 		}
@@ -23,7 +22,7 @@ fn a_value_param_crosses_a_module() {
 	Project::new()
 		.file(
 			"g/mod.oi",
-			"module g\npub zeros[N: int] :: fn() [N]int { out: [N]int; out }",
+			"module g\npub zeros[N: int] :: fn() out: [N]int { out }",
 		)
 		.file("main.oi", "use g\nprint(g.zeros[3]().len)")
 		.check("3");

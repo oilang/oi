@@ -223,3 +223,15 @@ fn values_coerce_into_options() {
 	"#};
 	check(src, ["3 int float 4", "int 3 true", "int nil"]);
 }
+
+#[test]
+fn zeroed_fn_options_are_none() {
+	let src = indoc! {"
+		S :: struct { f: ?fn(n: int) int, g: ?@c fn(n: i32) i32 }
+		buf: [4]u8
+		s := unsafe S.(buf.ptr)
+		inc :: fn(n: int) int { n + 1 }
+		print(s.f, s.g, match S.{f = inc}.f { .some.(p) => p(41), .none => 0 })
+	"};
+	check(src, "none none 42");
+}
