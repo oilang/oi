@@ -139,19 +139,42 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// bool is a byte in C but a word in Oi
+	// bool is a byte in C but a word in Oi.
 	fn c_load(&mut self, typ: &Typ, c: Value, off: i32) -> Value {
 		let mem = MemFlags::new();
-		match typ.newtype().unwrap_or(typ) {
-			Typ::Bool => self.b.ins().uload8(self.int, mem, c, off),
+		match (typ.newtype().unwrap_or(typ), typ.c_enum(&self.types)) {
+			(Typ::Bool, _) => self.b.ins().uload8(self.int, mem, c, off),
+			(_, Some(b)) => {
+				let v = self.b.ins().load(cl_type(&b, self.int), mem, c, off);
+				self.c_norm(v, typ)
+			}
 			_ => self.b.ins().load(cl_type(typ, self.int), mem, c, off),
+		}
+	}
+
+	// Extend an enum from C, whose upper bits are undefined.
+	pub(crate) fn c_norm(&mut self, v: Value, typ: &Typ) -> Value {
+		let Some(b) = typ.c_enum(&self.types) else { return v };
+		let w = cl_type(&b, self.int);
+		let v = if self.b.func.dfg.value_type(v) == w {
+			v
+		} else {
+			self.b.ins().ireduce(w, v)
+		};
+		match b {
+			Typ::UInt(_) => self.b.ins().uextend(self.int, v),
+			_ => self.b.ins().sextend(self.int, v),
 		}
 	}
 
 	fn c_store(&mut self, typ: &Typ, v: Value, c: Value, off: i32) {
 		let mem = MemFlags::new();
-		match typ.newtype().unwrap_or(typ) {
-			Typ::Bool => self.b.ins().istore8(mem, v, c, off),
+		match (typ.newtype().unwrap_or(typ), typ.c_enum(&self.types)) {
+			(Typ::Bool, _) => self.b.ins().istore8(mem, v, c, off),
+			(_, Some(b)) => {
+				let v = self.b.ins().ireduce(cl_type(&b, self.int), v);
+				self.b.ins().store(mem, v, c, off)
+			}
 			_ => self.b.ins().store(mem, v, c, off),
 		};
 	}

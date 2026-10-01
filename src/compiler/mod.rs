@@ -2084,10 +2084,10 @@ impl<M: Module> Compiler<M> {
 		trans.seed_statics(&inits)?;
 		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
 		for ((name, typ, access), &val) in def.params.iter().zip(param_vals.iter()) {
-			let val = if def.foreign && matches!(typ, Typ::Fn(..)) {
-				trans.fn_cell(val)
-			} else {
-				val
+			let val = match typ {
+				_ if !def.foreign => val,
+				Typ::Fn(..) => trans.fn_cell(val),
+				_ => trans.c_norm(val, typ),
 			};
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);

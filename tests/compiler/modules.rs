@@ -344,6 +344,19 @@ fn c_struct_roundtrips_nested() {
 }
 
 #[test]
+fn c_struct_sizes_enums_by_backing() {
+	let src = indoc! {"
+		Mode : i8 : enum { a = -2, b = 100 }
+		@c S :: struct { m: Mode, n: Mode }
+		buf: []u8 = .[0, 0]
+		unsafe { buf.ptr.write(S.{ m = .a, n = .b }) }
+		s := unsafe { buf.ptr.read[S]() }
+		print(buf, S.size, s.m == .a, s.n == .b)
+	"};
+	check(src, "[254, 100] 2 true true");
+}
+
+#[test]
 fn c_struct_roundtrips_fixed_array() {
 	let src = indoc! {"
 		@c Xform :: struct { m: [4]f32, id: i32 }

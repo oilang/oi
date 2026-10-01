@@ -192,6 +192,15 @@ impl Typ {
 		}
 	}
 
+	// Properly size a C enum.
+	pub fn c_enum(&self, types: &TypeCtx) -> Option<Typ> {
+		let Typ::Enum(name) = self.newtype().unwrap_or(self) else {
+			return None;
+		};
+		let b = types.enums.borrow().get(name)?.first()?.backing.clone();
+		b.filter(|b| matches!(b, Typ::Int(w) | Typ::UInt(w) if *w < 64))
+	}
+
 	// Size and alignment under the C ABI.
 	pub fn c_size_align(&self, types: &TypeCtx) -> Option<(u32, u32)> {
 		let scalar = |bytes: u32| Some((bytes, bytes));
@@ -201,7 +210,7 @@ impl Typ {
 			Typ::Bool => scalar(1),
 			Typ::ISize | Typ::USize | Typ::CStr => scalar(8),
 			t @ Typ::Fn(..) if t.is_c_repr(types) => scalar(8),
-			Typ::Enum(name) if types.is_c(name) => scalar(8),
+			Typ::Enum(name) if types.is_c(name) => self.c_enum(types).map_or(scalar(8), |b| b.c_size_align(types)),
 			Typ::Annotated(_, t) => t.c_size_align(types),
 			Typ::FixedArray(e, n) => e
 				.c_size_align(types)

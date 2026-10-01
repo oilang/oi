@@ -622,6 +622,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let call = self.b.ins().call(func, &vals);
 		let ret_val = if sig.ret.is_unit() {
 			self.b.ins().iconst(self.int, 0)
+		} else if sig.foreign {
+			self.c_norm(self.b.inst_results(call)[0], &sig.ret)
 		} else {
 			self.b.inst_results(call)[0]
 		};
@@ -693,6 +695,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			self.b.inst_results(call)[0]
 		};
+		let ret_val = if c_abi { self.c_norm(ret_val, ret) } else { ret_val };
 		self.reload_lent(&lent);
 		self.temp(ret_val, ret);
 		Ok((ret_val, ret.clone()))
