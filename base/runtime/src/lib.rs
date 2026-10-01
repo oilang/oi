@@ -156,16 +156,16 @@ pub extern "C" fn write_sep(i: i64, sink: i64) {
 
 /// Panic with an out-of-bounds message.
 /// # Safety
-/// `ctx` must be null or point to a valid `Context` record.
+/// `ctx` must be null or point to a valid `Context` record, and `at` must be a valid handle.
 #[unsafe(export_name = "oi_panic_oob")]
-pub unsafe extern "C" fn panic_oob(ctx: *const i64, index: i64, len: i64) -> ! {
+pub unsafe extern "C" fn panic_oob(ctx: *const i64, index: i64, len: i64, at: *const i64) -> ! {
 	let text = format!("index out of range: the length is {len} but the index is {index}");
 	// borrowed, not allocated
 	let msg = StrHeader {
 		data: text.as_ptr() as i64,
 		len: text.len() as i64,
 	};
-	unsafe { abort_with(ctx, std::ptr::null(), "", &msg) }
+	unsafe { abort_with(ctx, at, "", &msg) }
 }
 
 // Wrap integer exponents.
@@ -188,8 +188,6 @@ unsafe fn abort_with(ctx: *const i64, at: *const i64, prefix: &str, msg: *const 
 	let obj = if ctx.is_null() { 0 } else { unsafe { *ctx.add(3) } };
 	if obj != 0 {
 		let hook: extern "C" fn(i64, i64, i64, i64) = unsafe { std::mem::transmute(*(obj as *const i64)) };
-		let stub = [0i64; 2];
-		let at = if at.is_null() { stub.as_ptr() } else { at };
 		hook(msg as i64, at as i64, ctx as i64, obj);
 	}
 	let msg = unsafe { str_lossy(msg) };

@@ -69,7 +69,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				parts.push(self.make_array(data, len, &Typ::Array(Box::new(rtyp))));
 				continue;
 			}
-			let (val, typ) = self.collect_spread((val, typ));
+			let (val, typ) = self.collect_spread((val, typ), inner.1)?;
 			let (Typ::Array(t) | Typ::FixedArray(t, _)) = &typ else {
 				return Err(
 					Diagnostic::new(format!("cannot spread {typ}"), inner.1.into_range()).with_label("not an array")
@@ -97,7 +97,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Panic if `cond`.
-	pub(super) fn trap_if(&mut self, cond: Value, msg: &str) {
+	pub(super) fn trap_if(&mut self, cond: Value, msg: &str, span: Span) -> Result<(), Diagnostic> {
 		let (bad, ok) = (self.b.create_block(), self.b.create_block());
 		self.b.ins().brif(cond, bad, &[], ok, &[]);
 		self.b.seal_block(bad);
@@ -105,24 +105,23 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(bad);
 		let msg = self.str_const(msg);
-		let ctx = self.ctx_value();
-		let at = self.b.ins().iconst(self.int, 0);
-		self.rt_call("panic", &[ctx, msg, at]);
+		self.ctx_panic("panic", msg, span)?;
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok);
+		Ok(())
 	}
 
 	// Spreading a non-array collects it first, if its type knows how.
-	pub(super) fn collect_spread(&mut self, (val, typ): TypedVal) -> TypedVal {
+	pub(super) fn collect_spread(&mut self, (val, typ): TypedVal, span: Span) -> Result<TypedVal, Diagnostic> {
 		let Some(sig) = self.funcs.get(&format!("{typ}.collect")).cloned() else {
-			return (val, typ);
+			return Ok((val, typ));
 		};
 		if is_range(&typ) {
 			let (.., open) = self.range_parts(val);
-			self.trap_if(open, "cannot spread an open range");
+			self.trap_if(open, "cannot spread an open range", span)?;
 		}
-		self.emit_call(&sig, &[val])
+		Ok(self.emit_call(&sig, &[val]))
 	}
 
 	// Copy each value into `base` at its stride-sized slot.
@@ -342,7 +341,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (lo, end, step, open) = self.range_parts(range);
 		let strided = self.b.ins().icmp_imm(IntCC::NotEqual, step, 1);
-		self.trap_if(strided, "strided views aren't supported yet");
+		self.trap_if(strided, "strided views aren't supported yet", span)?;
 		let lo = self.intcast(lo, self.int, true);
 		let end = self.intcast(end, self.int, true);
 		let len = self.array_len(ptr);
@@ -378,7 +377,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Bounds-check `idx` and return the element address.
-	pub(super) fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
+	pub(super) fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
 		let oob = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
 
 		let panic_block = self.b.create_block();
@@ -389,7 +388,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(panic_block);
 		let ctx = self.ctx_value();
-		self.rt_call("panic_oob", &[ctx, idx, len]);
+		let (at, _) = self.src_lit(span).unwrap_or_else(|_| unreachable!("`Src` always resolves"));
+		self.rt_call("panic_oob", &[ctx, idx, len, at]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok_block);
@@ -398,13 +398,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().iadd(data, off)
 	}
 
-	pub(super) fn load_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
-		let addr = self.elem_addr(data, len, elem, idx);
+	pub(super) fn load_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
+		let addr = self.elem_addr(data, len, elem, idx, span);
 		self.load_elem(addr, 0, elem)
 	}
 
-	pub(super) fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value) {
-		let addr = self.elem_addr(data, len, elem, idx);
+	pub(super) fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value, span: Span) {
+		let addr = self.elem_addr(data, len, elem, idx, span);
 		self.store_elem(addr, 0, elem, val);
 	}
 

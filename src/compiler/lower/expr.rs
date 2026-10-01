@@ -568,7 +568,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return match field.parse::<i64>() {
 						Ok(n) => {
 							let idx = self.b.ins().iconst(self.int, n);
-							Ok((self.load_index(data, len, &elem, idx), elem))
+							Ok((self.load_index(data, len, &elem, idx, expr.1), elem))
 						}
 						Err(_) => Err(Diagnostic::new(
 							format!("{typ} has no field `{field}`"),
@@ -738,7 +738,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let elem = array_elem(&typ).clone();
 						let idx = self.intcast(idx, self.int, true);
 						let (data, len) = self.array_parts(ptr, &typ);
-						Ok((self.load_index(data, len, &elem, idx), elem))
+						Ok((self.load_index(data, len, &elem, idx, collection.1), elem))
 					}
 					_ => Err(
 						Diagnostic::new(format!("cannot index {typ}"), collection.1.into_range())

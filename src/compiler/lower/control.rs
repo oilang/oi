@@ -349,7 +349,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				for (name, typ, off) in cap.iter().chain(&binds) {
 					let sv = s.b.use_var(sv_var);
-					let fv = s.load_bind(sv, &st, typ, *off);
+					let fv = s.load_bind(sv, &st, typ, *off, span);
 					let fv = s.copy_bind(fv, typ);
 					s.bind_local(name, fv, typ.clone(), false);
 				}
@@ -884,7 +884,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		for (name, ftyp, off) in binds {
 			let v = if parts {
-				self.load_bind(val, typ, &ftyp, off)
+				self.load_bind(val, typ, &ftyp, off, pat.1)
 			} else {
 				val
 			};
@@ -939,12 +939,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Load a name from `pat_binds` out of the subject.
-	pub(super) fn load_bind(&mut self, subject: Value, typ: &Typ, field: &Typ, off: i32) -> Value {
+	pub(super) fn load_bind(&mut self, subject: Value, typ: &Typ, field: &Typ, off: i32, span: Span) -> Value {
 		match typ {
 			Typ::Array(_) | Typ::FixedArray(..) => {
 				let (data, len) = self.array_parts(subject, typ);
 				let idx = self.b.ins().iconst(self.int, off as i64);
-				self.load_index(data, len, field, idx)
+				self.load_index(data, len, field, idx, span)
 			}
 			_ => self.opt_payload(subject, typ, field, off),
 		}

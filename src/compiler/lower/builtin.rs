@@ -231,7 +231,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if typ == *target {
 			return Ok((val, typ));
 		}
-		if let Some(out) = self.assert_cast(val, &typ, target)? {
+		if let Some(out) = self.assert_cast(val, &typ, target, span)? {
 			return Ok(out);
 		}
 		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
@@ -277,7 +277,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Assertion casts.
-	fn assert_cast(&mut self, obj: Value, typ: &Typ, target: &Typ) -> Result<Option<TypedVal>, Diagnostic> {
+	fn assert_cast(&mut self, obj: Value, typ: &Typ, target: &Typ, span: Span) -> Result<Option<TypedVal>, Diagnostic> {
 		if !matches!(typ, Typ::Any | Typ::Trait(_) | Typ::Error) {
 			return Ok(None);
 		}
@@ -295,7 +295,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
 		let same = self.b.ins().icmp(IntCC::Equal, got, want);
-		let data = self.load_bind(obj, typ, target, 8);
+		let data = self.load_bind(obj, typ, target, 8, span);
 		let some = self.make_option(&opt, Some(data));
 		Ok(Some((self.b.ins().select(same, some, none), opt)))
 	}
@@ -317,7 +317,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (val, typ) = self.expr(value)?;
 		if typ == Typ::Any {
-			return self.assert_cast(val, &typ, target);
+			return self.assert_cast(val, &typ, target, span);
 		}
 		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
 		if *target == Str && !matches!(typ, Str | Array(_)) {

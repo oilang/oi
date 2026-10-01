@@ -177,7 +177,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					closure_escape(&vtyp, value.1.into_range(), "stored in an array")?;
 					let val = self.copy_in(val, &vtyp);
 					let (data, len) = self.array_parts(ptr, &local.typ);
-					self.store_index(data, len, &elem, idx, val);
+					self.store_index(data, len, &elem, idx, val, stmt.1);
 				}
 
 				Expr::MapDelete { name, key } => {
