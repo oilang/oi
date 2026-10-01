@@ -218,7 +218,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut sig = self.module.make_signature();
 		sig.params
 			.extend(params.iter().map(|(_, t, _)| AbiParam::new(cl_type(t, self.int))));
-		sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
+		if def.ctx.is_some() {
+			sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
+		}
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
@@ -237,7 +239,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.collect(),
 			ret,
 			foreign: false,
-			ctx: Some(crate::compiler::CONTEXT.into()),
+			ctx: def.ctx.clone(),
 			unsafe_call: false,
 			pure: def.pure
 				|| (self.types.consts.anns.get(name)).is_some_and(|a| a.iter().any(|x| ann(x, role::PURE).is_some())),

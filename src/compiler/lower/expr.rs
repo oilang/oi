@@ -867,6 +867,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				ret,
 				body,
 			} => {
+				// a `@ctx` hint pins the literal's ctx
+				let hint = match hint {
+					Some(Typ::Annotated(anns, t)) if let Some(c) = ctx_mark(anns) => {
+						self.anon_ctx.get_or_insert_with(|| c.into());
+						Some(&**t)
+					}
+					h => h,
+				};
 				let sig = match (ret, hint) {
 					(Some(ret), _) => AnonSig::Explicit(ret),
 					(None, Some(t @ Typ::Fn(..))) => AnonSig::Inferred(t.clone()),
@@ -882,13 +890,20 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Annotated(anns, inner) => {
-				if matches!(inner.0, Expr::AnonFn { .. }) && is_pure(&ann_names(self.types.scope, anns)) {
+				let names = ann_names(self.types.scope, anns);
+				if matches!(inner.0, Expr::AnonFn { .. }) && is_pure(&names) {
 					let was = std::mem::replace(&mut self.pure, true);
 					let out = self.expr(inner);
 					self.pure = was;
 					return out;
 				}
-				let (names, (val, typ)) = (ann_names(self.types.scope, anns), self.expr(inner)?);
+				if matches!(inner.0, Expr::AnonFn { .. })
+					&& let Some(t) = ctx_mark(&names)
+				{
+					self.anon_ctx = Some(t.into());
+					return self.lower(inner, hint);
+				}
+				let (val, typ) = self.expr(inner)?;
 				check_ann_typ(self.types, &names, &typ, expr.1)?;
 				let addr = self.b.ins().load(self.int, MemFlags::new(), val, 0);
 				Ok((addr, Typ::Annotated(names, Box::new(typ))))

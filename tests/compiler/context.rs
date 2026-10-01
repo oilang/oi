@@ -101,6 +101,32 @@ fn a_call_narrows_the_ctx_to_the_callees() {
 }
 
 #[test]
+fn a_closure_takes_the_narrowest_ctx_it_needs() {
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		each :: fn(xs: []int, f: fn(x: int)) { loop x in xs { f(x) } }
+		@ctx(GameCtx) run :: fn(f: @ctx(GameCtx) fn(x: int)) { f(1) }
+		@ctx(GameCtx) tick :: fn() {
+			each([ 1 2 ], fn(x: int) { print(x, ctx.thread) })
+			run(fn(x: int) { print(x, ctx.dt) })
+		}
+		ctx :: GameCtx.{ Context = ctx, dt = 0.5 }
+		tick()
+	"};
+	check(src, ["1 0", "2 0", "1 0.5"]);
+}
+
+#[test]
+fn a_ctx_fn_is_not_a_plain_fn() {
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		@ctx(GameCtx) step :: fn() {}
+		g : fn() = step
+	"};
+	fail(src, "expected fn() (), got @ctx(GameCtx) fn() ()");
+}
+
+#[test]
 fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0

@@ -884,6 +884,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if let Typ::Annotated(anns, inner) = from
 			&& **inner == *to
+			&& ctx_mark(anns).is_none()
 		{
 			let val = if is_pure(anns) { val } else { self.fn_cell(val) };
 			return Ok((val, to.clone()));

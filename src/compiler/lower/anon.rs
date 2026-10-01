@@ -1,5 +1,6 @@
 use super::*;
 use crate::ast::{Capture, Param};
+use crate::compiler::CONTEXT;
 
 // An anon fn's signature.
 pub(super) enum AnonSig<'a> {
@@ -102,6 +103,25 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			AnonSig::Inferred(_) => unreachable!("a fn literal is only inferred against a fn target"),
 		};
+
+		// context of the scope
+		let base = self.types.named(CONTEXT, span)?;
+		let mut needs = false;
+		Expr::Block(body.to_vec()).walk(&mut |e| {
+			needs |= match e {
+				Expr::Field { tuple, field } => matches!(&tuple.0, Expr::Ident(n) if n == CTX)
+					&& !matches!(&base, Typ::Struct(_, fs) if fs.iter().any(|f| f.name == *field)),
+				Expr::Call { name, .. } => (self.funcs.get(self.qualify(name).as_ref()))
+					.is_some_and(|s| s.ctx.as_deref().is_some_and(|c| c != CONTEXT)),
+				_ => false,
+			}
+		});
+		let ctx = match (self.anon_ctx.take(), self.vars.get(CTX)) {
+			(Some(t), _) => (t != "none").then_some(t),
+			(None, Some(l)) if needs => Some(l.typ.key()),
+			_ => Some(CONTEXT.into()),
+		};
+
 		let def = GenericFnDef {
 			params,
 			params_tuple,
@@ -112,6 +132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self_name,
 			module: self.types.scope.module.clone(),
 			pure: self.pure,
+			ctx,
 		};
 		let sym = format!("anon${}_{}", span.start, self.mono.len());
 		if self.c_callback {
@@ -120,10 +141,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let sig = self.declare_instance(&sym, &def, subst)?;
 		let params = sig.value_params();
 		if resolved.is_empty() {
-			let typ = Typ::Fn(params, Box::new(sig.ret));
+			let typ = Typ::Fn(params, Box::new(sig.ret.clone()));
 			let typ = match self.pure {
 				true => Typ::Annotated(vec![role::PURE.into()], typ.into()),
-				false => typ,
+				false => sig.ctx_marked(typ),
 			};
 			return Ok((self.fn_object(sig.id), typ));
 		}
@@ -136,7 +157,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		for (i, (_, _, _, val)) in resolved.iter().enumerate() {
 			self.b.ins().store(MemFlags::new(), *val, env, ((i + 1) * 8) as i32);
 		}
-		Ok((env, Typ::Closure(params, Box::new(sig.ret), owns)))
+		let typ = Typ::Closure(params, Box::new(sig.ret.clone()), owns);
+		Ok((env, sig.ctx_marked(typ)))
 	}
 }
 

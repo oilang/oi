@@ -94,7 +94,8 @@ tags: []
 	- [ ] Julia/V style REPL banner `julia v`
 	- [ ] `:h <topic>` `vim revo`
 	- [x] ~`r#""#` `rust`~ `""""`/`r"""` `odin c# swift java`
-	- [ ] either open field amendments up to anything, or handle ctx differently
+	- [x] either open field amendments up to anything, or handle ctx differently
+	- [ ] let `do` work on fn defs as well, or maybe just the return itself without brackets
 - [ ] `comp assert`
 - [x] implicit context `jai`
 - [ ] computed values `swift gdscript`

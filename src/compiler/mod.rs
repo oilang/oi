@@ -79,9 +79,12 @@ impl FnSig {
 		self.params.iter().zip(&self.access).map(fold).collect()
 	}
 
-	// As a fn value, a non-default ctx marked.
+	// As a fn value.
 	pub(crate) fn value_typ(&self) -> Typ {
-		let typ = Typ::Fn(self.value_params(), Box::new(self.ret.clone()));
+		self.ctx_marked(Typ::Fn(self.value_params(), Box::new(self.ret.clone())))
+	}
+
+	pub(crate) fn ctx_marked(&self, typ: Typ) -> Typ {
 		match self.ctx.as_deref() {
 			Some(CONTEXT) => typ,
 			None if self.foreign => typ,
@@ -164,6 +167,7 @@ pub(crate) struct GenericFnDef {
 	pub self_name: Option<String>,
 	pub module: String,
 	pub pure: bool,
+	pub ctx: Option<String>,
 }
 
 // A monomorphized instance whose sig is declared but body not yet compiled.
@@ -913,6 +917,7 @@ impl<M: Module> Compiler<M> {
 					self_name: None,
 					module: scope.module.clone(),
 					pure: false,
+					ctx: Some(CONTEXT.into()),
 				},
 			);
 		}
@@ -1239,6 +1244,7 @@ impl<M: Module> Compiler<M> {
 							self_name: None,
 							module: scope.module.clone(),
 							pure: false,
+							ctx: Some(CONTEXT.into()),
 						},
 					);
 				}
@@ -1853,7 +1859,8 @@ impl<M: Module> Compiler<M> {
 					ret,
 					body: &def.body,
 					captures: &def.captures,
-					ctx: Some(CONTEXT.into()),
+					ctx: self_sig.ctx.clone(),
+					ctxless: self_sig.ctx.is_none().then(|| def.body.first().map_or((0..0).into(), |s| s.1)),
 					root_ctx: self.roots.contains(&sym),
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
@@ -2058,6 +2065,7 @@ impl<M: Module> Compiler<M> {
 			script: def.script,
 			pure: def.pure,
 			ctx_used: false,
+			anon_ctx: None,
 			self_name: None,
 			slots: vec![],
 		};
@@ -2124,7 +2132,7 @@ impl<M: Module> Compiler<M> {
 		}
 
 		if !def.captures.is_empty() {
-			let env = param_vals[def.params.len() + 1];
+			let env = param_vals[def.params.len() + def.ctx.is_some() as usize];
 			for (i, (name, typ, boxed)) in def.captures.iter().enumerate() {
 				let cl = if *boxed { trans.int } else { cl_type(typ, trans.int) };
 				let val = trans.b.ins().load(cl, MemFlags::new(), env, ((i + 1) * 8) as i32);
@@ -2145,7 +2153,7 @@ impl<M: Module> Compiler<M> {
 		if let Some((name, sig)) = def.self_fn {
 			let val = match def.captures.is_empty() {
 				true => trans.fn_object(sig.id),
-				false => param_vals[def.params.len() + 1],
+				false => param_vals[def.params.len() + def.ctx.is_some() as usize],
 			};
 			trans.bind_local(name, val, sig.value_typ(), false);
 		}
