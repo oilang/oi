@@ -1,5 +1,5 @@
 use super::*;
-use crate::compiler::role;
+use crate::compiler::{CONTEXT, role};
 
 // A chosen fill and the args to call it on.
 type Picked = (FnSig, Vec<Spanned<Expr>>);
@@ -206,6 +206,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if !sig.pure {
 			self.require_pure(name, span)?;
+		}
+		if let Some(want) = &sig.ctx {
+			self.check_ctx(name, want, span)?;
 		}
 		let self_n = recv.is_some() as usize;
 		// `@params`
@@ -563,25 +566,39 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// The innermost context.
-	pub(crate) fn ctx_value(&mut self) -> Value {
+	pub(crate) fn ctx_value(&mut self, want: &str) -> Value {
 		match self.vars.get(CTX).cloned() {
-			Some(local) => self.read_local(&local),
+			Some(local) => {
+				let ctx = self.read_local(&local);
+				self.follow(ctx, &local.typ.ctx_path(want).unwrap_or_default())
+			}
 			None => self.rt_call("ctx_root", &[]).expect("`oi_ctx_root` returns a pointer"),
 		}
+	}
+
+	// The scope's ctx must be or embed the callee's.
+	fn check_ctx(&self, name: &str, want: &str, span: Span) -> Result<(), Diagnostic> {
+		let root = Typ::Struct(CONTEXT.into(), vec![]);
+		let have = self.vars.get(CTX).map_or(&root, |l| &l.typ);
+		have.ctx_path(want).map(drop).ok_or_else(|| {
+			let (want, have) = (display_name(want), have.to_string());
+			let msg = format!("`{name}` needs a `{want}` ctx, not `{}`", display_name(&have));
+			Diagnostic::new(msg, span.into_range())
+		})
 	}
 
 	/// The innermost context's allocator record.
 	/// NOTE: `Context.alloc` is field 0.
 	fn ctx_alloc(&mut self) -> Value {
 		self.ctx_used = true;
-		let ctx = self.ctx_value();
+		let ctx = self.ctx_value(CONTEXT);
 		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
 	}
 
 	/// The thread root, each amended default stored over its zeroed slot.
 	/// Idempotent, so every entrypoint can redo it instead of the runtime holding comptime values.
 	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
-		let root = self.ctx_value();
+		let root = self.ctx_value(CONTEXT);
 		let Typ::Struct(_, fields) = typ else { return Ok(root) };
 		for (i, f) in fields.clone().iter().enumerate() {
 			let Some(default) = &f.default else { continue };
@@ -596,9 +613,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		self.wanted.push(sig.id);
 		let mut vals = vals.to_vec();
-		if sig.ctx.is_some() {
+		if let Some(want) = &sig.ctx {
 			self.ctx_used = true;
-			let ctx = self.ctx_value();
+			let ctx = self.ctx_value(want);
 			vals.push(ctx);
 		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
@@ -654,9 +671,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			Callee::Object(obj) => (self.b.ins().load(self.int, MemFlags::new(), obj, 0), Some(obj)),
 		};
 		if !c_abi && want != Some("none") {
+			let want = want.unwrap_or(CONTEXT);
+			self.check_ctx(name, want, span)?;
 			self.ctx_used = true;
 			sig.params.push(AbiParam::new(self.int));
-			let ctx = self.ctx_value();
+			let ctx = self.ctx_value(want);
 			vals.push(ctx);
 		}
 		if let Some(obj) = env {

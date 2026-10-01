@@ -152,9 +152,13 @@ impl Typ {
 		Typ::Tuple(vec![])
 	}
 
-	// `Context`, or a struct embedding one.
-	pub(crate) fn is_ctx(&self) -> bool {
-		matches!(self, Typ::Struct(n, f) if n == super::CONTEXT || embeds(f).any(|(o, ..)| f[o].typ.is_ctx()))
+	// The embed offsets from this type down to `want`, if it is or embeds one.
+	pub(crate) fn ctx_path(&self, want: &str) -> Option<Vec<usize>> {
+		let Typ::Struct(n, f) = self else { return None };
+		if n == want {
+			return Some(vec![]);
+		}
+		embeds(f).find_map(|(o, ..)| Some([vec![o], f[o].typ.ctx_path(want)?].concat()))
 	}
 
 	pub fn is_unit(&self) -> bool {

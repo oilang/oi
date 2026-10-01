@@ -79,6 +79,28 @@ fn a_contextless_fn_cant_pass_ctx_on() {
 }
 
 #[test]
+fn a_call_narrows_the_ctx_to_the_callees() {
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		show :: fn() { print([ctx.thread]) }
+		@ctx(GameCtx)
+		step :: fn() { show() }
+		ctx :: GameCtx.{ Context = Context.{ ..ctx, thread = 4 }, dt = 0.5 }
+		step()
+	"};
+	check(src, "[4]");
+	assert_clean(src);
+
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		@ctx(GameCtx)
+		step :: fn() {}
+		step()
+	"};
+	fail(src, "`step` needs a `GameCtx` ctx");
+}
+
+#[test]
 fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0

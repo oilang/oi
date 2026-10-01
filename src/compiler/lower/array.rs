@@ -387,7 +387,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(ok_block);
 
 		self.b.switch_to_block(panic_block);
-		let ctx = self.ctx_value();
+		let ctx = self.ctx_value(crate::compiler::CONTEXT);
 		let (at, _) = self.src_lit(span).unwrap_or_else(|_| unreachable!("`Src` always resolves"));
 		self.rt_call("panic_oob", &[ctx, idx, len, at]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);

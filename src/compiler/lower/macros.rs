@@ -105,7 +105,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from.
 	pub(super) fn ctx_panic(&mut self, rt: &str, msg: Value, span: Span) -> Result<(), Diagnostic> {
 		let (at, _) = self.src_lit(span)?;
-		let ctx = self.ctx_value();
+		let ctx = self.ctx_value(crate::compiler::CONTEXT);
 		self.rt_call(rt, &[ctx, msg, at]);
 		Ok(())
 	}
