@@ -13,6 +13,7 @@ pub oi_ptr_string : fn(alloc: Alloc, p: ptr, len: int) string : foreign
 
 # arrays
 pub oi_alloc : fn(alloc: Alloc, size: isize) ptr : foreign
+pub oi_free : fn(p: ptr) : foreign
 pub oi_ptr_buffer : fn(alloc: Alloc, data: ptr, bytes: isize) ptr : foreign
 pub oi_slice : fn(alloc: Alloc, h: ptr, start: isize, end: isize, elem_size: isize) ptr : foreign
 pub oi_array_cow : fn(alloc: Alloc, h: ptr, elem_size: isize) : foreign

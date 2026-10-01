@@ -350,6 +350,7 @@ type AllocProc = unsafe extern "C" fn(*mut u8, i64, i64, i64, *mut u8, i64) -> *
 
 /// `core.Alloc`, a C-callable proc plus the state it owns.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Allocator {
 	proc: i64,
 	data: i64,
@@ -360,8 +361,8 @@ const ALLOC: i64 = 0;
 const FREE: i64 = 1;
 const FREE_ALL: i64 = 3;
 
-// `alloc` prefixes each block with its size and its allocator, so `free` needs no ctx.
-const PREFIX: usize = 16;
+// `alloc` prefixes each block with its size and a copy of its allocator, so `free` outlives both ctx and record.
+const PREFIX: usize = 24;
 
 fn layout(size: i64) -> std::alloc::Layout {
 	std::alloc::Layout::from_size_align(size.max(1) as usize, 8).unwrap()
@@ -470,13 +471,16 @@ pub unsafe extern "C" fn alloc(a: *const Allocator, size: i64) -> *mut u8 {
 	unsafe {
 		let base = raw_alloc(a, size);
 		*(base as *mut i64) = size;
-		*(base.add(8) as *mut *const Allocator) = a;
+		*(base.add(8) as *mut Allocator) = *a;
 		base.add(PREFIX)
 	}
 }
 
-// Free an `alloc` result through the allocator in its prefix.
-unsafe fn free(ptr: *mut u8) {
+/// Free an `alloc` result through the allocator in its prefix.
+/// # Safety
+/// `ptr` must be null or a live `alloc` result.
+#[unsafe(export_name = "oi_free")]
+pub unsafe extern "C" fn free(ptr: *mut u8) {
 	if ptr.is_null() {
 		return;
 	}
@@ -489,7 +493,7 @@ unsafe fn free(ptr: *mut u8) {
 
 // The allocator an `alloc` result came from.
 unsafe fn owner(ptr: *const u8) -> *const Allocator {
-	unsafe { *(ptr.sub(PREFIX).add(8) as *const *const Allocator) }
+	unsafe { ptr.sub(PREFIX).add(8) as *const Allocator }
 }
 
 // Allocate an element buffer with its refcount at data[-8], count starting at 1.

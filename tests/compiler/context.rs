@@ -75,6 +75,25 @@ fn an_allocator_claimer_installs_as_ctx_alloc() {
 }
 
 #[test]
+fn a_shadow_frees_its_copy_but_not_what_it_allocated_from() {
+	assert_clean(indoc! {"
+		I :: struct { a: int, b: int }
+		J :: struct { i: I, k: I, l: I, m: I }
+		f :: fn() []int {
+			ctx :: Context.{ ..ctx, thread = 7 }
+			[ 1 2 3 ]
+		}
+		g :: fn() { j :: J.{ i = I.{ 9, 9 } } }
+		h :: fn() {
+			xs :: f()
+			g()
+			print(xs[0])
+		}
+		h()
+	"});
+}
+
+#[test]
 fn an_arena_rewinds_to_its_first_chunk() {
 	for a in ["ctx.temp", "arena()"] {
 		check(

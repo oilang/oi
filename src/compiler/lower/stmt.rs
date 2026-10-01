@@ -108,10 +108,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Typ::Struct(_, ref fields) = typ {
 						let fields = fields.clone();
 						let dst = self.read_local(&local);
-						if self.is_resource(&typ) {
+						let resource = self.is_resource(&typ);
+						if resource {
 							self.release_value(dst, &typ);
 						}
-						self.assign_fields(val, dst, &fields, true);
+						self.assign_fields(val, dst, &fields, !resource);
 						self.settle(val, dst, &typ);
 					} else {
 						let val = self.copy_in(val, &typ);
@@ -333,10 +334,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					let val = self.copy_in(val, &vtyp);
 					let base = self.read_local(&local);
 					let ptr = self.follow(base, &path);
-					if rc::releasable(&vtyp) {
+					if rc::owns(&vtyp) {
 						let cl = self.b.func.dfg.value_type(val);
 						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
-						self.release_value(old, &vtyp);
+						self.release_field(old, &vtyp);
 					}
 					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
 				}

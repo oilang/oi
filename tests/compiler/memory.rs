@@ -163,6 +163,20 @@ fn struct_literal_owns_its_field_handles() {
 }
 
 #[test]
+fn struct_owns_its_nested_structs() {
+	assert_clean(indoc! {"
+		I :: struct { n: int }
+		B :: struct { i: I, j: I }
+		f :: fn() {
+			b := B.{ i = I.{ 1 }, j = I.{ 2 } }
+			b.j = I.{ 3 }
+			print(b.i.n)
+		}
+		f()
+	"});
+}
+
+#[test]
 fn omitted_handle_field_has_one_owner() {
 	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len)"]);
 }

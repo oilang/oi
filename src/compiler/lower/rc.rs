@@ -140,7 +140,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			if self.is_resource(typ) {
 				self.run_hook(val, typ, name, "drop");
 			}
-			self.release_slots(val, 0, &fields.iter().map(|f| f.typ.clone()).collect::<Vec<_>>());
+			for (i, f) in fields.iter().enumerate() {
+				if owns(&f.typ) || self.is_resource(&f.typ) {
+					let cl = cl_type(&f.typ, self.int);
+					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					self.release_field(fv, &f.typ);
+				}
+			}
 		} else if let Typ::Tuple(fields) = typ
 			&& self.is_resource(typ)
 		{
@@ -162,6 +168,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.seal_block(next);
 				self.b.switch_to_block(next);
 			}
+		}
+	}
+
+	// Release an owned struct field.
+	pub(super) fn release_field(&mut self, val: Value, typ: &Typ) {
+		self.release_value(val, typ);
+		if let Typ::Struct(..) = typ {
+			self.rt_call("free", &[val]);
 		}
 	}
 
@@ -369,9 +383,14 @@ pub(super) fn base_name(name: &str) -> &str {
 
 pub(super) fn releasable(typ: &Typ) -> bool {
 	match typ {
-		Typ::Struct(_, fields) => fields.iter().any(|f| releasable(&f.typ)),
+		Typ::Struct(_, fields) => fields.iter().any(|f| owns(&f.typ)),
 		_ => handle_fns(typ).is_some(),
 	}
+}
+
+// Whether a struct field slot owns its value.
+pub(super) fn owns(typ: &Typ) -> bool {
+	matches!(typ, Typ::Struct(..)) || releasable(typ)
 }
 
 // The runtime share/release fns for rc'd types.

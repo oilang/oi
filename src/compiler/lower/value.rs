@@ -1151,7 +1151,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			},
 		};
-		let ptr = self.struct_slot(&struct_fields)?;
+		let ptr = match leading_spread {
+			Some(_) => self.stack_slot((struct_fields.len() * 8) as u32),
+			None => self.struct_slot(&struct_fields)?,
+		};
 
 		let arity = |got: usize| {
 			Diagnostic::new(
@@ -1181,7 +1184,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							.with_label("type mismatch"),
 					);
 				}
-				self.assign_fields(val, ptr, &struct_fields, true);
+				self.assign_fields(val, ptr, &struct_fields, i > 0);
 				continue;
 			}
 			let (idx, ftyp, base) = match field_name.as_deref() {
@@ -1224,13 +1227,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
-			if rc::releasable(&ftyp) {
+			if rc::owns(&ftyp) {
 				// drop the zero/default this slot already owns
 				let old = self
 					.b
 					.ins()
 					.load(cl_type(&ftyp, self.int), MemFlags::new(), base, (idx * 8) as i32);
-				self.release_value(old, &ftyp);
+				// a resource nobody saw is freed
+				match (&ftyp, self.is_resource(&ftyp)) {
+					(Typ::Struct(..), true) => _ = self.rt_call("free", &[old]),
+					_ => self.release_field(old, &ftyp),
+				}
 			}
 			self.b.ins().store(MemFlags::new(), val, base, (idx * 8) as i32);
 		}
@@ -1270,7 +1277,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else if let Typ::Struct(_, inner) = &f.typ {
 				// apply field defaults of inner structs
 				let inner = inner.clone();
-				self.struct_slot(&inner)?
+				let slot = self.struct_slot(&inner)?;
+				let heap = self.call_alloc(inner.len());
+				self.fixed_move(heap, slot, &Typ::Int(64), inner.len());
+				heap
 			} else {
 				self.zero(&f.typ)
 			};
@@ -1393,13 +1403,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
 		for (i, f) in fields.iter().enumerate() {
 			let cl = cl_type(&f.typ, self.int);
-			let old = (release_old && rc::releasable(&f.typ))
-				.then(|| self.b.ins().load(cl, MemFlags::new(), dst, (i * 8) as i32));
+			let old =
+				(release_old && rc::owns(&f.typ)).then(|| self.b.ins().load(cl, MemFlags::new(), dst, (i * 8) as i32));
 			let fv = self.b.ins().load(cl, MemFlags::new(), src, (i * 8) as i32);
 			let fv = self.copy_in(fv, &f.typ);
 			self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
 			if let Some(old) = old {
-				self.release_value(old, &f.typ);
+				self.release_field(old, &f.typ);
 			}
 		}
 	}
