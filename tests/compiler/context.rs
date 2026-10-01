@@ -117,7 +117,19 @@ fn a_closure_takes_the_narrowest_ctx_it_needs() {
 }
 
 #[test]
-fn a_ctx_fn_is_not_a_plain_fn() {
+fn ctx_with_plain_fns() {
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		@ctx(GameCtx) run :: fn(f: @ctx(GameCtx) fn(x: int) int) { print(f(1), ctx.dt) }
+		show :: fn(x: int) int { x + ctx.thread }
+		ctx :: GameCtx.{ Context = Context.{ ..ctx, thread = 4 }, dt = 0.5 }
+		run(show)
+		k := 10
+		add := fn(x: int) int { x + k }
+		run(add)
+	"};
+	check(src, ["5 0.5", "11 0.5"]);
+
 	let src = indoc! {"
 		GameCtx :: struct { Context, dt: float }
 		@ctx(GameCtx) step :: fn() {}

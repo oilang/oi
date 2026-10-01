@@ -60,7 +60,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let (params, params_tuple, ret_te, subst) = match sig {
 			AnonSig::Explicit(te) => (params.to_vec(), params_tuple, te.clone(), HashMap::new()),
-			AnonSig::Inferred(Typ::Fn(ptyps, ret)) => {
+			AnonSig::Inferred(Typ::Fn(ptyps, ret) | Typ::Closure(ptyps, ret, _)) => {
 				let name = |i: usize| format!("${i}");
 				if !params.is_empty() && params.len() != ptyps.len() {
 					let msg = format!("this fn literal expects {} param(s), got {}", ptyps.len(), params.len());

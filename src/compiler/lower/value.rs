@@ -889,6 +889,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = if is_pure(anns) { val } else { self.fn_cell(val) };
 			return Ok((val, to.clone()));
 		}
+		if let Typ::Annotated(anns, inner) = to
+			&& **inner == *from
+			&& let Some(t) = ctx_mark(anns).filter(|t| *t != "none")
+			&& let Typ::Fn(ps, _) | Typ::Closure(ps, ..) = from
+		{
+			return self.ctx_thunk(val, from, ps.len(), t, span);
+		}
 		// fixed arrays widen to dynamic
 		if let (Typ::FixedArray(e, n), Typ::Array(t)) = (from, to)
 			&& e == t
@@ -931,6 +938,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		Ok((val, from.clone()))
+	}
+
+	// A `@ctx` closure with its embedded context.
+	fn ctx_thunk(&mut self, val: Value, from: &Typ, arity: usize, t: &str, span: Span) -> Result<TypedVal, Diagnostic> {
+		let var = self.b.declare_var(self.int);
+		self.b.def_var(var, val);
+		self.vars.insert("$f".into(), Local::plain(var, from.clone(), false));
+		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
+		let call = Expr::Call {
+			name: "$f".into(),
+			type_args: vec![],
+			args,
+		};
+		self.anon_ctx = Some(t.into());
+		let sig = AnonSig::Inferred(from.clone());
+		self.declare_anon_fn(&None, &[], false, sig, &[(call, span)], span)
 	}
 
 	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.
