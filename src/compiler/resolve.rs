@@ -169,6 +169,12 @@ impl<'a> TypeCtx<'a> {
 		TypeCtx { consts, ..self }
 	}
 
+	// Named types with a C layout.
+	pub fn is_c(&self, name: &str) -> bool {
+		is_c_struct(self.consts.anns, name)
+			|| (self.enums.borrow().get(name)).is_some_and(|vs| !vs.is_empty() && !enum_boxed(vs))
+	}
+
 	// A generic instance's substitution.
 	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
 		TypeCtx { type_params, ..self }
@@ -296,7 +302,7 @@ impl TypeCtx<'_> {
 			}
 			TypeExpr::Annotated(anns, inner) => {
 				let (names, inner) = (ann_names(self.scope, anns), self.resolve(inner, span)?);
-				check_ann_typ(&names, &inner, span)?;
+				check_ann_typ(*self, &names, &inner, span)?;
 				Ok(Typ::Annotated(names, Box::new(inner)))
 			}
 			TypeExpr::Map(k, v) => Ok(Typ::Map(
@@ -327,7 +333,7 @@ impl TypeCtx<'_> {
 		if let Expr::Ident(path) = e
 			&& let Some((name, "size")) = path.split_once('.')
 			&& let Ok(t) = self.named(name, *span)
-			&& let Some((size, _)) = t.c_size_align(&|n: &str| is_c_struct(self.consts.anns, n))
+			&& let Some((size, _)) = t.c_size_align(&self)
 		{
 			return Ok(size as usize);
 		}

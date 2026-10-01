@@ -6,6 +6,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use cranelift::prelude::*;
 
 use crate::ast::{Access, Annotation, Expr, Param, Spanned, TypeExpr};
+use crate::compiler::resolve::TypeCtx;
 use crate::compiler::role;
 
 #[derive(Clone, Debug)]
@@ -130,10 +131,10 @@ pub(crate) struct CLayout {
 }
 
 // C offset/alignment layout.
-pub(crate) fn c_layout(fields: &[FieldDef], is_c: &impl Fn(&str) -> bool) -> Option<CLayout> {
+pub(crate) fn c_layout(fields: &[FieldDef], types: &TypeCtx) -> Option<CLayout> {
 	let (mut offsets, mut size, mut align) = (Vec::with_capacity(fields.len()), 0u32, 1u32);
 	for f in fields {
-		let (fsize, falign) = f.typ.c_size_align(is_c)?;
+		let (fsize, falign) = f.typ.c_size_align(types)?;
 		size = size.next_multiple_of(falign);
 		offsets.push(size);
 		size += fsize;
@@ -168,12 +169,13 @@ impl Typ {
 	}
 
 	// Whether a value can cross the C ABI.
-	pub fn is_c_repr(&self) -> bool {
+	pub fn is_c_repr(&self, types: &TypeCtx) -> bool {
 		match self.newtype().unwrap_or(self) {
 			Typ::Fn(ps, r) => (ps.iter().map(|p| &p.typ))
 				.chain((!r.is_unit()).then_some(&**r))
-				.all(Typ::is_c_repr),
-			Typ::Annotated(_, t) => t.is_c_repr(),
+				.all(|t| t.is_c_repr(types)),
+			Typ::Annotated(_, t) => t.is_c_repr(types),
+			Typ::Enum(name) => types.is_c(name),
 			t => matches!(
 				t,
 				Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Bool | Typ::CStr
@@ -182,20 +184,21 @@ impl Typ {
 	}
 
 	// Size and alignment under the C ABI.
-	pub fn c_size_align(&self, is_c: &impl Fn(&str) -> bool) -> Option<(u32, u32)> {
+	pub fn c_size_align(&self, types: &TypeCtx) -> Option<(u32, u32)> {
 		let scalar = |bytes: u32| Some((bytes, bytes));
 		match self.newtype().unwrap_or(self) {
 			Typ::Int(w) | Typ::UInt(w) => scalar(cl_int_for_width(*w).bytes()),
 			Typ::Float(w) => scalar((*w as u32) / 8),
 			Typ::Bool => scalar(1),
 			Typ::ISize | Typ::USize | Typ::CStr => scalar(8),
-			t @ Typ::Fn(..) if t.is_c_repr() => scalar(8),
-			Typ::Annotated(_, t) => t.c_size_align(is_c),
+			t @ Typ::Fn(..) if t.is_c_repr(types) => scalar(8),
+			Typ::Enum(name) if types.is_c(name) => scalar(8),
+			Typ::Annotated(_, t) => t.c_size_align(types),
 			Typ::FixedArray(e, n) => e
-				.c_size_align(is_c)
-				.filter(|(es, _)| e.is_c_repr() && *es as i64 == elem_size(e))
+				.c_size_align(types)
+				.filter(|(es, _)| e.is_c_repr(types) && *es as i64 == elem_size(e))
 				.map(|(es, ea)| (es * *n as u32, ea)),
-			Typ::Struct(name, fields) if is_c(name) => c_layout(fields, is_c).map(|l| (l.size, l.align)),
+			Typ::Struct(name, fields) if types.is_c(name) => c_layout(fields, types).map(|l| (l.size, l.align)),
 			_ => None,
 		}
 	}

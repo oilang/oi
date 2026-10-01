@@ -113,10 +113,10 @@ fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 }
 
 // Check that every param and return are C friendly.
-pub(crate) fn check_c_sig(name: &str, params: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
-	match (params.iter().map(|p| &p.typ))
+pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
+	match (ps.iter().map(|p| &p.typ))
 		.chain((!ret.is_unit()).then_some(ret))
-		.find(|t| !t.is_c_repr())
+		.find(|t| !t.is_c_repr(&types))
 	{
 		Some(t) => Err(
 			Diagnostic::new(format!("`{name}` can't cross the C ABI"), span.into_range())
@@ -127,10 +127,10 @@ pub(crate) fn check_c_sig(name: &str, params: &[FnParam], ret: &Typ, span: Span)
 }
 
 // Handle annotated types.
-pub(crate) fn check_ann_typ(names: &[String], typ: &Typ, span: Span) -> Result<(), Diagnostic> {
+pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: Span) -> Result<(), Diagnostic> {
 	let c = |n: &String| n == role::C;
 	match (names, typ) {
-		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig("@c fn", params, ret, span),
+		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => Err(Diagnostic::new("`@c` fns can't capture", span.into_range())
 			.with_label("C has nowhere to keep an environment")),
 		([n], Typ::Fn(..)) if n == role::PURE => Ok(()),
@@ -273,13 +273,10 @@ pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -
 }
 
 // Check that every struct marked `@c` has a C layout.
-fn check_c_structs(
-	anns: &HashMap<String, Vec<Annotation>>,
-	structs: &HashMap<String, Vec<FieldDef>>,
-) -> Result<(), Diagnostic> {
-	let is_c = |n: &str| is_c_struct(anns, n);
+fn check_c_structs(types: TypeCtx, structs: &HashMap<String, Vec<FieldDef>>) -> Result<(), Diagnostic> {
+	let (anns, is_c) = (types.consts.anns, |n: &str| types.is_c(n));
 	for (name, fields) in structs.iter().filter(|(n, _)| is_c(n)) {
-		let Some(bad) = fields.iter().find(|f| f.typ.c_size_align(&is_c).is_none()) else {
+		let Some(bad) = fields.iter().find(|f| f.typ.c_size_align(&types).is_none()) else {
 			continue;
 		};
 		let span = anns[name].iter().find(|a| ann(a, role::C).is_some()).unwrap().1;
@@ -1327,8 +1324,23 @@ impl<M: Module> Compiler<M> {
 			anns: &const_anns,
 		};
 
-		// structs can ref each other
 		let no_type_params: HashMap<String, Typ> = HashMap::new();
+		let build_enum = |structs: &HashMap<String, Vec<FieldDef>>, &(name, backing, variants): &EnumItem| {
+			let types = TypeCtx::new(structs, &enums, &aliases, &no_type_params, &generics, &traits)
+				.with_consts(consts)
+				.with_scope(scope_of(name));
+			let mut vs = build_variants(variants, types)?;
+			if let Some(bt) = backing {
+				apply_backing(bt, &mut vs, variants, types)?;
+			}
+			enums.borrow_mut().insert(name.to_string(), vs);
+			Ok::<_, Diagnostic>(())
+		};
+		// payload-free enums first, for ABI stability
+		let (plain, boxed): (Vec<_>, Vec<_>) =
+			enum_items.iter().partition(|(.., vs)| vs.iter().all(|v| v.payload.is_empty()));
+		plain.into_iter().try_for_each(|e| build_enum(&HashMap::new(), e))?;
+
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let mut pending = struct_items;
 		let mut placeholders: HashSet<String> = HashSet::new();
@@ -1391,10 +1403,10 @@ impl<M: Module> Compiler<M> {
 			structs.extend(done);
 		}
 		check_annotations(&self.annotations, &structs, &generics, &self.consts, scope_of)?;
-		check_c_structs(&self.annotations, &structs)?;
 
 		let field_types =
 			TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
+		check_c_structs(field_types, &structs)?;
 
 		// implicit traits
 		for (tn, anns) in &self.annotations {
@@ -1457,16 +1469,7 @@ impl<M: Module> Compiler<M> {
 			&mut self.consts,
 		)?;
 
-		for (name, backing, variants) in &enum_items {
-			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(scope_of(name));
-			let mut vs = build_variants(variants, types)?;
-			if let Some(bt) = backing {
-				apply_backing(bt, &mut vs, variants, types)?;
-			}
-			enums.borrow_mut().insert(name.to_string(), vs);
-		}
+		boxed.into_iter().try_for_each(|e| build_enum(&structs, e))?;
 
 		// hoist fns
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
@@ -1502,14 +1505,14 @@ impl<M: Module> Compiler<M> {
 				return Err(Diagnostic::new(msg, span.into_range()).with_label("mutation is a side effect"));
 			}
 			if let Some((fields, span)) = ann_span(role::EXPORT) {
-				check_c_sig(&item.key, &params, &ret, span)?;
+				check_c_sig(types, &item.key, &params, &ret, span)?;
 				let sym = match fields.first() {
 					Some((_, (Expr::String(s), _))) if !s.is_empty() => s.clone(),
 					_ => display_name(&item.key).replace('.', "_"),
 				};
 				self.exports.insert(item.key.clone(), sym);
 			} else if let Some((_, span)) = ann_span(role::C) {
-				check_c_sig(&item.key, &params, &ret, span)?;
+				check_c_sig(types, &item.key, &params, &ret, span)?;
 				is_c_fn = true;
 			}
 			let (sym, linkage) = self.symbol(&item.key);
@@ -1587,7 +1590,7 @@ impl<M: Module> Compiler<M> {
 			}
 			for p in &params {
 				if let Typ::Fn(ps, r) = &p.typ {
-					check_c_sig(bare, ps, r, span)?;
+					check_c_sig(types, bare, ps, r, span)?;
 				}
 			}
 			let sig = self.declare_fn(bare, Linkage::Import, params, access, ret, true);

@@ -852,7 +852,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if vt != **inner {
 				return Ok((val, vt));
 			}
-			check_ann_typ(anns, &vt, value.1)?;
+			check_ann_typ(self.types, anns, &vt, value.1)?;
 			if ps.iter().any(|p| matches!(p.typ, Typ::Fn(..))) && !self.c_callable(Some(value)) {
 				let msg = "this fn is called from C";
 				return Err(Diagnostic::new(msg, value.1.into_range()).with_label("mark it with `@c`"));

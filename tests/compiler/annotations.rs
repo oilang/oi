@@ -402,6 +402,22 @@ fn c_fn_types() {
 }
 
 #[test]
+fn c_fns_take_plain_enums() {
+	check(
+		indoc! {"
+			Mode :: enum { a, b, c = 3 }
+			S :: struct { f: @c fn(m: Mode) int }
+			@c pick :: fn(m: Mode) int {
+				match m { .a => 1, .c => 3, else => 0 }
+			}
+			print(S.{ f = pick }.f(.c))
+		"},
+		"3",
+	);
+	fail(["@c", "f :: fn(x: ?int) {}"], "`f` can't cross the C ABI");
+}
+
+#[test]
 fn annotated_types_are_checked() {
 	fail(["f :: fn(cb: @c fn(s: string)) {}"], "`@c fn` can't cross the C ABI");
 	fail(

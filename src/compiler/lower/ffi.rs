@@ -89,7 +89,7 @@ impl<M: Module> Translator<'_, M> {
 			let msg = format!("`{}` casts a single `ptr`", display_name(name));
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("expected one argument"));
 		};
-		check_c_sig(display_name(name), params, ret, span)?;
+		check_c_sig(self.types, display_name(name), params, ret, span)?;
 		if !bare && let Some(p) = params.iter().find(|p| matches!(p.typ, Typ::Fn(..))) {
 			let msg = format!("`{}` can't take a fn pointer", display_name(name));
 			let label = format!("`{}` would cross as a cell", p.typ);
@@ -114,7 +114,7 @@ impl<M: Module> Translator<'_, M> {
 		match typ {
 			Typ::USize | Typ::Annotated(..) => Ok(val),
 			Typ::Fn(params, ret) => {
-				check_c_sig("@c fn", &params, &ret, arg.1)?;
+				check_c_sig(self.types, "@c fn", &params, &ret, arg.1)?;
 				Ok(self.b.ins().load(self.int, MemFlags::new(), val, 0))
 			}
 			t => {
@@ -133,7 +133,7 @@ impl<M: Module> Translator<'_, M> {
 	fn c_fields(&self, typ: &Typ, span: Span) -> Result<Option<Vec<FieldDef>>, Diagnostic> {
 		match typ {
 			Typ::Struct(name, fields) if is_c_struct(self.types.consts.anns, name) => Ok(Some(fields.clone())),
-			t if t.is_c_repr() && !matches!(t, Typ::Fn(..)) => Ok(None),
+			t if t.is_c_repr(&self.types) && !matches!(t, Typ::Fn(..)) => Ok(None),
 			_ => Err(Diagnostic::new(format!("`{typ}` has no C layout"), span.into_range())
 				.with_label("only a struct or C scalar crosses a `ptr`")),
 		}
@@ -158,8 +158,8 @@ impl<M: Module> Translator<'_, M> {
 
 	// Copy each field between its Oi slot and its C offset.
 	fn copy_fields(&mut self, oi: Value, c: Value, at: i32, fields: &[FieldDef], to_c: bool) {
-		let (anns, mem) = (self.types.consts.anns, MemFlags::new());
-		let offsets = c_layout(fields, &|n: &str| is_c_struct(anns, n)).expect("validated").offsets;
+		let (types, mem) = (self.types, MemFlags::new());
+		let offsets = c_layout(fields, &types).expect("validated").offsets;
 		for ((i, f), off) in fields.iter().enumerate().zip(offsets) {
 			let (slot, off) = ((i * 8) as i32, at + off as i32);
 			match f.typ.newtype().unwrap_or(&f.typ) {

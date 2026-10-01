@@ -514,7 +514,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((v, t));
 					}
 					if field == "size"
-						&& let Some((n, _)) = t.c_size_align(&|n: &str| is_c_struct(self.types.consts.anns, n))
+						&& let Some((n, _)) = t.c_size_align(&self.types)
 					{
 						return Ok((self.b.ins().iconst(self.int, n as i64), Typ::USize));
 					}
@@ -889,7 +889,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return out;
 				}
 				let (names, (val, typ)) = (ann_names(self.types.scope, anns), self.expr(inner)?);
-				check_ann_typ(&names, &typ, expr.1)?;
+				check_ann_typ(self.types, &names, &typ, expr.1)?;
 				let addr = self.b.ins().load(self.int, MemFlags::new(), val, 0);
 				Ok((addr, Typ::Annotated(names, Box::new(typ))))
 			}
