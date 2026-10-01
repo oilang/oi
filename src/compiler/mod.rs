@@ -64,6 +64,7 @@ pub(crate) struct FnSig {
 	pub access: Vec<Access>,
 	pub ret: Typ,
 	pub foreign: bool,
+	pub ctx: Option<String>,
 	pub unsafe_call: bool,
 	pub pure: bool,
 }
@@ -76,6 +77,16 @@ impl FnSig {
 			..p.clone()
 		};
 		self.params.iter().zip(&self.access).map(fold).collect()
+	}
+
+	// As a fn value, a non-default ctx marked.
+	pub(crate) fn value_typ(&self) -> Typ {
+		let typ = Typ::Fn(self.value_params(), Box::new(self.ret.clone()));
+		match self.ctx.as_deref() {
+			Some(CONTEXT) => typ,
+			None if self.foreign => typ,
+			t => Typ::Annotated(vec![ctx_name(t)], Box::new(typ)),
+		}
 	}
 }
 
@@ -133,10 +144,10 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => Err(Diagnostic::new("`@c` fns can't capture", span.into_range())
 			.with_label("C has nowhere to keep an environment")),
-		([n], Typ::Fn(..)) if n == role::PURE => Ok(()),
+		([n], Typ::Fn(..)) if n == role::PURE || n.starts_with(role::CTX) => Ok(()),
 		_ => Err(
 			Diagnostic::new(format!("`{}{typ}` isn't a type", marks(names)), span.into_range())
-				.with_label("only `@c` or `@pure` on a fn, so far"),
+				.with_label("only `@c`, `@pure`, or `@ctx` on a fn, so far"),
 		),
 	}
 }
@@ -173,7 +184,8 @@ struct FnDef<'a> {
 	self_fn: Option<(&'a str, &'a FnSig)>,
 	foreign: bool,
 	pure: bool,
-	ctx: bool,
+	ctx: Option<String>,
+	ctxless: Option<Span>,
 	root_ctx: bool,
 }
 
@@ -254,10 +266,25 @@ fn ann<'a>(a: &'a Annotation, name: &str) -> Option<&'a [(Option<String>, Spanne
 	}
 }
 
+// The qualified type of a `@ctx` annotation.
+fn ctx_ann(scope: &Scope, a: &Annotation) -> Option<Option<String>> {
+	let Expr::Call { name, args, .. } = &a.0 else {
+		return None;
+	};
+	let [(Expr::Ident(t), _)] = &args[..] else { return None };
+	(name == role::CTX).then(|| (t != "none").then(|| scope.qualify_name(t)))
+}
+
+// Context type as a fn type's annotation name.
+fn ctx_name(t: Option<&str>) -> String {
+	format!("{}({})", role::CTX, t.unwrap_or("none"))
+}
+
 // Annotation names, qualified through the scope that wrote them.
 pub(crate) fn ann_names(scope: &Scope, anns: &[Annotation]) -> Vec<String> {
-	let name = |a: &Annotation| match &a.0 {
-		Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. } => Some(name.clone()),
+	let name = |a: &Annotation| match (&a.0, ctx_ann(scope, a)) {
+		(_, Some(t)) => Some(ctx_name(t.as_deref())),
+		(Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. }, _) => Some(name.clone()),
 		_ => None,
 	};
 	qualify_anns(scope, anns).iter().filter_map(name).collect()
@@ -335,6 +362,7 @@ fn check_annotation(
 				"a bare annotation names a unit or struct const".into(),
 			),
 		},
+		Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => Ok(()),
 		Expr::Call { .. } => err(
 			"annotation fns aren't supported here yet".into(),
 			"only main-file items take fn annotations".into(),
@@ -1520,7 +1548,10 @@ impl<M: Module> Compiler<M> {
 			let foreign = self.exports.contains_key(&item.key)
 				|| is_c_fn || self.roots.contains(&item.key)
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
-			let mut sig = self.declare_fn(&sym, linkage, params, access, ret, foreign);
+			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
+			let ctx = ctx.unwrap_or(Some(CONTEXT.into())).filter(|_| !foreign);
+			let mut sig = self.declare_fn(&sym, linkage, params, access, ret, ctx);
+			sig.foreign = foreign;
 			sig.unsafe_call = is_unsafe;
 			sig.pure = pure.is_some();
 			funcs.insert(item.key.clone(), sig);
@@ -1593,7 +1624,7 @@ impl<M: Module> Compiler<M> {
 					check_c_sig(types, bare, ps, r, span)?;
 				}
 			}
-			let sig = self.declare_fn(bare, Linkage::Import, params, access, ret, true);
+			let sig = self.declare_fn(bare, Linkage::Import, params, access, ret, None);
 			funcs.insert(name.clone(), sig);
 		}
 
@@ -1788,7 +1819,10 @@ impl<M: Module> Compiler<M> {
 						body: item.body,
 						self_type,
 						foreign: funcs[&item.key].foreign,
-						ctx: !funcs[&item.key].foreign,
+						ctx: funcs[&item.key].ctx.clone(),
+						ctxless: (self.annotations.get(&item.key).into_iter().flatten())
+							.find(|a| ctx_ann(item.scope, a) == Some(None))
+							.map(|a| a.1),
 						root_ctx: self.roots.contains(&item.key),
 						pure: funcs[&item.key].pure,
 						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
@@ -1819,7 +1853,7 @@ impl<M: Module> Compiler<M> {
 					ret,
 					body: &def.body,
 					captures: &def.captures,
-					ctx: true,
+					ctx: Some(CONTEXT.into()),
 					root_ctx: self.roots.contains(&sym),
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
@@ -1884,12 +1918,12 @@ impl<M: Module> Compiler<M> {
 		params: Vec<FnParam>,
 		access: Vec<Access>,
 		ret: Typ,
-		foreign: bool,
+		ctx: Option<String>,
 	) -> FnSig {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
 		sig.params.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, int))));
-		if !foreign {
+		if ctx.is_some() {
 			sig.params.push(AbiParam::new(int));
 		}
 		if !ret.is_unit() {
@@ -1901,7 +1935,8 @@ impl<M: Module> Compiler<M> {
 			params,
 			access,
 			ret,
-			foreign,
+			foreign: ctx.is_none(),
+			ctx,
 			unsafe_call: linkage == Linkage::Import,
 			pure: false,
 		}
@@ -1969,7 +2004,7 @@ impl<M: Module> Compiler<M> {
 		for (_, typ, _) in def.params {
 			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
 		}
-		if def.ctx {
+		if def.ctx.is_some() {
 			b.func.signature.params.push(AbiParam::new(int));
 		}
 		if !def.captures.is_empty() {
@@ -2022,6 +2057,7 @@ impl<M: Module> Compiler<M> {
 			is_main: def.is_main,
 			script: def.script,
 			pure: def.pure,
+			ctx_used: false,
 			self_name: None,
 			slots: vec![],
 		};
@@ -2064,26 +2100,28 @@ impl<M: Module> Compiler<M> {
 		}
 		trans.bind_dollar(def.params_tuple);
 
-		let typ = trans.types.named(CONTEXT, (0..0).into())?;
-		let ctx = match def.ctx && !def.root_ctx {
-			true => param_vals[def.params.len()],
-			false => trans.root_ctx(&typ)?,
-		};
-		// context is CoW
-		let mut writes = false;
-		Expr::Block(def.body.to_vec()).walk(&mut |e| {
-			writes |= matches!(e, Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX)
-		});
-		let ctx = match writes {
-			true => trans.copy_bind(ctx, &typ),
-			false => ctx,
-		};
-		let var = trans.b.declare_var(trans.int);
-		trans.b.def_var(var, ctx);
-		if writes {
-			trans.own_local(var, &typ);
+		if def.ctxless.is_none() {
+			let typ = trans.types.named(def.ctx.as_deref().unwrap_or(CONTEXT), (0..0).into())?;
+			let ctx = match def.ctx.is_some() && !def.root_ctx {
+				true => param_vals[def.params.len()],
+				false => trans.root_ctx(&typ)?,
+			};
+			// context is CoW
+			let mut writes = false;
+			Expr::Block(def.body.to_vec()).walk(&mut |e| {
+				writes |= matches!(e, Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX)
+			});
+			let ctx = match writes {
+				true => trans.copy_bind(ctx, &typ),
+				false => ctx,
+			};
+			let var = trans.b.declare_var(trans.int);
+			trans.b.def_var(var, ctx);
+			if writes {
+				trans.own_local(var, &typ);
+			}
+			trans.vars.insert(CTX.into(), Local::plain(var, typ, writes));
 		}
-		trans.vars.insert(CTX.into(), Local::plain(var, typ, writes));
 
 		if !def.captures.is_empty() {
 			let env = param_vals[def.params.len() + 1];
@@ -2109,8 +2147,7 @@ impl<M: Module> Compiler<M> {
 				true => trans.fn_object(sig.id),
 				false => param_vals[def.params.len() + 1],
 			};
-			let typ = Typ::Fn(sig.value_params(), Box::new(sig.ret.clone()));
-			trans.bind_local(name, val, typ, false);
+			trans.bind_local(name, val, sig.value_typ(), false);
 		}
 
 		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());
@@ -2125,6 +2162,12 @@ impl<M: Module> Compiler<M> {
 			&& !ret.is_unit()
 		{
 			trans.b.func.signature.returns.push(AbiParam::new(cl_type(ret, trans.int)));
+		}
+		if let Some(span) = def.ctxless
+			&& trans.ctx_used
+		{
+			return Err(Diagnostic::new("a `@ctx(none)` fn has no `ctx`", span.into_range())
+				.with_label("but its body allocates or calls a fn that takes one"));
 		}
 		trans.b.finalize();
 

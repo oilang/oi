@@ -52,6 +52,33 @@ fn a_ctx_write_stays_in_the_callee() {
 }
 
 #[test]
+fn a_ctx_fn_reads_its_ctx_type() {
+	let src = indoc! {"
+		GameCtx :: struct { Context, dt: float }
+		@ctx(none)
+		half :: fn(x: float) float { x / 2.0 }
+		@ctx(GameCtx)
+		step :: fn() { print(half(ctx.dt), ctx.thread) }
+		ctx :: GameCtx.{ Context = ctx, dt = 0.5 }
+		step()
+		f := step
+		f()
+	"};
+	check(src, ["0.25 0", "0.25 0"]);
+}
+
+#[test]
+fn a_contextless_fn_cant_pass_ctx_on() {
+	let src = indoc! {"
+		show :: fn() {}
+		@ctx(none)
+		f :: fn() { show() }
+		f()
+	"};
+	fail(src, "a `@ctx(none)` fn has no `ctx`");
+}
+
+#[test]
 fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0

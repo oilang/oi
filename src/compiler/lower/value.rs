@@ -835,7 +835,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if let Typ::Annotated(anns, inner) = target
 			&& let Typ::Fn(ps, _) = &**inner
-			&& !is_pure(anns)
+			&& anns.iter().any(|a| a == role::C)
 		{
 			let value = match &value.0 {
 				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,

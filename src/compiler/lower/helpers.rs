@@ -137,3 +137,9 @@ pub(super) fn cmp_cc(op: BinOp) -> (IntCC, FloatCC) {
 pub(super) fn is_pure(anns: &[String]) -> bool {
 	anns.iter().any(|a| a == role::PURE)
 }
+
+// The type of a `@ctx` annotation.
+pub(super) fn ctx_mark(anns: &[String]) -> Option<&str> {
+	anns.iter()
+		.find_map(|a| a.strip_prefix(role::CTX)?.strip_prefix('(')?.strip_suffix(')'))
+}

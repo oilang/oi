@@ -60,7 +60,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							self.require_unsafe(name, expr.1)?;
 						}
 						let obj = self.fn_object(sig.id);
-						Ok((obj, Typ::Fn(sig.value_params(), Box::new(sig.ret))))
+						Ok((obj, sig.value_typ()))
 					}
 					None => {
 						let key = self.qualify(name);

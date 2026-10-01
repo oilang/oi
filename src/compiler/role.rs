@@ -47,6 +47,7 @@ pub(crate) const EXPORT: &str = "core::export";
 pub(crate) const C: &str = "core::c";
 pub(crate) const IMPLICIT: &str = "core::implicit";
 pub(crate) const PURE: &str = "core::pure";
+pub(crate) const CTX: &str = "core::ctx";
 pub(crate) const NOZERO: &str = "core::nozero";
 pub(crate) const NOINIT: &str = "core::noinit";
 pub(crate) const OPEN: &str = "core::open";
@@ -54,7 +55,7 @@ pub(crate) const OPEN: &str = "core::open";
 // Annotation markers resolve to core even where a local name shadows them.
 pub(crate) fn marker(name: &str) -> Option<&'static str> {
 	[
-		PARAMS, REQUIRED, TEST, LINK, EXPORT, C, IMPLICIT, PURE, NOZERO, NOINIT, OPEN,
+		PARAMS, REQUIRED, TEST, LINK, EXPORT, C, IMPLICIT, PURE, CTX, NOZERO, NOINIT, OPEN,
 	]
 	.into_iter()
 	.find(|m| m.strip_prefix("core::") == Some(name))

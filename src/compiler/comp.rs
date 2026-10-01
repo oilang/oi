@@ -9,7 +9,7 @@ use crate::diagnostics::Diagnostic;
 use crate::loader::{Module, Program};
 use crate::runtime;
 
-use super::Compiler;
+use super::{Compiler, role};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
@@ -287,7 +287,7 @@ pub(crate) fn eval(
 	}
 	// an annotation call is implicitly comptime
 	for a in annotations.iter_mut().filter(|(k, _)| !k.contains("::")).flat_map(|(_, v)| v) {
-		if matches!(a.0, Expr::Call { .. }) {
+		if matches!(&a.0, Expr::Call { name, .. } if name != role::CTX) {
 			a.0 = fold(a.clone(), "main", expanded, consts, program, stage0)?;
 		}
 	}

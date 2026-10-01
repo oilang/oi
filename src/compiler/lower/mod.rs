@@ -80,6 +80,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub script: bool,
 	pub self_name: Option<String>,
 	pub pure: bool,
+	pub ctx_used: bool,
 	pub slots: Vec<String>,
 }
 

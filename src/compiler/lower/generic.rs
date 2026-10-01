@@ -237,6 +237,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.collect(),
 			ret,
 			foreign: false,
+			ctx: Some(crate::compiler::CONTEXT.into()),
 			unsafe_call: false,
 			pure: def.pure
 				|| (self.types.consts.anns.get(name)).is_some_and(|a| a.iter().any(|x| ann(x, role::PURE).is_some())),

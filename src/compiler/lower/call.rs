@@ -573,6 +573,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	/// The innermost context's allocator record.
 	/// NOTE: `Context.alloc` is field 0.
 	fn ctx_alloc(&mut self) -> Value {
+		self.ctx_used = true;
 		let ctx = self.ctx_value();
 		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
 	}
@@ -595,7 +596,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		self.wanted.push(sig.id);
 		let mut vals = vals.to_vec();
-		if !sig.foreign {
+		if sig.ctx.is_some() {
+			self.ctx_used = true;
 			let ctx = self.ctx_value();
 			vals.push(ctx);
 		}
@@ -621,8 +623,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let c_abi = matches!(typ, Typ::Annotated(anns, _) if anns.iter().any(|a| a == role::C));
+		let want = match typ {
+			Typ::Annotated(anns, _) => ctx_mark(anns),
+			_ => None,
+		};
 		let (typ, pure) = match typ {
-			Typ::Annotated(anns, inner) if is_pure(anns) => (&**inner, true),
+			Typ::Annotated(anns, inner) if is_pure(anns) || want.is_some() => (&**inner, is_pure(anns)),
 			typ => (typ, false),
 		};
 		if let Typ::Annotated(_, inner) = typ {
@@ -647,7 +653,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Callee::Addr(addr) => (addr, None),
 			Callee::Object(obj) => (self.b.ins().load(self.int, MemFlags::new(), obj, 0), Some(obj)),
 		};
-		if !c_abi {
+		if !c_abi && want != Some("none") {
+			self.ctx_used = true;
 			sig.params.push(AbiParam::new(self.int));
 			let ctx = self.ctx_value();
 			vals.push(ctx);
