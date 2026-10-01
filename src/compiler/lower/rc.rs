@@ -357,7 +357,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A bind takes its own copy.
-	pub(super) fn copy_bind(&mut self, val: Value, typ: &Typ) -> Value {
+	pub(crate) fn copy_bind(&mut self, val: Value, typ: &Typ) -> Value {
 		if self.handover(val, typ) {
 			self.untemp(val);
 			return val;

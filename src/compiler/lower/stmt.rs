@@ -72,6 +72,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
+					if name == CTX && !typ.is_ctx() {
+						return Err(Diagnostic::new(format!("`ctx` can't be {typ}"), stmt.1.into_range())
+							.with_label("needs `Context` or a struct embedding one"));
+					}
 					self.self_name = None;
 					if let Some(v) = value {
 						self.move_resource(v, &typ)?;

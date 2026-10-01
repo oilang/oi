@@ -152,6 +152,11 @@ impl Typ {
 		Typ::Tuple(vec![])
 	}
 
+	// `Context`, or a struct embedding one.
+	pub(crate) fn is_ctx(&self) -> bool {
+		matches!(self, Typ::Struct(n, f) if n == super::CONTEXT || embeds(f).any(|(o, ..)| f[o].typ.is_ctx()))
+	}
+
 	pub fn is_unit(&self) -> bool {
 		matches!(self, Typ::Tuple(f) if f.is_empty())
 	}

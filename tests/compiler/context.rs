@@ -31,6 +31,27 @@ fn ctx_cannot_be_rebound() {
 }
 
 #[test]
+fn a_ctx_shadow_needs_a_ctx_type() {
+	fail("ctx :: 1", "`ctx` can't be int");
+}
+
+#[test]
+fn a_ctx_write_stays_in_the_callee() {
+	let src = indoc! {"
+		set :: fn() {
+			ctx.thread = 3
+			ctx = Context.{ ..ctx, alloc = ctx.temp }
+			print(ctx.thread)
+		}
+		set()
+		xs := [ 1 2 3 ]
+		print(ctx.thread, xs)
+	"};
+	check(src, ["3", "0 [1, 2, 3]"]);
+	assert_clean(src);
+}
+
+#[test]
 fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0

@@ -2069,9 +2069,21 @@ impl<M: Module> Compiler<M> {
 			true => param_vals[def.params.len()],
 			false => trans.root_ctx(&typ)?,
 		};
+		// context is CoW
+		let mut writes = false;
+		Expr::Block(def.body.to_vec()).walk(&mut |e| {
+			writes |= matches!(e, Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX)
+		});
+		let ctx = match writes {
+			true => trans.copy_bind(ctx, &typ),
+			false => ctx,
+		};
 		let var = trans.b.declare_var(trans.int);
 		trans.b.def_var(var, ctx);
-		trans.vars.insert(CTX.into(), Local::plain(var, typ, false));
+		if writes {
+			trans.own_local(var, &typ);
+		}
+		trans.vars.insert(CTX.into(), Local::plain(var, typ, writes));
 
 		if !def.captures.is_empty() {
 			let env = param_vals[def.params.len() + 1];
