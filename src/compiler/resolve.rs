@@ -333,7 +333,7 @@ impl TypeCtx<'_> {
 		if let Expr::Ident(path) = e
 			&& let Some((name, "size")) = path.split_once('.')
 			&& let Ok(t) = self.named(name, *span)
-			&& let Some((size, _)) = t.c_size_align(&self)
+			&& let Some((size, _)) = t.c_size_align(self)
 		{
 			return Ok(size as usize);
 		}

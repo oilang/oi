@@ -2319,7 +2319,7 @@ main :: fn() {
 
 ## context
 
-# every fn body has an implicit `ctx: core::Context` borrow
+# every fn body has an implicit `ctx: core::Context`, a mutable copy of the caller's
 Context :: struct {
 	# every heap byte: buffers, strings, maps, `&T`, closure envs
 	alloc: Alloc
@@ -2337,16 +2337,32 @@ Context :: struct {
 
 # a call passes the innermost binding
 frame :: fn() {
-	# every callee down this block sees the shadow
-	ctx :: .{ ..ctx, alloc = arena() }
+	# write to the fn's copy
+	ctx.alloc = arena()
 	update()
-	# caller's ctx again once the block exits
+	# or shadow, gone once the block exits
+	ctx :: .{ ..ctx, log = quiet }
+	draw()
 }
-draw()
+# custom ctx types embed `Context`
+GameCtx :: struct { Context, world: &World, dt: float }
 
-# amendments may add fields to Context
-Context :< { world: ?&World = none, dt: float = 0 }
-step :: fn() { ctx.world?.tick(ctx.dt) }
+# functions can specify a ctx type with `@ctx`
+@ctx(GameCtx)
+step :: fn() { ctx.world.tick(ctx.dt) }
+
+tick :: fn() {
+	ctx : GameCtx = .{ Context = ctx, world = &w, dt = 0.016 }
+	step()
+	# a plain fn gets the embedded Context
+	draw()
+	# a closure takes the narrowest ctx its body needs, here `GameCtx`
+	xs.each(fn(x: int) { ctx.world.add(x) })
+}
+
+# contextless: no ctx param, so no `ctx`, no allocation, no ctx-taking calls, no logger, etc.
+@ctx(none)
+hash :: fn(x: int) int { x * 31 }
 
 # `@c` fns take/pass no ctx, instead getting the thread's root context
 @c
