@@ -3,6 +3,7 @@ use crate::lexer::Token;
 
 use chumsky::{Boxed, input::ValueInput, prelude::*, recursive::Indirect};
 
+mod annotation;
 mod definition;
 mod item;
 mod types;
@@ -252,41 +253,7 @@ where
 		.boxed();
 
 	// annotations
-	let ann_entry = ident().then_ignore(just(Token::Assign)).or_not().then(expr.clone());
-	let ann_tag = spanned(select! { Token::Atom(name) => Expr::Atom(name) });
-	enum AnnTail {
-		Fields(Vec<(Option<String>, Spanned<Expr>)>),
-		Args(Vec<Spanned<Expr>>),
-	}
-	let ann_tail = just(Token::Dot)
-		.ignore_then(brace(loose_list(ann_entry)))
-		.map(AnnTail::Fields)
-		.or(paren(loose_list(expr.clone())).map(AnnTail::Args));
-	let ann_value = spanned(
-		dotted_name
-			.clone()
-			.then_ignore(adjacent.then(just(Token::Not)).not())
-			.then(adjacent.ignore_then(ann_tail).or_not())
-			.map(|(name, tail)| match tail {
-				Some(AnnTail::Fields(fields)) => Expr::StructLit {
-					name,
-					type_args: vec![],
-					fields,
-				},
-				Some(AnnTail::Args(args)) => Expr::Call {
-					name,
-					type_args: vec![],
-					args,
-				},
-				None => Expr::Ident(name),
-			}),
-	);
-	// `@unsafe`
-	let ann_unsafe = spanned(just(Token::Unsafe).to(Expr::Ident("unsafe".into())));
-	let annotation = just(Token::At)
-		.then_ignore(adjacent)
-		.ignore_then(ann_tag.or(ann_unsafe).or(ann_value))
-		.boxed();
+	let annotation = annotation::annotation(expr.clone().boxed(), dotted_name.clone().boxed(), adjacent.boxed());
 	let annotations = annotation.clone().repeated().at_least(1).collect::<Vec<_>>().boxed();
 
 	// type annotations
