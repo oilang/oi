@@ -427,32 +427,22 @@ thread_local! {
 	static TEMP: RefCell<Arena> = RefCell::new(Arena::default());
 }
 
-// A null data is the thread's `ctx.temp`, and anything else is an arena from `oi_arena`.
-unsafe extern "C" fn arena_proc(data: *mut u8, mode: i64, size: i64, _: i64, _: *mut u8, _: i64) -> *mut u8 {
-	let run = |a: &mut Arena| match mode {
+// The thread's `ctx.temp`.
+unsafe extern "C" fn arena_proc(_: *mut u8, mode: i64, size: i64, _: i64, _: *mut u8, _: i64) -> *mut u8 {
+	TEMP.with_borrow_mut(|a| match mode {
 		ALLOC => a.bump(size),
 		FREE_ALL => {
 			(a.chunk, a.next) = (0, 0);
 			std::ptr::null_mut()
 		}
 		_ => std::ptr::null_mut(),
-	};
-	match data.is_null() {
-		true => TEMP.with_borrow_mut(run),
-		false => run(unsafe { &mut *data.cast() }),
-	}
+	})
 }
 
 // One shared `ctx.temp` record.
 fn temp_record() -> *const Allocator {
 	static TEMP_REC: OnceLock<usize> = OnceLock::new();
 	*TEMP_REC.get_or_init(|| record(arena_proc, 0) as usize) as *const Allocator
-}
-
-/// A fresh bump arena.
-#[unsafe(export_name = "oi_arena")]
-pub extern "C" fn arena() -> *const Allocator {
-	record(arena_proc, Box::leak(Box::new(Arena::default())) as *mut Arena as i64)
 }
 
 /// Drive an allocator's proc.

@@ -80,15 +80,32 @@ fn an_arena_rewinds_to_its_first_chunk() {
 		check(
 			[
 				&format!("ctx :: Context.{{ ..ctx, alloc = {a} }}"),
-				"xs := [1 2 3]",
+				"xs := [ 1 2 3 ]",
 				"at :: xs.ptr",
 				"ctx.alloc.free_all()",
-				"ys := [4 5 6]",
+				"ys := [ 4 5 6 ]",
 				"print(ys.ptr == at)",
 			],
 			"true",
 		);
 	}
+}
+
+#[test]
+fn an_arena_grows_past_its_first_chunk() {
+	let src = indoc! {"
+		sum :: fn(a: Alloc, n: int) out: int {
+			ctx :: Context.{ ..ctx, alloc = a }
+			xs := [ 0 ]
+			loop i in 1..n { xs << i }
+			loop x in xs { out += x }
+			a.free_all()
+			out
+		}
+		a :: arena()
+		print(sum(a, 100000), sum(a, 10), sum(a, 200000))
+	"};
+	check(src, "4999950000 45 19999900000");
 }
 
 #[test]

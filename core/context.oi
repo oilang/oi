@@ -56,7 +56,63 @@ pub system_allocator :: fn() Alloc {
 ## A fresh bump arena.
 ## Allocating is a pointer bump, freeing is a no-op, and `free_all` rewinds.
 pub arena :: fn() Alloc {
-	unsafe rt.oi_arena()
+	c :: chunk(CHUNK)
+	a :: raw(24)
+	unsafe a.write(Arena.{ first = c, at = c })
+	unsafe Arena.(a)
+}
+
+CHUNK :: 2 ** 16
+
+# A chunk list. Chunks are never handed back, so `free_all` rewinds to the first and reuses them.
+Arena :: struct {
+	first: ptr,
+	at: ptr,
+	used: int,
+}
+
+# Straight from the system heap, since `ctx.alloc` may be the arena itself.
+raw :: fn(size: int) ptr {
+	sys :: system_allocator()
+	sys.proc(sys.data, .alloc, size, 8, ptr(0), 0)
+}
+
+# A chunk opens with its next chunk and its size.
+chunk :: fn(size: int) ptr {
+	p :: raw(size + 16)
+	unsafe p.offset(8).write(size)
+	p
+}
+
+Arena : Allocator < {
+	alloc :: fn(mut self, size: int, align: int) ptr {
+		n :: if size > 0 {
+			(size + 7) / 8 * 8
+		} else do 8
+		loop (self.used + n > unsafe self.at.offset(8).read[int]()) {
+			next := unsafe self.at.read[ptr]()
+			if next.is_null() {
+				next = chunk(if n > CHUNK do n else do CHUNK)
+				unsafe self.at.write(next)
+			}
+			self.at = next
+			self.used = 0
+		}
+
+		out :: self.at.offset(16 + self.used)
+		self.used += n
+		i := 0
+		loop i < n {
+			unsafe out.offset(i).write(0)
+			i += 8
+		}
+		out
+	}
+
+	free_all :: fn(mut self) {
+		self.at = self.first
+		self.used = 0
+	}
 }
 
 ## Log severity, ordered.
