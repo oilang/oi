@@ -235,3 +235,13 @@ fn zeroed_fn_options_are_none() {
 	"};
 	check(src, "none none 42");
 }
+
+#[test]
+fn anon_none_infers_for_fn_options() {
+	let src = indoc! {"
+		S :: struct { f: ?fn(n: int) int = .none }
+		g: ?fn(n: int) int = .none
+		print(S.{}.f == none, g == none)
+	"};
+	check(src, "true true");
+}

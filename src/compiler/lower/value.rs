@@ -246,7 +246,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label(format!("doesn't fit in {target}"))
 		};
 		if let Some(some) = self.types.option_inner(target) {
-			if matches!(inner, Expr::Ident(n) if n == "none") {
+			if matches!(inner, Expr::Ident(n) | Expr::EnumShorthand { variant: n, .. } if n == "none") {
 				return Ok(Some(self.make_option(target, None)));
 			}
 			let v = self.coerce_lit(value, &some)?;
