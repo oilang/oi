@@ -60,7 +60,7 @@ pub(super) fn closure_escape(typ: &Typ, span: Range<usize>, action: &str) -> Res
 	Ok(())
 }
 
-// Unwrap one level of `&T` so things can see throughva ref.
+// Unwrap one level of `^T` so things can see throughva ref.
 pub(super) fn peel(typ: &Typ) -> &Typ {
 	match typ {
 		Typ::Ref(inner) => inner,

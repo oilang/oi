@@ -435,12 +435,12 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 	}
 }
 
-// Whether `typ` is a `?&T`.
+// Whether `typ` is a `?^T`.
 fn opt_ref(typ: &Typ) -> bool {
-	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[&")))
+	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[^")))
 }
 
-// Whether a type is a `?&T` or `?fn`, whose none is a null pointer.
+// Whether a type is a `?^T` or `?fn`, whose none is a null pointer.
 pub(super) fn opt_niche(typ: &Typ) -> bool {
 	let Typ::Enum(n) = typ else { return false };
 	let arg = n.strip_prefix(role::OPTION).and_then(|a| a.strip_prefix('['));

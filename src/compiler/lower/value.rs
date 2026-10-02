@@ -325,7 +325,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.types.enums.borrow().get(name).cloned().unwrap_or_default()
 	}
 
-	// See through `&T`.
+	// See through `^T`.
 	pub(super) fn peeled(&self, typ: &Typ) -> Typ {
 		match peel(typ) {
 			Typ::Struct(n, f) if f.is_empty() => {

@@ -87,7 +87,7 @@ where
 				.ignore_then(base.clone().or_not())
 				.map(|t| result_of(t.unwrap_or(TypeExpr::Tuple(vec![])), None));
 			// shared refs
-			let ref_type = just(Token::Amp).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
+			let ref_type = just(Token::Caret).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
 			// atom(s)
 			let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
 

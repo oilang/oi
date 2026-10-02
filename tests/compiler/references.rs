@@ -34,19 +34,19 @@ fn ref_of_existing_boxes_a_copy() {
 #[test]
 fn bare_ref_without_value_errors() {
 	fail(
-		["Node :: struct { value: int }", "n: &Node"],
-		"a reference must be initialized (`?&T` for an optional one)",
+		["Node :: struct { value: int }", "n: ^Node"],
+		"a reference must be initialized (`?^T` for an optional one)",
 	);
 }
 
 #[test]
 fn optional_ref_zero_value_assign_unwrap() {
-	check(["Node :: struct { value: int }", "o: ?&Node", "o"], "none");
+	check(["Node :: struct { value: int }", "o: ?^Node", "o"], "none");
 	check(
 		indoc! {"
 			Node :: struct { value: int }
-			o: ?&Node
-			o = ?&Node.(&Node.{ value = 7 })
+			o: ?^Node
+			o = ?^Node.(&Node.{ value = 7 })
 			match o {
 				.some.(n) => n.value,
 				.none => -1,
@@ -71,18 +71,18 @@ fn no_leaks_on_share_and_release() {
 fn bare_ref_field_rejected() {
 	let src = indoc! {"
 		Node :: struct { value: int }
-		List :: struct { head: &Node }
+		List :: struct { head: ^Node }
 	"};
-	fail(src, "must be optional (`?&T`)");
+	fail(src, "must be optional (`?^T`)");
 }
 
 #[test]
 fn linked_nodes() {
 	check(
 		indoc! {r#"
-			Node :: struct { value: int, next: ?&Node }
+			Node :: struct { value: int, next: ?^Node }
 			tail :: &Node.{ value = 2 }
-			head :: &Node.{ value = 1, next = ?&Node.(tail) }
+			head :: &Node.{ value = 1, next = ?^Node.(tail) }
 			match head.next {
 				.some.(n) => print("{head.value} -> {n.value}"),
 				.none => print("lonely"),
@@ -95,8 +95,8 @@ fn linked_nodes() {
 #[test]
 fn interior_ref_frees_on_release() {
 	assert_clean(indoc! {"
-		Node :: struct { value: int, next: ?&Node }
-		head :: &Node.{ value = 1, next = ?&Node.(&Node.{ value = 2 }) }
+		Node :: struct { value: int, next: ?^Node }
+		head :: &Node.{ value = 1, next = ?^Node.(&Node.{ value = 2 }) }
 		print(head.value)
 	"});
 }
@@ -104,9 +104,9 @@ fn interior_ref_frees_on_release() {
 #[test]
 fn shared_option_ref_stays_clean() {
 	assert_clean(indoc! {"
-		Node :: struct { value: int, next: ?&Node }
+		Node :: struct { value: int, next: ?^Node }
 		t :: &Node.{ value = 2 }
-		o :: ?&Node.(t)
+		o :: ?^Node.(t)
 		a :: &Node.{ value = 1, next = o }
 		b :: &Node.{ value = 3, next = o }
 		print(t.value)
@@ -116,8 +116,8 @@ fn shared_option_ref_stays_clean() {
 #[test]
 fn returned_box_keeps_zeroed_field() {
 	let src = indoc! {r#"
-		Node :: struct { value: int, next: ?&Node }
-		make :: fn() &Node { &Node.{ value = 1 } }
+		Node :: struct { value: int, next: ?^Node }
+		make :: fn() ^Node { &Node.{ value = 1 } }
 		n :: make()
 		match n.next {
 			.some.(x) => print(x.value),
@@ -132,9 +132,9 @@ fn returned_box_keeps_zeroed_field() {
 fn rebind_releases_old_target() {
 	assert_clean(indoc! {r#"
 		Node :: struct { value: int }
-		o: ?&Node
-		o = ?&Node.(&Node.{ value = 1 })
-		o = ?&Node.(&Node.{ value = 2 })
+		o: ?^Node
+		o = ?^Node.(&Node.{ value = 1 })
+		o = ?^Node.(&Node.{ value = 2 })
 		print("done")
 	"#});
 }
@@ -144,7 +144,7 @@ fn user_enum_with_ref_payload_stays_boxed() {
 	check(
 		indoc! {r#"
 			Node :: struct { value: int }
-			E :: enum { empty, full(&Node) }
+			E :: enum { empty, full(^Node) }
 			e :: E.full.(&Node.{ value = 7 })
 			print(e)
 			match e {
@@ -167,10 +167,10 @@ fn value_recursion_still_errors() {
 #[test]
 fn two_node_cycle_reclaimed() {
 	assert_clean(indoc! {r#"
-		Node :: struct { value: int, next: ?&Node }
+		Node :: struct { value: int, next: ?^Node }
 		a := &Node.{ value = 1 }
-		b :: &Node.{ value = 2, next = ?&Node.(a) }
-		a.next = ?&Node.(b)
+		b :: &Node.{ value = 2, next = ?^Node.(a) }
+		a.next = ?^Node.(b)
 		print(a.value)
 	"#});
 }
@@ -178,9 +178,9 @@ fn two_node_cycle_reclaimed() {
 #[test]
 fn self_cycle_reclaimed() {
 	assert_clean(indoc! {r#"
-		Node :: struct { value: int, next: ?&Node }
+		Node :: struct { value: int, next: ?^Node }
 		n := &Node.{ value = 1 }
-		n.next = ?&Node.(n)
+		n.next = ?^Node.(n)
 		print(n.value)
 	"#});
 }
@@ -189,10 +189,10 @@ fn self_cycle_reclaimed() {
 fn cycle_with_acyclic_hangoff_reclaimed() {
 	assert_clean(indoc! {r#"
 		Leaf :: struct { v: int }
-		Node :: struct { value: int, leaf: ?&Leaf, next: ?&Node }
-		a := &Node.{ value = 1, leaf = ?&Leaf.(&Leaf.{ v = 9 }) }
-		b :: &Node.{ value = 2, next = ?&Node.(a) }
-		a.next = ?&Node.(b)
+		Node :: struct { value: int, leaf: ?^Leaf, next: ?^Node }
+		a := &Node.{ value = 1, leaf = ?^Leaf.(&Leaf.{ v = 9 }) }
+		b :: &Node.{ value = 2, next = ?^Node.(a) }
+		a.next = ?^Node.(b)
 		print(a.value)
 	"#});
 }

@@ -233,7 +233,7 @@ impl Typ {
 			Typ::FixedArray(e, n) => format!("[{n}]{}", e.key()),
 			Typ::Map(k, v) => format!("[{}]{}", k.key(), v.key()),
 			Typ::Access(a, inner) => format!("{a} {}", inner.key()),
-			Typ::Ref(inner) => format!("&{}", inner.key()),
+			Typ::Ref(inner) => format!("^{}", inner.key()),
 			Typ::Trait(name) => format!("dyn {name}"),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				let ps: Vec<_> = params.iter().map(|p| p.typ.key()).collect();
@@ -314,7 +314,7 @@ impl fmt::Display for Typ {
 			}
 			Typ::Map(k, v) => write!(f, "[{k}]{v}"),
 			Typ::Access(a, inner) => write!(f, "{a} {inner}"),
-			Typ::Ref(inner) => write!(f, "&{inner}"),
+			Typ::Ref(inner) => write!(f, "^{inner}"),
 			Typ::Ast => write!(f, "Ast"),
 			Typ::Any => write!(f, "any"),
 			Typ::Const(n) => write!(f, "{n}"),

@@ -116,7 +116,6 @@ tags: []
 - `nil`
 - using `#` for annotations despite comment clash
 - `using`/`with` `odin javascript`
-	- I've put off the `^T` and `T^` decision for far too long
 - indent stripping as part of the literal, rather than macros like Rust's `indoc!` or functions like V's `.strip_indent()` `C# swift`
 - [ ] fn math? f + g, if both return strings, concats strings?
 - allowing quotes/AST outside of macros, for code generators and stuff

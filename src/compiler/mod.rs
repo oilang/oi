@@ -452,7 +452,7 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 	}
 }
 
-// No placeholder struct may appear outside a `&T`.
+// No placeholder struct may appear outside a `^T`.
 fn ref_guarded(typ: &Typ, placeholders: &HashSet<String>) -> bool {
 	match typ {
 		Typ::Ref(_) => true,
@@ -1381,8 +1381,8 @@ impl<M: Module> Compiler<M> {
 		let field = |types: &TypeCtx, p: &Param| {
 			let typ = types.resolve(&p.typ, p.span)?;
 			if matches!(typ, Typ::Ref(_)) && p.default.is_none() {
-				let msg = "a reference field must be optional (`?&T`) or have a default";
-				return Err(Diagnostic::new(msg, p.span.into_range()).with_label("no zero value for `&T`"));
+				let msg = "a reference field must be optional (`?^T`) or have a default";
+				return Err(Diagnostic::new(msg, p.span.into_range()).with_label("no zero value for `^T`"));
 			}
 			Ok(FieldDef {
 				name: p.name.clone(),

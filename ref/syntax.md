@@ -319,15 +319,26 @@ User :: struct {
 	swag: int = 5
 }
 
-# references
-# this is an explicit heap allocation
-# `&User.{}` makes one shared value, copies of the reference are aliases
-u := &User.{}
+# pointers
+
+# `^T` is a pointer to a `T` value
+# `&x` takes the address of a value (only works on mutable bindings)
+x := 5
+p := &x
+
+# `p^` reads/writes through a pointer
+p^ = 6
+assert!(x == 6)
+
+# `&` boxes a temporary, which is an explicit heap allocation
+u: ^User = &User.{}
 v := u # same user, not a copy
-v.swag = 9
+v.swag = 9 # `.` auto derefs
 assert!(u.swag == 9)
-# writing through a reference requires a `mut` binding
-# `&x` on an existing value boxes a copy
+# writing through a pointer requires a `mut` binding
+
+# `^T` currently has no zero value (I'm debating adding `nil` to Oi), but `?^T` is mostly the same thing
+next: ?^User = none
 
 # required fields
 Foo :: struct {
@@ -787,13 +798,13 @@ Ctx : Error < { message :: fn(self) string { "{self.where}: {self.Error.message(
 	| `?T` | Optional | `Option<T>` |
 	| `!T` | Result | `Result<T, _>` (error is any `Error`) |
 	| `E!T` | Result | `Result<T, E>` (error pinned to `E`) |
-	| `&T` | Shared reference | `Rc<T>` |
+	| `^T` | Pointer | `Rc<T>` |
 	| `fn (A) R` | Function | `fn(A) -> R` |
 	| `..T` | Vararg, param position only, body sees `[]T` | - |
 	| `Foo[T]` | Generic instance | `Foo<T>` |
 	| `Trait` | Trait object | `&dyn Trait` |
 
-	the prefix shorthands (`[]` `[N]` `[K]` `?` `!` `&`) read left-to-right
+	the prefix shorthands (`[]` `[N]` `[K]` `?` `!` `^`) read left-to-right
 	everything else nests in brackets
 }#
 
@@ -1268,7 +1279,7 @@ main :: fn() {
 	## operators
 
 	# precedence, tightest first. every infix operator is left-associative except `**`
-	#   .  []  ()  ?
+	#   .  []  ()  ?  ^
 	#   @  -  !  **
 	#   *  /  %
 	#   +  -
@@ -2375,7 +2386,7 @@ main :: fn() {
 
 # every fn body has an implicit `ctx: core::Context`, a mutable copy of the caller's
 Context :: struct {
-	# every heap byte: buffers, strings, maps, `&T`, closure envs
+	# every heap byte: buffers, strings, maps, `^T`, closure envs
 	alloc: Alloc
 	# per-thread arena, `ctx.temp.free_all()` once a frame
 	temp: Alloc
@@ -2399,7 +2410,7 @@ frame :: fn() {
 	draw()
 }
 # custom ctx types embed `Context`
-GameCtx :: struct { Context, world: &World, dt: float }
+GameCtx :: struct { Context, world: ^World, dt: float }
 
 # functions can specify a ctx type with `@ctx`
 @ctx(GameCtx)

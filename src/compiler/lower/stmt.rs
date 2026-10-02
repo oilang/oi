@@ -59,9 +59,9 @@ impl<'a, M: Module> Translator<'a, M> {
 						(Some(value), None) => self.expr(value)?,
 						(None, Some(target)) => {
 							if matches!(target, Typ::Ref(_)) {
-								let msg = "a reference must be initialized (`?&T` for an optional one)";
+								let msg = "a reference must be initialized (`?^T` for an optional one)";
 								return Err(
-									Diagnostic::new(msg, stmt.1.into_range()).with_label("no zero value for `&T`")
+									Diagnostic::new(msg, stmt.1.into_range()).with_label("no zero value for `^T`")
 								);
 							}
 							// a nozero binding starts unassigned, and stays unreadable until assigned

@@ -306,6 +306,8 @@ pub enum Token {
 	Dollar,
 	#[token("?")]
 	Question,
+	#[token("^")]
+	Caret,
 	#[token(";", logos::skip)]
 	Semicolon,
 
@@ -411,6 +413,7 @@ impl fmt::Display for Token {
 			Token::At => write!(f, "@"),
 			Token::Dollar => write!(f, "$"),
 			Token::Question => write!(f, "?"),
+			Token::Caret => write!(f, "^"),
 			Token::Semicolon => write!(f, ";"),
 		}
 	}
