@@ -1,4 +1,4 @@
-use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, shadow_params, spanned, types};
+use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, shadow_params, spanned, stmt, types};
 use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, record_args};
 use crate::lexer::Token;
 
@@ -64,10 +64,6 @@ fn or_else((value, body): (Spanned<Expr>, Option<Vec<Spanned<Expr>>>), span: Spa
 // The core expr/atom/pratt grammar.
 pub(super) fn definition<'token, I>(
 	p: &Parsers<'token, I>,
-	binds: impl FnOnce(
-		P<'token, I, Spanned<Expr>>,
-		P<'token, I, Spanned<Expr>>,
-	) -> (P<'token, I, Spanned<Expr>>, P<'token, I, Spanned<Expr>>),
 	mut header_expr: Rec<'token, I, Spanned<Expr>>,
 	mut header_cond: Rec<'token, I, Spanned<Expr>>,
 	mut juxt_expr: Rec<'token, I, Spanned<Expr>>,
@@ -713,7 +709,7 @@ where
 			.boxed()
 	};
 	header_expr.define(level(None));
-	let (bind, test) = binds(level(None).boxed(), match_pat.clone());
+	let (bind, test) = stmt::binds(p, level(None).boxed(), match_pat.clone());
 	header_cond.define(bind.or(test).or(header_expr.clone()));
 	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
 	level(Some(trail_only))
