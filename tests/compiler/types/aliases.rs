@@ -113,3 +113,13 @@ fn unknown_alias_target_errors() {
 	"};
 	fail(src, "unknown type");
 }
+
+#[test]
+fn generic_alias_is_transparent() {
+	let src = indoc! {"
+		Grid[T] :: [][]T
+		g : Grid[int] = [[1 2] [3 4]]
+		print(g, Grid[int].[[5]])
+	"};
+	check(src, "[[1, 2], [3, 4]] [[5]]");
+}

@@ -152,3 +152,14 @@ fn explicit_instance_head() {
 		"expected string, got int",
 	);
 }
+
+#[test]
+fn generic_tuple_struct() {
+	let src = indoc! {r#"
+		B[T] :: struct (T)
+		b :: B[int](3)
+		c : B[string] = .("x")
+		print(b, c)
+	"#};
+	check(src, r#"B[int](3) B[string]("x")"#);
+}

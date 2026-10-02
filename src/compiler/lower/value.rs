@@ -792,12 +792,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Tuple struct constructor.
 	pub(super) fn construct_tuple_struct(
 		&mut self,
-		name: &str,
+		typ: Typ,
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let typ = self.types().resolve(&TypeExpr::Name(name.to_string()), span)?;
-		let Typ::TupleStruct(_, fields) = typ.clone() else {
+		let Typ::TupleStruct(name, fields) = typ.clone() else {
 			unreachable!("caller checked the alias");
 		};
 		let mut slots: Vec<Option<&Spanned<Expr>>> = vec![None; fields.len()];
@@ -1162,8 +1161,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut name = match name {
 			"" => match target {
 				Some(Typ::Struct(n, _)) => n.clone(),
-				Some(Typ::TupleStruct(n, _)) => {
-					return self.construct_tuple_struct(n, &record_args(fields.to_vec(), span), span);
+				Some(t @ Typ::TupleStruct(..)) => {
+					return self.construct_tuple_struct(t.clone(), &record_args(fields.to_vec(), span), span);
 				}
 				// anonymous structs
 				_ if fields.iter().all(|f| f.0.is_some()) => return self.infer_anon(fields),

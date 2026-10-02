@@ -117,8 +117,9 @@ where
 		.then(p.type_expr.clone())
 		.map(|(n, t)| (Some(n), t))
 		.or(p.type_expr.clone().map(|t| (None, t)));
-	let tuple_struct_def = ident()
-		.then_ignore(just(Token::DoubleColon))
+	let plain_head = ident().then(p.type_params.clone()).then_ignore(just(Token::DoubleColon));
+	let tuple_struct_def = plain_head
+		.clone()
 		.then_ignore(just(Token::Struct))
 		.then(paren(
 			ts_field
@@ -127,9 +128,9 @@ where
 				.at_least(1)
 				.collect::<Vec<_>>(),
 		))
-		.map_with(|(name, fields), ex| {
+		.map_with(|((name, type_params), fields), ex| {
 			let typ = TypeExpr::TupleStruct(name.clone(), fields);
-			(Expr::TypeAlias { name, typ }, ex.span())
+			(Expr::TypeAlias { name, type_params, typ }, ex.span())
 		})
 		.boxed();
 
@@ -223,8 +224,7 @@ where
 			_ => false,
 		}
 	}
-	let type_alias = ident()
-		.then_ignore(just(Token::DoubleColon))
+	let type_alias = plain_head
 		.then(p.type_expr.clone())
 		.filter(|(_, typ)| !expr_shaped(typ))
 		.then_ignore(
@@ -243,7 +243,7 @@ where
 			])
 			.not(),
 		)
-		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
+		.map_with(|((name, type_params), typ), ex| (Expr::TypeAlias { name, type_params, typ }, ex.span()));
 
 	// trait definitions
 	let slot_fn = ident()

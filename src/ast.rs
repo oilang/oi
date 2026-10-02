@@ -270,6 +270,7 @@ pub enum Expr {
 	// `type Name = TypeExpr`
 	TypeAlias {
 		name: String,
+		type_params: Vec<TypeParam>,
 		typ: TypeExpr,
 	},
 

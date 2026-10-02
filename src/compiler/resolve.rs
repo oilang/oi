@@ -309,6 +309,17 @@ impl TypeCtx<'_> {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate_enum(name, def, &subst, span);
 				}
+				if let Some((params, te)) = self.generics.aliases.get(name) {
+					let type_params = &self.generic_subst(name, params, args, span)?;
+					let inner = TypeCtx { type_params, ..*self };
+					return Ok(match inner.resolve(te, span)? {
+						Typ::TupleStruct(_, fields) => {
+							let keys: Vec<_> = params.iter().map(|p| type_params[&p.name].key()).collect();
+							Typ::TupleStruct(format!("{name}[{}]", keys.join(", ")), fields)
+						}
+						typ => typ,
+					});
+				}
 				let msg = match self.structs.contains_key(name) || self.enums.borrow().contains_key(name) {
 					true => format!("`{name}` is not generic"),
 					false => format!("unknown type `{name}`"),

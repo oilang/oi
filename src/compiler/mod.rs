@@ -212,6 +212,7 @@ pub(crate) struct GenericEnumDef {
 pub(crate) struct Generics {
 	pub structs: HashMap<String, GenericStructDef>,
 	pub enums: HashMap<String, GenericEnumDef>,
+	pub aliases: HashMap<String, (Vec<TypeParam>, TypeExpr)>,
 	// struct instances' concrete type args keyed by display name (`Box[int]`)
 	pub instance_args: RefCell<HashMap<String, Vec<Typ>>>,
 }
@@ -1132,7 +1133,7 @@ impl<M: Module> Compiler<M> {
 					enum_items.push((name.as_str(), backing.as_ref(), variants.as_slice()));
 					self.register_fills(name, &[], fills, scope, &mut others, Fills::default())?;
 				}
-				Expr::TypeAlias { name, typ } => {
+				Expr::TypeAlias { name, type_params, typ } => {
 					if matches!(typ, TypeExpr::TupleStruct(..)) && TypeCtx::builtin_type(name) {
 						let msg = format!("`{name}` is a builtin type");
 						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("pick another struct name"));
@@ -1146,7 +1147,10 @@ impl<M: Module> Compiler<M> {
 							n.clone_from(q);
 						}
 					});
-					alias_items.push((name.as_str(), typ));
+					match type_params.is_empty() {
+						true => alias_items.push((name.as_str(), typ)),
+						false => _ = generics.aliases.insert(name.clone(), (type_params.clone(), typ)),
+					}
 				}
 				Expr::TraitDef { .. } => {}
 				Expr::Claim {

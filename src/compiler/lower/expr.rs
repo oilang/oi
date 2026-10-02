@@ -186,6 +186,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Call { name, type_args, args } => {
 				let qn = self.qualify(name).to_string();
+				if let Some((_, TypeExpr::TupleStruct(..))) = self.types.generics.aliases.get(&qn) {
+					let te = TypeExpr::Generic(qn, type_args.iter().map(|t| t.0.clone()).collect());
+					let typ = self.types().resolve(&te, expr.1)?;
+					return self.construct_tuple_struct(typ, args, expr.1);
+				}
 				self.check_type_args(name, &qn, type_args, expr.1)?;
 				if let Some(local) = self.vars.get(name).cloned() {
 					let callee = self.read_local(&local);
@@ -198,7 +203,8 @@ impl<'a, M: Module> Translator<'a, M> {
 						None => match self.generic_fns.get(&qn).cloned() {
 							Some(def) => self.call_generic(&qn, &def, type_args, args, None, expr.1),
 							None if matches!(self.types.aliases.get(&qn), Some(TypeExpr::TupleStruct(..))) => {
-								self.construct_tuple_struct(&qn, args, expr.1)
+								let typ = self.types().resolve(&TypeExpr::Name(qn), expr.1)?;
+								self.construct_tuple_struct(typ, args, expr.1)
 							}
 							None if matches!(
 								self.types.aliases.get(&qn),

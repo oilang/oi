@@ -485,6 +485,7 @@ impl Loader {
 			if let Expr::TypeAlias {
 				name,
 				typ: TypeExpr::Sum(members),
+				..
 			} = &mut item.0
 				&& let Some(v) = members
 					.iter()
@@ -576,7 +577,14 @@ impl Loader {
 						if let Some(lit) = self.const_value(v, &m.scope) {
 							self.consts.insert(key, lit);
 						} else if let Some(te) = TypeExpr::from_expr(&v.0) {
-							assoc_types.push((Expr::TypeAlias { name: key, typ: te }, v.1));
+							assoc_types.push((
+								Expr::TypeAlias {
+									name: key,
+									type_params: vec![],
+									typ: te,
+								},
+								v.1,
+							));
 						} else {
 							return Err(err(
 								"cannot evaluate this at compile time",

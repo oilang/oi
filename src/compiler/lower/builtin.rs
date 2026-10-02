@@ -215,7 +215,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let [value] = args else {
 			let fields: Vec<_> = args.iter().map(|a| (None, a.clone())).collect();
 			return match target {
-				Typ::TupleStruct(name, _) => self.construct_tuple_struct(name, args, span),
+				Typ::TupleStruct(..) => self.construct_tuple_struct(target.clone(), args, span),
 				Typ::Struct(name, _) => self.struct_lit(name, &[], &fields, span, Some(target)),
 				Typ::Tuple(_) => self.check_expr(&(Expr::Tuple(fields), span), target),
 				_ => Err(
