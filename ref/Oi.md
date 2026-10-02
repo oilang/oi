@@ -79,13 +79,6 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [ ] `T.()` doesn't work with tuples. Should it?
-		```oi
-		T :: (int, string, float)
-		c : T : (2 "ciea" 2) # works
-		t :: T.(2 "ciea" 2) # no
-		t :: T.((2 "ciea" 2)) # no
-		```
 	- [x] `::` in fn params should make immutable defaults for consistency
 	- [x] allow `none` in enums
 	- [x] `10..-2..` `revo`
@@ -117,7 +110,6 @@ tags: []
 - `nil`
 - using `#` for annotations despite comment clash
 - `using`/`with` `odin javascript`
-- indent stripping as part of the literal, rather than macros like Rust's `indoc!` or functions like V's `.strip_indent()` `C# swift`
 - allowing quotes/AST outside of macros, for code generators and stuff
 - `let-else` `rust`
 - submodules `use raylib.math`

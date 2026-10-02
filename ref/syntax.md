@@ -936,6 +936,7 @@ main :: fn() {
 
 	# cast with `T.(value)`, which works for any type
 	big_int := i64.(50_000)
+	home := cstr."HOME"
 	small_unsigned_int := u8.(16)
 	Point.(p); Money.(500); ?int.(42)
 

@@ -231,7 +231,10 @@ where
 	// casting
 	let cast = spanned(p.type_expr.clone())
 		.then_ignore(just(Token::Dot))
-		.then(paren(loose_list(p.expr.clone())))
+		.then(
+			paren(loose_list(p.expr.clone()))
+				.or(select! { Token::String(s) => Expr::String(s) }.map_with(|s, ex| vec![(s, ex.span())])),
+		)
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
 
 	// dot tuple literals

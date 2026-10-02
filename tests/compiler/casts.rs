@@ -131,3 +131,8 @@ fn strings_do_not_parse() {
 	fail(r#"int.("42")"#, "cannot cast string to int");
 	fail(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");
 }
+
+#[test]
+fn string_literal_drops_cast_parens() {
+	check(r#"print([]u8."ab".len, []u8.r"ab\".len)"#, r"2 3");
+}
