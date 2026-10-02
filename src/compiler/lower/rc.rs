@@ -379,7 +379,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().jump(merge, &[]);
 		}
 		self.vars.retain(|_, l| !moved(l.var));
-		self.scopes = owned.iter().map(|s| s.iter().filter(|(v, _)| !moved(*v)).cloned().collect()).collect();
+		self.scopes = owned
+			.iter()
+			.map(|s| s.iter().filter(|(v, _)| !moved(*v)).cloned().collect())
+			.collect();
 	}
 
 	// A bind takes its own copy.

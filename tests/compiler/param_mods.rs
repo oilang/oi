@@ -249,8 +249,28 @@ fn slice_projection_immutable_base_rejected() {
 }
 
 #[test]
-fn scalar_mut_param_rejected() {
-	fail("f :: fn(mut n: int) {}", "must be arrays, maps, or structs");
+fn scalar_inout() {
+	check(
+		indoc! {"
+			bump :: fn(mut n: int, by: int) { n += by }
+			half :: fn(mut x: f32) { x /= 2.0 }
+			twice :: fn(mut n: int, f: fn(mut int, int)) {
+				f(mut n, 1)
+				f(mut n, 1)
+			}
+			n := 1
+			twice(mut n, bump)
+			x : f32 = 3.0
+			half(mut x)
+			print(n, x)
+		"},
+		"3 1.5",
+	);
+}
+
+#[test]
+fn unlendable_mut_param_rejected() {
+	fail("f :: fn(mut s: string) {}", "has no address to lend");
 }
 
 #[test]

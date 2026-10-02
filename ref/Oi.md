@@ -110,11 +110,13 @@ tags: []
 - [ ] `discard` and/or `pass`
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
-- [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`) `odin v rust`
+- [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
 - [ ] swizzle `odin`
 ## consider
 - `nil`
 - using `#` for annotations despite comment clash
+- `using`/`with` `odin javascript`
+	- I've put off the `^T` and `T^` decision for far too long
 - indent stripping as part of the literal, rather than macros like Rust's `indoc!` or functions like V's `.strip_indent()` `C# swift`
 - [ ] fn math? f + g, if both return strings, concats strings?
 - allowing quotes/AST outside of macros, for code generators and stuff

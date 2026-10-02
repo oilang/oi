@@ -691,11 +691,17 @@ impl TypeCtx<'_> {
 				let typ = self.param(&p.typ, p.span)?;
 				let lendable = matches!(
 					typ,
-					Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..) | Typ::Struct(..) | Typ::TupleStruct(..)
+					Typ::Int(_)
+						| Typ::UInt(_) | Typ::ISize
+						| Typ::USize | Typ::Float(_)
+						| Typ::Bool | Typ::Rune
+						| Typ::Array(_) | Typ::FixedArray(..)
+						| Typ::Map(..) | Typ::Struct(..)
+						| Typ::TupleStruct(..)
 				) && typ.newtype().is_none();
 				if p.access == Access::Mut && !lendable {
 					return Err(Diagnostic::new(
-						"`mut` parameters must be arrays, maps, or structs for now",
+						"`mut` parameters must be scalars, arrays, maps, or structs for now",
 						p.span.into_range(),
 					)
 					.with_label(format!("{typ} has no address to lend")));

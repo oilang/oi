@@ -382,6 +382,11 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 	})
 }
 
+// A param's ABI type.
+pub(crate) fn param_cl(typ: &Typ, access: Access, int: types::Type) -> types::Type {
+	if access == Access::Mut { int } else { cl_type(typ, int) }
+}
+
 // The access mod a param carries.
 pub(crate) fn access_of(typ: &Typ) -> Access {
 	if let Typ::Access(a, _) = typ { *a } else { Access::Read }

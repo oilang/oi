@@ -484,7 +484,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// After a call, reload a binding.
 	pub(super) fn reload_lent(&mut self, lent: &[(Value, Lent)]) {
 		for (slot, entry) in lent {
-			let val = self.b.ins().load(self.int, MemFlags::new(), *slot, 0);
+			let (Lent::Whole(local) | Lent::Slice { parent: local, .. }) = entry;
+			let val = self.b.ins().load(cl_type(&local.typ, self.int), MemFlags::new(), *slot, 0);
 			match entry {
 				Lent::Whole(local) => self.write_local(local, val),
 				Lent::Slice { parent, lo, len } => {

@@ -217,7 +217,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let mut sig = self.module.make_signature();
 		sig.params
-			.extend(params.iter().map(|(_, t, _)| AbiParam::new(cl_type(t, self.int))));
+			.extend(params.iter().map(|(_, t, a)| AbiParam::new(param_cl(t, *a, self.int))));
 		if def.ctx.is_some() {
 			sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
 		}

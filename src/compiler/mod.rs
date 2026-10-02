@@ -1929,7 +1929,12 @@ impl<M: Module> Compiler<M> {
 	) -> FnSig {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
-		sig.params.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, int))));
+		sig.params.extend(
+			params
+				.iter()
+				.zip(&access)
+				.map(|(p, a)| AbiParam::new(param_cl(&p.typ, *a, int))),
+		);
 		if ctx.is_some() {
 			sig.params.push(AbiParam::new(int));
 		}
@@ -2008,8 +2013,8 @@ impl<M: Module> Compiler<M> {
 	) -> (Translator<'a, M>, Block) {
 		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
-		for (_, typ, _) in def.params {
-			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
+		for (_, typ, access) in def.params {
+			b.func.signature.params.push(AbiParam::new(param_cl(typ, *access, int)));
 		}
 		if def.ctx.is_some() {
 			b.func.signature.params.push(AbiParam::new(int));
