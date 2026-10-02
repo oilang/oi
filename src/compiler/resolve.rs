@@ -17,17 +17,14 @@ pub(super) fn build_variants(variants: &[EnumVariant], types: TypeCtx) -> Result
 				Some((e, span)) => match fold_const(e, types.consts.map, types.scope) {
 					Some(Expr::Int(n)) => n,
 					_ => {
-						return Err(
-							Diagnostic::new("a discriminant must be a constant int", span.into_range())
-								.with_label("not a constant int"),
-						);
+						return fail("a discriminant must be a constant int", *span, "not a constant int");
 					}
 				},
 				None => next,
 			};
 			if !seen.insert(disc) {
 				let msg = format!("discriminant value `{disc}` assigned more than once");
-				return Err(Diagnostic::new(msg, v.span.into_range()).with_label("already taken"));
+				return fail(msg, v.span, "already taken");
 			}
 			next = disc + 1;
 			let payload = v
@@ -54,30 +51,32 @@ pub(super) fn apply_backing(
 	ast: &[EnumVariant],
 	types: TypeCtx,
 ) -> Result<(), Diagnostic> {
-	let (te, span) = backing;
-	let err = |msg: String, label| Err(Diagnostic::new(msg, span.into_range()).with_label(label));
-	let bt = types.resolve(te, *span)?;
+	let (te, span) = (&backing.0, backing.1);
+	let bt = types.resolve(te, span)?;
 	if variants.iter().any(|v| !v.payload.is_empty()) {
-		return err(
-			"a backed enum cannot have payload variants".into(),
+		return fail(
+			"a backed enum cannot have payload variants",
+			span,
 			"payloads exclude a backing",
 		);
 	}
 	if bt != Typ::Str && variants.iter().any(|v| v.raw.is_some()) {
-		return err("a raw value needs a string backing".into(), "not a string backing");
+		return fail("a raw value needs a string backing", span, "not a string backing");
 	}
 	if bt == Typ::Str {
 		if ast.iter().any(|a| a.disc.is_some()) {
-			return err(
-				"a string-backed enum uses raw values, not discriminants".into(),
+			return fail(
+				"a string-backed enum uses raw values, not discriminants",
+				span,
 				"not a raw value",
 			);
 		}
 		// raws default to the variant name at the use site
 		let raws: Vec<_> = variants.iter().map(|v| v.raw.as_ref().unwrap_or(&v.name)).collect();
 		if let Some(r) = raws.iter().enumerate().find_map(|(i, r)| raws[..i].contains(r).then_some(*r)) {
-			return err(
+			return fail(
 				format!("raw value `{r}` assigned more than once"),
+				span,
 				"duplicate raw value",
 			);
 		}
@@ -88,16 +87,18 @@ pub(super) fn apply_backing(
 			Typ::UInt(w) if *w < 64 => (0, (1i64 << w) - 1),
 			Typ::UInt(_) | Typ::USize => (0, i64::MAX),
 			t => {
-				return err(
+				// TODO: come up with a better label
+				return fail(
 					format!("enum backing type `{t}` is unsupported"),
-					// TODO: come up with a better label
+					span,
 					"not an enum-able type",
 				);
 			}
 		};
 		if let Some(v) = variants.iter().find(|v| v.disc < lo || v.disc > hi) {
-			return err(
+			return fail(
 				format!("discriminant `{}` is out of range for its backing type", v.disc),
+				span,
 				"out of range",
 			);
 		}
@@ -192,11 +193,11 @@ fn int_width(
 	let rest = name.strip_prefix(prefix)?;
 	let w = rest.parse::<u16>().ok()?;
 	if w == 0 || w > 64 {
-		return Some(Err(Diagnostic::new(
+		return Some(fail(
 			format!("{label} width {w} out of range"),
-			span.into_range(),
-		)
-		.with_label("width must be 1-64")));
+			span,
+			"width must be 1-64",
+		));
 	}
 	Some(Ok(ctor(w)))
 }
@@ -216,14 +217,8 @@ impl TypeCtx<'_> {
 					.collect::<Result<Vec<_>, _>>()?;
 				Ok(Typ::Tuple(fields))
 			}
-			TypeExpr::Variadic(_) => Err(Diagnostic::new(
-				"`..T` is only allowed as a parameter type",
-				span.into_range(),
-			)
-			.with_label("not a parameter")),
-			TypeExpr::Unquote(_) => {
-				Err(Diagnostic::new("unquote outside a macro template", span.into_range()).with_label("stray unquote"))
-			}
+			TypeExpr::Variadic(_) => fail("`..T` is only allowed as a parameter type", span, "not a parameter"),
+			TypeExpr::Unquote(_) => fail("unquote outside a macro template", span, "stray unquote"),
 			TypeExpr::Infer(e) => super::static_typ(&e.0, self, e.1),
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
 			TypeExpr::Const(n) => Ok(Typ::Const(*n)),
@@ -246,10 +241,7 @@ impl TypeCtx<'_> {
 			TypeExpr::AtomSum(names) => {
 				let mut seen = HashSet::new();
 				if let Some(dup) = names.iter().find(|n| !seen.insert(*n)) {
-					return Err(
-						Diagnostic::new(format!("duplicate atom `:{dup}` in sum type"), span.into_range())
-							.with_label("repeated atom"),
-					);
+					return fail(format!("duplicate atom `:{dup}` in sum type"), span, "repeated atom");
 				}
 				Ok(Typ::Sum(String::new(), atom_sum_variants(names)))
 			}
@@ -324,7 +316,7 @@ impl TypeCtx<'_> {
 					true => format!("`{name}` is not generic"),
 					false => format!("unknown type `{name}`"),
 				};
-				Err(Diagnostic::new(msg, span.into_range()).with_label("no type arguments expected here"))
+				fail(msg, span, "no type arguments expected here")
 			}
 		}
 	}
@@ -340,8 +332,7 @@ impl TypeCtx<'_> {
 		}
 		match fold_const(e, self.consts.map, self.scope) {
 			Some(Expr::Int(n)) if n >= 0 => Ok(n as usize),
-			_ => Err(Diagnostic::new("an array length must be a constant", span.into_range())
-				.with_label("not a constant int")),
+			_ => fail("an array length must be a constant", *span, "not a constant int"),
 		}
 	}
 
@@ -360,9 +351,10 @@ impl TypeCtx<'_> {
 			return Ok(());
 		}
 		let kind = if want { "value" } else { "type" };
-		Err(
-			Diagnostic::new(format!("`{}` is a {kind} parameter", p.name), span.into_range())
-				.with_label(format!("got `{typ}`")),
+		fail(
+			format!("`{}` is a {kind} parameter", p.name),
+			span,
+			format!("got `{typ}`"),
 		)
 	}
 
@@ -393,11 +385,7 @@ impl TypeCtx<'_> {
 		span: Span,
 	) -> Result<HashMap<String, Typ>, Diagnostic> {
 		if args.len() != params.len() {
-			return Err(Diagnostic::new(
-				format!("`{name}` expects {} type argument(s), got {}", params.len(), args.len()),
-				span.into_range(),
-			)
-			.with_label("wrong number of type arguments"));
+			return arity_err(&format!("`{name}`"), params.len(), args.len(), "type argument", span);
 		}
 		let mut subst = HashMap::new();
 		for (param, arg) in params.iter().zip(args) {
@@ -415,9 +403,10 @@ impl TypeCtx<'_> {
 		span: Span,
 	) -> Result<Typ, Diagnostic> {
 		if self.depth > MAX_GENERIC_DEPTH {
-			return Err(
-				Diagnostic::new(format!("`{name}` recurses without end"), span.into_range())
-					.with_label("would require infinitely nested fields"),
+			return fail(
+				format!("`{name}` recurses without end"),
+				span,
+				"would require infinitely nested fields",
 			);
 		}
 		let inner = TypeCtx {
@@ -458,9 +447,10 @@ impl TypeCtx<'_> {
 		span: Span,
 	) -> Result<Typ, Diagnostic> {
 		if self.depth > MAX_GENERIC_DEPTH {
-			return Err(
-				Diagnostic::new(format!("`{name}` recurses without end"), span.into_range())
-					.with_label("would require infinitely nested variants"),
+			return fail(
+				format!("`{name}` recurses without end"),
+				span,
+				"would require infinitely nested variants",
 			);
 		}
 		let concrete: Vec<Typ> = def.type_params.iter().map(|p| subst[&p.name].clone()).collect();
@@ -545,19 +535,15 @@ impl TypeCtx<'_> {
 		}
 		if name == "$?" {
 			// an omitted param type that no expected fn type filled in
-			return Err(
-				Diagnostic::new("parameter needs a type", span.into_range()).with_label("nothing here supplies one")
-			);
+			return fail("parameter needs a type", span, "nothing here supplies one");
 		}
 		if let Some((m, t)) = name.split_once('.') {
-			let err = |msg: String, label| Diagnostic::new(msg, span.into_range()).with_label(label);
-			let vis = self
-				.scope
-				.visible
-				.get(m)
-				.ok_or_else(|| err(format!("unknown module `{m}`"), "not imported"))?;
-			let t = vis.only.as_ref().map_or(Some(t), |only| only.get(t).map(String::as_str));
-			let t = t.ok_or_else(|| err(format!("`{name}` is not part of `{m}`"), "not in this import"))?;
+			let Some(vis) = self.scope.visible.get(m) else {
+				return fail(format!("unknown module `{m}`"), span, "not imported");
+			};
+			let Some(t) = vis.only.as_ref().map_or(Some(t), |only| only.get(t).map(String::as_str)) else {
+				return fail(format!("`{name}` is not part of `{m}`"), span, "not in this import");
+			};
 			return self.named(&format!("{}::{t}", vis.module), span);
 		}
 		match name {
@@ -591,18 +577,17 @@ impl TypeCtx<'_> {
 				32 => Ok(Typ::Float(32)),
 				64 => Ok(Typ::Float(64)),
 				128 => Ok(Typ::Float(128)),
-				_ => Err(
-					Diagnostic::new(format!("unsupported float width f{w}"), span.into_range())
-						.with_label("supported widths: f16, f32, f64, f128"),
+				_ => fail(
+					format!("unsupported float width f{w}"),
+					span,
+					"supported widths: f16, f32, f64, f128",
 				),
 			};
 		}
 		let name = match self.scope.env.get(name) {
 			Some(q) => q.as_str(),
 			None if !self.scope.module.is_empty() && name != "Self" && !name.contains("::") => {
-				return Err(
-					Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type")
-				);
+				return fail(format!("unknown type `{name}`"), span, "not a known type");
 			}
 			_ => name,
 		};
@@ -622,22 +607,23 @@ impl TypeCtx<'_> {
 			return Ok(Typ::Enum(name.to_string()));
 		}
 		if self.generics.structs.contains_key(name) || self.generics.enums.contains_key(name) {
-			return Err(
-				Diagnostic::new(format!("`{name}` needs type arguments"), span.into_range())
-					.with_label(format!("try `{name}[...]`")),
+			return fail(
+				format!("`{name}` needs type arguments"),
+				span,
+				format!("try `{name}[...]`"),
 			);
 		}
 		if self.traits.contains_key(name) {
 			return Ok(Typ::Trait(name.to_string()));
 		}
-		Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
+		fail(format!("unknown type `{name}`"), span, "not a known type")
 	}
 
 	// A named sum's members.
 	pub fn named_sum(&self, name: &str, span: Span) -> Result<Vec<VariantInfo>, Diagnostic> {
 		if self.depth > MAX_GENERIC_DEPTH {
 			let msg = format!("`{name}` recurses without end");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("splices itself"));
+			return fail(msg, span, "splices itself");
 		}
 		let inner = TypeCtx {
 			depth: self.depth + 1,
@@ -667,7 +653,7 @@ impl TypeCtx<'_> {
 			v.disc = disc as i64;
 			if !seen.insert(v.name.clone()) {
 				let msg = format!("duplicate member `{}` in sum type", v.name);
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("repeated member"));
+				return fail(msg, span, "repeated member");
 			}
 		}
 		Ok(Typ::Sum(String::new(), variants))
@@ -698,11 +684,11 @@ impl TypeCtx<'_> {
 						| Typ::TupleStruct(..)
 				) && typ.newtype().is_none();
 				if p.access == Access::Mut && !lendable {
-					return Err(Diagnostic::new(
+					return fail(
 						"`mut` parameters must be scalars, arrays, maps, or structs for now",
-						p.span.into_range(),
-					)
-					.with_label(format!("{typ} has no address to lend")));
+						p.span,
+						format!("{typ} has no address to lend"),
+					);
 				}
 				Ok((p.name.clone(), typ, p.access))
 			})

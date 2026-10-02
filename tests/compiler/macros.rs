@@ -132,7 +132,7 @@ fn template_macro_wrong_arity_fails() {
 		twice! :: fn(x: Ast) Ast { `%x + %x` }
 		twice!(1, 2)
 	"};
-	fail(src, "takes 1 argument, got 2");
+	fail(src, "expects 1 argument(s), got 2");
 }
 
 #[test]

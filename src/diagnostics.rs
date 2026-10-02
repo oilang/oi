@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::io::IsTerminal;
 use std::ops::Range;
 use std::sync::OnceLock;
@@ -5,6 +6,7 @@ use std::sync::OnceLock;
 use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
 use chumsky::error::{Rich, RichReason};
 
+use crate::ast::Span;
 use crate::lexer::Token;
 
 /// `--color`, set once by the CLI.
@@ -138,4 +140,17 @@ impl Diagnostic {
 		}
 		let _ = builder.finish().eprint((id, Source::from(src)));
 	}
+}
+
+// An error with a labeled span.
+pub fn fail<T>(msg: impl Into<String>, span: Span, label: impl Into<String>) -> Result<T, Diagnostic> {
+	Err(Diagnostic::new(msg, span.into_range()).with_label(label))
+}
+
+pub fn arity_err<T>(what: &str, want: impl Display, got: usize, noun: &str, span: Span) -> Result<T, Diagnostic> {
+	fail(
+		format!("{what} expects {want} {noun}(s), got {got}"),
+		span,
+		format!("wrong number of {noun}s"),
+	)
 }

@@ -14,7 +14,7 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
-use crate::diagnostics::{Diagnostic, SourceMap};
+use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail};
 use crate::loader::{Program, Scope, is_hook_trait, is_literal};
 use crate::runtime;
 
@@ -96,8 +96,11 @@ impl FnSig {
 // Only a shadow may rebind the implicit context.
 pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
 	match name == CTX {
-		true => Err(Diagnostic::new("`ctx` is reserved", span.into_range())
-			.with_label("shadow it with `ctx :: .{ ..ctx, .. }` instead")),
+		true => fail(
+			"`ctx` is reserved",
+			span,
+			"shadow it with `ctx :: .{ ..ctx, .. }` instead",
+		),
 		false => Ok(()),
 	}
 }
@@ -106,13 +109,16 @@ pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
 fn check_param_defaults(params: &[Param]) -> Result<(), Diagnostic> {
 	if let Some(p) = params.iter().find(|p| p.access == Access::Mut && p.default.is_some()) {
 		let msg = format!("`{}` is `mut` so it can't have a default value", p.name);
-		return Err(Diagnostic::new(msg, p.span.into_range())
-			.with_label("`mut` lends the caller's binding, there is none when the arg is omitted"));
+		return fail(
+			msg,
+			p.span,
+			"`mut` lends the caller's binding, there is none when the arg is omitted",
+		);
 	}
 	let tail = params.iter().skip_while(|p| p.default.is_none());
 	if let Some(p) = tail.skip(1).find(|p| p.default.is_none()) {
 		let msg = format!("`{}` needs a default value", p.name);
-		return Err(Diagnostic::new(msg, p.span.into_range()).with_label("defaults must be trailing"));
+		return fail(msg, p.span, "defaults must be trailing");
 	}
 	Ok(())
 }
@@ -123,7 +129,7 @@ fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 	let mut varargs = params.iter().filter(|p| matches!(p.typ, TypeExpr::Variadic(_)));
 	let Some(p) = varargs.nth(1) else { return Ok(()) };
 	let msg = format!("`{}` has more than one vararg", display_name(name));
-	Err(Diagnostic::new(msg, p.span.into_range()).with_label("second vararg"))
+	fail(msg, p.span, "second vararg")
 }
 
 // Check that every param and return are C friendly.
@@ -132,9 +138,10 @@ pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ,
 		.chain((!ret.is_unit()).then_some(ret))
 		.find(|t| !t.is_c_repr(&types))
 	{
-		Some(t) => Err(
-			Diagnostic::new(format!("`{name}` can't cross the C ABI"), span.into_range())
-				.with_label(format!("`{t}` has no C representation")),
+		Some(t) => fail(
+			format!("`{name}` can't cross the C ABI"),
+			span,
+			format!("`{t}` has no C representation"),
 		),
 		None => Ok(()),
 	}
@@ -145,12 +152,12 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 	let c = |n: &String| n == role::C;
 	match (names, typ) {
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
-		([n], Typ::Closure(..)) if c(n) => Err(Diagnostic::new("`@c` fns can't capture", span.into_range())
-			.with_label("C has nowhere to keep an environment")),
+		([n], Typ::Closure(..)) if c(n) => fail("`@c` fns can't capture", span, "C has nowhere to keep an environment"),
 		([n], Typ::Fn(..)) if n == role::PURE || n.starts_with(role::CTX) => Ok(()),
-		_ => Err(
-			Diagnostic::new(format!("`{}{typ}` isn't a type", marks(names)), span.into_range())
-				.with_label("only `@c`, `@pure`, or `@ctx` on a fn, so far"),
+		_ => fail(
+			format!("`{}{typ}` isn't a type", marks(names)),
+			span,
+			"only `@c`, `@pure`, or `@ctx` on a fn, so far",
 		),
 	}
 }
@@ -313,8 +320,7 @@ fn check_c_structs(types: TypeCtx, structs: &HashMap<String, Vec<FieldDef>>) -> 
 		};
 		let span = anns[name].iter().find(|a| ann(a, role::C).is_some()).unwrap().1;
 		let msg = format!("`{}.{}` has no C representation", display_name(name), bad.name);
-		return Err(Diagnostic::new(msg, span.into_range())
-			.with_label(format!("`{}` is not a type with a known C layout", bad.typ)));
+		return fail(msg, span, format!("`{}` is not a type with a known C layout", bad.typ));
 	}
 	Ok(())
 }
@@ -339,38 +345,34 @@ fn check_annotations<'p>(
 	Ok(())
 }
 
+const BARE_ANN: &str = "a bare annotation names a unit or struct const";
+
 fn check_annotation(
 	a: &Annotation,
 	structs: &HashMap<String, Vec<FieldDef>>,
 	generics: &Generics,
 	consts: &HashMap<String, Spanned<Expr>>,
 ) -> Result<(), Diagnostic> {
-	let err = |msg: String, label: String| Err(Diagnostic::new(msg, a.1.into_range()).with_label(label));
 	match &a.0 {
 		Expr::StructLit { name, fields, .. } => check_struct_lit(name, fields, a.1, structs, generics),
 		Expr::Ident(name) if name == "unsafe" => Ok(()),
 		Expr::Ident(name) => match consts.get(name) {
 			Some((Expr::StructLit { name, fields, .. }, _)) => check_struct_lit(name, fields, a.1, structs, generics),
 			Some((Expr::Tuple(fields), _)) if fields.is_empty() => Ok(()),
-			Some(_) => err(
-				format!("`{name}` is not an annotation value"),
-				"a bare annotation names a unit or struct const".into(),
-			),
+			Some(_) => fail(format!("`{name}` is not an annotation value"), a.1, BARE_ANN),
 			// a bare struct type denotes its zero value
 			None if structs.contains_key(name) => Ok(()),
 			None if generics.structs.contains_key(name) => {
 				let msg = "a generic struct can't be an annotation";
-				Err(Diagnostic::new(msg, a.1.into_range()).with_label("pick a concrete struct"))
+				fail(msg, a.1, "pick a concrete struct")
 			}
-			None => err(
-				format!("`{name}` is not a constant"),
-				"a bare annotation names a unit or struct const".into(),
-			),
+			None => fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
 		},
 		Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => Ok(()),
-		Expr::Call { .. } => err(
-			"annotation fns aren't supported here yet".into(),
-			"only main-file items take fn annotations".into(),
+		Expr::Call { .. } => fail(
+			"annotation fns aren't supported here yet",
+			a.1,
+			"only main-file items take fn annotations",
 		),
 		_ => Ok(()),
 	}
@@ -389,33 +391,35 @@ fn check_struct_lit(
 	let Some(field_defs) = structs.get(name) else {
 		if generics.structs.contains_key(name) {
 			let msg = "a generic struct can't be an annotation";
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("pick a concrete struct"));
+			return fail(msg, span, "pick a concrete struct");
 		}
 		let msg = format!("`{name}` is not a struct");
-		return Err(Diagnostic::new(msg, span.into_range()).with_label("an annotation is a struct value"));
+		return fail(msg, span, "an annotation is a struct value");
 	};
 	let mut prefix = 0;
 	for (i, (key, value)) in fields.iter().enumerate() {
-		let err = |msg: String, label| Err(Diagnostic::new(msg, value.1.into_range()).with_label(label));
 		let idx = match key {
 			None if i != prefix => {
-				return err(
-					"positional fields go before named fields".into(),
+				return fail(
+					"positional fields go before named fields",
+					value.1,
 					"positional field after a named one",
 				);
 			}
 			None if i >= field_defs.len() => {
 				let n = fields.iter().filter(|(k, _)| k.is_none()).count();
 				let msg = format!("`{name}` has {} fields but {n} values were provided", field_defs.len());
-				return err(msg, "wrong number of fields");
+				return fail(msg, value.1, "wrong number of fields");
 			}
 			None => {
 				prefix += 1;
 				i
 			}
 			Some(key) => match field_defs.iter().position(|f| &f.name == key) {
-				None => return err(format!("`{name}` has no field `{key}`"), "no such field"),
-				Some(idx) if idx < prefix => return err(format!("`{key}` was already set positionally"), "set twice"),
+				None => return fail(format!("`{name}` has no field `{key}`"), value.1, "no such field"),
+				Some(idx) if idx < prefix => {
+					return fail(format!("`{key}` was already set positionally"), value.1, "set twice");
+				}
 				Some(idx) => idx,
 			},
 		};
@@ -427,12 +431,10 @@ fn check_struct_lit(
 fn check_lit(e: &Expr, typ: Option<&Typ>, span: Span) -> Result<(), Diagnostic> {
 	if !is_literal(e) {
 		let msg = "annotation arguments must be literal values";
-		return Err(Diagnostic::new(msg, span.into_range()).with_label("not a literal"));
+		return fail(msg, span, "not a literal");
 	}
 	match typ {
-		Some(typ) if !lit_matches(e, typ) => {
-			Err(Diagnostic::new(format!("expected {typ}"), span.into_range()).with_label("type mismatch"))
-		}
+		Some(typ) if !lit_matches(e, typ) => fail(format!("expected {typ}"), span, "type mismatch"),
 		_ => Ok(()),
 	}
 }
@@ -563,27 +565,27 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 				} else {
 					"annotate it, or give the array a literal element"
 				};
-				return Err(
-					Diagnostic::new("cannot tell what type this static is", span.into_range()).with_label(hint),
-				);
+				return fail("cannot tell what type this static is", span, hint);
 			}
 			let elem = static_typ(&non_spread[0].0, types, span)?;
 			for (e, espan) in non_spread.iter().skip(1) {
 				if let Ok(other) = static_typ(e, types, *espan)
 					&& other != elem
 				{
-					return Err(
-						Diagnostic::new(format!("array elements are {elem} and {other}"), espan.into_range())
-							.with_label("mixed element types"),
+					return fail(
+						format!("array elements are {elem} and {other}"),
+						*espan,
+						"mixed element types",
 					);
 				}
 			}
 			Ok(Typ::Array(Box::new(elem)))
 		}
 		Expr::StructLit { name, .. } if !name.is_empty() => types.resolve(&TypeExpr::Name(name.clone()), span),
-		_ => Err(
-			Diagnostic::new("cannot tell what type this static is", span.into_range())
-				.with_label("annotate it, or initialize it with a literal"),
+		_ => fail(
+			"cannot tell what type this static is",
+			span,
+			"annotate it, or initialize it with a literal",
 		),
 	}
 }
@@ -855,14 +857,14 @@ impl<M: Module> Compiler<M> {
 			}
 			if others.iter().any(|f| f.key == key) || self.generics.contains_key(&key) {
 				let msg = format!("duplicate fill `{key}`");
-				return Err(Diagnostic::new(msg, m.1.into_range()).with_label("one fill per name"));
+				return fail(msg, m.1, "one fill per name");
 			}
 			if type_params.is_empty() && mtp.is_empty() {
 				let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
 					Some(decl) => fill_from_decl(params, *params_tuple, ret, *decl, m.1)?,
 					None if params.is_empty() && !params_tuple => {
 						let msg = format!("no trait method `{name}` supplies a signature");
-						return Err(Diagnostic::new(msg, m.1.into_range()).with_label("write the `fn` header out"));
+						return fail(msg, m.1, "write the `fn` header out");
 					}
 					None => (params.clone(), *params_tuple, ret.clone()),
 				};
@@ -1033,11 +1035,11 @@ impl<M: Module> Compiler<M> {
 			let open = has_ann(&self.annotations, typ, role::OPEN);
 			if !fields.is_empty() && !open {
 				let msg = format!("`{typ}` can't gain fields");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("only `@open` structs gain fields"));
+				return fail(msg, *span, "only `@open` structs gain fields");
 			}
 			if let Some(f) = fields.iter().find(|f| f.default.is_none()) {
 				let msg = format!("field `{}` needs a default", f.name);
-				return Err(Diagnostic::new(msg, f.span.into_range()).with_label("the defining module has to fill it"));
+				return fail(msg, f.span, "the defining module has to fill it");
 			}
 			added
 				.entry(typ.clone())
@@ -1076,7 +1078,7 @@ impl<M: Module> Compiler<M> {
 			let item = (supers, type_params.as_slice(), fields.as_slice(), methods.as_slice());
 			if traits.insert(name.as_str(), item).is_some() {
 				let msg = format!("duplicate trait `{name}`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("already defined"));
+				return fail(msg, *span, "already defined");
 			}
 			if scope.module == "core" {
 				self.core_traits.insert(name.clone());
@@ -1136,7 +1138,7 @@ impl<M: Module> Compiler<M> {
 				Expr::TypeAlias { name, type_params, typ } => {
 					if matches!(typ, TypeExpr::TupleStruct(..)) && TypeCtx::builtin_type(name) {
 						let msg = format!("`{name}` is a builtin type");
-						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("pick another struct name"));
+						return fail(msg, item.1, "pick another struct name");
 					}
 					let mut typ = typ.clone();
 					typ.walk_mut(&mut |t| {
@@ -1181,15 +1183,13 @@ impl<M: Module> Compiler<M> {
 						.collect();
 					if claimed.is_empty() && TypeCtx::builtin_type(typ) && scope.module != "core" {
 						let msg = format!("`{typ}` is a builtin type and can only be amended in core");
-						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("not your type"));
+						return fail(msg, item.1, "not your type");
 					}
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					for (tn, args) in &claimed {
 						if !type_params.is_empty() && !is_hook_trait(tn) {
 							let msg = "generic trait claims aren't supported yet".to_string();
-							return Err(
-								Diagnostic::new(msg, item.1.into_range()).with_label("remove the type parameters")
-							);
+							return fail(msg, item.1, "remove the type parameters");
 						}
 						trait_bodies.push(TraitBody {
 							span: item.1,
@@ -1271,8 +1271,7 @@ impl<M: Module> Compiler<M> {
 						}
 						if !params.is_empty() || ret.is_some() {
 							let msg = format!("test `{name}` must be `fn()`");
-							return Err(Diagnostic::new(msg, item.1.into_range())
-								.with_label("tests take no params and return nothing"));
+							return fail(msg, item.1, "tests take no params and return nothing");
 						}
 						let lit = |key: &str, i: usize| {
 							fields.iter().enumerate().find_map(|(j, (k, v))| {
@@ -1288,7 +1287,7 @@ impl<M: Module> Compiler<M> {
 					}
 					if others.iter().any(|f| f.key == *name) {
 						let msg = format!("duplicate fn `{}`", display_name(name));
-						return Err(Diagnostic::new(msg, item.1.into_range()).with_label("already defined"));
+						return fail(msg, item.1, "already defined");
 					}
 					others.push(FnItem {
 						key: name.clone(),
@@ -1385,7 +1384,7 @@ impl<M: Module> Compiler<M> {
 			let typ = types.resolve(&p.typ, p.span)?;
 			if matches!(typ, Typ::Ref(_)) && p.default.is_none() {
 				let msg = "a reference field must be optional (`?^T`) or have a default";
-				return Err(Diagnostic::new(msg, p.span.into_range()).with_label("no zero value for `^T`"));
+				return fail(msg, p.span, "no zero value for `^T`");
 			}
 			Ok(FieldDef {
 				name: p.name.clone(),
@@ -1410,11 +1409,11 @@ impl<M: Module> Compiler<M> {
 					}
 					for (p, f) in fields.iter().zip(&fs) {
 						if !ref_guarded(&f.typ, &placeholders) {
-							return Err(Diagnostic::new(
+							return fail(
 								format!("`{name}` recurses for ever ever"),
-								p.span.into_range(),
-							)
-							.with_label("would require infinitely nested fields"));
+								p.span,
+								"would require infinitely nested fields",
+							);
 						}
 					}
 					Ok(fs)
@@ -1490,7 +1489,7 @@ impl<M: Module> Compiler<M> {
 				continue;
 			}
 			let msg = format!("`{}` claims `Copy` without `Drop`, so nothing runs the hook", b.typ);
-			return Err(Diagnostic::new(msg, b.span.into_range()).with_label("claim `Drop` too"));
+			return fail(msg, b.span, "claim `Drop` too");
 		}
 
 		let promoted = promote_embeds(&structs, &mut self.trait_impls, &trait_bodies, scope_of);
@@ -1539,7 +1538,7 @@ impl<M: Module> Compiler<M> {
 				&& access.contains(&Access::Mut)
 			{
 				let msg = "a `@pure` fn can't take `mut` params";
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("mutation is a side effect"));
+				return fail(msg, span, "mutation is a side effect");
 			}
 			if let Some((fields, span)) = ann_span(role::EXPORT) {
 				check_c_sig(types, &item.key, &params, &ret, span)?;
@@ -1590,7 +1589,6 @@ impl<M: Module> Compiler<M> {
 			// `@link`
 			for a in self.annotations.get(name).into_iter().flatten() {
 				let Some(fields) = ann(a, role::LINK) else { continue };
-				let err = |msg: String, label: &str| Diagnostic::new(msg, a.1.into_range()).with_label(label);
 				let mut lib = None;
 				for (label, (v, _)) in fields {
 					match (label.as_deref(), v) {
@@ -1610,15 +1608,15 @@ impl<M: Module> Compiler<M> {
 				let dirs = program.roots.iter().flat_map(|r| [r.join(&scope.module), r.clone()]);
 				let found = dirs.map(|d| d.join(&file)).find(|p| p.is_file());
 				let lib = match found.or_else(|| explicit.then(|| lib.into())) {
-					Some(path) => std::fs::canonicalize(path)
-						.map_err(|e| err(format!("cannot open library `{lib}`: {e}"), "no such file"))?
-						.to_string_lossy()
-						.into_owned(),
+					Some(path) => match std::fs::canonicalize(path) {
+						Ok(path) => path.to_string_lossy().into_owned(),
+						Err(e) => return fail(format!("cannot open library `{lib}`: {e}"), a.1, "no such file"),
+					},
 					None => lib.clone(),
 				};
 				if !self.link_libs.contains(&lib) {
 					if !load_library(&lib) {
-						return Err(err(format!("unknown library `{lib}`"), "dlopen failed"));
+						return fail(format!("unknown library `{lib}`"), a.1, "dlopen failed");
 					}
 					self.link_libs.push(lib);
 				}
@@ -1626,7 +1624,7 @@ impl<M: Module> Compiler<M> {
 			let bare = bare.as_str();
 			if !process_symbol_exists(bare) {
 				let msg = format!("unknown foreign symbol `{bare}`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("no such symbol"));
+				return fail(msg, span, "no such symbol");
 			}
 			for p in &params {
 				if let Typ::Fn(ps, r) = &p.typ {
@@ -1745,8 +1743,7 @@ impl<M: Module> Compiler<M> {
 				(None, Some(init)) => static_typ(&init.0, &types, span)?,
 				(None, None) => {
 					let msg = format!("static `{}` needs a type annotation", display_name(&name));
-					return Err(Diagnostic::new(msg, span.into_range())
-						.with_label("cannot infer a type without an initializer"));
+					return fail(msg, span, "cannot infer a type without an initializer");
 				}
 			};
 			let sym = oi_symbol(&format!("static_{name}"));
@@ -1789,7 +1786,7 @@ impl<M: Module> Compiler<M> {
 			&& !types.fallible(typ)
 		{
 			let msg = format!("`main` cannot return `{typ}`");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("`main` returns nothing or `!`"));
+			return fail(msg, *span, "`main` returns nothing or `!`");
 		}
 		let typ = self.translate(
 			FnDef {
@@ -2194,8 +2191,11 @@ impl<M: Module> Compiler<M> {
 		if let Some(span) = def.ctxless
 			&& trans.ctx_used
 		{
-			return Err(Diagnostic::new("a `@ctx(none)` fn has no `ctx`", span.into_range())
-				.with_label("but its body allocates or calls a fn that takes one"));
+			return fail(
+				"a `@ctx(none)` fn has no `ctx`",
+				span,
+				"but its body allocates or calls a fn that takes one",
+			);
 		}
 		trans.b.finalize();
 

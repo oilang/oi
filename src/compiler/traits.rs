@@ -104,8 +104,7 @@ pub(crate) fn fill_from_decl(
 	let omitted = |p: &Param| matches!(&p.typ, TypeExpr::Name(n) if n == "$?");
 	// a spelled-out header of the wrong arity is left for the signature check to report
 	if params.len() != dps.len() && params.iter().any(omitted) {
-		let msg = format!("this fn literal expects {} param(s), got {}", dps.len(), params.len());
-		return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of params"));
+		return arity_err("this fn literal", dps.len(), params.len(), "param", span);
 	}
 	let ps = (params.iter().enumerate())
 		.map(|(i, p)| match dps.get(i) {
@@ -190,12 +189,12 @@ pub(super) fn check_impls<'p>(
 			let held = (types.structs.get(typ)).and_then(|fs| fs.iter().find(|f| f.name == field));
 			let Some(sn) = held.map(lends) else {
 				let msg = format!("`{typ}` has no field `{field}` to route `{tn}` through");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
+				return fail(msg, span, "no such field");
 			};
 			// check whether a via actually claims the mentioned trait
 			if sn != tn && !trait_impls.contains(&(sn.clone(), tn.to_string())) {
 				let msg = format!("`{sn}` does not claim `{tn}`, so `{typ}` cannot delegate to it");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("claim it first"));
+				return fail(msg, span, "claim it first");
 			}
 			lent = Some(sn);
 		}
@@ -208,12 +207,12 @@ pub(super) fn check_impls<'p>(
 			if !well_formed {
 				let msg = format!("`impl {tn} for {typ}` must define `fn {hook}(mut self)`");
 				let label = format!("missing or wrong `{hook}` method");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label(label));
+				return fail(msg, span, label);
 			}
 			continue;
 		}
 		let Some((supers, tparams, tfields, tmethods)) = traits.get(tn.as_str()) else {
-			return Err(Diagnostic::new(format!("unknown trait `{tn}`"), span.into_range()).with_label("no such trait"));
+			return fail(format!("unknown trait `{tn}`"), span, "no such trait");
 		};
 		let required = tparams.iter().filter(|p| p.default.is_none()).count();
 		if args.len() > tparams.len() || args.len() < required {
@@ -221,13 +220,12 @@ pub(super) fn check_impls<'p>(
 				true => required.to_string(),
 				false => format!("{required} to {}", tparams.len()),
 			};
-			let msg = format!("trait `{tn}` takes {want} type argument(s), got {}", args.len());
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of type arguments"));
+			return arity_err(&format!("trait `{tn}`"), want, args.len(), "type argument", span);
 		}
 		for s in supers {
 			if !trait_impls.contains(&(typ.to_string(), s.clone())) {
 				let msg = format!("`{typ}` must also implement `{s}`, the supertrait of `{tn}`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("missing supertrait impl"));
+				return fail(msg, span, "missing supertrait impl");
 			}
 		}
 		let mut sig_params = types.type_params.clone();
@@ -241,7 +239,7 @@ pub(super) fn check_impls<'p>(
 			if is_assoc_type(tf) {
 				if !types.aliases.contains_key(&format!("{typ}::{}", tf.name)) {
 					let msg = format!("`{typ}` is missing associated type `{}` of trait `{tn}`", tf.name);
-					return Err(Diagnostic::new(msg, span.into_range()).with_label("fill it in the claim"));
+					return fail(msg, span, "fill it in the claim");
 				}
 				continue;
 			}
@@ -254,13 +252,13 @@ pub(super) fn check_impls<'p>(
 				.map(|(_, f)| &f.typ);
 			let missing = || {
 				let msg = format!("`{typ}` is missing field `{} {want}` required by trait `{tn}`", tf.name);
-				Diagnostic::new(msg, span.into_range()).with_label("required by the trait")
+				fail(msg, span, "required by the trait")
 			};
 			if stored == Some(&want) {
 				continue;
 			}
 			if stored.is_some() {
-				return Err(missing());
+				return missing();
 			}
 			let key = format!("{typ}::{}", tf.name);
 			let lit = match consts.get(&key) {
@@ -272,12 +270,12 @@ pub(super) fn check_impls<'p>(
 						consts.insert(key.clone(), lit.clone());
 						lit
 					}
-					None => return Err(missing()),
+					None => return missing(),
 				},
 			};
 			if !literal_fits(&lit.0, &want) {
 				let msg = format!("`{key}` must be a `{want}` literal to satisfy trait `{tn}`");
-				return Err(Diagnostic::new(msg, lit.1.into_range()).with_label("wrong kind of literal"));
+				return fail(msg, lit.1, "wrong kind of literal");
 			}
 		}
 		let mut sig_aliases = types.aliases.clone();
@@ -329,7 +327,7 @@ pub(super) fn check_impls<'p>(
 			}
 			if got != want {
 				let msg = format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`");
-				return Err(Diagnostic::new(msg, m.1.into_range()).with_label("wrong signature"));
+				return fail(msg, m.1, "wrong signature");
 			}
 		}
 		for t in *tmethods {
@@ -355,7 +353,7 @@ pub(super) fn check_impls<'p>(
 				let (got, want) = (sig(&f.params, &f.ret)?, sig(params, ret)?);
 				if got != want {
 					let msg = format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`");
-					return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong signature"));
+					return fail(msg, span, "wrong signature");
 				}
 				continue;
 			}
@@ -410,14 +408,13 @@ pub(super) fn check_impls<'p>(
 			}
 			if body.is_empty() {
 				let msg = format!("`{typ}` is missing method `{name}` required by trait `{tn}`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("provide this method"));
+				return fail(msg, span, "provide this method");
 			}
 			if let Some(prev) = defaults.insert(key, tn.clone())
 				&& prev != tn
 			{
 				let msg = format!("`{typ}` takes default `{name}` from both `{prev}` and `{tn}`");
-				return Err(Diagnostic::new(msg, span.into_range())
-					.with_label(format!("fill `{name}` on `{typ}` to settle it")));
+				return fail(msg, span, format!("fill `{name}` on `{typ}` to settle it"));
 			}
 			others.push(FnItem {
 				key: format!("{typ}.{name}"),

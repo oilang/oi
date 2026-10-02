@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Module, Program, Scope};
 use crate::runtime;
 
@@ -21,10 +21,6 @@ pub(crate) const RT_QUOTE: &str = "oi_rt_quote";
 pub(crate) const RT_AST_LIT: &str = "oi_rt_ast_lit";
 pub(crate) const RT_AST_METHOD: &str = "oi_rt_ast_method";
 pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
-
-fn fail<T>(msg: impl Into<String>, span: Span, label: &str) -> Result<T, Diagnostic> {
-	Err(Diagnostic::new(msg, span.into_range()).with_label(label))
-}
 
 #[derive(Default)]
 struct Expander {
@@ -268,9 +264,7 @@ impl Expander {
 			return Ok(None);
 		};
 		if args.len() != arity {
-			let s = if arity == 1 { "" } else { "s" };
-			let msg = format!("`{name}!` takes {arity} argument{s}, got {}", args.len());
-			return fail(msg, e.1, "wrong number of arguments");
+			return arity_err(&format!("`{name}!`"), arity, args.len(), "argument", e.1);
 		}
 		if depth >= MAX_DEPTH {
 			return fail("macro expansion is too deep", e.1, "recursion limit");
@@ -289,7 +283,7 @@ impl Expander {
 		let f = unsafe { std::mem::transmute::<*const u8, fn(Ptr, Ptr, Ptr, Ptr) -> Ptr>(ptr) };
 		let (e0, span) = unsafe { *Box::from_raw(f(arg(0), arg(1), arg(2), arg(3))) };
 		if let Some(msg) = ERROR.take() {
-			return fail(msg, e.1, &format!("while running `{name}!`"));
+			return fail(msg, e.1, format!("while running `{name}!`"));
 		}
 		let mut body = match e0 {
 			Expr::Block(stmts) => stmts,
