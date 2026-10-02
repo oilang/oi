@@ -97,8 +97,20 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 
-				Expr::Assign { name, value } => {
-					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::Assign)?;
+				Expr::Assign { name, value } | Expr::DerefAssign { name, value } => {
+					let deref = matches!(stmt.0, Expr::DerefAssign { .. });
+					let mutation = if deref { Mutation::DerefAssign } else { Mutation::Assign };
+					let mut local = self.mutable_local(name, stmt.1.into_range(), mutation)?;
+					if deref {
+						let typ = self.pointee(&local.typ, stmt.1)?;
+						let var = self.b.declare_var(self.int);
+						let handle = self.read_local(&local);
+						self.b.def_var(var, handle);
+						local = Local {
+							boxed: !matches!(typ, Typ::Struct(..)),
+							..Local::plain(var, typ, true)
+						};
+					}
 					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
 						return Err(Diagnostic::new(
@@ -521,6 +533,7 @@ fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 			tuple: name(n),
 			field: field.clone(),
 		},
+		Expr::DerefAssign { name: n, .. } => Expr::Deref(name(n)),
 		_ => return None,
 	};
 	Some((read, stmt.1))

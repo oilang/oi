@@ -136,6 +136,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Mutation::IndexAssign => ("assign to", "assign to element of", "assignment", true),
 			Mutation::Append => ("append to", "append to", "append", false),
 			Mutation::FieldAssign => ("assign field of", "assign field of", "field assignment", false),
+			Mutation::DerefAssign => ("assign through", "assign through", "assignment through it", false),
 		};
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
 			let d = Diagnostic::new(format!("cannot {verb} undefined variable `{name}`"), span.clone())

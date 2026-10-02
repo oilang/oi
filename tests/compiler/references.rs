@@ -224,3 +224,22 @@ fn ref_boxes_any_type() {
 	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
 	assert_clean(["xs := &[1, 2]", "print(xs)"]);
 }
+
+#[test]
+fn deref_reads_and_writes() {
+	check(["p := &5", "p^ = 6", "p^ += 1", "print(p^)"], "7");
+	check(["x := 5", "p := &x", "p^ = 6", "print(x)"], "6");
+	check(
+		indoc! {"
+			Node :: struct { value: int }
+			p := &Node.{ value = 5 }
+			s := p^
+			p.value = 9
+			print(s.value, p.value)
+		"},
+		"5 9",
+	);
+	fail(["p :: &5", "p^ = 6"], "cannot assign through immutable `p`");
+	fail(["n := 5", "n^"], "cannot deref int, it is not a pointer");
+	assert_clean([r#"s := &"a""#, r#"s^ = "b" + "c""#, "print(s^)"]);
+}

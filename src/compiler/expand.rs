@@ -521,6 +521,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		| Expr::Assign { name: n, .. }
 		| Expr::Call { name: n, .. }
 		| Expr::FieldAssign { name: n, .. }
+		| Expr::DerefAssign { name: n, .. }
 		| Expr::IndexAssign { name: n, .. }
 		| Expr::Append { name: n, .. }
 		| Expr::MapDelete { name: n, .. } => rename(n),

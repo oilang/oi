@@ -538,10 +538,16 @@ where
 				let callee = Box::new(lhs);
 				(Expr::Apply { callee, args }, ex.span())
 			}),
-			// propagator
-			postfix(13, just(Token::Question), |lhs, _, ex| {
-				(Expr::Propagate(Box::new(lhs)), ex.span())
-			}),
+			(
+				// propagator
+				postfix(13, just(Token::Question), |lhs, _, ex| {
+					(Expr::Propagate(Box::new(lhs)), ex.span())
+				}),
+				// deref
+				postfix(13, p.same_line.clone().ignore_then(just(Token::Caret)), |lhs, _, ex| {
+					(Expr::Deref(Box::new(lhs)), ex.span())
+				}),
+			),
 			// expression annotations
 			prefix(12, p.annotation.clone(), |a, rhs, ex| {
 				(Expr::Annotated(vec![a], Box::new(rhs)), ex.span())

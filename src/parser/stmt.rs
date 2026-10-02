@@ -227,6 +227,17 @@ pub(super) fn stmt<'token, I>(
 			)
 		});
 
+	// deref assignment
+	let deref_assign = ident()
+		.then_ignore(just(Token::Caret))
+		.then(assign_op.clone())
+		.then(p.juxt_expr.clone())
+		.map_with(move |((name, op), value), ex| {
+			let lhs = Expr::Deref(Box::new((Expr::Ident(name.clone()), ex.span())));
+			let value = Box::new(fold(op, lhs, value, ex.span()));
+			(Expr::DerefAssign { name, value }, ex.span())
+		});
+
 	// field assignment
 	let field_assign = ident()
 		.then_ignore(just(Token::Dot))
@@ -280,6 +291,7 @@ pub(super) fn stmt<'token, I>(
 		destructure
 			.or(bind.clone())
 			.or(field_assign)
+			.or(deref_assign)
 			.or(assign.clone())
 			.or(index_assign)
 			.or(map_delete),

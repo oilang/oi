@@ -832,6 +832,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok((boxp, typ))
 			}
 
+			Expr::Deref(inner) => {
+				let (val, typ) = self.expr(inner)?;
+				self.pointee(&typ, inner.1)?;
+				Ok(self.deref(val, &typ))
+			}
+
 			Expr::Record(entries) => match hint {
 				Some(Typ::Struct(name, _)) => {
 					let fields = entries
@@ -923,6 +929,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			| Expr::PatBind { .. }
 			| Expr::IndexAssign { .. }
 			| Expr::FieldAssign { .. }
+			| Expr::DerefAssign { .. }
 			| Expr::Append { .. }
 			| Expr::MapDelete { .. } => {
 				// a place in expression position is a one-statement block

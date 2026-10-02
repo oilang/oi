@@ -230,6 +230,13 @@ pub enum Expr {
 	},
 	// `&Name {}`
 	Ref(Box<Spanned<Expr>>),
+	// `p^`
+	Deref(Box<Spanned<Expr>>),
+	// `p^ = value`
+	DerefAssign {
+		name: String,
+		value: Box<Spanned<Expr>>,
+	},
 	// `{ k = v }`
 	Record(Vec<(Spanned<Expr>, Spanned<Expr>)>),
 	// `[ k = v, ]`
@@ -368,6 +375,8 @@ impl Expr {
 			| Expr::ArgMod(_, v)
 			| Expr::Spread(v)
 			| Expr::Ref(v)
+			| Expr::Deref(v)
+			| Expr::DerefAssign { value: v, .. }
 			| Expr::Pub(v)
 			| Expr::Propagate(v)
 			| Expr::Negative(v)

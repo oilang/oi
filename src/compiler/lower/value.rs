@@ -335,6 +335,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// What a `^T` points at.
+	pub(super) fn pointee(&self, typ: &Typ, span: Span) -> Result<Typ, Diagnostic> {
+		match typ {
+			Typ::Ref(_) => Ok(self.peeled(typ)),
+			_ => Err(
+				Diagnostic::new(format!("cannot deref {typ}, it is not a pointer"), span.into_range())
+					.with_label("not a pointer"),
+			),
+		}
+	}
+
 	// Read through `^T`, loading a non-struct payload from its slot.
 	pub(super) fn deref(&mut self, val: Value, typ: &Typ) -> TypedVal {
 		match (typ, self.peeled(typ)) {

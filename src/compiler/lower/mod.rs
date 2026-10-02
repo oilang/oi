@@ -95,6 +95,7 @@ enum Mutation {
 	IndexAssign, // `x[i] = v`
 	Append,      // `x << v`
 	FieldAssign, // `x.f = v`
+	DerefAssign, // `x^ = v`
 }
 
 // A destructured binding.
