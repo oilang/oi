@@ -1008,9 +1008,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		let sym = oi_symbol(&format!("vtable_{}_{tn}", typ.key()));
 		let vtable = self.data_addr(&sym);
 		let val = self.copy_in(val, typ);
+		self.box_with(vtable, val)
+	}
+
+	// Box an owned `data` pointer behind `vtable`.
+	pub(super) fn box_with(&mut self, vtable: Value, data: Value) -> Value {
 		let boxp = self.call_alloc(2);
 		self.b.ins().store(MemFlags::new(), vtable, boxp, 0);
-		self.b.ins().store(MemFlags::new(), val, boxp, 8);
+		self.b.ins().store(MemFlags::new(), data, boxp, 8);
 		boxp
 	}
 

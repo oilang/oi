@@ -453,24 +453,36 @@ fn self_sig_static_dispatch_ok() {
 }
 
 #[test]
-fn rejects_non_object_safe_trait() {
+fn self_return_reboxes_through_object() {
+	let src = indoc! {r#"
+		Pet :: trait {
+			name : fn(self) string
+			eq : fn(self, other: Self) bool
+			clone : fn(self) Self
+		}
+		Dog :: struct { n: string }
+		Dog : Pet < {
+			name :: fn(self) string { self.n }
+			eq :: fn(self, other: Self) bool { self.n == other.n }
+			clone :: fn(self) Self { Dog.{ "{self.n}2" } }
+		}
+		p : Pet : Dog.{ "rex" }
+		print(p.clone().name())
+	"#};
+	check(src, "rex2");
+}
+
+#[test]
+fn rejects_self_param_call_through_object() {
 	fail(
 		indoc! {r#"
-			Cloner :: trait { dup : fn(self) Self }
+			Pet :: trait { eq : fn(self, other: Self) bool }
 			Dog :: struct {}
-			Dog : Cloner < { dup :: fn(self) Self { Dog.{} } }
-			f :: fn(c: Cloner) string { "no" }
+			Dog : Pet < { eq :: fn(self, other: Self) bool { true } }
+			p : Pet : Dog.{}
+			print(p.eq(p))
 		"#},
-		"",
-	);
-	fail(
-		indoc! {r#"
-			Eater :: trait { eat : fn(self, other: Self) string }
-			Dog :: struct {}
-			Dog : Eater < { eat :: fn(self, other: Self) string { "ate" } }
-			pack :: Eater.[ Dog.{} ]
-		"#},
-		"",
+		"cannot call `eq` through a `Pet` object",
 	);
 }
 

@@ -621,15 +621,7 @@ impl TypeCtx<'_> {
 					.with_label(format!("try `{name}[...]`")),
 			);
 		}
-		if let Some((.., tmethods)) = self.traits.get(name) {
-			// dyn dispatch erases the concrete type, so `Self` only works as the receiver
-			for (m, ps, ret) in trait_fns(tmethods) {
-				let in_ret = matches!(ret, Some((te, _)) if mentions(te, "Self"));
-				if in_ret || ps.iter().skip(1).any(|p| mentions(&p.typ, "Self")) {
-					let msg = format!("trait `{name}` is not object-safe: `{m}` uses `Self` beyond the receiver");
-					return Err(Diagnostic::new(msg, span.into_range()).with_label("can't be a trait object"));
-				}
-			}
+		if self.traits.contains_key(name) {
 			return Ok(Typ::Trait(name.to_string()));
 		}
 		Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))

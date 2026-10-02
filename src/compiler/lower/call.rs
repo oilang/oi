@@ -831,6 +831,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("an object only borrows its data"));
 		}
+
+		// the concrete type is erased, so only a bare `Self` return survives, re-boxed behind the same vtable
+		let self_ret = matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self");
+		let leaks = !self_ret && matches!(ret, Some((te, _)) if mentions(te, "Self"));
+		if leaks || params.iter().skip(1).any(|p| mentions(&p.typ, "Self")) {
+			let msg = format!("cannot call `{method}` through a `{tn}` object");
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("uses `Self` beyond the receiver"));
+		}
+
 		// the receiver slot is the erased data pointer, the rest resolve like any signature
 		let mut typs = vec![FnParam::new(Typ::Trait(tn.into()))];
 		for p in params.iter().skip(1) {
@@ -839,7 +848,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				access_wrap(p.access, self.types().resolve(&p.typ, p.span)?),
 			));
 		}
+
 		let ret = match ret {
+			_ if self_ret => Typ::Trait(tn.into()),
 			Some((te, s)) => self.types().resolve(te, *s)?,
 			None => Typ::unit(),
 		};
@@ -847,7 +858,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let data = self.b.ins().load(self.int, MemFlags::new(), boxv, 8);
 		let fnptr = self.b.ins().load(self.int, MemFlags::new(), vtable, (idx * 8) as i32);
 		let typ = Typ::Fn(typs, Box::new(ret));
-		self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)
+		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
+		Ok((if self_ret { self.box_with(vtable, val) } else { val }, typ))
 	}
 
 	// Dyn-dispatch `message()` on a boxed `Error`.
