@@ -286,3 +286,29 @@ fn dot_tuple_wrong_arity() {
 fn dot_tuple_no_context() {
 	fail("m := .(1)", "cannot infer");
 }
+
+#[test]
+fn ops_pass_through_in_own_methods() {
+	check(
+		indoc! {r#"
+			Money :: struct (int)
+			Money :< {
+				str :: fn(self) string { "${self.0}" }
+				double :: fn(self) Self { self * 2 }
+			}
+			print(Money(5).double())
+		"#},
+		"$10",
+	);
+}
+
+#[test]
+fn ops_stay_closed_outside() {
+	fail(
+		indoc! {"
+			Money :: struct (int)
+			Money(5) * 2
+		"},
+		"cannot apply `*` to Money",
+	);
+}

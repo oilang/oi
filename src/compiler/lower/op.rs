@@ -118,6 +118,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			.filter(|s| claimed && s.params.len() == arity)
 	}
 
+	// Inside its own methods, a newtype without a trait claim operates on its field.
+	pub(super) fn own_field<'t>(&self, t: &'t Typ, tn: &str) -> &'t Typ {
+		match t {
+			Typ::TupleStruct(n, _) if self.self_type.as_ref() == Some(n) && !self.claims(t, tn) => {
+				t.newtype().unwrap_or(t)
+			}
+			_ => t,
+		}
+	}
+
 	// Contains claim.
 	pub(super) fn emit_contains(
 		&mut self,
@@ -373,13 +383,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| match lt {
-			Typ::Struct(n, _) | Typ::Enum(n) => {
+			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => {
 				s.fill(n, tn, method, 2).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 			}
 			_ => lt.clone(),
 		})?;
+		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
+		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 
-		if let Typ::Struct(name, _) | Typ::Enum(name) = &lt {
+		if let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &lt {
 			// overloads
 			let key = format!("{name}.{method}");
 			let plain = self.fill(name, tn, method, 2);
@@ -408,7 +420,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// commutative operators
 		if matches!(op, BinOp::Add | BinOp::Mul)
 			&& matches!(lt, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_))
-			&& let Typ::Struct(name, _) | Typ::Enum(name) = &rt
+			&& let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &rt
 			&& let Some(sig) = (self.fill(name, tn, method, 2).filter(|s| s.params[1].typ == lt))
 				.or_else(|| self.find_fill(&format!("{name}.{method}"), 1, &lt))
 		{
@@ -417,7 +429,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// string concatenation
 		if let (BinOp::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
-			return Ok((self.call_concat(lv, rv), Typ::Str));
+			return Ok((self.call_concat(lv, rv), own.unwrap_or(Typ::Str)));
 		}
 		let (lv, lt, rv, rt) = self.promote(lv, lt, rv, rt);
 
@@ -509,7 +521,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let out = self.narrow(out, &lt);
-		Ok((out, lt))
+		Ok((out, own.unwrap_or(lt)))
 	}
 
 	pub(super) fn cmp(

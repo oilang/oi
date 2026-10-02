@@ -371,6 +371,7 @@ Money :< {
 	str :: fn(self) string {
 		"${self.0}"
 	}
+	# inside its own methods, operators pass through to the field
 	double :: fn(self) Self {
 		self * 2
 	}

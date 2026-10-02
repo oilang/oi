@@ -119,10 +119,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Negative(e) => {
 				let (v, typ) = self.expr(e)?;
-				let out = match typ {
+				let out = match self.own_field(&typ, role::NEG) {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(_) => self.b.ins().fneg(v),
-					Typ::Struct(ref name, _) | Typ::Enum(ref name) => match self.fill(name, role::NEG, "neg", 1) {
+					Typ::Struct(name, _) | Typ::Enum(name) => match self.fill(name, role::NEG, "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
@@ -158,11 +158,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			},
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
-				let out = match &typ {
+				let out = match self.own_field(&typ, role::NOT) {
 					Typ::Bool => self.b.ins().bxor_imm(v, 1),
-					Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize => {
+					t @ (Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) => {
 						let v = self.b.ins().bnot(v);
-						self.narrow(v, &typ)
+						self.narrow(v, t)
 					}
 					Typ::Struct(name, _) | Typ::Enum(name) => match self.fill(name, role::NOT, "not", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
