@@ -723,3 +723,20 @@ fn open_structs_gain_fields_from_modules() {
 fn closed_structs_reject_fields() {
 	fail("Context :< { x: int = 0 }", "`core::Context` can't gain fields");
 }
+
+#[test]
+fn typed_literals() {
+	check(
+		indoc! {r#"
+			Point :: struct { x: int, y: int }
+			Q :: Point
+			M :: struct (int, string)
+			p : ?Point = .{ x = 1 }
+			r : ^Point = &.{ x = 2 }
+			f :: fn() !Point { .{ y = 3 } }
+			print(p, r.x, f(), !Point.{ x = 4 }, Q.{}, M.{1, "a"}, M.{}, ?Point.{}, int.{})
+		"#},
+		r#"some.(Point.{x = 1, y = 0}) 2 ok.(Point.{x = 0, y = 3}) ok.(Point.{x = 4, y = 0}) Point.{x = 0, y = 0} M(1, "a") M(0, "") none 0"#,
+	);
+	fail("print(^int.{})", "a reference must be initialized");
+}

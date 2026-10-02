@@ -517,6 +517,11 @@ impl TypeCtx<'_> {
 		Some((ok, err))
 	}
 
+	// The `some`/`ok` payload type.
+	pub fn happy(&self, typ: &Typ) -> Option<Typ> {
+		self.option_inner(typ).or_else(|| Some(self.result_parts(typ)?.0))
+	}
+
 	// Whether a fn specifies a Result.
 	pub fn fallible(&self, typ: &Typ) -> bool {
 		self.result_parts(typ).is_some_and(|(ok, _)| ok.is_unit())

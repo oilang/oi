@@ -148,6 +148,12 @@ where
 			}
 		});
 
+	// options
+	let typed_lit = spanned(p.type_expr.clone())
+		.then_ignore(p.adjacent.clone())
+		.then(spanned(struct_lit.clone()).map(|lit| vec![lit]))
+		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
+
 	let foreign_lit = just(Token::Foreign).to(Expr::Foreign);
 
 	let ref_lit = just(Token::Amp).ignore_then(p.expr.clone()).map(|e| Expr::Ref(Box::new(e)));
@@ -450,6 +456,7 @@ where
 		macro_call,
 		quote,
 		leaf,
+		typed_lit,
 		p.unquote.clone(),
 		enum_shorthand.clone(),
 		group,
@@ -559,6 +566,18 @@ where
 			prefix(12, just(Token::Not), |_, rhs, ex| match rhs {
 				(Expr::Cast { target: (t, ts), args }, _) => {
 					let target = (types::result_of(t, None), ts);
+					(Expr::Cast { target, args }, ex.span())
+				}
+				(
+					Expr::StructLit {
+						ref name,
+						ref type_args,
+						..
+					},
+					s,
+				) if !name.is_empty() && type_args.is_empty() => {
+					let target = (types::result_of(TypeExpr::Name(name.clone()), None), s);
+					let args = vec![rhs];
 					(Expr::Cast { target, args }, ex.span())
 				}
 				_ => (Expr::Not(Box::new(rhs)), ex.span()),

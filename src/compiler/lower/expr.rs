@@ -816,7 +816,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					_ => {}
 				}
-				let (ptr, typ) = self.expr(inner)?;
+				let pointee = hint.and_then(|t| self.pointee(t, expr.1).ok());
+				let (ptr, typ) = self.lower(inner, pointee.as_ref())?;
 				// move the literal's slots into a shared box
 				let ptr = match inner.0 {
 					Expr::StructLit { .. } => ptr,

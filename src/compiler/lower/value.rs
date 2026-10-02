@@ -366,8 +366,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Pick the (first) sum member that matches the hint.
+	// Pick the (first) sum member that matches the hint, looking through `?`/`!`.
 	pub(super) fn through_sum(&self, hint: Option<&Typ>, pick: impl Fn(&Typ) -> bool) -> Option<Typ> {
+		if let Some(inner) = hint.and_then(|t| self.types.happy(t)) {
+			return self.through_sum(Some(&inner), pick);
+		}
 		let Some(sum @ Typ::Sum(..)) = hint else {
 			return hint.cloned();
 		};
@@ -515,11 +518,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let t = self.types().resolve(&te, pat.1).ok()?;
 			return Some((name.clone(), t, 8));
 		}
-		let happy = self
-			.types()
-			.option_inner(st)
-			.or_else(|| self.types().result_parts(st).map(|(ok, _)| ok));
-		if let Some(inner) = happy {
+		if let Some(inner) = self.types().happy(st) {
 			return Some((name.clone(), inner, 8));
 		}
 		let Typ::Sum(..) = st else { return None };
@@ -1147,10 +1146,25 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => None,
 		};
 
+		// `.{}` is the zero value of any type
+		if let ("", [], Some(t)) = (name, fields, target)
+			&& !matches!(t, Typ::Struct(..))
+		{
+			if let Typ::Ref(_) = t {
+				return Err(Diagnostic::new("a reference must be initialized", span.into_range()));
+			}
+			return Ok((self.zero_or_err(t, span)?, t.clone()));
+		}
+		let target = self.through_sum(target, |t| matches!(t, Typ::Struct(..) | Typ::TupleStruct(..)));
+		let target = target.as_ref();
+
 		// `Self {}` inside a method resolves to the impl's type
 		let mut name = match name {
 			"" => match target {
 				Some(Typ::Struct(n, _)) => n.clone(),
+				Some(Typ::TupleStruct(n, _)) => {
+					return self.construct_tuple_struct(n, &record_args(fields.to_vec(), span), span);
+				}
 				// anonymous structs
 				_ if fields.iter().all(|f| f.0.is_some()) => return self.infer_anon(fields),
 				_ => match &leading_spread {
@@ -1202,9 +1216,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some(fields) => fields,
 			None => match self.types.generics.structs.get(name.as_str()).cloned() {
 				Some(def) => return self.generic_struct_lit(&name, def, fields, span, target),
+				// aliases, tuple structs, and other types
 				None => {
-					return Err(Diagnostic::new(format!("unknown struct `{name}`"), span.into_range())
-						.with_label("not defined"));
+					let Ok(typ) = self.types().resolve(&TypeExpr::Name(name.clone()), span) else {
+						return Err(Diagnostic::new(format!("unknown struct `{name}`"), span.into_range())
+							.with_label("not defined"));
+					};
+					return self.struct_lit("", &[], fields, span, Some(&typ));
 				}
 			},
 		};

@@ -311,6 +311,9 @@ point :: Point.{ x = 19, y = 88 }
 
 # zero values when unspecified
 origin :: Point.{}
+# `T.{}` is the zero value of any type that has one
+assert! ?Point.{} == none
+assert! int.{} == 0
 
 # support default field values
 User :: struct {
@@ -357,9 +360,10 @@ partial :: Point.{3}
 
 # the type name can be dropped when it's known from context (typed decl, call arg, return, field value)
 p : Point = .{ x = 2, y = 1 }
+o : ?Point = .{ x = 2 }
 
 # positional values go before named fields, like call args
-q :: Point.{3, y = 1}
+q :: Point.{ 3, y = 1 }
 
 # tuple structs
 
