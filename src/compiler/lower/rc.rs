@@ -280,10 +280,20 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Declare a named binding that owns its value.
 	pub fn bind_local(&mut self, name: &str, val: Value, typ: Typ, mutable: bool) {
+		let addr = mutable && self.addressed.contains(name);
+		let (val, owned) = match addr {
+			true => (self.box_value(val, &typ), Typ::Ref(Box::new(typ.clone()))),
+			false => (val, typ.clone()),
+		};
 		let var = self.b.declare_var(self.b.func.dfg.value_type(val));
 		self.b.def_var(var, val);
-		self.own_local(var, &typ);
-		self.vars.insert(name.to_string(), Local::plain(var, typ, mutable));
+		self.own_local(var, &owned);
+		if addr {
+			self.aliases.push(var);
+		}
+		let mut local = Local::plain(var, typ, mutable);
+		local.boxed = addr && !matches!(local.typ, Typ::Struct(..));
+		self.vars.insert(name.to_string(), local);
 	}
 
 	// Make the innermost scope responsible for releasing a variable.

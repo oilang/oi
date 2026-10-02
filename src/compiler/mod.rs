@@ -2073,6 +2073,8 @@ impl<M: Module> Compiler<M> {
 			anon_ctx: None,
 			self_name: None,
 			slots: vec![],
+			addressed: HashSet::new(),
+			aliases: vec![],
 		};
 
 		(trans, block)
@@ -2114,7 +2116,11 @@ impl<M: Module> Compiler<M> {
 
 		// the params tuple is a heap alloc, so only build it for a body that reads `$`
 		let mut dollar = false;
-		Expr::Block(def.body.to_vec()).walk(&mut |e| dollar |= matches!(e, Expr::Dollar));
+		Expr::Block(def.body.to_vec()).walk(&mut |e| match e {
+			Expr::Dollar => dollar = true,
+			Expr::Ref(inner) if let Expr::Ident(n) = &inner.0 => _ = trans.addressed.insert(n.clone()),
+			_ => {}
+		});
 		if dollar {
 			trans.bind_dollar(def.params_tuple);
 		}

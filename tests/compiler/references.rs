@@ -15,7 +15,7 @@ fn aliasing_shares_identity() {
 }
 
 #[test]
-fn ref_of_existing_boxes_a_copy() {
+fn ref_of_existing_aliases() {
 	check(
 		indoc! {"
 			Node :: struct { value: int, tags: []int }
@@ -27,8 +27,30 @@ fn ref_of_existing_boxes_a_copy() {
 			n.value = 7
 			print(n, r)
 		"},
-		"Node.{value = 7, tags = [1]} Node.{value = 9, tags = [2]}",
+		"Node.{ value = 7, tags = [2] } Node.{ value = 7, tags = [2] }",
 	);
+}
+
+const ESCAPE: &str = indoc! {r#"
+	name :: fn() ^string {
+		s := "hi"
+		p := &s
+		s = "bye"
+		return p
+	}
+	n := name()
+	print(n)
+"#};
+
+#[test]
+fn ref_of_local_escapes() {
+	check(ESCAPE, "bye");
+	assert_clean(ESCAPE);
+}
+
+#[test]
+fn ref_of_immutable_errors() {
+	fail(["x :: 5", "p := &x"], "cannot take the address of `x`");
 }
 
 #[test]

@@ -798,6 +798,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			} => self.struct_lit(name, type_args, fields, expr.1, hint),
 
 			Expr::Ref(inner) => {
+				let span = expr.1.into_range();
+				match &inner.0 {
+					Expr::Field { .. } | Expr::Index { .. } => {
+						return Err(Diagnostic::new("cannot take the address of a field or element", span));
+					}
+					Expr::Ident(n) if let Some(local) = self.vars.get(n).cloned() => {
+						if !self.aliases.contains(&local.var) {
+							return Err(Diagnostic::new(format!("cannot take the address of `{n}`"), span)
+								.with_label("not a mutable local"));
+						}
+						let typ = Typ::Ref(Box::new(local.typ));
+						let handle = self.b.use_var(local.var);
+						let handle = self.copy_in(handle, &typ);
+						self.temp(handle, &typ);
+						return Ok((handle, typ));
+					}
+					_ => {}
+				}
 				let (ptr, typ) = self.expr(inner)?;
 				// move the literal's slots into a shared box
 				let ptr = match inner.0 {

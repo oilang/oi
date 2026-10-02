@@ -84,6 +84,8 @@ pub(super) struct Translator<'a, M: Module> {
 	pub ctx_used: bool,
 	pub anon_ctx: Option<String>,
 	pub slots: Vec<String>,
+	pub addressed: HashSet<String>,
+	pub aliases: Vec<Variable>,
 }
 
 // A statement that writes through an existing, mutable binding.

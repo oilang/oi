@@ -107,19 +107,18 @@ tags: []
 - [ ] channels
 - [ ] units and unit conversion
 - [x] `@noinit` `v`
-- [ ] `discard` and/or `pass`
+- [ ] `discard` and/or `pass` `nim gdscript`
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
 - [ ] swizzle `odin`
+- [ ] allow fn math with arithmetic traits
 ## consider
 - `nil`
 - using `#` for annotations despite comment clash
 - `using`/`with` `odin javascript`
 - indent stripping as part of the literal, rather than macros like Rust's `indoc!` or functions like V's `.strip_indent()` `C# swift`
-- [ ] fn math? f + g, if both return strings, concats strings?
 - allowing quotes/AST outside of macros, for code generators and stuff
-- [jit ctfe](https://www.reddit.com/r/ProgrammingLanguages/comments/16cs6js/comment/jzn7tdr/)
 - `let-else` `rust`
 - submodules `use raylib.math`
 - explicit core access `core.print` or `use core.{ print }` or something
