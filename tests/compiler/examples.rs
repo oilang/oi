@@ -1,10 +1,4 @@
-use std::path::PathBuf;
-
-use crate::common::{Run, oi, ok};
-
-fn examples_dir() -> PathBuf {
-	PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples")
-}
+use crate::common::{Run, oi, oi_files, ok};
 
 /// Every `examples/*.oi` carries its own `# expect: <line>` comments.
 /// Runs each and collect every mismatch instead of failing on the first.
@@ -12,12 +6,7 @@ fn examples_dir() -> PathBuf {
 fn run_examples() {
 	let mut failures = Vec::new();
 
-	for entry in std::fs::read_dir(examples_dir()).unwrap() {
-		let path = entry.unwrap().path();
-		if path.extension().is_none_or(|e| e != "oi") {
-			continue;
-		}
-
+	for path in oi_files("examples") {
 		let src = std::fs::read_to_string(&path).unwrap();
 		let expected = (src.lines())
 			.filter_map(|l| l.trim().strip_prefix("# expect: "))

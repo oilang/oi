@@ -1,12 +1,8 @@
-use crate::common::{Run, oi, trim};
+use crate::common::{Run, oi, stderr, trim};
 
 fn repl(input: &str) -> String {
 	let out = oi(&["repl"]).run(Some(input));
-	assert!(
-		out.status.success(),
-		"repl failed:\n{}",
-		String::from_utf8_lossy(&out.stderr)
-	);
+	assert!(out.status.success(), "repl failed:\n{}", stderr(&out));
 	trim(&out.stdout)
 }
 

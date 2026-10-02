@@ -42,6 +42,9 @@ fn rt_is_internal_to_core() {
 	fail(["use rt"], "internal to core");
 }
 
+const MEMSET: &str = "pub memset : fn(p: ptr, c: int, n: usize) : foreign";
+const QSORT: &str = "pub qsort : fn(base: ptr, n: usize, size: usize, cmp: fn(a: ptr, b: ptr) i32) : foreign";
+
 #[test]
 fn foreign_fn() {
 	let src = indoc! {r#"
@@ -53,10 +56,7 @@ fn foreign_fn() {
 
 #[test]
 fn foreign_resolves_process_symbols() {
-	Project::new()
-		.file("main.oi", ["use cext", "print(unsafe cext.abs(-5))"])
-		.file("cext.oi", ["module cext", "pub abs : fn(x: i32) i32 : foreign"])
-		.check("5");
+	Project::foreign(["print(unsafe cext.abs(-5))"], ["pub abs : fn(x: i32) i32 : foreign"]).check("5");
 }
 
 #[test]
@@ -69,181 +69,116 @@ fn list_static_compiles_in_a_module() {
 
 #[test]
 fn foreign_cstr_param_calls_strlen() {
-	Project::new()
-		.file("main.oi", ["use cext", r#"print(unsafe cext.strlen("hi!".cstr()))"#])
-		.file("cext.oi", ["module cext", "pub strlen : fn(s: cstr) usize : foreign"])
-		.check("3");
+	Project::foreign(
+		[r#"print(unsafe cext.strlen("hi!".cstr()))"#],
+		["pub strlen : fn(s: cstr) usize : foreign"],
+	)
+	.check("3");
 }
 
 #[test]
 fn foreign_ptr_roundtrips() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"p := unsafe cext.malloc(16)",
-				"unsafe cext.free(p)",
-				":done",
-			],
-		)
-		.file(
-			"cext.oi",
-			[
-				"module cext",
-				"pub malloc : fn(size: usize) ptr : foreign",
-				"pub free : fn(p: ptr) : foreign",
-			],
-		)
-		.check(":done");
+	Project::foreign(
+		["p := unsafe cext.malloc(16)", "unsafe cext.free(p)", ":done"],
+		[
+			"pub malloc : fn(size: usize) ptr : foreign",
+			"pub free : fn(p: ptr) : foreign",
+		],
+	)
+	.check(":done");
 }
 
 #[test]
 fn foreign_writes_through_array_ptr() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"buf := [1, 2, 3]",
-				"unsafe cext.memset(buf.ptr, 0, 4)",
-				"print(buf)",
-			],
-		)
-		.file(
-			"cext.oi",
-			["module cext", "pub memset : fn(p: ptr, c: int, n: usize) : foreign"],
-		)
-		.check("[0, 2, 3]");
+	Project::foreign(
+		["buf := [1, 2, 3]", "unsafe cext.memset(buf.ptr, 0, 4)", "print(buf)"],
+		MEMSET,
+	)
+	.check("[0, 2, 3]");
 }
 
 #[test]
 fn foreign_typed_read_copies_out() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"buf: []i32 = .[7, 8, 9]",
-				"unsafe cext.memset(buf.ptr, 0, 4)",
-				"print(unsafe buf.ptr.array[i32](3))",
-			],
-		)
-		.file(
-			"cext.oi",
-			["module cext", "pub memset : fn(p: ptr, c: int, n: usize) : foreign"],
-		)
-		.check("[0, 8, 9]");
+	Project::foreign(
+		[
+			"buf: []i32 = .[7, 8, 9]",
+			"unsafe cext.memset(buf.ptr, 0, 4)",
+			"print(unsafe buf.ptr.array[i32](3))",
+		],
+		MEMSET,
+	)
+	.check("[0, 8, 9]");
 }
 
 #[test]
 fn fn_type_alias_casts_a_ptr() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"Abs :: fn(n: i32) i32",
-				r#"abs := unsafe { Abs(cext.dlsym(ptr(0), "abs")) }"#,
-				"print(abs(-5))",
-			],
-		)
-		.file(
-			"cext.oi",
-			["module cext", "pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
-		)
-		.check("5");
+	Project::foreign(
+		[
+			"Abs :: fn(n: i32) i32",
+			r#"abs := unsafe { Abs(cext.dlsym(ptr(0), "abs")) }"#,
+			"print(abs(-5))",
+		],
+		["pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
+	)
+	.check("5");
 }
 
 #[test]
 fn a_c_fn_sheds_its_cell_and_takes_it_back() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"Abs :: @c fn(n: i32) i32",
-				"on_init :: fn(get: Abs) i32 { get(-21) * 2 }",
-				r#"run :: fn(init: @c fn(get: Abs) i32) i32 { init(unsafe Abs(cext.dlsym(ptr(0), "abs"))) }"#,
-				"print(run(on_init))",
-				r#"boxed: fn(n: i32) i32 = unsafe Abs(cext.dlsym(ptr(0), "abs"))"#,
-				"print(boxed(-5))",
-			],
-		)
-		.file(
-			"cext.oi",
-			["module cext", "pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
-		)
-		.check(["42", "5"]);
+	Project::foreign(
+		[
+			"Abs :: @c fn(n: i32) i32",
+			"on_init :: fn(get: Abs) i32 { get(-21) * 2 }",
+			r#"run :: fn(init: @c fn(get: Abs) i32) i32 { init(unsafe Abs(cext.dlsym(ptr(0), "abs"))) }"#,
+			"print(run(on_init))",
+			r#"boxed: fn(n: i32) i32 = unsafe Abs(cext.dlsym(ptr(0), "abs"))"#,
+			"print(boxed(-5))",
+		],
+		["pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
+	)
+	.check(["42", "5"]);
 }
 
 #[test]
 fn foreign_takes_an_oi_fn_as_a_callback() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"cmp :: fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } }",
-				"buf: []i32 = .[3, 1, 2]",
-				"unsafe cext.qsort(buf.ptr, 3, 4, cmp)",
-				"print(buf)",
-			],
-		)
-		.file(
-			"cext.oi",
-			[
-				"module cext",
-				"pub qsort : fn(base: ptr, n: usize, size: usize, cmp: fn(a: ptr, b: ptr) i32) : foreign",
-			],
-		)
-		.check("[1, 2, 3]");
+	Project::foreign(
+		[
+			"cmp :: fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } }",
+			"buf: []i32 = .[3, 1, 2]",
+			"unsafe cext.qsort(buf.ptr, 3, 4, cmp)",
+			"print(buf)",
+		],
+		QSORT,
+	)
+	.check("[1, 2, 3]");
 }
 
 #[test]
 fn foreign_takes_an_inline_callback() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"buf: []i32 = .[3, 1, 2]",
-				"unsafe {",
-				"cext.qsort(buf.ptr, 3, 4, fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } })",
-				"}",
-				"print(buf)",
-			],
-		)
-		.file(
-			"cext.oi",
-			[
-				"module cext",
-				"pub qsort : fn(base: ptr, n: usize, size: usize, cmp: fn(a: ptr, b: ptr) i32) : foreign",
-			],
-		)
-		.check("[1, 2, 3]");
+	Project::foreign(
+		[
+			"buf: []i32 = .[3, 1, 2]",
+			"unsafe {",
+			"cext.qsort(buf.ptr, 3, 4, fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } })",
+			"}",
+			"print(buf)",
+		],
+		QSORT,
+	)
+	.check("[1, 2, 3]");
 }
 
 #[test]
 fn foreign_callback_rejects_a_closure() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use cext",
-				"k := 1",
-				"bad := fn(s: i32) () { print(k) }",
-				"unsafe cext.signal(2, bad)",
-			],
-		)
-		.file(
-			"cext.oi",
-			[
-				"module cext",
-				"pub signal : fn(sig: i32, handler: fn(s: i32)) ptr : foreign",
-			],
-		)
-		.fail_with("`@c` fns can't capture");
+	Project::foreign(
+		[
+			"k := 1",
+			"bad := fn(s: i32) () { print(k) }",
+			"unsafe cext.signal(2, bad)",
+		],
+		["pub signal : fn(sig: i32, handler: fn(s: i32)) ptr : foreign"],
+	)
+	.fail_with("`@c` fns can't capture");
 }
 
 #[test]
@@ -278,42 +213,25 @@ fn fn_ptr_cast_needs_a_c_signature() {
 
 #[test]
 fn foreign_unknown_symbol_fails() {
-	Project::new()
-		.file("main.oi", ["use cext"])
-		.file(
-			"cext.oi",
-			["module cext", "zzz_definitely_not_a_symbol : fn() int : foreign"],
-		)
-		.fail_with("unknown foreign symbol");
+	Project::foreign("", ["zzz_definitely_not_a_symbol : fn() int : foreign"]).fail_with("unknown foreign symbol");
 }
 
 #[test]
 fn link_dlopens_named_library() {
-	Project::new()
-		.file(
-			"main.oi",
-			["use cext", "print(unsafe { cext.zlibVersion().str() }[0..1])"],
-		)
-		.file(
-			"cext.oi",
-			["module cext", r#"@link.{"z"}"#, "pub zlibVersion : fn() cstr : foreign"],
-		)
-		.check("1");
+	Project::foreign(
+		["print(unsafe { cext.zlibVersion().str() }[0..1])"],
+		[r#"@link.{"z"}"#, "pub zlibVersion : fn() cstr : foreign"],
+	)
+	.check("1");
 }
 
 #[test]
 fn link_renames_the_symbol() {
-	Project::new()
-		.file("main.oi", ["use cext", "print(unsafe cext.magnitude(-5))"])
-		.file(
-			"cext.oi",
-			[
-				"module cext",
-				r#"@link.{name = "abs"}"#,
-				"pub magnitude : fn(x: i32) i32 : foreign",
-			],
-		)
-		.check("5");
+	Project::foreign(
+		["print(unsafe cext.magnitude(-5))"],
+		[r#"@link.{name = "abs"}"#, "pub magnitude : fn(x: i32) i32 : foreign"],
+	)
+	.check("5");
 }
 
 #[test]
@@ -471,14 +389,8 @@ fn qualified_static_access() {
 #[test]
 fn const_exprs() {
 	Project::new()
-		.file(
-			"main.oi",
-			["module main", "use util", "print(util.half)", "print(util.low)"],
-		)
-		.file(
-			"util/lib.oi",
-			["module util", "pub half :: 10 / 2", "pub low :: -2147483647 - 1"],
-		)
+		.main(["use util", "print(util.half)", "print(util.low)"])
+		.lib("util", ["pub half :: 10 / 2", "pub low :: -2147483647 - 1"])
 		.check(["5", "-2147483648"]);
 }
 

@@ -1,4 +1,4 @@
-use crate::common::{Project, Run, oi, ok, trim};
+use crate::common::{Project, Run, oi, trim};
 use crate::helpers::*;
 
 #[test]
@@ -611,7 +611,7 @@ fn quoted_item_can_be_annotated() {
 			mktest!()
 		"#},
 	);
-	let out = ok(oi(&["test"]).current_dir(&dir).run(None));
+	let out = dir.ok(&["test"]);
 	assert!(out.contains("t1") && out.contains("1 passed"), "stdout:\n{out}");
 }
 

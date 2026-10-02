@@ -3,7 +3,7 @@ use std::process::Output;
 pub(crate) use indoc::indoc;
 use pretty_assertions::assert_eq;
 
-use crate::common::{Lines, Run, oi, ok, trim};
+use crate::common::{Lines, Run, oi, ok, stderr, trim};
 
 /// Run `src` through `oi exec`.
 fn exec(src: &str) -> Output {
@@ -63,12 +63,8 @@ pub(crate) fn check(src: impl Lines, expected: impl Lines) {
 pub(crate) fn leaks(src: impl Lines) -> i64 {
 	let src = src.text();
 	let out = oi(&["exec"]).env("OI_LEAK_CHECK", "1").run(Some(&src));
-	assert!(
-		out.status.success(),
-		"src:\n{src}\nstderr:\n{}",
-		String::from_utf8_lossy(&out.stderr)
-	);
-	let err = String::from_utf8_lossy(&out.stderr).to_string();
+	assert!(out.status.success(), "src:\n{src}\nstderr:\n{}", stderr(&out));
+	let err = stderr(&out);
 	let count = err
 		.lines()
 		.find_map(|l| l.strip_prefix("leaked allocations: "))

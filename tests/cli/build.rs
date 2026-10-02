@@ -1,21 +1,27 @@
 use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
+use std::path::Path;
 use std::process::Command;
 
 use indoc::indoc;
 
-use crate::common::{Project, Run, oi, ok, trim};
+use crate::common::{Project, Run, bin, oi, ok, stderr, trim};
+
+fn cc_shared(dir: impl AsRef<Path>, so: &str) {
+	let soname = format!("-Wl,-soname,{so}");
+	let cc = Command::new("cc")
+		.args(["-shared", "-fPIC", &soname, "dep.c", "-o", so])
+		.current_dir(dir)
+		.output()
+		.unwrap();
+	assert!(cc.status.success());
+}
 
 /// Build main.oi with, and run the binary.
-fn build_and_run(src: &str, args: &[&str], bin: &str) -> String {
+fn build_and_run(src: &str, args: &[&str], name: &str) -> String {
 	let dir = Project::new().file("main.oi", src);
-	let out = oi(&[&["build"][..], args].concat()).current_dir(&dir).run(None);
-	assert!(
-		out.status.success(),
-		"build failed:\n{}",
-		String::from_utf8_lossy(&out.stderr)
-	);
-	let run = std::process::Command::new(dir.as_ref().join(bin)).output().unwrap();
-	String::from_utf8_lossy(&run.stdout).trim().to_string()
+	let out = dir.oi(&[&["build"][..], args].concat());
+	assert!(out.status.success(), "build failed:\n{}", stderr(&out));
+	trim(&bin(dir.as_ref().join(name)).stdout)
 }
 
 #[test]
@@ -37,7 +43,7 @@ fn macros_comp_foreign_and_leak_check() {
 		oi_pow_int : fn(base: isize, exp: isize) isize : foreign
 	"};
 	let dir = Project::new().file("main.oi", main).file("util.oi", util);
-	ok(oi(&["build"]).current_dir(&dir).run(None));
+	dir.ok(&["build"]);
 	let mut bin = Command::new(dir.as_ref().join("main"));
 	let out = bin.env("OI_LEAK_CHECK", "1").output().unwrap();
 	assert_eq!(trim(&out.stdout), "25\n27");
@@ -56,9 +62,8 @@ fn link_annotation_adds_lib_to_link_line() {
 		pub zlibVersion : fn() cstr : foreign
 	"#};
 	let dir = Project::new().file("main.oi", main).file("cext.oi", cext);
-	ok(oi(&["build"]).current_dir(&dir).run(None));
-	let run = Command::new(dir.as_ref().join("main")).output().unwrap();
-	assert_eq!(trim(&run.stdout), "1");
+	dir.ok(&["build"]);
+	assert_eq!(trim(&bin(dir.as_ref().join("main")).stdout), "1");
 }
 
 #[test]
@@ -69,15 +74,9 @@ fn link_annotation_accepts_a_file_path() {
 		"main.oi",
 		[&link[..], "oi_dep : fn() int : foreign", "print(unsafe oi_dep())"],
 	);
-	let cc = Command::new("cc")
-		.args(["-shared", "-fPIC", &format!("-Wl,-soname,{file}"), "dep.c", "-o", &file])
-		.current_dir(&dir)
-		.output()
-		.unwrap();
-	assert!(cc.status.success());
-	ok(oi(&["build"]).current_dir(&dir).run(None));
-	let run = Command::new(dir.as_ref().join("main")).output().unwrap();
-	assert_eq!(trim(&run.stdout), "42");
+	cc_shared(&dir, &file);
+	dir.ok(&["build"]);
+	assert_eq!(trim(&bin(dir.as_ref().join("main")).stdout), "42");
 }
 
 #[test]
@@ -111,13 +110,12 @@ fn export_annotation_marks_c_abi_fns() {
 		.file("main.oi", src)
 		.file("cext.oi", cext)
 		.file("caller.c", caller);
-	ok(oi(&["build", "--lib"]).current_dir(&dir).run(None));
+	dir.ok(&["build", "--lib"]);
 	let lib = dir.as_ref().join(format!("{DLL_PREFIX}main{DLL_SUFFIX}"));
 	let mut cc = Command::new("cc");
 	cc.arg("caller.c").arg(lib).args(["-o", "caller"]).current_dir(&dir);
 	assert!(cc.output().unwrap().status.success());
-	let run = Command::new(dir.as_ref().join("caller")).output().unwrap();
-	assert_eq!(trim(&run.stdout), "lib up\n5 6 9");
+	assert_eq!(trim(&bin(dir.as_ref().join("caller")).stdout), "lib up\n5 6 9");
 }
 
 #[test]
@@ -147,17 +145,9 @@ fn link_searches_module_dir_then_roots() {
 		)
 		.file("cext/dep.c", "long oi_dep(void) { return 42; }")
 		.file("main.oi", main);
-	let cc = Command::new("cc")
-		.args(["-shared", "-fPIC", &format!("-Wl,-soname,{so}"), "dep.c", "-o", &so])
-		.current_dir(dir.as_ref().join("cext"))
-		.output()
-		.unwrap();
-	assert!(cc.status.success());
-	ok(oi(&["build"]).current_dir(&dir).run(None));
-	assert_eq!(
-		trim(&Command::new(dir.as_ref().join("main")).output().unwrap().stdout),
-		"42"
-	);
+	cc_shared(dir.as_ref().join("cext"), &so);
+	dir.ok(&["build"]);
+	assert_eq!(trim(&bin(dir.as_ref().join("main")).stdout), "42");
 
 	let home = Project::new();
 	ok(oi(&["install", "cext"])

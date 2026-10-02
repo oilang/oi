@@ -51,6 +51,30 @@ pub fn err(out: Output) -> String {
 	trim(&out.stderr)
 }
 
+/// Lossy stderr text.
+pub fn stderr(out: &Output) -> String {
+	String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+/// Run a built binary.
+#[allow(dead_code)]
+pub fn bin(path: impl AsRef<Path>) -> Output {
+	Command::new(path.as_ref()).output().unwrap()
+}
+
+/// Sorted `.oi` files directly under a repo-relative dir.
+#[allow(dead_code)]
+pub fn oi_files(dir: &str) -> Vec<PathBuf> {
+	let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
+	let mut paths: Vec<_> = (std::fs::read_dir(root).unwrap())
+		.map(|e| e.unwrap().path())
+		.filter(|p| p.extension().is_some_and(|e| e == "oi"))
+		.collect();
+	paths.sort();
+	assert!(!paths.is_empty(), "no .oi files found in {dir}");
+	paths
+}
+
 /// Strip a single trailing newline.
 pub fn trim(bytes: &[u8]) -> String {
 	let s = String::from_utf8(bytes.to_vec()).unwrap();
@@ -102,6 +126,34 @@ impl Project {
 		self
 	}
 
+	/// Write main.oi under a `module main` header.
+	pub fn main(self, body: impl Lines) -> Self {
+		self.file("main.oi", &format!("module main\n{}", body.text()))
+	}
+
+	/// Write `<name>/lib.oi` under a `module <name>` header.
+	pub fn lib(self, name: &str, body: impl Lines) -> Self {
+		self.file(&format!("{name}/lib.oi"), &format!("module {name}\n{}", body.text()))
+	}
+
+	/// A headerless main that imports a `cext` module of foreign decls.
+	pub fn foreign(main: impl Lines, decls: impl Lines) -> Self {
+		let cext = format!("module cext\n{}", decls.text());
+		Self::new()
+			.file("main.oi", &format!("use cext\n{}", main.text()))
+			.file("cext.oi", &cext)
+	}
+
+	/// Run `oi` in the project dir.
+	pub fn oi(&self, args: &[&str]) -> Output {
+		oi(args).current_dir(self).run(None)
+	}
+
+	/// Like `oi`, asserting success and returning stdout.
+	pub fn ok(&self, args: &[&str]) -> String {
+		ok(self.oi(args))
+	}
+
 	/// Run main.oi and assert its output.
 	pub fn check(self, expected: impl Lines) {
 		assert_eq!(ok(self.run()), expected.text());
@@ -115,7 +167,7 @@ impl Project {
 
 	/// Run main.oi and return the raw output.
 	pub fn run(&self) -> Output {
-		oi(&["run", "main.oi"]).current_dir(self).run(None)
+		self.oi(&["run", "main.oi"])
 	}
 }
 
