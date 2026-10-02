@@ -893,6 +893,13 @@ pub extern "C" fn argv(i: i64) -> *const c_char {
 	arg.map_or(std::ptr::null(), |a| a.as_ptr())
 }
 
+// Get dirent name.
+#[unsafe(export_name = "oi_dirent_name")]
+pub extern "C" fn dirent_name(e: *const u8) -> *const c_char {
+	let off = if cfg!(target_os = "macos") { 21 } else { 19 };
+	e.wrapping_add(off).cast()
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum MapKey {
 	Raw(i64),

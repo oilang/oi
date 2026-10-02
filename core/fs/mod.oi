@@ -1,5 +1,7 @@
 module fs
 
+use rt
+
 fopen : fn(path: cstr, mode: cstr) ptr : foreign
 fgetc : fn(stream: ptr) i32 : foreign
 fwrite : fn(buf: ptr, size: usize, n: usize, stream: ptr) usize : foreign
@@ -88,8 +90,7 @@ pub list :: fn(path: string) ![]string {
 		e := unsafe readdir(d)
 		if e.is_null() do break
 
-		# ponytail: glibc dirent d_name offset
-		name :: unsafe cstr.(e.offset(19)).str()
+		name :: unsafe rt.oi_dirent_name(e).str()
 		if name != "." && name != ".." {
 			out << name
 		}
