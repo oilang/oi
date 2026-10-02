@@ -81,20 +81,24 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// a slot is settled only if every path assigns it or diverges
 		let (outer, mut live) = (self.slots.clone(), vec![]);
+		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 		self.b.switch_to_block(then_block);
 		let then_flow = self.scoped(|s| s.block_tail(then, target))?;
 		self.rejoin(&outer, &mut live, then_flow.is_none());
+		let tail = self.branch_tail(&owned, &mut tails, then_flow.is_some());
 		if let Some(vt) = then_flow {
-			self.join_branch(want, vt, &mut result, &mut reached, merge, span)?;
+			self.join_branch(want, vt, &mut result, &mut reached, tail, span)?;
 		}
 
 		self.b.switch_to_block(else_block);
 		let else_flow = self.else_default(els, &result, target, span)?;
 		self.rejoin(&outer, &mut live, else_flow.is_none());
 		self.slots = live;
+		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
 		if let Some(vt) = else_flow {
-			self.join_branch(want, vt, &mut result, &mut reached, merge, span)?;
+			self.join_branch(want, vt, &mut result, &mut reached, tail, span)?;
 		}
+		self.join_moves(owned, tails, merge);
 
 		if !want {
 			return Ok(reached.then(|| {
@@ -243,6 +247,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let merge = self.b.create_block();
 		let mut result: Option<(Variable, Typ)> = None;
 		let (outer, mut live) = (self.slots.clone(), vec![]);
+		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 
 		// pre-create each arm's entry block so each arm knows where to fall through to on failure
 		let arm_entries: Vec<Block> = arms.iter().map(|_| self.b.create_block()).collect();
@@ -362,8 +367,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				s.block_tail(&arm.body, target)
 			})?;
 			self.rejoin(&outer, &mut live, flow.is_none());
+			let tail = self.branch_tail(&owned, &mut tails, flow.is_some());
 			if let Some(vt) = flow {
-				self.contribute("match", vt, &mut result, merge, span)?;
+				self.contribute("match", vt, &mut result, tail, span)?;
 			}
 		}
 
@@ -373,9 +379,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		let unreachable = else_flow.is_none() || (st.is_enumish() && else_body.is_none());
 		self.rejoin(&outer, &mut live, unreachable);
 		self.slots = live;
+		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
 		if let Some(vt) = else_flow {
-			self.contribute("match", vt, &mut result, merge, span)?;
+			self.contribute("match", vt, &mut result, tail, span)?;
 		}
+		self.join_moves(owned, tails, merge);
 
 		Ok(self.finish_merge(merge, result))
 	}

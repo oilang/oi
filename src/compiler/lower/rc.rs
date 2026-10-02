@@ -356,6 +356,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.read_local(local))
 	}
 
+	// End a reached branch in its own tail, noting what it still owns.
+	pub(super) fn branch_tail(&mut self, owned: &Owned, tails: &mut Vec<(Block, Owned)>, reached: bool) -> Block {
+		let tail = self.b.create_block();
+		let kept = std::mem::replace(&mut self.scopes, owned.clone());
+		if reached {
+			tails.push((tail, kept));
+		}
+		tail
+	}
+
+	pub(super) fn join_moves(&mut self, owned: Owned, tails: Vec<(Block, Owned)>, merge: Block) {
+		let has = |s: &Owned, var| s.iter().flatten().any(|(v, _)| *v == var);
+		let moved = |var| has(&owned, var) && tails.iter().any(|(_, s)| !has(s, var));
+		for (tail, s) in &tails {
+			self.b.switch_to_block(*tail);
+			self.b.seal_block(*tail);
+			for (var, t) in s.iter().flatten().filter(|(v, _)| moved(*v)) {
+				let v = self.b.use_var(*var);
+				self.release_value(v, t);
+			}
+			self.b.ins().jump(merge, &[]);
+		}
+		self.vars.retain(|_, l| !moved(l.var));
+		self.scopes = owned.iter().map(|s| s.iter().filter(|(v, _)| !moved(*v)).cloned().collect()).collect();
+	}
+
 	// A bind takes its own copy.
 	pub(crate) fn copy_bind(&mut self, val: Value, typ: &Typ) -> Value {
 		if self.handover(val, typ) {
@@ -380,6 +406,9 @@ impl<'a, M: Module> Translator<'a, M> {
 pub(super) fn base_name(name: &str) -> &str {
 	name.split('[').next().unwrap_or(name)
 }
+
+// The bindings owned by each scope.
+pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 
 pub(super) fn releasable(typ: &Typ) -> bool {
 	match typ {

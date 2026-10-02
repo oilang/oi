@@ -149,6 +149,26 @@ fn a_move_arg_transfers_ownership() {
 }
 
 #[test]
+fn a_branch_move_drops_on_the_untaken_path() {
+	let go = indoc! {r#"
+		eat :: fn(move f: File) { print("ate", f.fd) }
+		go :: fn(n: int) {
+			f :: File.{fd = n}
+			if n == 1 { eat(move f) }
+			print("end", n)
+		}
+	"#};
+	check(
+		[FILE, go, "go(1)", "go(3)"],
+		["ate 1", "drop 1", "end 1", "drop 3", "end 3"],
+	);
+	fail(
+		[FILE, go, "f :: File.{fd = 1}", "if true { eat(move f) }", "print(f.fd)"],
+		"undefined variable",
+	);
+}
+
+#[test]
 fn move_self_consumes_the_receiver() {
 	let close = r#"File :< { close :: fn(move self) { print("closing", self.fd) } }"#;
 	check(
