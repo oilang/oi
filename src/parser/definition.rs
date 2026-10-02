@@ -150,13 +150,7 @@ where
 
 	let foreign_lit = just(Token::Foreign).to(Expr::Foreign);
 
-	let ref_lit = just(Token::Amp).ignore_then(p.expr.clone()).try_map(|e, span| match &e.0 {
-		Expr::StructLit { .. } => Ok(Expr::Ref(Box::new(e))),
-		_ => Err(Rich::custom(
-			span,
-			"only a struct literal can be boxed into a reference yet",
-		)),
-	});
+	let ref_lit = just(Token::Amp).ignore_then(p.expr.clone()).map(|e| Expr::Ref(Box::new(e)));
 
 	// generic type headers
 	let generic_head = ident()

@@ -219,6 +219,7 @@ where
 			TypeExpr::AtomSum(atoms) => atoms.len() == 1,
 			TypeExpr::Tuple(ts) => ts.iter().all(|(n, t)| n.is_none() && expr_shaped(t)),
 			TypeExpr::Generic(_, args) => matches!(args.as_slice(), [a] if expr_shaped(a)),
+			TypeExpr::Ref(t) => expr_shaped(t),
 			_ => false,
 		}
 	}

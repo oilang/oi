@@ -661,6 +661,7 @@ impl TypeExpr {
 				.map(|(_, v)| Some((None, TypeExpr::from_expr(&v.0)?)))
 				.collect::<Option<_>>()
 				.map(TypeExpr::Tuple),
+			Expr::Ref(e) => Some(TypeExpr::Ref(Box::new(TypeExpr::from_expr(&e.0)?))),
 			Expr::Index { collection, index } => match &collection.0 {
 				Expr::Ident(n) => Some(TypeExpr::Generic(n.clone(), vec![TypeExpr::from_expr(&index.0)?])),
 				_ => None,

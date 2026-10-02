@@ -327,6 +327,7 @@ v := u # same user, not a copy
 v.swag = 9
 assert!(u.swag == 9)
 # writing through a reference requires a `mut` binding
+# `&x` on an existing value boxes a copy
 
 # required fields
 Foo :: struct {

@@ -15,6 +15,23 @@ fn aliasing_shares_identity() {
 }
 
 #[test]
+fn ref_of_existing_boxes_a_copy() {
+	check(
+		indoc! {"
+			Node :: struct { value: int, tags: []int }
+			n := Node.{ value = 5, tags = [1] }
+			r :: &n
+			s := r
+			s.value = 9
+			s.tags = [2]
+			n.value = 7
+			print(n, r)
+		"},
+		"Node.{value = 7, tags = [1]} Node.{value = 9, tags = [2]}",
+	);
+}
+
+#[test]
 fn bare_ref_without_value_errors() {
 	fail(
 		["Node :: struct { value: int }", "n: &Node"],

@@ -806,6 +806,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					);
 				};
 				// move the literal's slots into a shared box
+				let ptr = match inner.0 {
+					Expr::StructLit { .. } => ptr,
+					_ => {
+						self.move_resource(inner, &typ)?;
+						self.copy_bind(ptr, &typ)
+					}
+				};
 				let n = fields.len();
 				let base = self.call_alloc_bytes((n * 8) as i64 + 16);
 				let descv = self.trace_desc(name, fields);
