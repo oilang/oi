@@ -335,7 +335,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				} else {
 					let (recv_val, recv_typ) = self.expr(recv)?;
-					let recv_typ = self.peeled(&recv_typ);
+					let (recv_val, recv_typ) = self.deref(recv_val, &recv_typ);
 					if recv_typ == Typ::Ast && method == "int" && args.is_empty() {
 						let raw = self.ast_method(recv_val, method, None);
 						return Ok((self.intcast(raw, types::I64, true), Typ::Int(64)));
@@ -536,7 +536,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				let (ptr, typ) = self.expr(tuple)?;
-				let typ = self.peeled(&typ);
+				let (ptr, typ) = self.deref(ptr, &typ);
 
 				// expose fields
 				if typ == Typ::Ast {
@@ -799,12 +799,6 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Ref(inner) => {
 				let (ptr, typ) = self.expr(inner)?;
-				let Typ::Struct(name, fields) = &typ else {
-					return Err(
-						Diagnostic::new("only a struct can be boxed into a reference", inner.1.into_range())
-							.with_label(format!("this is {typ}")),
-					);
-				};
 				// move the literal's slots into a shared box
 				let ptr = match inner.0 {
 					Expr::StructLit { .. } => ptr,
@@ -813,17 +807,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.copy_bind(ptr, &typ)
 					}
 				};
-				let n = fields.len();
-				let base = self.call_alloc_bytes((n * 8) as i64 + 16);
-				let descv = self.trace_desc(name, fields);
-				self.b.ins().store(MemFlags::new(), descv, base, 0);
-				let one = self.b.ins().iconst(self.int, 1);
-				self.b.ins().store(MemFlags::new(), one, base, 8);
-				let boxp = self.b.ins().iadd_imm(base, 16);
-				for i in 0..n {
-					let v = self.b.ins().load(self.int, MemFlags::new(), ptr, (i * 8) as i32);
-					self.b.ins().store(MemFlags::new(), v, boxp, (i * 8) as i32);
-				}
+				let boxp = self.box_value(ptr, &typ);
 				self.untemp(ptr);
 				let typ = Typ::Ref(Box::new(typ.clone()));
 				self.temp(boxp, &typ);

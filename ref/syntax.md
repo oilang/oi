@@ -331,7 +331,7 @@ p^ = 6
 assert!(x == 6)
 
 # `&` boxes a temporary, which is an explicit heap allocation
-u: ^User = &User.{}
+u: ^User = &User.{} # the type is inferable, I just have it here for clarity
 v := u # same user, not a copy
 v.swag = 9 # `.` auto derefs
 assert!(u.swag == 9)

@@ -242,17 +242,7 @@ impl TypeCtx<'_> {
 					self.array_len(len)?,
 				))
 			}
-			TypeExpr::Ref(inner) => {
-				let it = self.resolve(inner, span)?;
-				if !matches!(it, Typ::Struct(..)) {
-					return Err(Diagnostic::new(
-						format!("references to {it} aren't supported yet, only structs"),
-						span.into_range(),
-					)
-					.with_label("not a struct"));
-				}
-				Ok(Typ::Ref(Box::new(it)))
-			}
+			TypeExpr::Ref(inner) => Ok(Typ::Ref(Box::new(self.resolve(inner, span)?))),
 			TypeExpr::AtomSum(names) => {
 				let mut seen = HashSet::new();
 				if let Some(dup) = names.iter().find(|n| !seen.insert(*n)) {

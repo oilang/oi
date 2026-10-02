@@ -185,7 +185,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Annotated(_, t) => self.emit_print(val, &t.clone(), quote, sink),
 
 			Typ::Ref(_) => {
-				let inner = self.peeled(typ);
+				let (val, inner) = self.deref(val, typ);
 				self.emit_print(val, &inner, quote, sink)
 			}
 

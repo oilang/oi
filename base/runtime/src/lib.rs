@@ -686,7 +686,8 @@ pub unsafe extern "C" fn ref_share(ptr: *mut u8) -> *mut u8 {
 }
 
 // Walk a box's trace descriptor, calling `visit` on each live ref slot.
-unsafe fn trace(fields: *mut u8, desc: *const i64, visit: &mut dyn FnMut(*mut u8)) {
+// Array/map handles aren't graph edges, so when `drop` they're only released.
+unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn FnMut(*mut u8)) {
 	if desc.is_null() {
 		return;
 	}
@@ -695,16 +696,20 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, visit: &mut dyn FnMut(*mut u8
 		for _ in 0..*desc {
 			let e = *p;
 			p = p.add(1);
-			let slot = *(fields.add((e >> 1) as usize) as *const *mut u8);
+			let slot = *(fields.add((e >> 2) as usize) as *const *mut u8);
 			if slot.is_null() {
-				p = p.add((e & 1) as usize);
+				p = p.add((e & 3 == 1) as usize);
 				continue;
 			}
-			if e & 1 == 0 {
-				visit(slot);
-			} else {
-				trace(slot, *p as *const i64, &mut *visit);
-				p = p.add(1);
+			match e & 3 {
+				0 => visit(slot),
+				1 => {
+					trace(slot, *p as *const i64, drop, &mut *visit);
+					p = p.add(1);
+				}
+				2 if drop => array_release(slot.cast()),
+				3 if drop => map_release(slot.cast()),
+				_ => {}
 			}
 		}
 	}
@@ -734,7 +739,7 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 		if *rc == 0 {
 			// remove freed boxes to avoid `collect_cycles` walking freed memory
 			ROOTS.with(|r| r.borrow_mut().remove(&(ptr as usize)));
-			trace(ptr, desc(ptr), &mut |c| ref_release(c));
+			trace(ptr, desc(ptr), true, &mut |c| ref_release(c));
 			free(ptr.sub(16));
 		} else if !desc(ptr).is_null() {
 			// still alive and holding refs
@@ -772,7 +777,7 @@ fn mark_gray(s: *mut u8, c: &mut HashMap<usize, Color>) {
 		return;
 	}
 	unsafe {
-		trace(s, desc(s), &mut |t| {
+		trace(s, desc(s), false, &mut |t| {
 			*(t.sub(8) as *mut i64) -= 1;
 			mark_gray(t, c);
 		})
@@ -788,14 +793,14 @@ fn scan(s: *mut u8, c: &mut HashMap<usize, Color>) {
 		scan_black(s, c);
 	} else {
 		c.insert(s as usize, Color::White);
-		unsafe { trace(s, desc(s), &mut |t| scan(t, c)) };
+		unsafe { trace(s, desc(s), false, &mut |t| scan(t, c)) };
 	}
 }
 
 fn scan_black(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	c.insert(s as usize, Color::Black);
 	unsafe {
-		trace(s, desc(s), &mut |t| {
+		trace(s, desc(s), false, &mut |t| {
 			*(t.sub(8) as *mut i64) += 1;
 			if c.get(&(t as usize)) != Some(&Color::Black) {
 				scan_black(t, c);
@@ -811,7 +816,7 @@ fn collect_white(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	}
 	c.insert(s as usize, Color::Black);
 	unsafe {
-		trace(s, desc(s), &mut |t| collect_white(t, c));
+		trace(s, desc(s), true, &mut |t| collect_white(t, c));
 		free(s.sub(16));
 	}
 }

@@ -191,26 +191,33 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// The address of a struct's trace descriptor symbol.
-	pub(super) fn trace_desc(&mut self, name: &str, fields: &[FieldDef]) -> Value {
-		if self.desc_data(name, fields).is_none() {
+	fn trace_desc(&mut self, name: &str, slots: &[Typ]) -> Value {
+		if self.desc_data(name, slots).is_none() {
 			return self.b.ins().iconst(self.int, 0);
 		}
 		self.data_addr(&oi_symbol(&format!("{name}#trace")))
 	}
 
 	// Define trace descriptor on first use.
-	fn desc_data(&mut self, name: &str, fields: &[FieldDef]) -> Option<DataId> {
+	fn desc_data(&mut self, name: &str, slots: &[Typ]) -> Option<DataId> {
 		if let Some(&id) = self.descs.get(name) {
 			return Some(id);
 		}
 		let mut words = vec![0i64];
 		let mut relocs = Vec::new();
-		for (i, f) in fields.iter().enumerate() {
-			let off = ((i * 8) as i64) << 1;
-			if ref_like(&f.typ) {
-				words.push(off);
-			} else if let Typ::Struct(n, sub) = &f.typ
-				&& let Some(child) = self.desc_data(n, sub)
+		for (i, t) in slots.iter().enumerate() {
+			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
+			let off = ((i * 8) as i64) << 2;
+			if let Some((_, release)) = handle_fns(t) {
+				words.push(
+					off | match release {
+						"array_release" => 2,
+						"map_release" => 3,
+						_ => 0,
+					},
+				);
+			} else if let Typ::Struct(n, sub) = t
+				&& let Some(child) = self.desc_data(n, &field_types(sub))
 			{
 				words.push(off | 1);
 				relocs.push((words.len() * 8, child));
@@ -247,6 +254,28 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.temps.insert(val, var);
 			self.scopes.last_mut().expect("scope").push((var, typ.clone()));
 		}
+	}
+
+	// Move a value into a fresh rc box, a non-struct T as its slot.
+	pub(super) fn box_value(&mut self, ptr: Value, typ: &Typ) -> Value {
+		let (key, slots) = match typ {
+			Typ::Struct(name, fields) => (name.clone(), field_types(fields)),
+			t => (t.key(), vec![t.clone()]),
+		};
+		let base = self.call_alloc_bytes((slots.len() * 8) as i64 + 16);
+		let descv = self.trace_desc(&key, &slots);
+		self.b.ins().store(MemFlags::new(), descv, base, 0);
+		let one = self.b.ins().iconst(self.int, 1);
+		self.b.ins().store(MemFlags::new(), one, base, 8);
+		let boxp = self.b.ins().iadd_imm(base, 16);
+		for i in 0..slots.len() as i32 {
+			let v = match typ {
+				Typ::Struct(..) => self.b.ins().load(self.int, MemFlags::new(), ptr, i * 8),
+				_ => ptr,
+			};
+			self.b.ins().store(MemFlags::new(), v, boxp, i * 8);
+		}
+		boxp
 	}
 
 	// Declare a named binding that owns its value.
@@ -423,6 +452,10 @@ pub(super) fn releasable(typ: &Typ) -> bool {
 // Whether a struct field slot owns its value.
 pub(super) fn owns(typ: &Typ) -> bool {
 	matches!(typ, Typ::Struct(..)) || releasable(typ)
+}
+
+fn field_types(fields: &[FieldDef]) -> Vec<Typ> {
+	fields.iter().map(|f| f.typ.clone()).collect()
 }
 
 // The runtime share/release fns for rc'd types.

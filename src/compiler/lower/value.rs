@@ -335,6 +335,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Read through `^T`, loading a non-struct payload from its slot.
+	pub(super) fn deref(&mut self, val: Value, typ: &Typ) -> TypedVal {
+		match (typ, self.peeled(typ)) {
+			(Typ::Ref(_), t) if !matches!(t, Typ::Struct(..)) => {
+				(self.b.ins().load(cl_type(&t, self.int), MemFlags::new(), val, 0), t)
+			}
+			(_, t) => (val, t),
+		}
+	}
+
 	// Variant table for any type that carries variants.
 	pub(super) fn variants_of(&self, typ: &Typ) -> Vec<VariantInfo> {
 		match typ {

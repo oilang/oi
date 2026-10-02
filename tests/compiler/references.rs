@@ -196,3 +196,9 @@ fn cycle_with_acyclic_hangoff_reclaimed() {
 		print(a.value)
 	"#});
 }
+
+#[test]
+fn ref_boxes_any_type() {
+	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
+	assert_clean(["xs := &[1, 2]", "print(xs)"]);
+}
