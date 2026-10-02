@@ -54,7 +54,7 @@ jobs:
           mkdir -p ./www/static/
           rm -rf ./www/static/docs
           mv ./target/doc/ ./www/static/docs/
-          just gen::examples
+          just gen::examples gen::version
 
       - uses: actions/configure-pages@v6
         id: pages

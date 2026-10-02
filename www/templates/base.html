@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" class="dark light">
+	{% include "partials/header.html" %}
+
+	<body>
+		{% include "apollo/body_start.html" %}
+		<div class="left-content">
+			{% block left_content %}
+			{% endblock left_content %}
+		</div>
+
+		<div class="content">
+			{% include "partials/nav.html" %}
+
+			{% block main_content %}
+				Nothing here?!
+			{% endblock main_content %}
+
+			{% if page?.extra?.comment %}
+				{% set show_comment = page.extra.comment %}
+			{% else %}
+				{% set show_comment = false %}
+			{% endif %}
+
+			{% if show_comment %}
+				<div class="giscus"></div>
+
+				{% include "_giscus_script.html" %}
+			{% endif %}
+
+			<footer class="version">Oi {{ load_data(path="version.txt", format="plain") | trim }}</footer>
+		</div>
+
+		<div class="right-content">
+			{% block right_content %}
+			{% endblock right_content %}
+		</div>
+
+		{% include "apollo/body_end.html" %}
+	</body>
+</html>

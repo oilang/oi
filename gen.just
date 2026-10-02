@@ -11,3 +11,8 @@ examples:
 			printf '```\n'
 		done
 	} > www/content/examples.md
+
+# write the oi version for the site
+[group("docs")]
+@version:
+	cargo run --quiet -- --version | cut -d' ' -f2 > www/version.txt

@@ -91,7 +91,7 @@ tags: []
 	- [x] `10..-2..` `revo`
 	- [x] `if let`/`while let` `rust`
 	- [ ] `loop let`/?`match let` `rust`
-	- [ ] Julia/V style REPL banner `julia v`
+	- [x] Julia/V style REPL banner `julia v`
 	- [ ] `:h <topic>` `vim revo`
 	- [x] ~`r#""#` `rust`~ `""""`/`r"""` `odin c# swift java`
 	- [x] either open field amendments up to anything, or handle ctx differently
@@ -100,7 +100,7 @@ tags: []
 - [ ] AoS, SoA, AoSoA
 - [x] implicit context `jai`
 - [ ] computed values `swift gdscript`
-- [ ] thread version through repl and cli and docs and everything
+- [x] thread version through repl and cli and docs and everything
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
 - [ ] make an `@implicit` trait that expects `str() string`, and use that for the "str/print everything "stuff

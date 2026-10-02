@@ -53,7 +53,7 @@ ci: build fmt-check lint test
 
 # generate and serve static website
 [group("docs")]
-@serve *args: gen::examples
+@serve *args: gen::examples gen::version
 	zola --root www serve --interface 0.0.0.0 --base-url / --port 8080 "$@"
 
 # fix fixable things
