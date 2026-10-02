@@ -2106,7 +2106,13 @@ impl<M: Module> Compiler<M> {
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
 		}
-		trans.bind_dollar(def.params_tuple);
+
+		// the params tuple is a heap alloc, so only build it for a body that reads `$`
+		let mut dollar = false;
+		Expr::Block(def.body.to_vec()).walk(&mut |e| dollar |= matches!(e, Expr::Dollar));
+		if dollar {
+			trans.bind_dollar(def.params_tuple);
+		}
 
 		if def.ctxless.is_none() {
 			let typ = trans.types.named(def.ctx.as_deref().unwrap_or(CONTEXT), (0..0).into())?;
