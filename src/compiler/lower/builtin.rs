@@ -213,13 +213,16 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Casts and numeric conversions.
 	pub(super) fn cast_to(&mut self, target: &Typ, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		let [value] = args else {
-			let Typ::TupleStruct(name, _) = target else {
-				return Err(
+			let fields: Vec<_> = args.iter().map(|a| (None, a.clone())).collect();
+			return match target {
+				Typ::TupleStruct(name, _) => self.construct_tuple_struct(name, args, span),
+				Typ::Struct(name, _) => self.struct_lit(name, &[], &fields, span, Some(target)),
+				Typ::Tuple(_) => self.check_expr(&(Expr::Tuple(fields), span), target),
+				_ => Err(
 					Diagnostic::new(format!("`{target}` casts a single value"), span.into_range())
 						.with_label("wrong number of arguments"),
-				);
+				),
 			};
-			return self.construct_tuple_struct(name, args, span);
 		};
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
@@ -257,6 +260,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (data, len) = self.array_parts(val, &typ);
 			let data = self.rt_call("ptr_buffer", &[data, len]).unwrap();
 			return Ok((self.make_array(data, len, target), target.clone()));
+		}
+		if let (Typ::Struct(_, fs), Typ::Tuple(ts)) = (target, &typ)
+			&& fs.iter().map(|f| &f.typ).eq(ts.iter().map(|(_, t)| t))
+		{
+			let ptr = self.stack_slot((fs.len() * 8) as u32);
+			self.assign_fields(val, ptr, fs, false);
+			return Ok((ptr, target.clone()));
 		}
 		if let Typ::TupleStruct(_, fields) = target
 			&& let [(_, ft)] = &fields[..]

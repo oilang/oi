@@ -246,5 +246,32 @@ fn field_assign() {
 		"},
 		"(11, b = 20)",
 	);
-	fail("t := (1, 2)\nt.z = 3", "tuple has no field `z`");
+	fail("t := (1, 2); t.z = 3", "tuple has no field `z`");
+}
+
+#[test]
+fn alias_beside_main() {
+	check(
+		indoc! {r#"
+			T :: (int, string, float)
+			main :: fn() {
+				t :: T.(2 "ciea" 2)
+				print(t)
+			}
+		"#},
+		r#"(2, "ciea", 2.0)"#,
+	);
+}
+
+#[test]
+fn dot_tuple_casts() {
+	check(
+		indoc! {r#"
+			first :: fn(t: (int, string)) int { t.0 }
+			pair :: fn() (int, float) { .(7, 2) }
+			x : ?int = .(5)
+			print(first(.(3, "c")), pair(), (int, string).(1, "a"), x)
+		"#},
+		r#"3 (7, 2.0) (1, "a") some.(5)"#,
+	);
 }

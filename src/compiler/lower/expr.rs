@@ -693,10 +693,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			},
 
 			Expr::DotTuple(args) => match hint {
-				Some(Typ::TupleStruct(name, _)) => self.construct_tuple_struct(name, args, expr.1),
-				_ => Err(
-					Diagnostic::new("cannot infer the tuple struct here", expr.1.into_range())
-						.with_label("annotate the binding, or construct with `Name( ... )`"),
+				Some(t) => self.cast_to(t, args, expr.1),
+				None => Err(
+					Diagnostic::new("cannot infer the type of `.()` here", expr.1.into_range())
+						.with_label("annotate the binding, or cast with `T.( ... )`"),
 				),
 			},
 

@@ -271,7 +271,10 @@ impl fmt::Display for Typ {
 			Typ::CStr => write!(f, "cstr"),
 			Typ::Atom => write!(f, "atom"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
-			Typ::Tuple(_) => write!(f, "tuple"),
+			Typ::Tuple(fields) => {
+				let show = |(n, t): &(Option<String>, Typ)| n.as_ref().map_or(t.to_string(), |n| format!("{n}: {t}"));
+				write!(f, "({})", fields.iter().map(show).collect::<Vec<_>>().join(", "))
+			}
 			Typ::Array(e) => write!(f, "[]{e}"),
 			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
 			Typ::Struct(name, _) => write!(f, "{name}"),

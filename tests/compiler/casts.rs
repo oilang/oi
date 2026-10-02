@@ -32,6 +32,14 @@ fn struct_casts() {
 		"},
 		"2.0",
 	);
+	check(
+		indoc! {"
+			P :: struct { x: int, y: float }
+			t := (3, 4.5)
+			print(P.(1, 2), P.((1, 2.5)), P.(t))
+		"},
+		"P.{x = 1, y = 2.0} P.{x = 1, y = 2.5} P.{x = 3, y = 4.5}",
+	);
 }
 
 #[test]

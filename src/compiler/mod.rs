@@ -1328,7 +1328,7 @@ impl<M: Module> Compiler<M> {
 				} => {
 					if let Some(te) = TypeExpr::from_expr(&v.0) {
 						soft_aliases.push((name.clone(), te));
-						if !scope.module.is_empty() {
+						if has_main || !scope.module.is_empty() {
 							continue;
 						}
 					}
@@ -1341,7 +1341,6 @@ impl<M: Module> Compiler<M> {
 		let mut aliases: HashMap<String, TypeExpr> =
 			alias_items.iter().map(|(name, te)| (name.to_string(), te.clone())).collect();
 		aliases.extend(soft_aliases);
-
 		for (name, te) in &mut aliases {
 			if let TypeExpr::TupleStruct(n, _) = te {
 				n.clone_from(name);

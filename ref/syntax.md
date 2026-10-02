@@ -1132,6 +1132,10 @@ main :: fn() {
 	only_nums := (2 3 4)
 	other_literals := ("lisp, innit?" true [2 4 5])
 
+	# a tuple type casts like any other, and `.()` infers it from the expected type
+	row := (int, string, float).(2 "ciea" 2) # (2, "ciea", 2.0)
+	pair : (int, string) = .(1, "a")
+
 	# named tuple fields
 
 	## Naturally every tuple field has a positional index.

@@ -111,7 +111,7 @@ fn tuple_keys_fail_for_now() {
 			"},
 			""
 		)
-		.contains("tuple cannot be used as a map key")
+		.contains("(int, int) cannot be used as a map key")
 	);
 }
 
