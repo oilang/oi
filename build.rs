@@ -14,5 +14,5 @@ fn main() {
 		.unwrap_or_else(|| "unknown".to_string());
 	println!("cargo:rustc-env=OI_GIT_SHA={sha}");
 	println!("cargo:rustc-env=OI_TARGET={}", std::env::var("TARGET").unwrap());
-	println!("cargo:rerun-if-changed=.git/HEAD");
+	println!("cargo:rerun-if-changed=.git/logs/HEAD");
 }

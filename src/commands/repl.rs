@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::io::IsTerminal as _;
 
+use indoc::eprintdoc;
 use oi::Reported;
 use oi::ast::Expr;
 use oi::driver::{DebugOpts, run_source};
@@ -24,7 +25,18 @@ const HELP: &str = indoc::indoc! {"
 "};
 
 pub fn run() -> Result<(), Reported> {
-	eprintln!("Oi! {VERSION}\nType :help for help.");
+	eprintdoc! {r"
+
+    ███████     ███  ███  |
+  ███░░░░░███  ░░░  ░███  |
+ ███     ░░███ ████ ░███  |  Oi {VERSION}
+░███      ░███░░███ ░███  |
+░███      ░███ ░███ ░███  |  Docs: https://oilang.github.io/oi
+░░███     ███  ░███ ░░░   |  Type :help for help, :quit to quit.
+ ░░░███████░   █████ ███  |
+   ░░░░░░░    ░░░░░ ░░░   |
+	"}
+
 	// reedline needs a tty, so piped stdin reads plain lines
 	let mut next: Box<dyn FnMut() -> Option<String>> = if std::io::stdin().is_terminal() {
 		let mut rl = reedline();
