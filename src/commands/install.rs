@@ -47,13 +47,25 @@ fn fetch(url: &str, prefix: Option<&Path>) -> Result<PathBuf, Reported> {
 		.map_or_else(home, Path::to_path_buf)
 		.join("src")
 		.join(name.trim_end_matches(".git"));
+	let fresh = !dir.exists();
 	let mut git = Command::new("git");
-	if dir.exists() {
+	if !fresh {
 		git.arg("-C").arg(&dir).args(["pull", "-q", "--ff-only"]);
 	} else {
 		git.args(["clone", "-q", "--depth", "1", url]).arg(&dir);
 	}
-	if !git.status().map_err(at(&dir))?.success() {
+	let mut ok = git.status().map_err(at(&dir))?.success();
+	// retry as full clone
+	if !ok && fresh {
+		let _ = fs::remove_dir_all(&dir);
+		ok = Command::new("git")
+			.args(["clone", "-q", url])
+			.arg(&dir)
+			.status()
+			.map_err(at(&dir))?
+			.success();
+	}
+	if !ok {
 		eprintln!("oi: {url}: git failed");
 		return Err(Reported);
 	}
