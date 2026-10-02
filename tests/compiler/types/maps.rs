@@ -410,3 +410,17 @@ fn equality_rejects_a_missing_key() {
 		["false", "true"],
 	);
 }
+
+#[test]
+fn dot_literals() {
+	check(
+		indoc! {r#"
+			M :: [string]int
+			a: M = .["a" = 1]
+			b :: M.["b" = 2]
+			e: M = .[]
+			a["a"] + b["b"] + e.len
+		"#},
+		"3",
+	);
+}

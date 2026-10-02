@@ -260,6 +260,13 @@ where
 	)
 	.map_with(|entries, ex| (Expr::Map(entries), ex.span()));
 
+	// dot map literals
+	let typed_map = spanned(p.type_expr.clone())
+		.then_ignore(dot())
+		.then(map.clone().map(|lit| vec![lit]))
+		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
+	let dot_map = dot().ignore_then(map.clone()).or(typed_map);
+
 	let array = bracket(loose_list(p.expr.clone())).map_with(|elems, ex| (Expr::Array(elems), ex.span()));
 
 	// match patterns
@@ -272,6 +279,7 @@ where
 			let args = vec![(Expr::Record(es), ex.span())];
 			(Expr::EnumShorthand { variant, args }, ex.span())
 		});
+
 	// container types
 	let type_pat = p
 		.type_expr
@@ -450,6 +458,7 @@ where
 
 	// atoms
 	let atom = choice((
+		dot_map,
 		dot_array,
 		cast,
 		dot_tuple,

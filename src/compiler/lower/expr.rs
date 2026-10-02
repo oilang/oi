@@ -695,6 +695,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::DotArray(None, elems) => match hint {
 				Some(Typ::Array(elem)) => self.array_lit(elems, Some(elem), expr.1),
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, elem, *n, expr.1),
+				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
 				_ => self.fixed_infer(elems, expr.1),
 			},
 
@@ -711,6 +712,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				match &typ {
 					Typ::Array(elem) => self.array_lit(elems, Some(elem), expr.1),
 					Typ::FixedArray(elem, n) => self.fixed_lit(elems, elem, *n, expr.1),
+					Typ::Map(..) if elems.is_empty() => self.map_lit(&[], expr.1, Some(&typ)),
 					_ if elems.is_empty() => Err(Diagnostic::new(
 						"an exact array literal needs elements",
 						expr.1.into_range(),
