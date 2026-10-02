@@ -97,6 +97,7 @@ tags: []
 	- [x] either open field amendments up to anything, or handle ctx differently
 	- [ ] let `do` work on fn defs as well, or maybe just the return itself without brackets
 - [ ] `comp assert`
+- [ ] AoS, SoA, AoSoA
 - [x] implicit context `jai`
 - [ ] computed values `swift gdscript`
 - [ ] thread version through repl and cli and docs and everything

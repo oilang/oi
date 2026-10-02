@@ -1263,6 +1263,58 @@ main :: fn() {
 	label :: fn(a: atom) string { "got {a}" }
 	tags : [atom]int : [:a = 1, :b = 2]
 
+	## operators
+
+	# precedence, tightest first. every infix operator is left-associative except `**`
+	#   .  []  ()  ?
+	#   @  -  !  **
+	#   *  /  %
+	#   +  -
+	#   <<  >>
+	#   &
+	#   ~
+	#   |
+	#   ..  ..=
+	#   <  >  <=  >=  is
+	#   ==  !=  in
+	#   &&
+	#   ||
+	#   |>
+
+	# `**` is for exponents, and it associates right
+	assert! 2 ** 3 ** 2 == 512
+
+	# bitwise: `&` and, `|` or, `~` xor (_not_ `^`), `!` complement
+	assert! 0b1100 & 0b1010 == 0b1000
+	assert! 0b1100 | 0b1010 == 0b1110
+	assert! 0b1100 ~ 0b1010 == 0b0110
+	assert! !0 == -1
+
+	# `>>` is arithmetic on signed ints, logical on unsigned
+	assert! -8 >> 1 == -4 && u8.(0b1000_0000) >> 1 == 64
+
+	# the shift count wraps at the operand's width
+	assert! 1 << 64 == 1
+
+	# `<<` takes its meaning from the left operand. ints shift, and arrays append
+	# append yields the array, so it chains
+	nums := [ 1 ]
+	nums << 2 << 3
+	assert! nums == [ 1, 2, 3 ]
+
+	# every binary operator has an assign form: += -= *= **= /= %= &= |= ~= <<= >>=
+	flags := 0b1100
+	flags |= 0b0001
+	flags ~= 0b1000
+	assert! flags == 0b0101
+
+	READ :: 0b100
+	WRITE :: 0b010
+	ALL :: READ | WRITE
+	assert! ALL == 0b110
+
+	# claim `Not BitAnd BitOr BitXor Shl Shr` to overload these
+
 	## types
 
 	# type aliases

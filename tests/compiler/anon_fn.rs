@@ -149,58 +149,45 @@ fn capturing_trailing_block() {
 }
 
 #[test]
-#[ignore]
-// FIX: broke by sandwiches
-fn implicit_capture_read_only() {
+fn implicit_captures() {
+	// read only
 	let src = indoc! {"
 		n :: 10
-		scale :: fn (x: int) int { x * n }
+		scale :: fn(x: int) int { x * n }
 		scale(5)
 	"};
 	check(src, "50");
-}
 
-#[test]
-#[ignore]
-// FIX: broke by sandwiches
-fn implicit_capture_multiple() {
+	// multiple
 	let src = indoc! {"
 		a :: 10
 		b :: 32
-		add :: fn () int { a + b }
+		add :: fn() int { a + b }
 		add()
 	"};
 	check(src, "42");
-}
 
-#[test]
-fn implicit_capture_ignores_shadowed_inner_binding() {
+	// ignores shadowed inner binding
 	let src = indoc! {"
 		n :: 10
-		f :: fn () int { n :: 5; n }
+		f :: fn() int { n :: 5; n }
 		f() + n
 	"};
 	check(src, "15");
-}
 
-#[test]
-fn implicit_capture_ignores_param_shadowing_outer() {
+	// ignores param shadowing outer
 	let src = indoc! {"
 		n :: 10
-		f :: fn (n: int) int { n * 2 }
+		f :: fn(n: int) int { n * 2 }
 		f(4) + n
 	"};
 	check(src, "18");
-}
 
-#[test]
-#[ignore]
-// FIX: broke by sandwiches
-fn implicit_capture_ignores_for_loop_pattern() {
+	// ignores for loop pattern
 	let src = indoc! {"
 		nums :: [1, 2, 3]
 		total := 0
-		f :: fn () int {
+		f :: fn() int {
 			sum := 0
 			loop n in nums { sum = sum + n }
 			sum
@@ -216,7 +203,7 @@ fn closure_cannot_be_returned() {
 	let src = indoc! {"
 		make :: fn() {
 			n :: 10
-			return fn () int { n }
+			return fn() int { n }
 		}
 		make()
 	"};
@@ -329,7 +316,7 @@ fn move_capture_inside_loop_of_outer_binding() {
 fn implicit_capture_ignores_match_bound_name() {
 	let src = indoc! {r#"
 		r :: !int.(7)
-		f :: fn () int {
+		f :: fn() int {
 			match r {
 				.ok.(n) => n * 2,
 				.err.(e) => -1,
