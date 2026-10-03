@@ -196,6 +196,27 @@ impl<'a> TypeCtx<'a> {
 	}
 }
 
+// The fixed-name builtin types.
+fn builtin(name: &str) -> Option<Typ> {
+	Some(match name {
+		"int" => Typ::Int(64),
+		"uint" => Typ::UInt(64),
+		"isize" => Typ::ISize,
+		"usize" => Typ::USize,
+		"float" => Typ::Float(64),
+		"rune" => Typ::Rune,
+		"bool" => Typ::Bool,
+		"string" => Typ::Str,
+		"cstr" => Typ::CStr,
+		"atom" => Typ::Atom,
+		"any" => Typ::Any,
+		"()" => Typ::unit(),
+		"Error" => Typ::Error,
+		"Ast" => Typ::Ast,
+		_ => return None,
+	})
+}
+
 // Try to parse `name` as `<prefix><width>`.
 fn int_width(
 	name: &str,
@@ -463,17 +484,9 @@ impl TypeCtx<'_> {
 
 	// Type names owned by the compiler.
 	pub fn builtin_type(name: &str) -> bool {
-		matches!(
-			name,
-			"int"
-				| "isize" | "usize"
-				| "float" | "bool"
-				| "rune" | "string"
-				| "cstr" | "atom"
-				| "any" | "array"
-				| "map" | "Error"
-				| "Ast"
-		) || name.strip_prefix(['i', 'u', 'f']).is_some_and(|w| w.parse::<u16>().is_ok())
+		builtin(name).is_some()
+			|| matches!(name, "array" | "map")
+			|| name.strip_prefix(['i', 'u', 'f']).is_some_and(|w| w.parse::<u16>().is_ok())
 	}
 
 	// An instance of a core generic enum.
@@ -531,22 +544,8 @@ impl TypeCtx<'_> {
 			};
 			return self.named(&format!("{}::{t}", vis.module), span);
 		}
-		match name {
-			"int" => return Ok(Typ::Int(64)),
-			"uint" => return Ok(Typ::UInt(64)),
-			"isize" => return Ok(Typ::ISize),
-			"usize" => return Ok(Typ::USize),
-			"float" => return Ok(Typ::Float(64)),
-			"rune" => return Ok(Typ::Rune),
-			"bool" => return Ok(Typ::Bool),
-			"string" => return Ok(Typ::Str),
-			"cstr" => return Ok(Typ::CStr),
-			"atom" => return Ok(Typ::Atom),
-			"any" => return Ok(Typ::Any),
-			"()" => return Ok(Typ::unit()),
-			"Error" => return Ok(Typ::Error),
-			"Ast" => return Ok(Typ::Ast),
-			_ => {}
+		if let Some(typ) = builtin(name) {
+			return Ok(typ);
 		}
 		if let Some(result) = int_width(name, 'i', Typ::Int, "integer", span) {
 			return result;

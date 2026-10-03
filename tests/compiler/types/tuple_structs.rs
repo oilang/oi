@@ -237,6 +237,7 @@ fn wraps_an_array() {
 fn builtin_name_errors_at_def() {
 	fail("int :: struct (bool)", "is a builtin type");
 	fail("f32 :: struct (float)", "is a builtin type");
+	fail("uint :: struct (int)", "is a builtin type");
 }
 
 #[test]
