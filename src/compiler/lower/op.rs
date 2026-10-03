@@ -547,6 +547,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			icc
 		};
+		let ne_cc = if icc == IntCC::NotEqual {
+			IntCC::Equal
+		} else {
+			IntCC::NotEqual
+		};
 		let raw = match (&lt, &rt) {
 			(Typ::Int(_), Typ::Int(_))
 			| (Typ::UInt(_), Typ::UInt(_))
@@ -588,22 +593,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Typ::Str, Typ::Str) | (Typ::Error, Typ::Error) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let typ = lt.clone();
 				let eq = self.emit_eq(lv, rv, &typ);
-				// emit_eq returns 1 for equal, invert for Ne
-				// wrap in icmp so uextend below works consistently
-				if icc == IntCC::NotEqual {
-					self.b.ins().icmp_imm(IntCC::Equal, eq, 0)
-				} else {
-					self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0)
-				}
+				self.b.ins().icmp_imm(ne_cc, eq, 0)
 			}
 			(Typ::Ast, Typ::Str) | (Typ::Str, Typ::Ast) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let (ast_val, str_val) = if lt == Typ::Ast { (lv, rv) } else { (rv, lv) };
 				let eq = self.ast_method(ast_val, "==", Some(str_val));
-				if icc == IntCC::NotEqual {
-					self.b.ins().icmp_imm(IntCC::Equal, eq, 0)
-				} else {
-					self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0)
-				}
+				self.b.ins().icmp_imm(ne_cc, eq, 0)
 			}
 			_ => {
 				return Err(
