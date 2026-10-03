@@ -241,11 +241,14 @@ where
 		.then(p.type_params.clone())
 		.then(supers)
 		.then_ignore(just(Token::Trait))
-		.then(brace(loose_list(choice((
-			slot_fn.map(Member::Fn),
-			struct_field.clone().map(Member::Field),
-			default_fn.map(Member::Fn),
-		)))))
+		.then(brace(
+			loose_list(fill_docs.clone().ignore_then(choice((
+				slot_fn.map(Member::Fn),
+				struct_field.clone().map(Member::Field),
+				default_fn.map(Member::Fn),
+			))))
+			.then_ignore(fill_docs.clone()),
+		))
 		.map_with(|(((name, type_params), supers), members), ex| {
 			let (fields, methods, _) = split_members(members);
 			(

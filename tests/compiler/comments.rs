@@ -61,7 +61,7 @@ fn doc_inside_fn() {
 }
 
 #[test]
-fn doc_on_struct_and_enum_members() {
+fn doc_on_members() {
 	let src = indoc! {"
 		E :: enum {
 			## the red one
@@ -75,6 +75,10 @@ fn doc_on_struct_and_enum_members() {
 		P :: struct {
 			## x coord
 			x: int,
+		}
+		T :: trait {
+			## area
+			area: fn(self) int
 		}
 		e := E.red
 		p := P.{ 1 }
