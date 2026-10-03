@@ -80,14 +80,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.match_expr(value, &[arm], els, Some(&[]), target, span);
 		}
 
-		let (cv, ct) = self.expr(cond)?;
-		if ct != Typ::Bool {
-			return Err(
-				Diagnostic::new(format!("`if` condition must be Bool, got {ct}"), cond.1.into_range())
-					.with_label("not a Bool"),
-			);
-		}
-
+		let cv = self.bool_value(cond, "`if` condition")?;
 		let (then_block, else_block) = self.fork(cv);
 
 		let merge = self.b.create_block();
@@ -624,14 +617,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some((Expr::PatBind { .. }, _)) | None => (None, None),
 			Some((c, _)) if infallible(c) => (None, None),
 			Some(cond) => {
-				let (cv, ct) = self.expr(cond)?;
-				if ct != Typ::Bool {
-					return Err(Diagnostic::new(
-						format!("`loop` condition must be Bool, got {ct}"),
-						cond.1.into_range(),
-					)
-					.with_label("not a Bool"));
-				}
+				let cv = self.bool_value(cond, "`loop` condition")?;
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
 				self.b.switch_to_block(body_block);

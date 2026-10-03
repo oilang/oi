@@ -159,14 +159,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"src" => self.src_lit(span),
 
 			"assert" => {
-				let (cond, typ) = self.expr(&args[0])?;
-				if typ != Typ::Bool {
-					return Err(Diagnostic::new(
-						format!("`assert!` condition must be Bool, got {typ}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not a Bool"));
-				}
+				let cond = self.bool_value(&args[0], "`assert!` condition")?;
 				// the failure message defaults to the condition's source
 				let snippet = self.map.locate_span(args[0].1.into_range()).2;
 				let msg = self.msg_arg(name, args.get(1), snippet)?;

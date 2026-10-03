@@ -369,6 +369,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(v)
 	}
 
+	pub(super) fn bool_value(&mut self, e: &Spanned<Expr>, what: &str) -> Result<Value, Diagnostic> {
+		let (v, t) = self.expr(e)?;
+		if t != Typ::Bool {
+			return Err(
+				Diagnostic::new(format!("{what} must be Bool, got {t}"), e.1.into_range()).with_label("not a Bool"),
+			);
+		}
+		Ok(v)
+	}
+
 	// Bounds-check `idx` and return the element address.
 	pub(super) fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
 		let oob = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
