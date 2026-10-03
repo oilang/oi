@@ -172,4 +172,23 @@ impl<M: Module> Translator<'_, M> {
 		self.store_slots(ptr, vals);
 		ptr
 	}
+
+	// Branch on `cond` into two fresh sealed blocks, (taken, not taken).
+	pub(super) fn fork(&mut self, cond: Value) -> (Block, Block) {
+		let (yes, no) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().brif(cond, yes, &[], no, &[]);
+		self.b.seal_block(yes);
+		self.b.seal_block(no);
+		(yes, no)
+	}
+
+	// Run `body` when `tag` is `disc`, then jump to `done`.
+	pub(super) fn on_variant(&mut self, tag: Value, disc: i64, done: Block, body: impl FnOnce(&mut Self)) {
+		let is = self.b.ins().icmp_imm(IntCC::Equal, tag, disc);
+		let (hit, next) = self.fork(is);
+		self.b.switch_to_block(hit);
+		body(self);
+		self.b.ins().jump(done, &[]);
+		self.b.switch_to_block(next);
+	}
 }

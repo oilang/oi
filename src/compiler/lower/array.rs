@@ -95,15 +95,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Panic if `cond`.
 	pub(super) fn trap_if(&mut self, cond: Value, msg: &str, span: Span) -> Result<(), Diagnostic> {
-		let (bad, ok) = (self.b.create_block(), self.b.create_block());
-		self.b.ins().brif(cond, bad, &[], ok, &[]);
-		self.b.seal_block(bad);
-		self.b.seal_block(ok);
+		let (bad, ok) = self.fork(cond);
 
 		self.b.switch_to_block(bad);
 		let msg = self.str_const(msg);
 		self.ctx_panic("panic", msg, span)?;
-		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok);
 		Ok(())
@@ -377,11 +373,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
 		let oob = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
 
-		let panic_block = self.b.create_block();
-		let ok_block = self.b.create_block();
-		self.b.ins().brif(oob, panic_block, &[], ok_block, &[]);
-		self.b.seal_block(panic_block);
-		self.b.seal_block(ok_block);
+		let (panic_block, ok_block) = self.fork(oob);
 
 		self.b.switch_to_block(panic_block);
 		let ctx = self.ctx_value(crate::compiler::CONTEXT);

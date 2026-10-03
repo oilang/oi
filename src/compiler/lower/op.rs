@@ -51,13 +51,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.def_var(eq, tags_eq);
 		let merge = self.b.create_block();
 		for v in variants.iter().filter(|v| !v.payload.is_empty()) {
-			let disc = self.b.ins().iconst(self.int, v.disc);
-			let same = self.b.ins().icmp(IntCC::Equal, ta, disc);
+			let same = self.b.ins().icmp_imm(IntCC::Equal, ta, v.disc);
 			let hit = self.b.ins().band(tags_eq, same);
-			let (body, next) = (self.b.create_block(), self.b.create_block());
-			self.b.ins().brif(hit, body, &[], next, &[]);
-			self.b.seal_block(body);
-			self.b.seal_block(next);
+			let (body, next) = self.fork(hit);
 			self.b.switch_to_block(body);
 			for (i, ft) in v.payload.iter().enumerate() {
 				let fa = self.ld_typ(a, ((i + 1) * 8) as i32, ft);

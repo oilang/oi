@@ -91,7 +91,6 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Call the runtime panic path with `msg` and mark the current block unreachable.
 	fn abort(&mut self, msg: Value, span: Span) -> Result<TypedVal, Diagnostic> {
 		self.ctx_panic("panic", msg, span)?;
-		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		// unreachable paths
 		let dead = self.b.create_block();
@@ -100,11 +99,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.unit_value())
 	}
 
-	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from.
+	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from, then trap.
 	pub(super) fn ctx_panic(&mut self, rt: &str, msg: Value, span: Span) -> Result<(), Diagnostic> {
 		let (at, _) = self.src_lit(span)?;
 		let ctx = self.ctx_value(crate::compiler::CONTEXT);
 		self.rt_call(rt, &[ctx, msg, at]);
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		Ok(())
 	}
 
@@ -176,15 +176,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				let snippet = self.map.locate_span(args[0].1.into_range()).2;
 				let msg = self.msg_arg(name, args.get(1), snippet)?;
 
-				let fail_block = self.b.create_block();
-				let ok_block = self.b.create_block();
-				self.b.ins().brif(cond, ok_block, &[], fail_block, &[]);
-				self.b.seal_block(fail_block);
-				self.b.seal_block(ok_block);
+				let (ok_block, fail_block) = self.fork(cond);
 
 				self.b.switch_to_block(fail_block);
 				self.ctx_panic("assert_fail", msg, span)?;
-				self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 				self.b.switch_to_block(ok_block);
 				Ok(self.unit_value())

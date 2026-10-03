@@ -151,22 +151,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
 		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
-			let tag = self.ld_word(val, 0);
+			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 			for v in self.variants_of(typ) {
 				if !v.payload.iter().any(|t| releasable(t) || self.is_resource(t)) {
 					continue;
 				}
 				// release payloads under their own tag
-				let (hit, next) = (self.b.create_block(), self.b.create_block());
-				let is = self.b.ins().icmp_imm(IntCC::Equal, tag, v.disc);
-				self.b.ins().brif(is, hit, &[], next, &[]);
-				self.b.seal_block(hit);
-				self.b.switch_to_block(hit);
-				self.release_slots(val, 8, &v.payload);
-				self.b.ins().jump(next, &[]);
-				self.b.seal_block(next);
-				self.b.switch_to_block(next);
+				self.on_variant(tag, v.disc, done, |s| s.release_slots(val, 8, &v.payload));
 			}
+			self.b.ins().jump(done, &[]);
+			self.b.seal_block(done);
+			self.b.switch_to_block(done);
 		}
 	}
 
@@ -334,8 +329,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			};
 			let tag = self.enum_tag(typ, *val);
-			let happy = self.b.ins().iconst(self.int, happy);
-			let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy);
+			let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
 			let (sad, after) = (self.b.create_block(), self.b.create_block());
 			self.b.ins().brif(is_happy, after, &[], sad, &[]);
 			self.b.seal_block(sad);

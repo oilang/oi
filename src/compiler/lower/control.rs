@@ -69,11 +69,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 
-		let then_block = self.b.create_block();
-		let else_block = self.b.create_block();
-		self.b.ins().brif(cv, then_block, &[], else_block, &[]);
-		self.b.seal_block(then_block);
-		self.b.seal_block(else_block);
+		let (then_block, else_block) = self.fork(cv);
 
 		let merge = self.b.create_block();
 		let mut result: Option<(Variable, Typ)> = None;
@@ -278,8 +274,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					let sv = self.b.use_var(sv_var);
 					let tag = self.enum_tag(&st, sv);
-					let disc = self.b.ins().iconst(self.int, disc);
-					self.b.ins().icmp(IntCC::Equal, tag, disc)
+					self.b.ins().icmp_imm(IntCC::Equal, tag, disc)
 				} else if matches!(&pat.0, Expr::Tuple(_) | Expr::StructLit { .. } | Expr::Array(_)) {
 					let b = self.pat_binds(pat, &st)?;
 					if arm.patterns.len() == 1 {
@@ -440,14 +435,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		let tag = self.enum_tag(&typ, val);
-		let happy_disc = self.b.ins().iconst(self.int, happy);
-		let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy_disc);
+		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
 
-		let happy_block = self.b.create_block();
-		let fallback_block = self.b.create_block();
-		self.b.ins().brif(is_happy, happy_block, &[], fallback_block, &[]);
-		self.b.seal_block(happy_block);
-		self.b.seal_block(fallback_block);
+		let (happy_block, fallback_block) = self.fork(is_happy);
 		let merge = self.b.create_block();
 		let mut result = None;
 
@@ -524,14 +514,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let tag = self.enum_tag(&typ, val);
 		let happy: i64 = if is_result { 0 } else { 1 };
-		let happy_disc = self.b.ins().iconst(self.int, happy);
-		let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy_disc);
+		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
 
-		let happy_block = self.b.create_block();
-		let sad_block = self.b.create_block();
-		self.b.ins().brif(is_happy, happy_block, &[], sad_block, &[]);
-		self.b.seal_block(happy_block);
-		self.b.seal_block(sad_block);
+		let (happy_block, sad_block) = self.fork(is_happy);
 
 		self.b.switch_to_block(sad_block);
 		if panic_in_main {
@@ -542,7 +527,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.str_const("unwrapped `none`")
 			};
 			self.ctx_panic("panic", msg, span)?;
-			self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		} else {
 			let sad_val = if is_result {
 				let e = self.ld_word(val, 8);
@@ -569,10 +553,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return;
 		};
 		let tag = self.enum_tag(typ, val);
-		let (sad, done) = (self.b.create_block(), self.b.create_block());
-		self.b.ins().brif(tag, sad, &[], done, &[]);
-		self.b.seal_block(sad);
-		self.b.seal_block(done);
+		let (sad, done) = self.fork(tag);
 		self.b.switch_to_block(sad);
 		let e = self.ld_word(val, 8);
 		let mut msg = self.derived_str(e, &err);
@@ -652,11 +633,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					)
 					.with_label("not a Bool"));
 				}
-				let body_block = self.b.create_block();
-				let (exit, fallthrough) = (self.b.create_block(), self.b.create_block());
-				self.b.ins().brif(cv, body_block, &[], fallthrough, &[]);
-				self.b.seal_block(body_block);
-				self.b.seal_block(fallthrough);
+				let exit = self.b.create_block();
+				let (body_block, fallthrough) = self.fork(cv);
 				self.b.switch_to_block(body_block);
 				(Some(exit), Some(fallthrough))
 			}
@@ -759,20 +737,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let opt = next.ret.clone();
 
-		let (header, body_block, fallthrough, exit) = (
-			self.b.create_block(),
-			self.b.create_block(),
-			self.b.create_block(),
-			self.b.create_block(),
-		);
+		let (header, exit) = (self.b.create_block(), self.b.create_block());
 		self.b.ins().jump(header, &[]);
 
 		self.b.switch_to_block(header);
 		let (yielded, _) = self.emit_call(&next, &[it]);
 		let tag = self.enum_tag(&opt, yielded);
-		self.b.ins().brif(tag, body_block, &[], fallthrough, &[]);
-		self.b.seal_block(body_block);
-		self.b.seal_block(fallthrough);
+		let (body_block, fallthrough) = self.fork(tag);
 
 		self.b.switch_to_block(body_block);
 		let (frame, flow) = self.in_loop(header, Some(exit), Some(fallthrough), |s| {
@@ -822,21 +793,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let counter = self.b.declare_var(self.b.func.dfg.value_type(zero));
 		self.b.def_var(counter, zero);
 
-		let (header, body_block, latch, fallthrough, exit) = (
-			self.b.create_block(),
-			self.b.create_block(),
-			self.b.create_block(),
-			self.b.create_block(),
-			self.b.create_block(),
-		);
+		let (header, latch, exit) = (self.b.create_block(), self.b.create_block(), self.b.create_block());
 		self.b.ins().jump(header, &[]);
 
 		self.b.switch_to_block(header);
 		let iv = self.b.use_var(counter);
 		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
-		self.b.ins().brif(more, body_block, &[], fallthrough, &[]);
-		self.b.seal_block(body_block);
-		self.b.seal_block(fallthrough);
+		let (body_block, fallthrough) = self.fork(more);
 
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);

@@ -63,34 +63,27 @@ impl<'a, M: Module> Translator<'a, M> {
 			if v.payload.is_empty() {
 				continue;
 			}
-			let (hit, next) = (self.b.create_block(), self.b.create_block());
-			let disc = self.b.ins().iconst(self.int, v.disc);
-			let is = self.b.ins().icmp(IntCC::Equal, tag, disc);
-			self.b.ins().brif(is, hit, &[], next, &[]);
-			self.b.seal_block(hit);
-			self.b.switch_to_block(hit);
-			if !named {
-				let pv = self.ld_typ(val, 8, &v.payload[0]);
-				self.emit_print(pv, &v.payload[0], quote, sink);
-			} else {
-				self.write_lit(&v.name, sink);
-				let braced = !v.names.is_empty();
-				self.write_lit(if braced { ".{" } else { ".(" }, sink);
-				for (i, pt) in v.payload.iter().enumerate() {
-					if i > 0 {
-						self.write_lit(", ", sink);
+			self.on_variant(tag, v.disc, done, |s| {
+				if !named {
+					let pv = s.ld_typ(val, 8, &v.payload[0]);
+					s.emit_print(pv, &v.payload[0], quote, sink);
+				} else {
+					s.write_lit(&v.name, sink);
+					let braced = !v.names.is_empty();
+					s.write_lit(if braced { ".{" } else { ".(" }, sink);
+					for (i, pt) in v.payload.iter().enumerate() {
+						if i > 0 {
+							s.write_lit(", ", sink);
+						}
+						if braced {
+							s.write_lit(&format!("{} = ", v.names[i]), sink);
+						}
+						let pv = s.opt_payload(val, typ, pt, (8 + i * 8) as i32);
+						s.emit_print(pv, pt, true, sink);
 					}
-					if braced {
-						self.write_lit(&format!("{} = ", v.names[i]), sink);
-					}
-					let pv = self.opt_payload(val, typ, pt, (8 + i * 8) as i32);
-					self.emit_print(pv, pt, true, sink);
+					s.write_lit(if braced { "}" } else { ")" }, sink);
 				}
-				self.write_lit(if braced { "}" } else { ")" }, sink);
-			}
-			self.b.ins().jump(done, &[]);
-			self.b.seal_block(next);
-			self.b.switch_to_block(next);
+			});
 		}
 		let ptr = self.enum_name_str(typ, val);
 		self.emit_frag(runtime::Tag::Raw, ptr, 0, false, sink);
