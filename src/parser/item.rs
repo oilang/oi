@@ -1,7 +1,8 @@
 use super::{
-	Member, P, Parsers, Rec, brace, bracket, fn_def, ident, list, loose_list, named_ret, paren, spanned, split_members,
+	Member, P, Parsers, Rec, brace, bracket, fn_def, ident, list, list1, loose_list, named_ret, paren, spanned,
+	split_members, trailing_list, trailing_list1,
 };
-use crate::ast::{Access, EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem};
+use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem};
 use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
@@ -16,11 +17,8 @@ pub(super) fn item<'token, I>(
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
-	let item_head = p
-		.def_name
-		.clone()
-		.then(p.type_params.clone())
-		.then_ignore(just(Token::DoubleColon));
+	let name_head = p.def_name.clone().then(p.type_params.clone());
+	let item_head = name_head.clone().then_ignore(just(Token::DoubleColon));
 	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 
 	// fn defs
@@ -58,28 +56,18 @@ where
 				.collect::<Vec<_>>(),
 		)
 		.map_with(|(((public, name), (typ, default)), annotations), ex| Param {
-			name,
-			typ,
-			span: ex.span(),
 			default,
-			access: Access::Read,
-			mutable: false,
 			public: public.is_some(),
 			annotations,
+			..Param::new(name, typ, ex.span())
 		})
 		.boxed();
 	let struct_field = p.param_hole.clone().or(struct_field).boxed();
 	anon_fields.define(loose_list(struct_field.clone()));
 	// embedded structs
 	let embedded = just(Token::Pub).or_not().then(ident()).map_with(|(public, name), ex| Param {
-		typ: TypeExpr::Name(name.clone()),
-		name,
-		span: ex.span(),
-		default: None,
-		access: Access::Read,
-		mutable: false,
 		public: public.is_some(),
-		annotations: vec![],
+		..Param::new(name.clone(), TypeExpr::Name(name), ex.span())
 	});
 	let struct_def = item_head
 		.clone()
@@ -121,13 +109,7 @@ where
 	let tuple_struct_def = plain_head
 		.clone()
 		.then_ignore(just(Token::Struct))
-		.then(paren(
-			ts_field
-				.separated_by(just(Token::Comma))
-				.allow_trailing()
-				.at_least(1)
-				.collect::<Vec<_>>(),
-		))
+		.then(paren(trailing_list1(ts_field)))
 		.map_with(|((name, type_params), fields), ex| {
 			let typ = TypeExpr::TupleStruct(name.clone(), fields);
 			(Expr::TypeAlias { name, type_params, typ }, ex.span())
@@ -151,13 +133,7 @@ where
 		.ignore_then(p.annot.clone())
 		.then_ignore(just(Token::Colon))
 		.map(Some));
-	let payload = paren(
-		p.annot
-			.clone()
-			.separated_by(just(Token::Comma))
-			.allow_trailing()
-			.collect::<Vec<_>>(),
-	);
+	let payload = paren(trailing_list(p.annot.clone()));
 	let variant = ident()
 		.then(
 			payload
@@ -178,10 +154,8 @@ where
 				names,
 			}
 		});
-	let enum_def = p
-		.def_name
+	let enum_def = name_head
 		.clone()
-		.then(p.type_params.clone())
 		.then(backing)
 		.then_ignore(just(Token::Enum))
 		.then(brace(
@@ -350,7 +324,7 @@ where
 			.collect();
 		(if names.len() == 1 { "array" } else { "map" }.into(), names)
 	});
-	let head = p.def_name.clone().then(p.type_params.clone()).or(bracket_head).boxed();
+	let head = name_head.or(bracket_head).boxed();
 	let claim = head
 		.clone()
 		.then_ignore(just(Token::Colon))
@@ -361,7 +335,7 @@ where
 		.or(head
 			.then_ignore(just(Token::Colon))
 			.then_ignore(just(Token::Lt))
-			.then(trait_ref.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>())
+			.then(list1(trait_ref.clone()))
 			.then(via)
 			.map(|(head, via)| ((head, via), (vec![], vec![]))))
 		.map_with(|((((typ, type_params), traits), via), (fills, fields)), ex| {

@@ -70,16 +70,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (params, tuple) = match params.is_empty() {
 					true => (
 						(0..ptyps.len())
-							.map(|i| Param {
-								typ: TypeExpr::Name(name(i)),
-								name: name(i),
-								span,
-								default: None,
-								access: Access::Read,
-								mutable: false,
-								public: false,
-								annotations: vec![],
-							})
+							.map(|i| Param::new(name(i), TypeExpr::Name(name(i)), span))
 							.collect(),
 						ptyps.len() != 1,
 					),

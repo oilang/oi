@@ -1,4 +1,4 @@
-use super::{P, brace, bracket, ident, loose_list, paren, spanned};
+use super::{P, brace, bracket, ident, list1, loose_list, loose_list1, paren, spanned};
 use crate::ast::{Access, Expr, Param, Spanned, TypeExpr};
 use crate::lexer::Token;
 
@@ -38,16 +38,9 @@ where
 	recursive(|te| {
 		let base = recursive(|base| {
 			let name = dotted_name.clone().map(TypeExpr::Name);
-			let unit = just(Token::LParen).then(just(Token::RParen)).to(TypeExpr::Tuple(vec![]));
+			let unit = just(Token::LParen).then(just(Token::RParen)).to(TypeExpr::unit());
 			let tuple_field = ident().then_ignore(just(Token::Colon)).or_not().then(te.clone());
-			let tuple = paren(
-				tuple_field
-					.separated_by(just(Token::Comma).or_not())
-					.allow_trailing()
-					.at_least(1)
-					.collect::<Vec<_>>(),
-			)
-			.map(TypeExpr::Tuple);
+			let tuple = paren(loose_list1(tuple_field)).map(TypeExpr::Tuple);
 			// arrays
 			let len = spanned(select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident)));
 			let array = just(Token::LBracket)
@@ -68,7 +61,7 @@ where
 			let fn_type = just(Token::Fn)
 				.ignore_then(paren(loose_list(fn_param)))
 				.then(fn_ret)
-				.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret.unwrap_or(TypeExpr::Tuple(vec![])))));
+				.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret.unwrap_or(TypeExpr::unit()))));
 			// annotations
 			let annotated = annotation
 				.clone()
@@ -85,7 +78,7 @@ where
 			// results
 			let result = just(Token::Not)
 				.ignore_then(base.clone().or_not())
-				.map(|t| result_of(t.unwrap_or(TypeExpr::Tuple(vec![])), None));
+				.map(|t| result_of(t.unwrap_or(TypeExpr::unit()), None));
 			// shared refs
 			let ref_type = just(Token::Caret).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
 			// atom(s)
@@ -98,12 +91,7 @@ where
 
 			// generic structs
 			let generic_instance = ident()
-				.then(bracket(
-					type_arg(te.clone().boxed())
-						.separated_by(just(Token::Comma))
-						.at_least(1)
-						.collect::<Vec<_>>(),
-				))
+				.then(bracket(list1(type_arg(te.clone().boxed()))))
 				.filter(|(_, args): &(String, Vec<TypeExpr>)| settled_by_parser(args.len(), &args[0]))
 				.map(|(name, args)| TypeExpr::Generic(name, args));
 
@@ -136,7 +124,7 @@ where
 					.or_not(),
 			)
 			.map(|(e, ok)| match ok {
-				Some(ok) => result_of(ok.unwrap_or(TypeExpr::Tuple(vec![])), Some(e)),
+				Some(ok) => result_of(ok.unwrap_or(TypeExpr::unit()), Some(e)),
 				None => e,
 			})
 			.separated_by(just(Token::Pipe))

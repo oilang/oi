@@ -36,16 +36,7 @@ impl<M: Module> Translator<'_, M> {
 		let mut params = Vec::with_capacity(head_params.len());
 		for (i, typ) in head_params.iter().enumerate() {
 			let (name, typ) = (format!("${i}"), type_expr(typ).ok_or_else(|| unspellable(span))?);
-			params.push(Param {
-				name,
-				typ,
-				span,
-				default: None,
-				access: Access::Read,
-				mutable: false,
-				public: false,
-				annotations: vec![],
-			});
+			params.push(Param::new(name, typ, span));
 		}
 		let ret = self.stage_ret(step)?;
 		let body = [piped(self.feed(value), step.clone(), span)];

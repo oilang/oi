@@ -160,6 +160,7 @@ pub(super) fn stmt<'token, I>(
 		just(Token::GtGtEq).to(Some(BinOp::Shr)),
 		just(Token::Assign).to(None),
 	));
+	let rhs = assign_op.clone().then(p.juxt_expr.clone());
 	let fold = |op, lhs, value: Spanned<Expr>, span| match op {
 		None => value,
 		Some(op) => (Expr::Binary(op, Box::new((lhs, span)), Box::new(value)), span),
@@ -191,26 +192,26 @@ pub(super) fn stmt<'token, I>(
 	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
 	// index assignment
-	let index_assign = ident()
-		.then(bracket(p.expr.clone()))
-		.then(assign_op.clone())
-		.then(p.juxt_expr.clone())
-		.map_with(move |(((name, index), op), value), ex| {
-			let collection = Box::new((Expr::Ident(name.clone()), ex.span()));
-			let lhs = Expr::Index {
-				collection,
-				index: Box::new(index.clone()),
-			};
-			let value = fold(op, lhs, value, ex.span());
-			(
-				Expr::IndexAssign {
-					name,
-					index: Box::new(index),
-					value: Box::new(value),
-				},
-				ex.span(),
-			)
-		});
+	let index_assign =
+		ident()
+			.then(bracket(p.expr.clone()))
+			.then(rhs.clone())
+			.map_with(move |((name, index), (op, value)), ex| {
+				let collection = Box::new((Expr::Ident(name.clone()), ex.span()));
+				let lhs = Expr::Index {
+					collection,
+					index: Box::new(index.clone()),
+				};
+				let value = fold(op, lhs, value, ex.span());
+				(
+					Expr::IndexAssign {
+						name,
+						index: Box::new(index),
+						value: Box::new(value),
+					},
+					ex.span(),
+				)
+			});
 
 	// map deletion
 	let map_delete = ident()
@@ -228,23 +229,22 @@ pub(super) fn stmt<'token, I>(
 		});
 
 	// deref assignment
-	let deref_assign = ident()
-		.then_ignore(just(Token::Caret))
-		.then(assign_op.clone())
-		.then(p.juxt_expr.clone())
-		.map_with(move |((name, op), value), ex| {
-			let lhs = Expr::Deref(Box::new((Expr::Ident(name.clone()), ex.span())));
-			let value = Box::new(fold(op, lhs, value, ex.span()));
-			(Expr::DerefAssign { name, value }, ex.span())
-		});
+	let deref_assign =
+		ident()
+			.then_ignore(just(Token::Caret))
+			.then(rhs.clone())
+			.map_with(move |(name, (op, value)), ex| {
+				let lhs = Expr::Deref(Box::new((Expr::Ident(name.clone()), ex.span())));
+				let value = Box::new(fold(op, lhs, value, ex.span()));
+				(Expr::DerefAssign { name, value }, ex.span())
+			});
 
 	// field assignment
 	let field_assign = ident()
 		.then_ignore(just(Token::Dot))
 		.then(ident().or(select! { Token::Int(n) => n.to_string() }))
-		.then(assign_op)
-		.then(p.juxt_expr.clone())
-		.map_with(move |(((name, field), op), value), ex| {
+		.then(rhs)
+		.map_with(move |((name, field), (op, value)), ex| {
 			let tuple = Box::new((Expr::Ident(name.clone()), ex.span()));
 			let lhs = Expr::Field {
 				tuple,

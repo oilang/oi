@@ -634,6 +634,10 @@ pub enum TypeExpr {
 }
 
 impl TypeExpr {
+	pub fn unit() -> Self {
+		TypeExpr::Tuple(vec![])
+	}
+
 	// Visit this type and every type nested in it.
 	pub fn walk_mut(&mut self, f: &mut impl FnMut(&mut TypeExpr)) {
 		f(self);
@@ -786,6 +790,21 @@ pub struct Param {
 	pub mutable: bool,
 	pub public: bool,
 	pub annotations: Vec<Annotation>,
+}
+
+impl Param {
+	pub fn new(name: String, typ: TypeExpr, span: Span) -> Self {
+		Param {
+			name,
+			typ,
+			span,
+			default: None,
+			access: Access::Read,
+			mutable: false,
+			public: false,
+			annotations: vec![],
+		}
+	}
 }
 
 // A value attached to a definition or field.

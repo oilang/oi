@@ -118,14 +118,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Rebuild a named type's definition as an Ast.
 	fn type_def(&self, name: &str, span: Span) -> Result<Expr, Diagnostic> {
 		let field = |f: &FieldDef| Param {
-			name: f.name.clone(),
-			typ: type_expr(&f.typ).unwrap_or_else(|| TypeExpr::Name(f.typ.to_string())),
-			span,
 			default: f.default.clone(),
 			annotations: f.annotations.clone(),
-			access: Access::Read,
-			mutable: false,
-			public: false,
+			..Param::new(
+				f.name.clone(),
+				type_expr(&f.typ).unwrap_or_else(|| TypeExpr::Name(f.typ.to_string())),
+				span,
+			)
 		};
 		Ok(match self.peeled(&self.types.named(name, span)?) {
 			Typ::Struct(n, fields) => Expr::StructDef {

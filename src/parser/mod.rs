@@ -11,7 +11,7 @@ mod types;
 
 // Every parser passed across a fn boundary in here wears this shape.
 pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, extra::Err<Rich<'t, Token>>>;
-// A Recursive handle passed across a fn boundary so it can be `.define()`'d there.
+// A Recursive handle passed across a fn boundary so it can be defined there.
 pub(super) type Rec<'t, I, O> = Recursive<Indirect<'t, 't, I, O, extra::Err<Rich<'t, Token>>>>;
 
 fn ident<'token, I>() -> impl Parser<'token, I, String, extra::Err<Rich<'token, Token>>> + Copy
@@ -20,6 +20,7 @@ where
 {
 	select! { Token::Ident(name) => name }
 }
+
 fn paren<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -27,6 +28,7 @@ where
 {
 	p.delimited_by(just(Token::LParen), just(Token::RParen))
 }
+
 fn brace<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -34,6 +36,7 @@ where
 {
 	p.delimited_by(just(Token::LBrace), just(Token::RBrace))
 }
+
 fn bracket<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -41,6 +44,7 @@ where
 {
 	p.delimited_by(just(Token::LBracket), just(Token::RBracket))
 }
+
 fn list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -48,6 +52,7 @@ where
 {
 	p.separated_by(just(Token::Comma)).collect::<Vec<_>>()
 }
+
 fn loose_list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -55,6 +60,45 @@ where
 {
 	p.separated_by(just(Token::Comma).or_not()).allow_trailing().collect::<Vec<_>>()
 }
+
+fn list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+{
+	p.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>()
+}
+
+fn trailing_list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+{
+	p.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
+}
+
+fn trailing_list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+{
+	p.separated_by(just(Token::Comma))
+		.allow_trailing()
+		.at_least(1)
+		.collect::<Vec<_>>()
+}
+
+fn loose_list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+{
+	p.separated_by(just(Token::Comma).or_not())
+		.allow_trailing()
+		.at_least(1)
+		.collect::<Vec<_>>()
+}
+
 fn spanned<'token, I, O, P>(p: P) -> impl Parser<'token, I, Spanned<O>, extra::Err<Rich<'token, Token>>> + Clone
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -176,17 +220,7 @@ fn fn_def(
 			bound: None,
 			default: None,
 		});
-		let param = Param {
-			name: "$".into(),
-			typ: TypeExpr::Name("$I".into()),
-			span,
-			default: None,
-			access: Access::Read,
-			mutable: false,
-			public: false,
-			annotations: vec![],
-		};
-		(vec![param], false)
+		(vec![Param::new("$".into(), TypeExpr::Name("$I".into()), span)], false)
 	});
 	let body = shadow_params(&params, body);
 	(
@@ -296,40 +330,25 @@ where
 				Some((t, d, m)) => (Some(t), d, m),
 				None => (None, None, false),
 			};
+			let typ = typ.unwrap_or_else(|| TypeExpr::Name(if name == "self" { "Self" } else { "$?" }.into()));
 			Param {
-				typ: typ.unwrap_or_else(|| TypeExpr::Name(if name == "self" { "Self" } else { "$?" }.into())),
-				name,
-				span: ex.span(),
 				default,
 				access: access.unwrap_or_default(),
 				mutable,
-				public: false,
-				annotations: vec![],
+				..Param::new(name, typ, ex.span())
 			}
 		});
-	let param_hole = unquote.clone().map_with(|u, ex| Param {
-		name: String::new(),
-		typ: TypeExpr::Unquote(Box::new(u)),
-		span: ex.span(),
-		default: None,
-		access: Access::Read,
-		mutable: false,
-		public: false,
-		annotations: vec![],
-	});
+	let param_hole = unquote
+		.clone()
+		.map_with(|u, ex| Param::new(String::new(), TypeExpr::Unquote(Box::new(u)), ex.span()));
 	let name_hole = just(Token::Percent)
 		.then_ignore(adjacent)
 		.ignore_then(brace(ident()))
 		.then(param_type)
 		.map_with(|(name, (typ, default, mutable)), ex| Param {
-			name: format!("%{name}"),
-			typ,
-			span: ex.span(),
 			default,
-			access: Access::Read,
 			mutable,
-			public: false,
-			annotations: vec![],
+			..Param::new(format!("%{name}"), typ, ex.span())
 		});
 	let param = name_hole.or(param_hole.clone()).or(param).boxed();
 	// NOTE: a trailing comma forces a tuple even for one param

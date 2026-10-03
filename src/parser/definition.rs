@@ -1,4 +1,7 @@
-use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, shadow_params, spanned, stmt, types};
+use super::{
+	P, Parsers, Rec, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned, stmt,
+	trailing_list, trailing_list1, types,
+};
 use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, record_args};
 use crate::lexer::Token;
 
@@ -95,13 +98,9 @@ where
 		.then(mod_arg.clone().or(p.expr.clone()))
 		.map(|(key, value)| (Some(key), value));
 	// variable vs. call vs. struct literal
-	let args = paren(
-		named_arg
-			.or(mod_arg.or(p.expr.clone()).map(|e| (None, e)))
-			.separated_by(just(Token::Comma))
-			.allow_trailing()
-			.collect::<Vec<_>>(),
-	)
+	let args = paren(trailing_list(
+		named_arg.or(mod_arg.or(p.expr.clone()).map(|e| (None, e))),
+	))
 	.validate(|elems, ex, emitter| {
 		let mut args = Vec::new();
 		let mut named = Vec::new();
@@ -124,12 +123,7 @@ where
 	let struct_body = brace(loose_list(struct_field_entry.clone()));
 
 	// explicit generic args
-	let call_type_args = bracket(
-		spanned(types::type_arg(p.type_expr.clone()))
-			.separated_by(just(Token::Comma))
-			.at_least(1)
-			.collect::<Vec<_>>(),
-	);
+	let call_type_args = bracket(list1(spanned(types::type_arg(p.type_expr.clone()))));
 
 	// struct literals
 	let struct_lit = p
@@ -254,14 +248,7 @@ where
 
 	// map literals
 	let map_entry = p.expr.clone().then_ignore(just(Token::Assign)).then(p.expr.clone());
-	let map = bracket(
-		map_entry
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.at_least(1)
-			.collect::<Vec<_>>(),
-	)
-	.map_with(|entries, ex| (Expr::Map(entries), ex.span()));
+	let map = bracket(loose_list1(map_entry)).map_with(|entries, ex| (Expr::Map(entries), ex.span()));
 
 	// dot map literals
 	let typed_map = spanned(p.type_expr.clone())
@@ -368,14 +355,7 @@ where
 		.then_ignore(just(Token::Comma).or_not())
 		.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
 	let match_arm = binding
-		.then(
-			match_pat
-				.clone()
-				.separated_by(just(Token::Comma))
-				.allow_trailing()
-				.at_least(1)
-				.collect::<Vec<_>>(),
-		)
+		.then(trailing_list1(match_pat.clone()))
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
 		.map(|((binding, patterns), body)| MatchArm {
@@ -437,7 +417,7 @@ where
 		.map(Capture::Move)
 		.or(just(Token::Mut).ignore_then(capture).map(Capture::Mut))
 		.or(capture.map(Capture::ReadOnly));
-	let captures = bracket(capture.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>());
+	let captures = bracket(trailing_list(capture));
 	let anon_fn = just(Token::Fn)
 		.ignore_then(captures.or_not())
 		.then(p.params.clone().or_not())
