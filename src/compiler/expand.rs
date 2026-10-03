@@ -22,6 +22,20 @@ pub(crate) const RT_AST_LIT: &str = "oi_rt_ast_lit";
 pub(crate) const RT_AST_METHOD: &str = "oi_rt_ast_method";
 pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
 
+// `program` with its modules swapped out, for a stage-0 compile.
+pub(super) fn with_modules(program: &Program, modules: Vec<Module>) -> Program {
+	Program {
+		map: program.map.clone(),
+		modules,
+		publics: program.publics.clone(),
+		reexports: program.reexports.clone(),
+		consts: program.consts.clone(),
+		annotations: program.annotations.clone(),
+		roots: program.roots.clone(),
+		core_origin: program.core_origin.clone(),
+	}
+}
+
 #[derive(Default)]
 struct Expander {
 	// stage-0 fns, in definition order
@@ -201,18 +215,8 @@ impl Expander {
 				}
 			})
 			.collect();
-		let mut annotations = program.annotations.clone();
-		annotations.retain(|k, _| k.contains("::"));
-		let synthetic = Program {
-			map: program.map.clone(),
-			modules,
-			publics: program.publics.clone(),
-			reexports: program.reexports.clone(),
-			consts: program.consts.clone(),
-			annotations,
-			roots: program.roots.clone(),
-			core_origin: program.core_origin.clone(),
-		};
+		let mut synthetic = with_modules(program, modules);
+		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
 		compiler.roots = self.macros.keys().cloned().collect();
 		compiler.compile(&synthetic)?;
@@ -589,19 +593,10 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	}
 }
 
-// Strip off metadata.
-fn peel(e: &Expr) -> (&[Spanned<Expr>], &Expr) {
-	match e {
-		Expr::Annotated(notes, inner) => (notes, &inner.0),
-		Expr::Pub(inner) => peel(&inner.0),
-		e => (&[], e),
-	}
-}
-
 // A `name: Type` param Ast.
 fn to_param(hole: &Param, a: &Spanned<Expr>) -> Param {
 	let mut p = hole.clone();
-	let (notes, e) = peel(&a.0);
+	let (notes, _, (e, _)) = Expr::peel_meta(a);
 	if let Expr::Bind {
 		name,
 		typ: Some(t),
@@ -841,7 +836,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	let ast = |e: Expr| Box::into_raw(Box::new((e, Span::from(0..0)))) as i64;
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
 	let m = unsafe { runtime::str_bytes(m) };
-	let (notes, subject) = peel(unsafe { &(*a).0 });
+	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });
 	match (m, subject) {
 		(b"notes", _) => list(notes.iter().map(|n| Box::into_raw(Box::new(n.clone())) as i64).collect()),
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(match t {

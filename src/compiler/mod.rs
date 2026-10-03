@@ -864,14 +864,7 @@ impl<M: Module> Compiler<M> {
 		claim: Fills,
 	) -> Result<(), Diagnostic> {
 		for m in fills {
-			let (anns, m) = match &m.0 {
-				Expr::Annotated(anns, inner) => (&anns[..], &**inner),
-				_ => (&[][..], m),
-			};
-			let (public, m) = match &m.0 {
-				Expr::Pub(inner) => (true, &**inner),
-				_ => (false, m),
-			};
+			let (anns, public, m) = Expr::peel_meta(m);
 			let Expr::Fn {
 				name,
 				type_params: mtp,
@@ -1011,20 +1004,17 @@ impl<M: Module> Compiler<M> {
 		self.timings.push(("expand", t.elapsed()));
 		for m in &program.modules {
 			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
-				loop {
-					let (anns, inner) = match &item.0 {
-						Expr::Annotated(anns, inner) => (&anns[..], inner),
-						Expr::Pub(inner) => (&[][..], inner),
-						_ => break,
-					};
-					if let Some(name) = inner.0.def_name()
-						&& !anns.is_empty()
-					{
-						let anns = qualify_anns(&m.scope, anns);
-						self.annotations.entry(name.into()).or_default().extend(anns);
-					}
-					*item = (**inner).clone();
+				let (anns, public, inner) = Expr::peel_meta(item);
+				if anns.is_empty() && !public {
+					continue;
 				}
+				if let Some(name) = inner.0.def_name()
+					&& !anns.is_empty()
+				{
+					let anns = qualify_anns(&m.scope, anns);
+					self.annotations.entry(name.into()).or_default().extend(anns);
+				}
+				*item = inner.clone();
 			}
 		}
 		// fold `comp` expressions to literals

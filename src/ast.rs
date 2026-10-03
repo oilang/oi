@@ -362,6 +362,18 @@ impl Expr {
 		}
 	}
 
+	// Split definitions into annotations, publicness, and item.
+	pub fn peel_meta(e: &Spanned<Expr>) -> (&[Spanned<Expr>], bool, &Spanned<Expr>) {
+		let (anns, e) = match &e.0 {
+			Expr::Annotated(anns, inner) => (&anns[..], &**inner),
+			_ => (&[][..], e),
+		};
+		match &e.0 {
+			Expr::Pub(inner) => (anns, true, inner),
+			_ => (anns, false, e),
+		}
+	}
+
 	// Visit every direct child, in whichever shape it's stored.
 	pub fn for_children(&mut self, mut f: impl FnMut(Child)) {
 		match self {

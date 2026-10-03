@@ -212,24 +212,12 @@ fn fold(
 			}
 		})
 		.collect();
-	let mut annotations = program.annotations.clone();
-	annotations
-		.values_mut()
-		.for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
-	let synthetic = Program {
-		map: program.map.clone(),
-		modules,
-		publics: program.publics.clone(),
-		reexports: program.reexports.clone(),
-		consts: consts
-			.iter()
-			.filter(|(_, v)| !matches!(v.0, Expr::Comp(_)))
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect(),
-		annotations,
-		roots: program.roots.clone(),
-		core_origin: program.core_origin.clone(),
-	};
+	let mut synthetic = super::expand::with_modules(program, modules);
+	(synthetic.annotations.values_mut()).for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
+	synthetic.consts = (consts.iter())
+		.filter(|(_, v)| !matches!(v.0, Expr::Comp(_)))
+		.map(|(k, v)| (k.clone(), v.clone()))
+		.collect();
 	let mut compiler = stage0.take().unwrap_or_default();
 	compiler.roots = vec![name.clone()];
 	compiler.stage0 = true;
