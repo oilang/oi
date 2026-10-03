@@ -349,9 +349,9 @@ impl<'a, M: Module> Translator<'a, M> {
 						None => self.unit_value(),
 					};
 					self.release_scopes(depth, None)?;
-					let mut result = self.loops.last_mut().unwrap().result.take();
-					self.contribute("break", (v, t), &mut result, exit, stmt.1)?;
-					self.loops.last_mut().unwrap().result = result;
+					let mut join = control::Join::new("break", stmt.1, self.loops.last_mut().unwrap().result.take());
+					self.contribute((v, t), &mut join, exit)?;
+					self.loops.last_mut().unwrap().result = join.result;
 					return Ok(None);
 				}
 

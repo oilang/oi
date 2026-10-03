@@ -2,6 +2,25 @@ use crate::compiler::expand;
 
 use super::*;
 
+// A branching construct's merge state. The first branch to yield declares `result`.
+pub(super) struct Join {
+	kw: &'static str,
+	span: Span,
+	pub result: Option<(Variable, Typ)>,
+	reached: bool,
+}
+
+impl Join {
+	pub(super) fn new(kw: &'static str, span: Span, result: Option<(Variable, Typ)>) -> Self {
+		Join {
+			kw,
+			span,
+			result,
+			reached: false,
+		}
+	}
+}
+
 // A header bind is a test only when its pattern can fail, otherwise it just binds.
 fn infallible(cond: &Expr) -> bool {
 	match cond {
@@ -72,8 +91,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (then_block, else_block) = self.fork(cv);
 
 		let merge = self.b.create_block();
-		let mut result: Option<(Variable, Typ)> = None;
-		let mut reached = false;
+		let mut join = Join::new("if", span, None);
 
 		// a slot is settled only if every path assigns it or diverges
 		let (outer, mut live) = (self.slots.clone(), vec![]);
@@ -83,46 +101,38 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rejoin(&outer, &mut live, then_flow.is_none());
 		let tail = self.branch_tail(&owned, &mut tails, then_flow.is_some());
 		if let Some(vt) = then_flow {
-			self.join_branch(want, vt, &mut result, &mut reached, tail, span)?;
+			self.join_branch(want, vt, &mut join, tail)?;
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = self.else_default(els, &result, target, span)?;
+		let else_flow = self.else_default(els, &join, target)?;
 		self.rejoin(&outer, &mut live, else_flow.is_none());
 		self.slots = live;
 		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
 		if let Some(vt) = else_flow {
-			self.join_branch(want, vt, &mut result, &mut reached, tail, span)?;
+			self.join_branch(want, vt, &mut join, tail)?;
 		}
 		self.join_moves(owned, tails, merge);
 
 		if !want {
-			return Ok(reached.then(|| {
+			return Ok(join.reached.then(|| {
 				self.b.switch_to_block(merge);
 				self.b.seal_block(merge);
 				self.unit_value()
 			}));
 		}
-		Ok(self.finish_merge(merge, result))
+		Ok(self.finish_merge(merge, join.result))
 	}
 
 	// Route a branch's tail value.
-	fn join_branch(
-		&mut self,
-		want: bool,
-		vt: TypedVal,
-		result: &mut Option<(Variable, Typ)>,
-		reached: &mut bool,
-		merge: Block,
-		span: Span,
-	) -> Result<(), Diagnostic> {
+	fn join_branch(&mut self, want: bool, vt: TypedVal, join: &mut Join, merge: Block) -> Result<(), Diagnostic> {
 		if want {
-			return self.contribute("if", vt, result, merge, span);
+			return self.contribute(vt, join, merge);
 		}
 		let (v, t) = vt;
 		self.release_value(v, &t);
 		self.b.ins().jump(merge, &[]);
-		*reached = true;
+		join.reached = true;
 		Ok(())
 	}
 
@@ -130,19 +140,17 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn else_default(
 		&mut self,
 		els: Option<&[Spanned<Expr>]>,
-		result: &Option<(Variable, Typ)>,
+		join: &Join,
 		target: Option<&Typ>,
-		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		let Some(els) = els else {
-			let t = result
-				.as_ref()
+			let t = (join.result.as_ref())
 				.map(|(_, t)| t.clone())
 				.or_else(|| target.cloned())
 				.unwrap_or(Typ::unit());
 			let ok = self.types.fallible(&t);
 			return self.scoped(|s| {
-				let v = if ok { s.zero(&t) } else { s.zero_or_err(&t, span)? };
+				let v = if ok { s.zero(&t) } else { s.zero_or_err(&t, join.span)? };
 				Ok(Some((v, t.clone())))
 			});
 		};
@@ -241,7 +249,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		let merge = self.b.create_block();
-		let mut result: Option<(Variable, Typ)> = None;
+		let mut join = Join::new("match", span, None);
 		let (outer, mut live) = (self.slots.clone(), vec![]);
 		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 
@@ -364,39 +372,32 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.rejoin(&outer, &mut live, flow.is_none());
 			let tail = self.branch_tail(&owned, &mut tails, flow.is_some());
 			if let Some(vt) = flow {
-				self.contribute("match", vt, &mut result, tail, span)?;
+				self.contribute(vt, &mut join, tail)?;
 			}
 		}
 
 		self.b.switch_to_block(else_blk);
 		self.b.seal_block(else_blk);
-		let else_flow = self.else_default(else_body, &result, target, span)?;
+		let else_flow = self.else_default(else_body, &join, target)?;
 		let unreachable = else_flow.is_none() || (st.is_enumish() && else_body.is_none());
 		self.rejoin(&outer, &mut live, unreachable);
 		self.slots = live;
 		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
 		if let Some(vt) = else_flow {
-			self.contribute("match", vt, &mut result, tail, span)?;
+			self.contribute(vt, &mut join, tail)?;
 		}
 		self.join_moves(owned, tails, merge);
 
-		Ok(self.finish_merge(merge, result))
+		Ok(self.finish_merge(merge, join.result))
 	}
 
 	// Write (v, t) into the shared result variable and jump to `merge`.
 	// All branches must agree on type. The first one declares the variable.
-	pub(super) fn contribute(
-		&mut self,
-		kw: &str,
-		(v, t): TypedVal,
-		result: &mut Option<(Variable, Typ)>,
-		merge: Block,
-		span: Span,
-	) -> Result<(), Diagnostic> {
-		match result {
+	pub(super) fn contribute(&mut self, (v, t): TypedVal, join: &mut Join, merge: Block) -> Result<(), Diagnostic> {
+		match &mut join.result {
 			Some((_, rt)) if rt != &t => Err(Diagnostic::new(
-				format!("`{kw}` branches have mismatched types: {rt} and {t}"),
-				span.into_range(),
+				format!("`{}` branches have mismatched types: {rt} and {t}", join.kw),
+				join.span.into_range(),
 			)
 			.with_label("must yield the same type")),
 			Some((var, _)) => {
@@ -408,7 +409,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let var = self.b.declare_var(cl_type(&t, self.int));
 				self.b.def_var(var, v);
 				self.b.ins().jump(merge, &[]);
-				*result = Some((var, t));
+				join.result = Some((var, t));
 				Ok(())
 			}
 		}
@@ -441,12 +442,12 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let (happy_block, fallback_block) = self.fork(is_happy);
 		let merge = self.b.create_block();
-		let mut result = None;
+		let mut join = Join::new("or", span, None);
 
 		self.b.switch_to_block(happy_block);
 		let payload = self.opt_payload(val, &typ, &inner, 8);
 		let payload = self.copy_bind(payload, &inner);
-		self.contribute("or", (payload, inner.clone()), &mut result, merge, span)?;
+		self.contribute((payload, inner.clone()), &mut join, merge)?;
 
 		self.b.switch_to_block(fallback_block);
 		let saved_dollar = self.dollar.take();
@@ -457,10 +458,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let flow = self.scoped(|s| s.block_tail(body, Some(&inner)))?;
 		self.dollar = saved_dollar;
 		if let Some(vt) = flow {
-			self.contribute("or", vt, &mut result, merge, span)?;
+			self.contribute(vt, &mut join, merge)?;
 		}
 
-		Ok(self.finish_merge(merge, result).expect("`or` always yields"))
+		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
 	}
 
 	// Unwraps `?T`/`!T`.

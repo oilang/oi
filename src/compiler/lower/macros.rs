@@ -66,15 +66,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn lift_unquote(&mut self, val: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
 		let (tag, bits) = match typ {
 			Typ::Ast => return Ok(val),
-			Typ::Int(_) | Typ::ISize => (comp::TAG_INT, self.intcast(val, types::I64, true)),
-			Typ::UInt(_) | Typ::USize => (comp::TAG_INT, self.intcast(val, types::I64, false)),
+			Typ::Int(_) | Typ::ISize | Typ::UInt(_) | Typ::USize => (comp::TAG_INT, self.scalar_bits(val, typ)),
 			Typ::Bool => (comp::TAG_BOOL, val),
 			Typ::Str => (comp::TAG_STR, val),
-			Typ::Float(32) => {
-				let f64v = self.b.ins().fpromote(types::F64, val);
-				(comp::TAG_FLOAT, self.b.ins().bitcast(self.int, MemFlags::new(), f64v))
-			}
-			Typ::Float(_) => (comp::TAG_FLOAT, self.b.ins().bitcast(self.int, MemFlags::new(), val)),
+			Typ::Float(_) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			other => {
 				return Err(
 					Diagnostic::new(format!("can't unquote a `{other}` yet"), span.into_range())

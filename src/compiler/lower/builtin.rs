@@ -157,7 +157,6 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Yield a value to the `comp` host (recursive).
 	fn comp_yield(&mut self, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
-		let narrow = |w: u16| cl_int_for_width(w).bits() < self.int.bits();
 		let (tag, bits) = match typ {
 			Typ::Struct(name, fields) => {
 				for (i, f) in fields.iter().enumerate() {
@@ -186,15 +185,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Ast => (comp::TAG_AST, val),
 			Typ::Bool => (comp::TAG_BOOL, val),
 			Typ::Str => (comp::TAG_STR, val),
-			Typ::Int(w) if narrow(*w) => (comp::TAG_INT, self.b.ins().sextend(self.int, val)),
-			Typ::Int(_) | Typ::ISize => (comp::TAG_INT, val),
-			Typ::UInt(w) if narrow(*w) => (comp::TAG_INT, self.b.ins().uextend(self.int, val)),
-			Typ::UInt(_) | Typ::USize => (comp::TAG_INT, val),
-			Typ::Float(32) => {
-				let f64v = self.b.ins().fpromote(types::F64, val);
-				(comp::TAG_FLOAT, self.b.ins().bitcast(self.int, MemFlags::new(), f64v))
-			}
-			Typ::Float(64) => (comp::TAG_FLOAT, self.b.ins().bitcast(self.int, MemFlags::new(), val)),
+			Typ::Int(_) | Typ::ISize | Typ::UInt(_) | Typ::USize => (comp::TAG_INT, self.scalar_bits(val, typ)),
+			Typ::Float(32 | 64) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			t if t.is_unit() => (comp::TAG_UNIT, self.b.ins().iconst(self.int, 0)),
 			_ => {
 				return Err(Diagnostic::new(comp::UNREIFIABLE, span.into_range()).with_label("not comptime-reifiable"));

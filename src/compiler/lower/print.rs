@@ -205,35 +205,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			_ => {
 				let tag = match typ {
-					Typ::Bool => runtime::Tag::Bool,
-					Typ::Int(_) | Typ::ISize => runtime::Tag::Int,
-					Typ::UInt(_) | Typ::USize | Typ::CStr => runtime::Tag::UInt,
-					Typ::Float(_) => runtime::Tag::Float,
-					Typ::Str => runtime::Tag::Str,
-					Typ::Atom
-					| Typ::Tuple(_)
-					| Typ::Array(_)
-					| Typ::FixedArray(..)
-					| Typ::Struct(..)
-					| Typ::TupleStruct(..)
-					| Typ::Enum(_)
-					| Typ::Sum(..)
-					| Typ::Fn(..)
-					| Typ::Annotated(..)
-					| Typ::Closure(..)
-					| Typ::Trait(_)
-					| Typ::Error
-					| Typ::Map(..)
-					| Typ::Access(..)
-					| Typ::Ast
-					| Typ::Any
-					| Typ::Rune
-					| Typ::Const(_)
-					| Typ::Ref(_) => {
-						unreachable!("handled above")
-					}
+					Typ::CStr => runtime::Tag::UInt,
+					_ => map_key_tag(typ).expect("handled above"),
 				};
-				// normalize to pointer-sized before passing to the runtime
+				// floats print at their own width, so f16/f32 travel unpromoted
 				let (bits, float_width) = match typ {
 					Typ::Float(16) => {
 						let i16v = self.b.ins().bitcast(types::I16, MemFlags::new(), val);
@@ -243,18 +218,12 @@ impl<'a, M: Module> Translator<'a, M> {
 						let i32v = self.b.ins().bitcast(types::I32, MemFlags::new(), val);
 						(self.b.ins().uextend(self.int, i32v), 32)
 					}
-					Typ::Float(64) => (self.b.ins().bitcast(self.int, MemFlags::new(), val), 64),
+					Typ::Float(64) => (self.scalar_bits(val, typ), 64),
 					Typ::Float(128) => {
 						panic!("f128 printing not yet supported by the JIT backend")
 					}
 					Typ::Float(w) => panic!("unsupported float width f{w}"),
-					Typ::Int(w) if cl_int_for_width(*w).bits() < self.int.bits() => {
-						(self.b.ins().sextend(self.int, val), 0)
-					}
-					Typ::UInt(w) if cl_int_for_width(*w).bits() < self.int.bits() => {
-						(self.b.ins().uextend(self.int, val), 0)
-					}
-					_ => (val, 0),
+					_ => (self.scalar_bits(val, typ), 0),
 				};
 				self.emit_frag(tag, bits, float_width, quote, sink);
 			}

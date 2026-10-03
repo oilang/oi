@@ -254,9 +254,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("no matching claim"));
 		};
 		let name = format!("$fill{}", self.vars.len());
-		let var = self.b.declare_var(self.b.func.dfg.value_type(val));
-		self.b.def_var(var, val);
-		self.vars.insert(name.clone(), Local::plain(var, typ, false));
+		self.hidden_local(name.clone(), val, typ);
 		let mut args = args.to_vec();
 		args[0] = (Expr::Ident(name), args[0].1);
 		Ok(Some((sig, args)))
@@ -307,9 +305,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						.with_label("not a tuple or array"));
 				}
 			}
-			let var = self.b.declare_var(self.b.func.dfg.value_type(val));
-			self.b.def_var(var, val);
-			self.vars.insert(name, Local::plain(var, typ, false));
+			self.hidden_local(name, val, typ);
 		}
 		Ok(Some(out))
 	}
@@ -420,9 +416,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				vals.push(val);
 			}
 			if fills && let Some(n) = &p.name {
-				let var = self.b.declare_var(cl_type(want, self.int));
-				self.b.def_var(var, vals[i]);
-				self.vars.insert(n.clone(), Local::plain(var, want.clone(), false));
+				self.hidden_local(n.clone(), vals[i], want.clone());
 			}
 		}
 		for (name, old) in saved {

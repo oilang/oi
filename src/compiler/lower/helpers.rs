@@ -206,4 +206,26 @@ impl<M: Module> Translator<'_, M> {
 		self.b.ins().jump(done, &[]);
 		self.b.switch_to_block(next);
 	}
+
+	// A scalar as word bits.
+	// ints extend by sign, floats travel as f64 bits.
+	pub(super) fn scalar_bits(&mut self, val: Value, typ: &Typ) -> Value {
+		match typ {
+			Typ::Int(_) | Typ::ISize => self.intcast(val, self.int, true),
+			Typ::UInt(_) | Typ::USize => self.intcast(val, self.int, false),
+			Typ::Float(32) => {
+				let f64v = self.b.ins().fpromote(types::F64, val);
+				self.b.ins().bitcast(self.int, MemFlags::new(), f64v)
+			}
+			Typ::Float(_) => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+			_ => val,
+		}
+	}
+
+	// Bind value to a given name as a plain, untracked local.
+	pub(super) fn hidden_local(&mut self, name: String, val: Value, typ: Typ) {
+		let var = self.b.declare_var(self.b.func.dfg.value_type(val));
+		self.b.def_var(var, val);
+		self.vars.insert(name, Local::plain(var, typ, false));
+	}
 }

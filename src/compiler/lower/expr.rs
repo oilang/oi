@@ -618,9 +618,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					{
 						let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
 						let recv = format!("$recv{}", self.vars.len());
-						let var = self.b.declare_var(self.b.func.dfg.value_type(ptr));
-						self.b.def_var(var, ptr);
-						self.vars.insert(recv.clone(), Local::plain(var, typ.clone(), false));
+						self.hidden_local(recv.clone(), ptr, typ.clone());
 						let args = (0..rest.len()).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
 						let body = [(
 							Expr::MethodCall {

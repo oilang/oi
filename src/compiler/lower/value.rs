@@ -940,9 +940,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A `@ctx` closure with its embedded context.
 	fn ctx_thunk(&mut self, val: Value, from: &Typ, arity: usize, t: &str, span: Span) -> Result<TypedVal, Diagnostic> {
-		let var = self.b.declare_var(self.int);
-		self.b.def_var(var, val);
-		self.vars.insert("$f".into(), Local::plain(var, from.clone(), false));
+		self.hidden_local("$f".into(), val, from.clone());
 		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
 		let call = Expr::Call {
 			name: "$f".into(),
