@@ -142,8 +142,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			for (i, f) in fields.iter().enumerate() {
 				if owns(&f.typ) || self.is_resource(&f.typ) {
-					let cl = cl_type(&f.typ, self.int);
-					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
 					self.release_field(fv, &f.typ);
 				}
 			}
@@ -152,7 +151,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
 		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
-			let tag = self.b.ins().load(self.int, MemFlags::new(), val, 0);
+			let tag = self.ld_word(val, 0);
 			for v in self.variants_of(typ) {
 				if !v.payload.iter().any(|t| releasable(t) || self.is_resource(t)) {
 					continue;
@@ -183,8 +182,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
 			if releasable(t) || self.is_resource(t) {
-				let cl = cl_type(t, self.int);
-				let fv = self.b.ins().load(cl, MemFlags::new(), val, base + (i * 8) as i32);
+				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
 				self.release_value(fv, t);
 			}
 		}
@@ -264,16 +262,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let base = self.call_alloc_bytes((slots.len() * 8) as i64 + 16);
 		let descv = self.trace_desc(&key, &slots);
-		self.b.ins().store(MemFlags::new(), descv, base, 0);
+		self.st(base, 0, descv);
 		let one = self.b.ins().iconst(self.int, 1);
-		self.b.ins().store(MemFlags::new(), one, base, 8);
+		self.st(base, 8, one);
 		let boxp = self.b.ins().iadd_imm(base, 16);
 		for i in 0..slots.len() as i32 {
 			let v = match typ {
-				Typ::Struct(..) => self.b.ins().load(self.int, MemFlags::new(), ptr, i * 8),
+				Typ::Struct(..) => self.ld_word(ptr, i * 8),
 				_ => ptr,
 			};
-			self.b.ins().store(MemFlags::new(), v, boxp, i * 8);
+			self.st(boxp, i * 8, v);
 		}
 		boxp
 	}
@@ -343,7 +341,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(sad);
 			self.b.switch_to_block(sad);
 			dollar = Some(match err {
-				Some(e) => (self.b.ins().load(cl_type(&e, self.int), MemFlags::new(), *val, 8), e),
+				Some(e) => (self.ld_typ(*val, 8, &e), e),
 				None => self.unit_value(),
 			});
 			join = Some(after);

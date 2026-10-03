@@ -70,7 +70,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(hit);
 			self.b.switch_to_block(hit);
 			if !named {
-				let pv = self.b.ins().load(cl_type(&v.payload[0], self.int), MemFlags::new(), val, 8);
+				let pv = self.ld_typ(val, 8, &v.payload[0]);
 				self.emit_print(pv, &v.payload[0], quote, sink);
 			} else {
 				self.write_lit(&v.name, sink);
@@ -110,8 +110,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(name) = name {
 						self.write_lit(&format!("{name} = "), sink);
 					}
-					let cl = cl_type(ft, self.int);
-					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					let fv = self.ld_typ(val, (i * 8) as i32, ft);
 					self.emit_print(fv, ft, true, sink);
 				}
 				self.write_lit(")", sink);
@@ -141,8 +140,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.write_lit(", ", sink);
 					}
 					self.write_lit(&format!("{} = ", f.name), sink);
-					let cl = cl_type(&f.typ, self.int);
-					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
 					self.emit_print(fv, &f.typ, true, sink);
 				}
 				self.write_lit("}", sink);
@@ -156,11 +154,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let body = Typ::Tuple(fields.clone());
 				self.write_lit(&name, sink);
 				let val = match typ.newtype() {
-					Some(_) => {
-						let tmp = self.call_alloc(1);
-						self.b.ins().store(MemFlags::new(), val, tmp, 0);
-						tmp
-					}
+					Some(_) => self.heap_slots(&[val]),
 					None => val,
 				};
 				self.emit_print(val, &body, quote, sink);
@@ -192,9 +186,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Trait(tn) => {
 				let (_, _, tfields, tmethods) = self.types.traits[tn.as_str()];
 				let slot = (trait_fns(tmethods).count() + tfields.len()) * 8;
-				let vtable = self.b.ins().load(self.int, MemFlags::new(), val, 0);
-				let data = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-				let fnptr = self.b.ins().load(self.int, MemFlags::new(), vtable, slot as i32);
+				let vtable = self.ld_word(val, 0);
+				let data = self.ld_word(val, 8);
+				let fnptr = self.ld_word(vtable, slot as i32);
 				let sig = Typ::Fn(vec![FnParam::new(typ.clone())], Box::new(Typ::Str));
 				let Ok((s, _)) = self.call_value("str", Callee::Addr(fnptr), &sig, &[], Some(data), (0..0).into())
 				else {

@@ -103,9 +103,7 @@ impl<M: Module> Translator<'_, M> {
 
 	// Box a bare fn pointer as an Oi fn value.
 	pub(crate) fn fn_cell(&mut self, addr: Value) -> Value {
-		let cell = self.call_alloc_bytes(8);
-		self.b.ins().store(MemFlags::new(), addr, cell, 0);
-		cell
+		self.heap_slots(&[addr])
 	}
 
 	// A fn value's bare address.
@@ -115,7 +113,7 @@ impl<M: Module> Translator<'_, M> {
 			Typ::USize | Typ::Annotated(..) => Ok(val),
 			Typ::Fn(params, ret) => {
 				check_c_sig(self.types, "@c fn", &params, &ret, arg.1)?;
-				Ok(self.b.ins().load(self.int, MemFlags::new(), val, 0))
+				Ok(self.ld_word(val, 0))
 			}
 			t => {
 				Err(Diagnostic::new(format!("expected usize, got {t}"), arg.1.into_range()).with_label("type mismatch"))
@@ -181,36 +179,35 @@ impl<M: Module> Translator<'_, M> {
 
 	// Copy each field between its Oi slot and its C offset.
 	fn copy_fields(&mut self, oi: Value, c: Value, at: i32, fields: &[FieldDef], to_c: bool) {
-		let (types, mem) = (self.types, MemFlags::new());
-		let offsets = c_layout(fields, &types).expect("validated").offsets;
+		let offsets = c_layout(fields, &self.types).expect("validated").offsets;
 		for ((i, f), off) in fields.iter().enumerate().zip(offsets) {
 			let (slot, off) = ((i * 8) as i32, at + off as i32);
 			match f.typ.newtype().unwrap_or(&f.typ) {
 				Typ::Struct(_, inner) => {
 					// nested structs are inline in C, behind a pointer in Oi
-					let child = self.b.ins().load(self.int, mem, oi, slot);
+					let child = self.ld_word(oi, slot);
 					self.copy_fields(child, c, off, inner, to_c);
 				}
 				Typ::FixedArray(e, n) => {
 					let at = self.b.ins().iadd_imm(c, off as i64);
 					match to_c {
 						true => {
-							let buf = self.b.ins().load(self.int, mem, oi, slot);
+							let buf = self.ld_word(oi, slot);
 							self.fixed_move(at, buf, e, *n);
 						}
 						false => {
 							let buf = self.fixed_copy(at, e, *n);
-							self.b.ins().store(mem, buf, oi, slot);
+							self.st(oi, slot, buf);
 						}
 					}
 				}
 				typ if to_c => {
-					let v = self.b.ins().load(cl_type(typ, self.int), mem, oi, slot);
+					let v = self.ld_typ(oi, slot, typ);
 					self.c_store(typ, v, c, off);
 				}
 				typ => {
 					let v = self.c_load(typ, c, off);
-					self.b.ins().store(mem, v, oi, slot);
+					self.st(oi, slot, v);
 				}
 			}
 		}

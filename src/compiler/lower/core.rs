@@ -122,9 +122,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Look through a chain of embed slots to the innermost struct pointer.
 	pub(super) fn follow(&mut self, ptr: Value, path: &[usize]) -> Value {
-		path.iter().fold(ptr, |p, o| {
-			self.b.ins().load(self.int, MemFlags::new(), p, (o * 8) as i32)
-		})
+		path.iter().fold(ptr, |p, o| self.ld_word(p, (o * 8) as i32))
 	}
 
 	// Look up the binding that a mutation targets.
@@ -247,9 +245,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label("immutably bound")
 				.with_note(format!("use `{name} := ...` to allow mutation")));
 		}
-		let cell = self.call_alloc_bytes(8);
 		let cur = self.read_local(local);
-		self.b.ins().store(MemFlags::new(), cur, cell, 0);
+		let cell = self.heap_slots(&[cur]);
 		let var = self.b.declare_var(self.int);
 		self.b.def_var(var, cell);
 		self.vars.insert(
@@ -269,8 +266,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn read_local(&mut self, local: &Local) -> Value {
 		let raw = self.b.use_var(local.var);
 		if local.boxed {
-			let cl = cl_type(&local.typ, self.int);
-			self.b.ins().load(cl, MemFlags::new(), raw, 0)
+			self.ld_typ(raw, 0, &local.typ)
 		} else {
 			raw
 		}
@@ -280,7 +276,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn write_local(&mut self, local: &Local, val: Value) {
 		if local.boxed {
 			let ptr = self.b.use_var(local.var);
-			self.b.ins().store(MemFlags::new(), val, ptr, 0);
+			self.st(ptr, 0, val);
 		} else {
 			self.b.def_var(local.var, val);
 		}
@@ -311,7 +307,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.enumerate()
 				.map(|(i, local)| {
 					let val = self.read_local(local);
-					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
+					self.st(ptr, (i * 8) as i32, val);
 					(None, local.typ.clone())
 				})
 				.collect();

@@ -43,9 +43,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().iconst(self.int, 0)
 		} else {
 			let slot = self.stack_slot((ptrs.len() * 8) as u32);
-			for (i, v) in ptrs.iter().enumerate() {
-				self.b.ins().store(MemFlags::new(), *v, slot, (i * 8) as i32);
-			}
+			self.store_slots(slot, &ptrs);
 			slot
 		};
 		let len = self.b.ins().iconst(self.int, ptrs.len() as i64);

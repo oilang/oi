@@ -477,7 +477,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("check_muts admits only idents and ident-based slices"),
 		};
 		let slot = self.stack_slot(8);
-		self.b.ins().store(MemFlags::new(), cur, slot, 0);
+		self.st(slot, 0, cur);
 		Ok((slot, typ, entry))
 	}
 
@@ -485,7 +485,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn reload_lent(&mut self, lent: &[(Value, Lent)]) {
 		for (slot, entry) in lent {
 			let (Lent::Whole(local) | Lent::Slice { parent: local, .. }) = entry;
-			let val = self.b.ins().load(cl_type(&local.typ, self.int), MemFlags::new(), *slot, 0);
+			let val = self.ld_typ(*slot, 0, &local.typ);
 			match entry {
 				Lent::Whole(local) => self.write_local(local, val),
 				Lent::Slice { parent, lo, len } => {
@@ -593,7 +593,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn ctx_alloc(&mut self) -> Value {
 		self.ctx_used = true;
 		let ctx = self.ctx_value(CONTEXT);
-		self.b.ins().load(self.int, MemFlags::new(), ctx, 0)
+		self.ld_word(ctx, 0)
 	}
 
 	/// The thread root, its field defaults filled on the thread's first entry.
@@ -604,21 +604,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(root);
 		};
 		let (fill, done) = (self.b.create_block(), self.b.create_block());
-		let slot = self.b.ins().load(self.int, MemFlags::new(), root, (first * 8) as i32);
+		let slot = self.ld_word(root, (first * 8) as i32);
 		self.b.ins().brif(slot, done, &[], fill, &[]);
 		self.b.seal_block(fill);
 		self.b.switch_to_block(fill);
 		// defaults live as long as the thread
-		let sys = self.b.ins().load(self.int, MemFlags::new(), root, 0);
+		let sys = self.ld_word(root, 0);
 		let owner = self.rt_call("root_allocator", &[]).unwrap();
-		self.b.ins().store(MemFlags::new(), owner, root, 0);
+		self.st(root, 0, owner);
 		for (i, f) in fields.clone().iter().enumerate() {
 			let Some(default) = &f.default else { continue };
 			let val = self.check_typed(default, &f.typ, "not a valid default for this field")?;
 			let val = self.copy_in(val, &f.typ);
-			self.b.ins().store(MemFlags::new(), val, root, (i * 8) as i32);
+			self.st(root, (i * 8) as i32, val);
 		}
-		self.b.ins().store(MemFlags::new(), sys, root, 0);
+		self.st(root, 0, sys);
 		self.b.ins().jump(done, &[]);
 		self.b.seal_block(done);
 		self.b.switch_to_block(done);
@@ -686,7 +686,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, self.int))));
 		let (addr, env) = match callee {
 			Callee::Addr(addr) => (addr, None),
-			Callee::Object(obj) => (self.b.ins().load(self.int, MemFlags::new(), obj, 0), Some(obj)),
+			Callee::Object(obj) => (self.ld_word(obj, 0), Some(obj)),
 		};
 		if !c_abi && want != Some("none") {
 			let want = want.unwrap_or(CONTEXT);
@@ -854,9 +854,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some((te, s)) => self.types().resolve(te, *s)?,
 			None => Typ::unit(),
 		};
-		let vtable = self.b.ins().load(self.int, MemFlags::new(), boxv, 0);
-		let data = self.b.ins().load(self.int, MemFlags::new(), boxv, 8);
-		let fnptr = self.b.ins().load(self.int, MemFlags::new(), vtable, (idx * 8) as i32);
+		let vtable = self.ld_word(boxv, 0);
+		let data = self.ld_word(boxv, 8);
+		let fnptr = self.ld_word(vtable, (idx * 8) as i32);
 		let typ = Typ::Fn(typs, Box::new(ret));
 		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
 		Ok((if self_ret { self.box_with(vtable, val) } else { val }, typ))
@@ -884,13 +884,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
 		};
 		let ftyp = self.types().resolve(&tfields[idx].typ, tfields[idx].span)?;
-		let vtable = self.b.ins().load(self.int, MemFlags::new(), boxv, 0);
-		let data = self.b.ins().load(self.int, MemFlags::new(), boxv, 8);
+		let vtable = self.ld_word(boxv, 0);
+		let data = self.ld_word(boxv, 8);
 		let m = trait_fns(tmethods).count();
 		// slot offset lives after the method pointers in the vtable
-		let off = self.b.ins().load(self.int, MemFlags::new(), vtable, ((m + idx) * 8) as i32);
+		let off = self.ld_word(vtable, ((m + idx) * 8) as i32);
 		let addr = self.rt_call("trait_field", &[data, off]).unwrap();
-		let v = self.b.ins().load(cl_type(&ftyp, self.int), MemFlags::new(), addr, 0);
+		let v = self.ld_typ(addr, 0, &ftyp);
 		Ok((v, ftyp))
 	}
 }

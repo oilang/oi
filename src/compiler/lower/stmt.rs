@@ -252,7 +252,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let addr = self.b.ins().iadd(data, off);
 						self.store_elem(addr, 0, &elem, val);
 						let new_len = self.b.ins().iadd_imm(len, 1);
-						self.b.ins().store(MemFlags::new(), new_len, ptr, 8);
+						self.st(ptr, 8, new_len);
 					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
 						self.rt_call("array_extend", &[ptr, val, size]);
 					} else {
@@ -355,7 +355,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
 						self.release_field(old, &vtyp);
 					}
-					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
+					self.st(ptr, (idx * 8) as i32, val);
 				}
 
 				Expr::Break(payload) => {

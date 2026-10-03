@@ -143,3 +143,33 @@ pub(super) fn ctx_mark(anns: &[String]) -> Option<&str> {
 	anns.iter()
 		.find_map(|a| a.strip_prefix(role::CTX)?.strip_prefix('(')?.strip_suffix(')'))
 }
+
+impl<M: Module> Translator<'_, M> {
+	// A pointer-sized slot at a byte offset.
+	pub(super) fn ld_word(&mut self, base: Value, off: i32) -> Value {
+		self.b.ins().load(self.int, MemFlags::new(), base, off)
+	}
+
+	// A slot holding a given type.
+	pub(super) fn ld_typ(&mut self, base: Value, off: i32, typ: &Typ) -> Value {
+		self.b.ins().load(cl_type(typ, self.int), MemFlags::new(), base, off)
+	}
+
+	pub(super) fn st(&mut self, base: Value, off: i32, val: Value) {
+		self.b.ins().store(MemFlags::new(), val, base, off);
+	}
+
+	// Store values into consecutive slots of `ptr`.
+	pub(super) fn store_slots(&mut self, ptr: Value, vals: &[Value]) {
+		for (i, v) in vals.iter().enumerate() {
+			self.st(ptr, i as i32 * 8, *v);
+		}
+	}
+
+	// A fresh heap block holding the given values.
+	pub(super) fn heap_slots(&mut self, vals: &[Value]) -> Value {
+		let ptr = self.call_alloc(vals.len());
+		self.store_slots(ptr, vals);
+		ptr
+	}
+}

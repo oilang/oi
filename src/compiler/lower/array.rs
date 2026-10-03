@@ -3,23 +3,20 @@ use super::*;
 impl<'a, M: Module> Translator<'a, M> {
 	// array handle: { data @ 0, len @ 8, cap @ 16 }
 	pub(super) fn array_data(&mut self, header: Value) -> Value {
-		self.b.ins().load(self.int, MemFlags::new(), header, 0)
+		self.ld_word(header, 0)
 	}
 
 	pub(super) fn array_len(&mut self, header: Value) -> Value {
-		self.b.ins().load(self.int, MemFlags::new(), header, 8)
+		self.ld_word(header, 8)
 	}
 
 	pub(super) fn array_cap(&mut self, header: Value) -> Value {
-		self.b.ins().load(self.int, MemFlags::new(), header, 16)
+		self.ld_word(header, 16)
 	}
 
 	// Build a fresh array handle, owned by the enclosing scope.
 	pub(super) fn make_array(&mut self, data: Value, len: Value, typ: &Typ) -> Value {
-		let header = self.call_alloc(3);
-		self.b.ins().store(MemFlags::new(), data, header, 0);
-		self.b.ins().store(MemFlags::new(), len, header, 8);
-		self.b.ins().store(MemFlags::new(), len, header, 16);
+		let header = self.heap_slots(&[data, len, len]);
 		self.temp(header, typ);
 		header
 	}
@@ -138,7 +135,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let n = vals.len();
 		let base = self.call_alloc_bytes(n as i64 * self.elem_stride(elem) + 8);
 		let one = self.b.ins().iconst(self.int, 1);
-		self.b.ins().store(MemFlags::new(), one, base, 0);
+		self.st(base, 0, one);
 		let data = self.b.ins().iadd_imm(base, 8);
 		self.store_all(data, vals, elem);
 		(data, self.b.ins().iconst(self.int, n as i64))
@@ -423,14 +420,14 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn load_elem(&mut self, addr: Value, off: i32, elem: &Typ) -> Value {
 		let mem = self.elem_mem(elem);
-		let v = self.b.ins().load(cl_type(&mem, self.int), MemFlags::new(), addr, off);
+		let v = self.ld_typ(addr, off, &mem);
 		self.intcast(v, cl_type(elem, self.int), matches!(mem, Typ::Int(_)))
 	}
 
 	pub(super) fn store_elem(&mut self, addr: Value, off: i32, elem: &Typ, val: Value) {
 		let mem = self.elem_mem(elem);
 		let val = self.intcast(val, cl_type(&mem, self.int), matches!(mem, Typ::Int(_)));
-		self.b.ins().store(MemFlags::new(), val, addr, off);
+		self.st(addr, off, val);
 	}
 
 	// Call fn for each element.

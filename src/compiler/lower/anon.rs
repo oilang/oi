@@ -145,11 +145,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.wanted.push(sig.id);
 		let func_ref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let addr = self.b.ins().func_addr(self.int, func_ref);
-		let env = self.call_alloc_bytes(((1 + resolved.len()) * 8) as i64);
-		self.b.ins().store(MemFlags::new(), addr, env, 0);
-		for (i, (_, _, _, val)) in resolved.iter().enumerate() {
-			self.b.ins().store(MemFlags::new(), *val, env, ((i + 1) * 8) as i32);
-		}
+		let slots: Vec<_> = std::iter::once(addr).chain(resolved.iter().map(|r| r.3)).collect();
+		let env = self.heap_slots(&slots);
 		let typ = Typ::Closure(params, Box::new(sig.ret.clone()), owns);
 		Ok((env, sig.ctx_marked(typ)))
 	}

@@ -108,7 +108,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.b.ins().iconst(self.int, *negated as i64), Typ::Bool));
 				}
 				let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
-				let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
+				let got = self.ld_word(obj, 0);
 				let cc = match negated {
 					true => IntCC::NotEqual,
 					false => IntCC::Equal,
@@ -419,10 +419,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& let Some(i) = sfields.iter().position(|f| f.name == *method)
 				{
 					let ft = sfields[i].typ.clone();
-					let v = self
-						.b
-						.ins()
-						.load(cl_type(&ft, self.int), MemFlags::new(), *recv, (i * 8) as i32);
+					let v = self.ld_typ(*recv, (i * 8) as i32, &ft);
 					return self.call_value(method, Callee::Object(v), &ft, args, None, expr.1);
 				}
 
@@ -461,7 +458,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					self.move_resource(value, &typ)?;
 					let val = self.copy_in(val, &typ);
-					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
+					self.st(ptr, (i * 8) as i32, val);
 					fields.push((name.clone(), typ));
 				}
 				let typ = Typ::Tuple(fields);
@@ -605,10 +602,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& let Some((path, inner, ftyp)) = self.promoted(sfields, field, expr.1)?
 					{
 						let embed = self.follow(ptr, &path);
-						let v = self
-							.b
-							.ins()
-							.load(cl_type(&ftyp, self.int), MemFlags::new(), embed, (inner * 8) as i32);
+						let v = self.ld_typ(embed, (inner * 8) as i32, &ftyp);
 						return Ok((v, ftyp));
 					}
 					// a trait const or default settles fields that aren't stored
@@ -681,8 +675,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if transparent {
 					return Ok((ptr, field_typ));
 				}
-				let cl = cl_type(&field_typ, self.int);
-				let v = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
+				let v = self.ld_typ(ptr, (idx * 8) as i32, &field_typ);
 				Ok((v, field_typ))
 			}
 
@@ -929,7 +922,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				let (val, typ) = self.expr(inner)?;
 				check_ann_typ(self.types, &names, &typ, expr.1)?;
-				let addr = self.b.ins().load(self.int, MemFlags::new(), val, 0);
+				let addr = self.ld_word(val, 0);
 				Ok((addr, Typ::Annotated(names, Box::new(typ))))
 			}
 

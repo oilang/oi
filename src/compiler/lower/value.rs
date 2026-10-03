@@ -187,23 +187,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
-				let fields = fields.clone();
-				let ptr = self.stack_slot((fields.len() * 8) as u32);
-				for (i, f) in fields.iter().enumerate() {
-					let z = self.zero(&f.typ);
-					self.b.ins().store(MemFlags::new(), z, ptr, (i * 8) as i32);
-				}
+				let zs: Vec<_> = fields.iter().map(|f| self.zero(&f.typ)).collect();
+				let ptr = self.stack_slot((zs.len() * 8) as u32);
+				self.store_slots(ptr, &zs);
 				ptr
 			}
 			Typ::TupleStruct(_, fields) => self.zero(&Typ::Tuple(fields.clone())),
 			Typ::Tuple(fields) => {
-				let fields = fields.clone();
-				let ptr = self.call_alloc(fields.len());
-				for (i, (_, ftyp)) in fields.iter().enumerate() {
-					let z = self.zero(ftyp);
-					self.b.ins().store(MemFlags::new(), z, ptr, (i * 8) as i32);
-				}
-				ptr
+				let zs: Vec<_> = fields.iter().map(|(_, t)| self.zero(t)).collect();
+				self.heap_slots(&zs)
 			}
 			Typ::Array(_) => {
 				let z = self.b.ins().iconst(self.int, 0);
@@ -220,11 +212,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				ptr
 			}
 			Typ::Any => {
-				let ptr = self.call_alloc(2);
 				let z = self.b.ins().iconst(self.int, 0);
-				self.b.ins().store(MemFlags::new(), z, ptr, 0);
-				self.b.ins().store(MemFlags::new(), z, ptr, 8);
-				ptr
+				self.heap_slots(&[z, z])
 			}
 			Typ::Map(..) => {
 				let m = self.call_map_new();
@@ -349,9 +338,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Read through `^T`, loading a non-struct payload from its slot.
 	pub(super) fn deref(&mut self, val: Value, typ: &Typ) -> TypedVal {
 		match (typ, self.peeled(typ)) {
-			(Typ::Ref(_), t) if !matches!(t, Typ::Struct(..)) => {
-				(self.b.ins().load(cl_type(&t, self.int), MemFlags::new(), val, 0), t)
-			}
+			(Typ::Ref(_), t) if !matches!(t, Typ::Struct(..)) => (self.ld_typ(val, 0, &t), t),
 			(_, t) => (val, t),
 		}
 	}
@@ -386,12 +373,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The tag of an enum value.
 	pub(super) fn enum_tag(&mut self, typ: &Typ, val: Value) -> Value {
 		if *typ == Typ::Any {
-			self.b.ins().load(self.int, MemFlags::new(), val, 0)
+			self.ld_word(val, 0)
 		} else if rc::opt_niche(typ) {
 			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, 0);
 			self.b.ins().uextend(self.int, nz)
 		} else if enum_boxed(&self.variants_of(typ)) {
-			self.b.ins().load(self.int, MemFlags::new(), val, 0)
+			self.ld_word(val, 0)
 		} else {
 			val
 		}
@@ -414,7 +401,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if rc::opt_niche(typ) {
 			val
 		} else {
-			self.b.ins().load(cl_type(inner, self.int), MemFlags::new(), val, off)
+			self.ld_typ(val, off, inner)
 		}
 	}
 
@@ -427,7 +414,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let ptr = self.call_alloc(slots);
 		let tag = self.b.ins().iconst(self.int, disc);
-		self.b.ins().store(MemFlags::new(), tag, ptr, 0);
+		self.st(ptr, 0, tag);
 		let payload = variants
 			.iter()
 			.find(|v| v.disc == disc)
@@ -438,7 +425,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(t) => self.copy_in(*fv, t),
 				None => *fv,
 			};
-			self.b.ins().store(MemFlags::new(), fv, ptr, ((i + 1) * 8) as i32);
+			self.st(ptr, ((i + 1) * 8) as i32, fv);
 		}
 		ptr
 	}
@@ -545,19 +532,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		let end = self.make_option(&opt_typ, end);
 		let start = self.intcast(start, types::I64, true);
 		let step = self.intcast(step, types::I64, true);
-		for (i, v) in [start, end, step].into_iter().enumerate() {
-			self.b.ins().store(MemFlags::new(), v, ptr, i as i32 * 8);
-		}
+		self.store_slots(ptr, &[start, end, step]);
 		self.temp(ptr, &typ);
 		Ok((ptr, typ))
 	}
 
 	// (start, end, step, open)
 	pub(super) fn range_parts(&mut self, range: Value) -> (Value, Value, Value, Value) {
-		let cl = cl_int_for_width(64);
-		let start = self.b.ins().load(cl, MemFlags::new(), range, 0);
-		let opt = self.b.ins().load(self.int, MemFlags::new(), range, 8);
-		let step = self.b.ins().load(cl, MemFlags::new(), range, 16);
+		let start = self.ld_typ(range, 0, &Typ::Int(64));
+		let opt = self.ld_word(range, 8);
+		let step = self.ld_typ(range, 16, &Typ::Int(64));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let tag = self.enum_tag(&opt_typ, opt);
 		let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
@@ -832,11 +816,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let [v] = vals[..] {
 			return Ok((v, typ));
 		}
-		let ptr = self.call_alloc(fields.len());
-		for (i, v) in vals.into_iter().enumerate() {
-			self.b.ins().store(MemFlags::new(), v, ptr, (i * 8) as i32);
-		}
-		Ok((ptr, typ))
+		Ok((self.heap_slots(&vals), typ))
 	}
 
 	// An expr checked against an expected type.
@@ -876,7 +856,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let msg = "this fn is called from C";
 				return Err(Diagnostic::new(msg, value.1.into_range()).with_label("mark it with `@c`"));
 			}
-			return Ok((self.b.ins().load(self.int, MemFlags::new(), val, 0), target.clone()));
+			return Ok((self.ld_word(val, 0), target.clone()));
 		}
 		let (val, vt) = self.lower(value, Some(target))?;
 		self.coerce(val, &vt, target, value.1)
@@ -939,10 +919,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			let slots = enum_slots(&dst);
 			let ptr = self.call_alloc(slots);
-			self.b.ins().store(MemFlags::new(), tag, ptr, 0);
+			self.st(ptr, 0, tag);
 			for i in 1..slots {
-				let w = self.b.ins().load(self.int, MemFlags::new(), val, (i * 8) as i32);
-				self.b.ins().store(MemFlags::new(), w, ptr, (i * 8) as i32);
+				let w = self.ld_word(val, (i * 8) as i32);
+				self.st(ptr, (i * 8) as i32, w);
 			}
 			return Ok((ptr, to.clone()));
 		}
@@ -985,10 +965,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.wanted.push(sig.id);
 		let fref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let proc = self.b.ins().func_addr(self.int, fref);
-		let rec = self.call_alloc(2);
-		self.b.ins().store(MemFlags::new(), proc, rec, 0);
-		self.b.ins().store(MemFlags::new(), val, rec, 8);
-		Ok(rec)
+		Ok(self.heap_slots(&[proc, val]))
 	}
 
 	// Box a struct behind its vtable.
@@ -1032,10 +1009,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Box an owned `data` pointer behind `vtable`.
 	pub(super) fn box_with(&mut self, vtable: Value, data: Value) -> Value {
-		let boxp = self.call_alloc(2);
-		self.b.ins().store(MemFlags::new(), vtable, boxp, 0);
-		self.b.ins().store(MemFlags::new(), data, boxp, 8);
-		boxp
+		self.heap_slots(&[vtable, data])
 	}
 
 	pub(super) fn float_lit(&mut self, x: f64, w: u16, span: Span) -> Result<Value, Diagnostic> {
@@ -1310,17 +1284,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.copy_in(val, &ftyp);
 			if rc::owns(&ftyp) && !(base == ptr && given[idx]) {
 				// drop the zero/default this slot already owns
-				let old = self
-					.b
-					.ins()
-					.load(cl_type(&ftyp, self.int), MemFlags::new(), base, (idx * 8) as i32);
+				let old = self.ld_typ(base, (idx * 8) as i32, &ftyp);
 				// a resource nobody saw is freed
 				match (&ftyp, self.is_resource(&ftyp)) {
 					(Typ::Struct(..), true) => _ = self.rt_call("free", &[old]),
 					_ => self.release_field(old, &ftyp),
 				}
 			}
-			self.b.ins().store(MemFlags::new(), val, base, (idx * 8) as i32);
+			self.st(base, (idx * 8) as i32, val);
 		}
 		check_required(&name, &struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
 		let typ = Typ::Struct(name.clone(), struct_fields);
@@ -1335,7 +1306,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		for (i, (name, value)) in entries.iter().enumerate() {
 			let (val, typ) = self.expr(value)?;
 			let val = self.copy_in(val, &typ);
-			self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
+			self.st(ptr, (i * 8) as i32, val);
 			fields.push(FieldDef {
 				name: name.clone().expect("guarded by the caller"),
 				typ,
@@ -1367,7 +1338,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else {
 				self.zero(&f.typ)
 			};
-			self.b.ins().store(MemFlags::new(), init, ptr, (i * 8) as i32);
+			self.st(ptr, (i * 8) as i32, init);
 		}
 		Ok(ptr)
 	}
@@ -1469,7 +1440,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 			closure_escape(&vtyp, vspan.into_range(), "stored in a field")?;
-			self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
+			self.st(ptr, (idx * 8) as i32, val);
 		}
 		Ok((ptr, typ))
 	}
@@ -1485,12 +1456,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Copy field slots between structs.
 	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
 		for (i, f) in fields.iter().enumerate() {
-			let cl = cl_type(&f.typ, self.int);
-			let old =
-				(release_old && rc::owns(&f.typ)).then(|| self.b.ins().load(cl, MemFlags::new(), dst, (i * 8) as i32));
-			let fv = self.b.ins().load(cl, MemFlags::new(), src, (i * 8) as i32);
+			let old = (release_old && rc::owns(&f.typ)).then(|| self.ld_typ(dst, (i * 8) as i32, &f.typ));
+			let fv = self.ld_typ(src, (i * 8) as i32, &f.typ);
 			let fv = self.copy_in(fv, &f.typ);
-			self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
+			self.st(dst, (i * 8) as i32, fv);
 			if let Some(old) = old {
 				self.release_field(old, &f.typ);
 			}

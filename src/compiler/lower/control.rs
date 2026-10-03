@@ -360,7 +360,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				if let Some((outs, names)) = &quote_binds {
 					for (i, name) in names.iter().enumerate() {
-						let ptr = s.b.ins().load(s.int, MemFlags::new(), *outs, (i * 8) as i32);
+						let ptr = s.ld_word(*outs, (i * 8) as i32);
 						s.bind_local(name, ptr, Typ::Ast, false);
 					}
 				}
@@ -459,7 +459,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(fallback_block);
 		let saved_dollar = self.dollar.take();
 		self.dollar = Some(match err {
-			Some(err) => (self.b.ins().load(cl_type(&err, self.int), MemFlags::new(), val, 8), err),
+			Some(err) => (self.ld_typ(val, 8, &err), err),
 			None => self.unit_value(),
 		});
 		let flow = self.scoped(|s| s.block_tail(body, Some(&inner)))?;
@@ -536,7 +536,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(sad_block);
 		if panic_in_main {
 			let msg = if is_result {
-				let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+				let e = self.ld_word(val, 8);
 				self.derived_str(e, &err_typ)
 			} else {
 				self.str_const("unwrapped `none`")
@@ -545,7 +545,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		} else {
 			let sad_val = if is_result {
-				let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+				let e = self.ld_word(val, 8);
 				let e = match &from {
 					Some(sig) => self.emit_call(sig, &[e]).0,
 					None => self.coerce(e, &err_typ, &target_err, span)?.0,
@@ -574,7 +574,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(sad);
 		self.b.seal_block(done);
 		self.b.switch_to_block(sad);
-		let e = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+		let e = self.ld_word(val, 8);
 		let mut msg = self.derived_str(e, &err);
 		if let Some(sig) = (err == Typ::Error).then(|| self.funcs.get(role::ORIGIN).cloned()).flatten() {
 			let (at, _) = self.emit_call(&sig, &[e]);

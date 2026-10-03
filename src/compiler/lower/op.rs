@@ -60,14 +60,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(next);
 			self.b.switch_to_block(body);
 			for (i, ft) in v.payload.iter().enumerate() {
-				let fa = self
-					.b
-					.ins()
-					.load(cl_type(ft, self.int), MemFlags::new(), a, ((i + 1) * 8) as i32);
-				let fb = self
-					.b
-					.ins()
-					.load(cl_type(ft, self.int), MemFlags::new(), b, ((i + 1) * 8) as i32);
+				let fa = self.ld_typ(a, ((i + 1) * 8) as i32, ft);
+				let fb = self.ld_typ(b, ((i + 1) * 8) as i32, ft);
 				let fe = self.emit_val_eq(fa, fb, ft, &owner, span)?;
 				let fe = self.b.ins().icmp_imm(IntCC::NotEqual, fe, 0);
 				let prev = self.b.use_var(eq);
@@ -161,9 +155,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let owner = typ.to_string();
 		let mut acc = self.b.ins().iconst(types::I8, 1);
 		for (i, st) in slots.iter().enumerate() {
-			let cl = cl_type(st, self.int);
-			let fa = self.b.ins().load(cl, MemFlags::new(), a, (i * 8) as i32);
-			let fb = self.b.ins().load(cl, MemFlags::new(), b, (i * 8) as i32);
+			let fa = self.ld_typ(a, (i * 8) as i32, st);
+			let fb = self.ld_typ(b, (i * 8) as i32, st);
 			let eq = self.emit_val_eq(fa, fb, st, &owner, span)?;
 			let eq = self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0);
 			acc = self.b.ins().band(acc, eq);
@@ -243,10 +236,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let key = s.load_nth(data, i, k);
 			let bits = s.map_bits(key);
 			let ga = s.call_map_get(a, tag, bits);
-			s.b.ins().store(MemFlags::new(), ga, slot, 0);
+			s.st(slot, 0, ga);
 
 			let hit = s.call_map_find(b, tag, bits, slot);
-			let gb = s.b.ins().load(s.int, MemFlags::new(), slot, 0);
+			let gb = s.ld_word(slot, 0);
 			let (va, vb) = (s.unmap_bits(ga, v), s.unmap_bits(gb, v));
 			let same = s.emit_val_eq(va, vb, v, &owner, span)?;
 			let same = s.b.ins().icmp_imm(IntCC::NotEqual, same, 0);

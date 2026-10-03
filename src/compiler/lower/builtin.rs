@@ -161,10 +161,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (tag, bits) = match typ {
 			Typ::Struct(name, fields) => {
 				for (i, f) in fields.iter().enumerate() {
-					let fv = self
-						.b
-						.ins()
-						.load(cl_type(&f.typ, self.int), MemFlags::new(), val, (i * 8) as i32);
+					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
 					self.comp_yield(fv, &f.typ, span)?;
 				}
 				let name = self.str_const(name);
@@ -302,7 +299,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())))
 		};
-		let got = self.b.ins().load(self.int, MemFlags::new(), obj, 0);
+		let got = self.ld_word(obj, 0);
 		let same = self.b.ins().icmp(IntCC::Equal, got, want);
 		let data = self.load_bind(obj, typ, target, 8, span);
 		let some = self.make_option(&opt, Some(data));
