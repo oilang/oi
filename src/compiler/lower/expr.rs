@@ -654,23 +654,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						);
 					}
 				};
-				let idx = match field.parse::<usize>() {
-					Ok(i) if i < fields.len() => i,
-					Ok(i) => {
-						return Err(Diagnostic::new(
-							format!("tuple index {i} out of range (len {})", fields.len()),
-							expr.1.into_range(),
-						)
-						.with_label("no such field"));
-					}
-					Err(_) => fields
-						.iter()
-						.position(|(name, _)| name.as_deref() == Some(field.as_str()))
-						.ok_or_else(|| {
-							Diagnostic::new(format!("tuple has no field `{field}`"), expr.1.into_range())
-								.with_label("no such field")
-						})?,
-				};
+				let idx = tuple_index(fields, field, expr.1)?;
 				let field_typ = fields[idx].1.clone();
 				if transparent {
 					return Ok((ptr, field_typ));

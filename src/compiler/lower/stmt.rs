@@ -143,15 +143,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Typ::Map(k, v) = local.typ.clone() {
 						let (k, v) = (*k, *v);
 						let (tag, key_bits) = self.map_key(index, &k)?;
-						let (val, vtyp) = self.check_expr(value, &v)?;
-						if vtyp != v {
-							return Err(Diagnostic::new(
-								format!("cannot assign {vtyp} to {v} value of map"),
-								value.1.into_range(),
-							)
-							.with_label("type mismatch"));
-						}
-						closure_escape(&v, value.1.into_range(), "stored in a map")?;
+						let val = self.stored(value, &v, &format!("{v} value of map"), "a map")?;
 						self.move_resource(value, &v)?;
 						let val = self.copy_in(val, &v);
 						let val_bits = self.map_bits(val);
@@ -183,16 +175,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					let idx = self.int_value(index, "array index")?;
 					let idx = self.intcast(idx, self.int, true);
-					let (val, vtyp) = self.check_expr(value, &elem)?;
-					if vtyp != elem {
-						return Err(Diagnostic::new(
-							format!("cannot assign {vtyp} to element of {elem} array"),
-							value.1.into_range(),
-						)
-						.with_label("type mismatch"));
-					}
-					closure_escape(&vtyp, value.1.into_range(), "stored in an array")?;
-					let val = self.copy_in(val, &vtyp);
+					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
+					let val = self.copy_in(val, &elem);
 					let (data, len) = self.array_parts(ptr, &local.typ);
 					self.store_index(data, len, &elem, idx, val, stmt.1);
 				}
@@ -308,29 +292,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
 					let (path, idx, ftyp) = match self.peeled(&local.typ) {
 						Typ::Tuple(elems) => {
-							let i = match field.parse::<usize>() {
-								Ok(i) if i < elems.len() => i,
-								_ => elems
-									.iter()
-									.position(|(n, _)| n.as_deref() == Some(field.as_str()))
-									.ok_or_else(|| {
-										Diagnostic::new(format!("tuple has no field `{field}`"), stmt.1.into_range())
-											.with_label("no such field")
-									})?,
-							};
+							let i = tuple_index(&elems, field, stmt.1)?;
 							(Vec::new(), i, elems[i].1.clone())
 						}
 						// writes fall through embeds
-						Typ::Struct(sname, fields) => {
-							self.check_member(&sname, field, stmt.1)?;
-							match fields.iter().position(|f| &f.name == field) {
-								Some(i) => (Vec::new(), i, fields[i].typ.clone()),
-								None => self.promoted(&fields, field, stmt.1)?.ok_or_else(|| {
-									Diagnostic::new(format!("struct has no field `{field}`"), stmt.1.into_range())
-										.with_label("no such field")
-								})?,
-							}
-						}
+						Typ::Struct(sname, fields) => self.struct_field(&sname, &fields, field, stmt.1)?,
 						_ => {
 							return Err(
 								Diagnostic::new(format!("`{name}` is not a struct"), stmt.1.into_range())
@@ -338,22 +304,14 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 						}
 					};
-					let (val, vtyp) = self.check_expr(value, &ftyp)?;
-					if vtyp != ftyp {
-						return Err(Diagnostic::new(
-							format!("cannot assign {vtyp} to field `{field}` of type {ftyp}"),
-							value.1.into_range(),
-						)
-						.with_label("type mismatch"));
-					}
-					closure_escape(&vtyp, value.1.into_range(), "stored in a field")?;
-					let val = self.copy_in(val, &vtyp);
+					let val = self.stored(value, &ftyp, &format!("field `{field}` of type {ftyp}"), "a field")?;
+					let val = self.copy_in(val, &ftyp);
 					let base = self.read_local(&local);
 					let ptr = self.follow(base, &path);
-					if rc::owns(&vtyp) {
+					if rc::owns(&ftyp) {
 						let cl = self.b.func.dfg.value_type(val);
 						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
-						self.release_field(old, &vtyp);
+						self.release_field(old, &ftyp);
 					}
 					self.st(ptr, (idx * 8) as i32, val);
 				}
@@ -439,8 +397,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(Some(last))
 	}
 
+	// Lower a value for a store into the desired slot.
+	fn stored(&mut self, value: &Spanned<Expr>, want: &Typ, what: &str, place: &str) -> Result<Value, Diagnostic> {
+		let (val, vtyp) = self.check_expr(value, want)?;
+		if &vtyp != want {
+			return Err(
+				Diagnostic::new(format!("cannot assign {vtyp} to {what}"), value.1.into_range())
+					.with_label("type mismatch"),
+			);
+		}
+		closure_escape(want, value.1.into_range(), &format!("stored in {place}"))?;
+		Ok(val)
+	}
+
 	// Autowrap return types.
-	// idk whether it'll be more general in the future, but for now this is for `Option` and `Result`.
+	// idk whether it'll be more general in the future, but for now this is for the propagators (Option/Result).
 	fn autowrap_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<TypedVal, Diagnostic> {
 		let Some(ret) = self.ret.as_ref().map(|(t, _)| t.clone()) else {
 			return Ok((val, typ));

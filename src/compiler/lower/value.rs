@@ -1254,28 +1254,15 @@ impl<'a, M: Module> Translator<'a, M> {
 					prefix += 1;
 					(i, struct_fields[i].typ.clone(), ptr)
 				}
-				Some(fname) => match struct_fields.iter().position(|f| f.name == fname) {
-					Some(idx) if idx < prefix => {
+				Some(fname) => match self.struct_field(&name, &struct_fields, fname, value.1)? {
+					(path, idx, _) if path.is_empty() && idx < prefix => {
 						return Err(Diagnostic::new(
 							format!("`{fname}` was already set positionally"),
 							value.1.into_range(),
 						)
 						.with_label("set twice"));
 					}
-					Some(idx) => {
-						self.check_member(&name, fname, value.1)?;
-						(idx, struct_fields[idx].typ.clone(), ptr)
-					}
-					None => match self.promoted(&struct_fields, fname, value.1)? {
-						Some((path, inner, ftyp)) => (inner, ftyp, self.follow(ptr, &path)),
-						None => {
-							return Err(Diagnostic::new(
-								format!("`{name}` has no field `{fname}`"),
-								value.1.into_range(),
-							)
-							.with_label("no such field"));
-						}
-					},
+					(path, idx, ftyp) => (idx, ftyp, self.follow(ptr, &path)),
 				},
 			};
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;

@@ -120,6 +120,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.pierce(fields, wanted, span, find)?.map(|(p, (i, t))| (p, i, t)))
 	}
 
+	// A struct field as an embed path, slot, and type.
+	pub(super) fn struct_field(
+		&self,
+		sname: &str,
+		fields: &[FieldDef],
+		field: &str,
+		span: Span,
+	) -> Result<(Vec<usize>, usize, Typ), Diagnostic> {
+		self.check_member(sname, field, span)?;
+		match fields.iter().position(|f| f.name == field) {
+			Some(i) => Ok((vec![], i, fields[i].typ.clone())),
+			None => self.promoted(fields, field, span)?.ok_or_else(|| {
+				Diagnostic::new(format!("`{sname}` has no field `{field}`"), span.into_range())
+					.with_label("no such field")
+			}),
+		}
+	}
+
 	// Look through a chain of embed slots to the innermost struct pointer.
 	pub(super) fn follow(&mut self, ptr: Value, path: &[usize]) -> Value {
 		path.iter().fold(ptr, |p, o| self.ld_word(p, (o * 8) as i32))

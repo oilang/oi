@@ -60,6 +60,21 @@ pub(super) fn closure_escape(typ: &Typ, span: Range<usize>, action: &str) -> Res
 	Ok(())
 }
 
+// A tuple slot by position or name.
+pub(super) fn tuple_index(fields: &[(Option<String>, Typ)], field: &str, span: Span) -> Result<usize, Diagnostic> {
+	let len = fields.len();
+	match field.parse::<usize>() {
+		Ok(i) if i < len => Ok(i),
+		Ok(i) => Err(
+			Diagnostic::new(format!("tuple index {i} out of range (len {len})"), span.into_range())
+				.with_label("no such field"),
+		),
+		Err(_) => fields.iter().position(|(n, _)| n.as_deref() == Some(field)).ok_or_else(|| {
+			Diagnostic::new(format!("tuple has no field `{field}`"), span.into_range()).with_label("no such field")
+		}),
+	}
+}
+
 // Unwrap one level of `^T` so things can see throughva ref.
 pub(super) fn peel(typ: &Typ) -> &Typ {
 	match typ {
