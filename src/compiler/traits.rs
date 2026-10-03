@@ -280,16 +280,7 @@ pub(super) fn check_impls<'p>(
 		}
 		let mut sig_aliases = types.aliases.clone();
 		bind_self(&mut sig_aliases, typ);
-		let sig_types = TypeCtx::new(
-			types.structs,
-			types.enums,
-			&sig_aliases,
-			&sig_params,
-			types.generics,
-			types.traits,
-		)
-		.with_consts(types.consts)
-		.with_scope(scope);
+		let sig_types = types.with_aliases(&sig_aliases).with_type_params(&sig_params).with_scope(scope);
 		let sig = |ps: &[Param], ret: &Option<Spanned<TypeExpr>>| -> Result<Typ, Diagnostic> {
 			let param = |p: &Param| {
 				let typ = sig_types.param(&p.typ, p.span)?;

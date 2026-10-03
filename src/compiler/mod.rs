@@ -1440,9 +1440,8 @@ impl<M: Module> Compiler<M> {
 		}
 		check_annotations(&self.annotations, &structs, &generics, &self.consts, scope_of)?;
 
-		let field_types =
-			TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
-		check_c_structs(field_types, &structs)?;
+		let base = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
+		check_c_structs(base, &structs)?;
 
 		// implicit traits
 		for (tn, anns) in &self.annotations {
@@ -1471,7 +1470,7 @@ impl<M: Module> Compiler<M> {
 					&traits,
 					&self.core_traits,
 					&self.trait_impls,
-					field_types,
+					base,
 					&mut others,
 					&mut self.consts,
 				) {
@@ -1500,7 +1499,7 @@ impl<M: Module> Compiler<M> {
 			&traits,
 			&self.core_traits,
 			&self.trait_impls,
-			field_types,
+			base,
 			&mut others,
 			&mut self.consts,
 		)?;
@@ -1514,9 +1513,7 @@ impl<M: Module> Compiler<M> {
 			if let Some(t) = item.key.rsplit_once('.').map(|(t, _)| t) {
 				bind_self(&mut aliases, t);
 			}
-			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(item.scope);
+			let types = base.with_aliases(&aliases).with_scope(item.scope);
 			let resolved = types.resolve_params(&item.params)?;
 			let params: Vec<FnParam> = (item.params.iter().zip(&resolved))
 				.map(|(p, (_, t, _))| FnParam::of(p, t.clone()))
@@ -1570,9 +1567,7 @@ impl<M: Module> Compiler<M> {
 			let TypeExpr::Fn(param_types, ret) = fn_type else {
 				unreachable!("loader validated foreign fn type")
 			};
-			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(scope);
+			let types = base.with_scope(scope);
 			let params: Vec<FnParam> = param_types
 				.iter()
 				.map(|(n, _, t)| {
@@ -1661,15 +1656,13 @@ impl<M: Module> Compiler<M> {
 			if render.contains_key(&name) {
 				continue;
 			}
-			let types =
-				TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
-			let styp = types.named(&name, (0..0).into())?;
+			let styp = base.named(&name, (0..0).into())?;
 			let param = [("self".into(), styp.clone(), Access::Read)];
 			let def = FnDef {
 				params: &param,
 				..FnDef::default()
 			};
-			let (mut trans, block) = self.translator(&def, &funcs, types);
+			let (mut trans, block) = self.translator(&def, &funcs, base);
 			let val = trans.b.block_params(block)[0];
 			let s = trans.derived_str(val, &styp);
 			trans.emit_return(s, Typ::Str, (0..0).into())?;
@@ -1693,8 +1686,6 @@ impl<M: Module> Compiler<M> {
 			let m = methods.len();
 			let f = tfields.len();
 			let mut bytes = vec![0u8; (m + f + 1) * 8];
-			let ftypes =
-				TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
 			let mut const_slots = Vec::new();
 			for (i, tf) in tfields.iter().enumerate() {
 				// leave a hole because associated types have no runtime slot
@@ -1704,7 +1695,7 @@ impl<M: Module> Compiler<M> {
 				match structs.get(typ.as_str()).and_then(|fs| field_slot(fs, &tf.name)) {
 					Some((enc, _)) => bytes[(m + i) * 8..(m + i + 1) * 8].copy_from_slice(&enc.to_le_bytes()),
 					None => {
-						let want = ftypes.resolve(&tf.typ, tf.span)?;
+						let want = base.resolve(&tf.typ, tf.span)?;
 						let lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
 						let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
 						const_slots.push(((m + i) * 8, self.const_cell(&sym, &lit, &want)));
@@ -1735,9 +1726,7 @@ impl<M: Module> Compiler<M> {
 
 		// one zeroed cell per static
 		for (name, annot, init, scope, span) in static_items {
-			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(scope);
+			let types = base.with_scope(scope);
 			let typ = match (&annot, &init) {
 				(Some((t, s)), _) => types.resolve(t, *s)?,
 				(None, Some(init)) => static_typ(&init.0, &types, span)?,
@@ -1775,9 +1764,7 @@ impl<M: Module> Compiler<M> {
 			}
 		};
 
-		let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-			.with_consts(consts)
-			.with_scope(scopes["main"]);
+		let types = base.with_scope(scopes["main"]);
 		let ret = match main_ret {
 			Some((te, span)) => Some((types.resolve(te, *span)?, *span)),
 			None => None,
@@ -1812,9 +1799,7 @@ impl<M: Module> Compiler<M> {
 				if let Some(t) = self_type {
 					bind_self(&mut aliases, t);
 				}
-				let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-					.with_consts(consts)
-					.with_scope(item.scope);
+				let types = base.with_aliases(&aliases).with_scope(item.scope);
 				let (params, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
 				let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), (0..0).into())));
 				self.translate(
@@ -1846,9 +1831,7 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }];
-			let types = TypeCtx::new(&structs, &enums, &aliases, &subst, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(home);
+			let types = base.with_type_params(&subst).with_scope(home);
 			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
 			let ret = ret.or_else(|| Some((self.mono[&sym].ret.clone(), (0..0).into())));
 			let self_sig = self.mono[&sym].clone();

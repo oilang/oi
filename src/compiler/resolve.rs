@@ -165,6 +165,10 @@ impl<'a> TypeCtx<'a> {
 		TypeCtx { scope, ..self }
 	}
 
+	pub fn with_aliases(self, aliases: &'a HashMap<String, TypeExpr>) -> Self {
+		TypeCtx { aliases, ..self }
+	}
+
 	// Const folding.
 	pub fn with_consts(self, consts: Consts<'a>) -> Self {
 		TypeCtx { consts, ..self }
