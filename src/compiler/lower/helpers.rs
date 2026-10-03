@@ -60,6 +60,20 @@ pub(super) fn closure_escape(typ: &Typ, span: Range<usize>, action: &str) -> Res
 	Ok(())
 }
 
+// The slot named by a record entry.
+pub(super) fn record_slot<'n>(
+	k: &Spanned<Expr>,
+	owner: &str,
+	mut names: impl Iterator<Item = &'n str>,
+) -> Result<usize, Diagnostic> {
+	let Expr::Ident(key) = &k.0 else {
+		return Err(Diagnostic::new("field names must be idents", k.1.into_range()).with_label("not a field name"));
+	};
+	names.position(|n| n == key).ok_or_else(|| {
+		Diagnostic::new(format!("`{owner}` has no field `{key}`"), k.1.into_range()).with_label("no such field")
+	})
+}
+
 // A tuple slot by position or name.
 pub(super) fn tuple_index(fields: &[(Option<String>, Typ)], field: &str, span: Span) -> Result<usize, Diagnostic> {
 	let len = fields.len();

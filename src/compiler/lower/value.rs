@@ -737,15 +737,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			let mut fields: Vec<Value> = payload.iter().map(|t| self.zero(t)).collect();
 			for (k, val) in entries {
-				let Expr::Ident(key) = &k.0 else {
-					return Err(
-						Diagnostic::new("field names must be idents", k.1.into_range()).with_label("not a field name")
-					);
-				};
-				let idx = names.iter().position(|n| n == key).ok_or_else(|| {
-					Diagnostic::new(format!("`{name}.{variant}` has no field `{key}`"), k.1.into_range())
-						.with_label("no such field")
-				})?;
+				let idx = record_slot(k, &format!("{name}.{variant}"), names.iter().map(String::as_str))?;
 				fields[idx] = self.check_typed(val, &payload[idx], "type mismatch")?;
 				self.move_resource(val, &payload[idx])?;
 			}
@@ -787,15 +779,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& fields.iter().any(|(n, _)| n.is_some())
 		{
 			for (k, val) in entries {
-				let Expr::Ident(key) = &k.0 else {
-					return Err(
-						Diagnostic::new("field names must be idents", k.1.into_range()).with_label("not a field name")
-					);
-				};
-				let idx = fields.iter().position(|(n, _)| n.as_deref() == Some(key)).ok_or_else(|| {
-					Diagnostic::new(format!("`{name}` has no field `{key}`"), k.1.into_range())
-						.with_label("no such field")
-				})?;
+				let idx = record_slot(k, &name, fields.iter().map(|(n, _)| n.as_deref().unwrap_or_default()))?;
 				slots[idx] = Some(val);
 			}
 		} else if args.len() == fields.len() {

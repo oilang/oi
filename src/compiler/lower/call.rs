@@ -154,6 +154,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// `m.item` through an import, as its module and the name it narrows to.
+	pub(super) fn import_item(&self, m: &Expr, item: &str, span: Span) -> Result<Option<(String, String)>, Diagnostic> {
+		let Expr::Ident(m) = m else { return Ok(None) };
+		let Some(vis) = self.types.scope.visible.get(m).filter(|_| !self.vars.contains_key(m)) else {
+			return Ok(None);
+		};
+		let target = match &vis.only {
+			None => item,
+			Some(only) => only.get(item).ok_or_else(|| {
+				Diagnostic::new(format!("`{item}` is not part of `{m}`"), span.into_range())
+					.with_label("not in this import")
+			})?,
+		};
+		Ok(Some((vis.module.clone(), target.to_string())))
+	}
+
 	// Call a `pub` function of an imported module.
 	pub(super) fn module_call(
 		&mut self,

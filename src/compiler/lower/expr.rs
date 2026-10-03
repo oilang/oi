@@ -262,19 +262,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let recv = dotted.as_ref().unwrap_or(recv);
 
 				// access to an imported module's function
-				if let Expr::Ident(m) = &recv.0
-					&& !self.vars.contains_key(m)
-					&& let Some(vis) = self.types.scope.visible.get(m)
-				{
-					// narrowed imports
-					let target = match &vis.only {
-						None => method,
-						Some(only) => only.get(method).ok_or_else(|| {
-							Diagnostic::new(format!("`{method}` is not part of `{m}`"), expr.1.into_range())
-								.with_label("not in this import")
-						})?,
-					};
-					let (module, target) = (vis.module.clone(), target.clone());
+				if let Some((module, target)) = self.import_item(&recv.0, method, expr.1)? {
 					return self.module_call(&module, &target, type_args, args, expr.1);
 				}
 
@@ -471,18 +459,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let tuple = dotted.as_ref().unwrap_or(tuple);
 
 				// access an imported module's items
-				if let Expr::Ident(m) = &tuple.0
-					&& !self.vars.contains_key(m)
-					&& let Some(vis) = self.types.scope.visible.get(m)
-				{
-					let target = match &vis.only {
-						None => field,
-						Some(only) => only.get(field).ok_or_else(|| {
-							Diagnostic::new(format!("`{field}` is not part of `{m}`"), expr.1.into_range())
-								.with_label("not in this import")
-						})?,
-					};
-					let module = vis.module.clone();
+				if let Some((module, target)) = self.import_item(&tuple.0, field, expr.1)? {
 					let key = format!("{module}::{target}");
 					let key = self.reexports.get(&key).cloned().unwrap_or(key);
 					if let Some(l) = self.vars.get(&key).cloned().filter(|l| l.stat) {
