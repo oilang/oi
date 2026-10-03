@@ -631,25 +631,16 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 	}
 }
 
-// Whether `Ast` appears anywhere in a type.
-fn ast(t: &TypeExpr) -> bool {
-	match t {
-		TypeExpr::Name(n) => n == "Ast",
-		TypeExpr::Array(t) | TypeExpr::FixedArray(t, _) | TypeExpr::Ref(t) | TypeExpr::Variadic(t) => ast(t),
-		TypeExpr::Annotated(_, t) => ast(t),
-		TypeExpr::Generic(_, ts) | TypeExpr::Sum(ts) => ts.iter().any(ast),
-		_ => false,
-	}
-}
-
 fn comptime_only(e: &Expr) -> bool {
 	match e {
 		Expr::Pub(inner) | Expr::Annotated(_, inner) => comptime_only(&inner.0),
-		Expr::Fn { params, ret, .. } => params.iter().any(|p| ast(&p.typ)) || ret.as_ref().is_some_and(|r| ast(&r.0)),
+		Expr::Fn { params, ret, .. } => {
+			params.iter().any(|p| mentions(&p.typ, "Ast")) || ret.as_ref().is_some_and(|r| mentions(&r.0, "Ast"))
+		}
 		Expr::Bind {
-			typ: Some((TypeExpr::Fn(ps, r), _)),
+			typ: Some((t @ TypeExpr::Fn(..), _)),
 			..
-		} => ps.iter().any(|(_, _, t)| ast(t)) || ast(r),
+		} => mentions(t, "Ast"),
 		_ => false,
 	}
 }
@@ -2077,10 +2068,11 @@ impl<M: Module> Compiler<M> {
 		}
 
 		// the params tuple is a heap alloc, so only build it for a body that reads `$`
-		let mut dollar = false;
+		let (mut dollar, mut writes) = (false, false);
 		Expr::Block(def.body.to_vec()).walk(&mut |e| match e {
 			Expr::Dollar => dollar = true,
 			Expr::Ref(inner) if let Expr::Ident(n) = &inner.0 => _ = trans.addressed.insert(n.clone()),
+			Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX => writes = true,
 			_ => {}
 		});
 		if dollar {
@@ -2094,10 +2086,6 @@ impl<M: Module> Compiler<M> {
 				false => trans.root_ctx(&typ)?,
 			};
 			// context is CoW
-			let mut writes = false;
-			Expr::Block(def.body.to_vec()).walk(&mut |e| {
-				writes |= matches!(e, Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX)
-			});
 			let ctx = match writes {
 				true => trans.copy_bind(ctx, &typ),
 				false => ctx,
