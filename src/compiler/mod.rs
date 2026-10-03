@@ -1389,18 +1389,12 @@ impl<M: Module> Compiler<M> {
 		let mut pending = struct_items;
 		let mut placeholders: HashSet<String> = HashSet::new();
 		let field = |types: &TypeCtx, p: &Param| {
-			let typ = types.resolve(&p.typ, p.span)?;
-			if matches!(typ, Typ::Ref(_)) && p.default.is_none() {
+			let f = types.field(p)?;
+			if matches!(f.typ, Typ::Ref(_)) && p.default.is_none() {
 				let msg = "a reference field must be optional (`?^T`) or have a default";
 				return fail(msg, p.span, "no zero value for `^T`");
 			}
-			Ok(FieldDef {
-				name: p.name.clone(),
-				typ,
-				default: p.default.clone(),
-				embedded: embedded(p),
-				annotations: qualify_anns(types.scope, &p.annotations),
-			})
+			Ok(f)
 		};
 		while !pending.is_empty() {
 			let (mut done, mut err) = (vec![], None);

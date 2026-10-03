@@ -174,6 +174,16 @@ impl<'a> TypeCtx<'a> {
 		TypeCtx { consts, ..self }
 	}
 
+	pub fn field(&self, p: &Param) -> Result<FieldDef, Diagnostic> {
+		Ok(FieldDef {
+			name: p.name.clone(),
+			typ: self.resolve(&p.typ, p.span)?,
+			default: p.default.clone(),
+			embedded: embedded(p),
+			annotations: qualify_anns(self.scope, &p.annotations),
+		})
+	}
+
 	// Named types with a C layout.
 	pub fn is_c(&self, name: &str) -> bool {
 		is_c_struct(self.consts.anns, name)
@@ -251,18 +261,7 @@ impl TypeCtx<'_> {
 			}
 			TypeExpr::Sum(ms) => self.resolve_sum(ms, span),
 			TypeExpr::AnonStruct(params) => {
-				let fields = params
-					.iter()
-					.map(|p| {
-						Ok(FieldDef {
-							name: p.name.clone(),
-							typ: self.resolve(&p.typ, p.span)?,
-							default: p.default.clone(),
-							embedded: embedded(p),
-							annotations: qualify_anns(self.scope, &p.annotations),
-						})
-					})
-					.collect::<Result<Vec<_>, Diagnostic>>()?;
+				let fields = params.iter().map(|p| self.field(p)).collect::<Result<Vec<_>, _>>()?;
 				let shape: Vec<_> = fields.iter().map(|f| format!("{}: {}", f.name, f.typ.key())).collect();
 				Ok(Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields))
 			}
@@ -398,6 +397,30 @@ impl TypeCtx<'_> {
 		Ok(subst)
 	}
 
+	// Move one level deeper into a self-referential type, failing past the limit.
+	fn nested(&self, name: &str, span: Span, label: &str) -> Result<Self, Diagnostic> {
+		if self.depth > MAX_GENERIC_DEPTH {
+			return fail(format!("`{name}` recurses without end"), span, label);
+		}
+		Ok(TypeCtx {
+			depth: self.depth + 1,
+			..*self
+		})
+	}
+
+	// Record an instance's type args under its display name.
+	fn register_instance(&self, name: &str, params: &[TypeParam], subst: &HashMap<String, Typ>) -> String {
+		let concrete: Vec<Typ> = params.iter().map(|p| subst[&p.name].clone()).collect();
+		let args: Vec<_> = concrete.iter().map(Typ::key).collect();
+		let display = format!("{name}[{}]", args.join(", "));
+		self.generics
+			.instance_args
+			.borrow_mut()
+			.entry(display.clone())
+			.or_insert(concrete);
+		display
+	}
+
 	// Substitute `subst` into a generic struct's fields, yielding an ordinary `Typ::Struct`.
 	pub fn instantiate(
 		&self,
@@ -406,40 +429,14 @@ impl TypeCtx<'_> {
 		subst: &HashMap<String, Typ>,
 		span: Span,
 	) -> Result<Typ, Diagnostic> {
-		if self.depth > MAX_GENERIC_DEPTH {
-			return fail(
-				format!("`{name}` recurses without end"),
-				span,
-				"would require infinitely nested fields",
-			);
-		}
-		let inner = TypeCtx {
-			type_params: subst,
-			depth: self.depth + 1,
-			..*self
-		};
-		let fields = def
-			.fields
-			.iter()
-			.map(|f| {
-				Ok(FieldDef {
-					name: f.name.clone(),
-					typ: inner.resolve(&f.typ, f.span)?,
-					default: f.default.clone(),
-					embedded: embedded(f),
-					annotations: qualify_anns(self.scope, &f.annotations),
-				})
-			})
-			.collect::<Result<Vec<_>, _>>()?;
-		let concrete: Vec<Typ> = def.type_params.iter().map(|p| subst[&p.name].clone()).collect();
-		let args: Vec<_> = concrete.iter().map(Typ::key).collect();
-		let display = format!("{name}[{}]", args.join(", "));
-		self.generics
-			.instance_args
-			.borrow_mut()
-			.entry(display.clone())
-			.or_insert(concrete);
-		Ok(Typ::Struct(display, fields))
+		let inner = self
+			.nested(name, span, "would require infinitely nested fields")?
+			.with_type_params(subst);
+		let fields = def.fields.iter().map(|f| inner.field(f)).collect::<Result<Vec<_>, _>>()?;
+		Ok(Typ::Struct(
+			self.register_instance(name, &def.type_params, subst),
+			fields,
+		))
 	}
 
 	// Substitute `subst` into a generic enum's variants.
@@ -450,31 +447,15 @@ impl TypeCtx<'_> {
 		subst: &HashMap<String, Typ>,
 		span: Span,
 	) -> Result<Typ, Diagnostic> {
-		if self.depth > MAX_GENERIC_DEPTH {
-			return fail(
-				format!("`{name}` recurses without end"),
-				span,
-				"would require infinitely nested variants",
-			);
-		}
-		let concrete: Vec<Typ> = def.type_params.iter().map(|p| subst[&p.name].clone()).collect();
-		let args: Vec<_> = concrete.iter().map(Typ::key).collect();
-		let display = format!("{name}[{}]", args.join(", "));
-		self.generics
-			.instance_args
-			.borrow_mut()
-			.entry(display.clone())
-			.or_insert(concrete);
+		let inner = self
+			.nested(name, span, "would require infinitely nested variants")?
+			.with_type_params(subst);
+		let display = self.register_instance(name, &def.type_params, subst);
 		if self.enums.borrow().contains_key(&display) {
 			return Ok(Typ::Enum(display));
 		}
 		// name-only first, so a self-referential payload resolves instead of recursing
 		self.enums.borrow_mut().insert(display.clone(), Vec::new());
-		let inner = TypeCtx {
-			type_params: subst,
-			depth: self.depth + 1,
-			..*self
-		};
 		let variants = build_variants(&def.variants, inner)?;
 		self.enums.borrow_mut().insert(display.clone(), variants);
 		Ok(Typ::Enum(display))
@@ -625,18 +606,12 @@ impl TypeCtx<'_> {
 
 	// A named sum's members.
 	pub fn named_sum(&self, name: &str, span: Span) -> Result<Vec<VariantInfo>, Diagnostic> {
-		if self.depth > MAX_GENERIC_DEPTH {
-			let msg = format!("`{name}` recurses without end");
-			return fail(msg, span, "splices itself");
-		}
-		let inner = TypeCtx {
-			depth: self.depth + 1,
-			..*self
-		};
-		Ok(match inner.resolve(&self.aliases[name], span)? {
-			Typ::Sum(_, vs) => vs,
-			_ => vec![],
-		})
+		Ok(
+			match self.nested(name, span, "splices itself")?.resolve(&self.aliases[name], span)? {
+				Typ::Sum(_, vs) => vs,
+				_ => vec![],
+			},
+		)
 	}
 
 	// Resolve a sum type.
