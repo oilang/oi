@@ -414,6 +414,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// A propagator payload, and the error type if it's a Result.
+	pub(super) fn fallible_split(&self, typ: &Typ) -> Option<(Typ, Option<Typ>)> {
+		let res = self.types.result_parts(typ).map(|(ok, err)| (ok, Some(err)));
+		res.or_else(|| Some((self.types.option_inner(typ)?, None)))
+	}
+
 	// `or` blocks, for unwrapping Options and Results.
 	// The happy branch yields the inner value, the sad branch executes a block and yields its value.
 	pub(super) fn or_else(
@@ -423,19 +429,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
-		let (inner, happy, err) = match (self.types.result_parts(&typ), self.types.option_inner(&typ)) {
-			(Some((ok, err)), _) => (ok, 0, Some(err)),
-			(None, Some(inner)) => (inner, 1, None),
-			_ => {
-				return Err(
-					Diagnostic::new(format!("`or` needs a `?T`/`!T` value, got {typ}"), value.1.into_range())
-						.with_label("not an Option or Result"),
-				);
-			}
+		let Some((inner, err)) = self.fallible_split(&typ) else {
+			return Err(
+				Diagnostic::new(format!("`or` needs a `?T`/`!T` value, got {typ}"), value.1.into_range())
+					.with_label("not an Option or Result"),
+			);
 		};
 
 		let tag = self.enum_tag(&typ, val);
-		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
+		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
 
 		let (happy_block, fallback_block) = self.fork(is_happy);
 		let merge = self.b.create_block();
@@ -466,14 +468,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Panics when called in `main`.
 	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
-		let (is_result, inner, err_typ) = match (self.types.result_parts(&typ), self.types.option_inner(&typ)) {
-			(Some((ok, err)), _) => (true, ok, err),
-			(None, Some(inner)) => (false, inner, Typ::Error),
-			_ => {
-				let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
-				return Err(Diagnostic::new(msg, value.1.into_range()).with_label("not a `?T` or `!T` value"));
-			}
+		let Some((inner, err)) = self.fallible_split(&typ) else {
+			let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
+			return Err(Diagnostic::new(msg, value.1.into_range()).with_label("not a `?T` or `!T` value"));
 		};
+		let (is_result, err_typ) = (err.is_some(), err.unwrap_or(Typ::Error));
 		let shape = if is_result { "!T" } else { "?T" };
 		let panic_in_main = self.ret.is_none() && self.is_main;
 		let mut target_err = err_typ.clone();
@@ -513,8 +512,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		let tag = self.enum_tag(&typ, val);
-		let happy: i64 = if is_result { 0 } else { 1 };
-		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
+		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, !is_result as i64);
 
 		let (happy_block, sad_block) = self.fork(is_happy);
 

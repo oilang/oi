@@ -448,8 +448,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// a bare name on an Option/Result binds the happy payload
 		if let Expr::Ident(name) = &pat.0
 			&& name != "_"
-			&& let Some(happy) = (self.types().option_inner(typ).map(|_| "some"))
-				.or_else(|| self.types().result_parts(typ).map(|_| "ok"))
+			&& let Some(happy) = self.fallible_split(typ).map(|(_, e)| if e.is_some() { "ok" } else { "some" })
 			&& let Some(v) = self
 				.variants_of(typ)
 				.into_iter()

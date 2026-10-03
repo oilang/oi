@@ -318,18 +318,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut join = None;
 		if d.on_err {
 			let Some((val, typ)) = ret else { return Ok(()) };
-			let (happy, err) = match self.types.result_parts(typ) {
-				Some((_, e)) => (0, Some(e)),
-				None if self.types.option_inner(typ).is_some() => (1, None),
-				None => {
-					return Err(
-						Diagnostic::new("`defer or` needs a fn returning `?T`/`!T`", d.body.1.into_range())
-							.with_label("this fn cannot fail"),
-					);
-				}
+			let Some((_, err)) = self.fallible_split(typ) else {
+				return Err(
+					Diagnostic::new("`defer or` needs a fn returning `?T`/`!T`", d.body.1.into_range())
+						.with_label("this fn cannot fail"),
+				);
 			};
 			let tag = self.enum_tag(typ, *val);
-			let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, happy);
+			let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
 			let (sad, after) = (self.b.create_block(), self.b.create_block());
 			self.b.ins().brif(is_happy, after, &[], sad, &[]);
 			self.b.seal_block(sad);
