@@ -680,7 +680,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					Typ::Map(k, v) => {
 						let (k, v) = (*k.clone(), *v.clone());
 						let (tag, bits) = self.map_key(index, &k)?;
-						let raw = self.call_map_get(ptr, tag, bits);
+						let raw = self.map_rt("get", ptr, tag, bits, &[]);
 						Ok((self.unmap_bits(raw, &v), v))
 					}
 					Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {

@@ -231,10 +231,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.emit_scan(n, true, seed, |s, i| {
 			let key = s.load_nth(data, i, k);
 			let bits = s.map_bits(key);
-			let ga = s.call_map_get(a, tag, bits);
+			let ga = s.map_rt("get", a, tag, bits, &[]);
 			s.st(slot, 0, ga);
 
-			let hit = s.call_map_find(b, tag, bits, slot);
+			// writes b's value into `slot`, returning whether the key was there at all
+			let hit = s.map_rt("find", b, tag, bits, &[slot]);
 			let gb = s.ld_word(slot, 0);
 			let (va, vb) = (s.unmap_bits(ga, v), s.unmap_bits(gb, v));
 			let same = s.emit_val_eq(va, vb, v, &owner, span)?;

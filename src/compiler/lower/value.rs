@@ -1061,7 +1061,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.untemp(val);
 			val_typ.get_or_insert(vt);
 			let bits = self.map_bits(val);
-			self.call_map_set(map, tag, key_bits, bits);
+			self.map_rt("set", map, tag, key_bits, &[bits]);
 		}
 		let val_typ = val_typ.expect("target or first entry set it");
 		let typ = Typ::Map(Box::new(key_typ), Box::new(val_typ));
