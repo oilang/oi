@@ -381,18 +381,13 @@ pub(super) fn check_impls<'p>(
 				let by: Vec<_> = (tparams.iter().zip(args).map(|(p, (te, _))| (p.name.clone(), te.clone())))
 					.chain([("Self".to_string(), TypeExpr::Name(typ.into()))])
 					.collect();
+				let (params, ret) = subst_sig(params, ret, &by);
 				others.push(FnItem {
 					key: format!("{typ}.{name}"),
 					scope,
-					params: params
-						.iter()
-						.map(|p| Param {
-							typ: subst(&p.typ, &by),
-							..p.clone()
-						})
-						.collect(),
+					params,
 					params_tuple: *params_tuple,
-					ret: ret.as_ref().map(|(te, sp)| (subst(te, &by), *sp)),
+					ret,
 					body: Box::leak(Box::new([s(body)])),
 				});
 				continue;

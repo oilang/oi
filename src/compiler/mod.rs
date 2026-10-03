@@ -177,6 +177,31 @@ pub(crate) struct GenericFnDef {
 	pub ctx: Option<String>,
 }
 
+impl GenericFnDef {
+	// A top-level generic fn, with the default ctx and no captures.
+	fn new(
+		params: Vec<Param>,
+		params_tuple: bool,
+		ret: Option<Spanned<TypeExpr>>,
+		body: &[Spanned<Expr>],
+		type_params: Vec<TypeParam>,
+		module: &str,
+	) -> Self {
+		GenericFnDef {
+			params,
+			params_tuple,
+			ret,
+			body: body.to_vec(),
+			type_params,
+			captures: vec![],
+			self_name: None,
+			module: module.into(),
+			pure: false,
+			ctx: Some(CONTEXT.into()),
+		}
+	}
+}
+
 // A monomorphized instance whose sig is declared but body not yet compiled.
 pub(crate) type Pending = (String, GenericFnDef, HashMap<String, Typ>);
 
@@ -479,6 +504,22 @@ pub(crate) fn subst(te: &TypeExpr, by: &[(String, TypeExpr)]) -> TypeExpr {
 		}
 	});
 	te
+}
+
+// `subst` over a whole fn signature.
+fn subst_sig(
+	params: &[Param],
+	ret: &Option<Spanned<TypeExpr>>,
+	by: &[(String, TypeExpr)],
+) -> (Vec<Param>, Option<Spanned<TypeExpr>>) {
+	let params = params
+		.iter()
+		.map(|p| Param {
+			typ: subst(&p.typ, by),
+			..p.clone()
+		})
+		.collect();
+	(params, ret.as_ref().map(|(te, span)| (subst(te, by), *span)))
 }
 
 #[derive(Clone)]
@@ -868,14 +909,7 @@ impl<M: Module> Compiler<M> {
 					}
 					None => (params.clone(), *params_tuple, ret.clone()),
 				};
-				let params = params
-					.iter()
-					.map(|p| Param {
-						typ: subst(&p.typ, claim.targs),
-						..p.clone()
-					})
-					.collect();
-				let ret = ret.map(|(te, span)| (subst(&te, claim.targs), span));
+				let (params, ret) = subst_sig(&params, &ret, claim.targs);
 				others.push(FnItem {
 					key,
 					scope,
@@ -897,32 +931,12 @@ impl<M: Module> Compiler<M> {
 				}
 			};
 			let by = [("Self".to_string(), self_ty)];
-			let params = params
-				.iter()
-				.map(|p| Param {
-					typ: subst(&p.typ, &by),
-					..p.clone()
-				})
-				.collect();
-			let ret = ret.as_ref().map(|(te, span)| (subst(te, &by), *span));
+			let (params, ret) = subst_sig(params, ret, &by);
 			let mut all_params = type_params.to_vec();
 			all_params.extend(mtp.clone());
 			qualify_bounds(scope, &mut all_params);
-			self.generics.insert(
-				key,
-				GenericFnDef {
-					params,
-					params_tuple: *params_tuple,
-					ret,
-					body: body.clone(),
-					type_params: all_params,
-					captures: vec![],
-					self_name: None,
-					module: scope.module.clone(),
-					pure: false,
-					ctx: Some(CONTEXT.into()),
-				},
-			);
+			let def = GenericFnDef::new(params, *params_tuple, ret, body, all_params, &scope.module);
+			self.generics.insert(key, def);
 		}
 		Ok(())
 	}
@@ -1236,21 +1250,15 @@ impl<M: Module> Compiler<M> {
 				} if !type_params.is_empty() => {
 					let mut type_params = type_params.clone();
 					qualify_bounds(scope, &mut type_params);
-					self.generics.insert(
-						name.clone(),
-						GenericFnDef {
-							params: params.clone(),
-							params_tuple: *params_tuple,
-							ret: ret.clone(),
-							body: body.clone(),
-							type_params,
-							captures: vec![],
-							self_name: None,
-							module: scope.module.clone(),
-							pure: false,
-							ctx: Some(CONTEXT.into()),
-						},
+					let def = GenericFnDef::new(
+						params.clone(),
+						*params_tuple,
+						ret.clone(),
+						body,
+						type_params,
+						&scope.module,
 					);
+					self.generics.insert(name.clone(), def);
 				}
 				Expr::Fn {
 					name,
@@ -1912,15 +1920,8 @@ impl<M: Module> Compiler<M> {
 	) -> FnSig {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
-		sig.params.extend(
-			params
-				.iter()
-				.zip(&access)
-				.map(|(p, a)| AbiParam::new(param_cl(&p.typ, *a, int))),
-		);
-		if ctx.is_some() {
-			sig.params.push(AbiParam::new(int));
-		}
+		let typed = params.iter().zip(&access).map(|(p, a)| (&p.typ, *a));
+		sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
 		if !ret.is_unit() {
 			sig.returns.push(AbiParam::new(cl_type(&ret, int)));
 		}
@@ -1996,15 +1997,9 @@ impl<M: Module> Compiler<M> {
 	) -> (Translator<'a, M>, Block) {
 		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
-		for (_, typ, access) in def.params {
-			b.func.signature.params.push(AbiParam::new(param_cl(typ, *access, int)));
-		}
-		if def.ctx.is_some() {
-			b.func.signature.params.push(AbiParam::new(int));
-		}
-		if !def.captures.is_empty() {
-			b.func.signature.params.push(AbiParam::new(int));
-		}
+		let typed = def.params.iter().map(|(_, t, a)| (t, *a));
+		let ptrs = def.ctx.is_some() as usize + !def.captures.is_empty() as usize;
+		b.func.signature.params.extend(abi_params(typed, ptrs, int));
 		let block = b.create_block();
 		b.append_block_params_for_function_params(block);
 		b.switch_to_block(block);

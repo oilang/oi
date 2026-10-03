@@ -390,6 +390,16 @@ pub(crate) fn param_cl(typ: &Typ, access: Access, int: types::Type) -> types::Ty
 	if access == Access::Mut { int } else { cl_type(typ, int) }
 }
 
+// A fn's ABI params, then trailing pointers for its ctx and env.
+pub(crate) fn abi_params<'t>(
+	params: impl Iterator<Item = (&'t Typ, Access)>,
+	ptrs: usize,
+	int: types::Type,
+) -> impl Iterator<Item = AbiParam> {
+	let params = params.map(move |(t, a)| AbiParam::new(param_cl(t, a, int)));
+	params.chain(std::iter::repeat_n(AbiParam::new(int), ptrs))
+}
+
 // The access mod a param carries.
 pub(crate) fn access_of(typ: &Typ) -> Access {
 	if let Typ::Access(a, _) = typ { *a } else { Access::Read }
