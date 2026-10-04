@@ -27,7 +27,7 @@ fn ref_of_existing_aliases() {
 			n.value = 7
 			print(n, r)
 		"},
-		"Node.{ value = 7, tags = [2] } Node.{ value = 7, tags = [2] }",
+		"Node.{value = 7, tags = [2]} Node.{value = 7, tags = [2]}",
 	);
 }
 
