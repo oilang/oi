@@ -249,6 +249,15 @@ fn is_const_value(e: &Expr) -> bool {
 	}
 }
 
+/// Read a source file, reporting failure.
+pub fn read_src(path: &Path) -> Result<(String, String), Reported> {
+	let src = fs::read_to_string(path).map_err(|e| {
+		eprintln!("oi: cannot read {}: {e}", path.display());
+		Reported
+	})?;
+	Ok((path.display().to_string(), src))
+}
+
 fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 	let mut files = vec![];
 	for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
@@ -293,9 +302,8 @@ struct Loader {
 }
 
 impl Loader {
-	fn report(&self, diag: Diagnostic) -> Reported {
-		diag.report_mapped(&self.map);
-		Reported
+	fn report(&self, diags: impl IntoIterator<Item = Diagnostic>) -> Reported {
+		diags.into_iter().map(|d| d.report_mapped(&self.map)).last().unwrap_or(Reported)
 	}
 
 	// Record a definition.
@@ -634,11 +642,8 @@ impl Loader {
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
 		});
 		for result in parsed {
-			let items = result.map_err(|ds| {
-				ds.iter().for_each(|d| d.report_mapped(&self.map));
-				Reported
-			})?;
-			self.add_file(&mut module, &mut imports, items).map_err(|d| self.report(d))?;
+			let items = result.map_err(|ds| self.report(ds))?;
+			self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
 		}
 		self.seal(module, imports)
 	}
@@ -647,25 +652,25 @@ impl Loader {
 	fn load_module(&mut self, name: &str, span: Span) -> Result<(), Reported> {
 		if self.loading.iter().any(|m| m == name) {
 			let msg = format!("import cycle: {} -> {name}", self.loading.join(" -> "));
-			return Err(self.report(err(msg, span, "closes a cycle")));
+			return Err(self.report([err(msg, span, "closes a cycle")]));
 		}
 		if name == "rt" && !self.loading.last().is_some_and(|m| self.core_origin.contains(m)) {
-			return Err(self.report(err("`rt` is internal to core", span, "not importable here")));
+			return Err(self.report([err("`rt` is internal to core", span, "not importable here")]));
 		}
 		if self.modules.iter().any(|m| m.name == name) {
 			return Ok(());
 		}
 		// resolve core's imports from internal files
 		let from_core = self.loading.last().is_some_and(|m| self.core_origin.contains(m));
-		let files = self.module_files(name, from_core);
+		let files = self.module_files(name, from_core)?;
 		if files.is_empty() {
-			return Err(self.report(err(format!("cannot find module `{name}`"), span, "no such module")));
+			return Err(self.report([err(format!("cannot find module `{name}`"), span, "no such module")]));
 		}
 		self.load_files(name, files)
 	}
 
 	// Find a module's files on disk, falling back to the embedded core tree.
-	fn module_files(&mut self, name: &str, from_core: bool) -> Vec<(String, String)> {
+	fn module_files(&mut self, name: &str, from_core: bool) -> Result<Vec<(String, String)>, Reported> {
 		let file = format!("{name}.oi");
 		let has = |r: &&PathBuf| {
 			r.join(name).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
@@ -679,19 +684,9 @@ impl Loader {
 		disk.sort();
 		let candidate = root.join(file);
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
-			disk.into_iter()
-				.map(|path| {
-					(
-						path.display().to_string(),
-						fs::read_to_string(&path).unwrap_or_default(),
-					)
-				})
-				.collect()
+			disk.iter().map(|path| read_src(path)).collect::<Result<_, _>>()?
 		} else if !from_core && candidate.is_file() && !self.entry_paths.contains(&candidate) {
-			vec![(
-				candidate.display().to_string(),
-				fs::read_to_string(&candidate).unwrap_or_default(),
-			)]
+			vec![read_src(&candidate)?]
 		} else {
 			vec![]
 		};
@@ -708,7 +703,7 @@ impl Loader {
 				self.core_origin.insert(name.to_string());
 			}
 		}
-		files
+		Ok(files)
 	}
 
 	// LOok (recursively) for raw-stream macros within a module.
@@ -725,7 +720,7 @@ impl Loader {
 		let from_core = self.core_origin.contains(name);
 		for m in imports {
 			if !self.prescanned.contains(&m) {
-				let inner = self.module_files(&m, from_core);
+				let inner = self.module_files(&m, from_core).unwrap_or_default();
 				self.prescan_module(&m, &inner);
 			}
 		}
@@ -807,7 +802,7 @@ impl Loader {
 				}
 				_ => continue,
 			};
-			return Err(self.report(err(msg, *span, label)));
+			return Err(self.report([err(msg, *span, label)]));
 		}
 		Ok(())
 	}

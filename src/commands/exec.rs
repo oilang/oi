@@ -1,5 +1,5 @@
 use oi::Reported;
-use oi::driver::{DebugOpts, run_source};
+use oi::driver::{DebugOpts, run_snippet};
 
 /// Compile and run source from the argument, or from stdin when the arg is absent or `-`.
 pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
@@ -13,5 +13,5 @@ pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
 			})?,
 		),
 	};
-	run_source(vec![(name.to_string(), src)], std::path::Path::new("."), &[], opts)
+	run_snippet(name, src, opts)
 }

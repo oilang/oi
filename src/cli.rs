@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use oi::diagnostics::ColorMode;
-use oi::driver::Emit;
+use oi::driver::DebugOpts;
 
 pub const VERSION: &str = concat!(
 	"v",
@@ -46,17 +46,8 @@ pub enum Command {
 		#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
 		args: Vec<String>,
 
-		/// Print phase timings to stderr.
-		#[arg(long)]
-		timings: bool,
-
-		/// Dump a compilation stage to stderr.
-		#[arg(long, value_enum)]
-		emit: Option<Emit>,
-
-		/// Parse and type-check without running.
-		#[arg(long)]
-		check: bool,
+		#[command(flatten)]
+		opts: DebugOpts,
 	},
 
 	/// Compile an Oi file to a native executable.
@@ -84,17 +75,8 @@ pub enum Command {
 		#[arg(allow_hyphen_values = true)]
 		source: Option<String>,
 
-		/// Print phase timings to stderr.
-		#[arg(long)]
-		timings: bool,
-
-		/// Dump a compilation stage to stderr.
-		#[arg(long, value_enum)]
-		emit: Option<Emit>,
-
-		/// Parse and type-check without running.
-		#[arg(long)]
-		check: bool,
+		#[command(flatten)]
+		opts: DebugOpts,
 	},
 
 	/// Compile and run a file's `@test` fns.

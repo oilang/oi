@@ -17,11 +17,35 @@ pub enum Emit {
 }
 
 /// Flags that toggle introspection.
-#[derive(Default, Clone, Copy)]
+#[derive(clap::Args, Default, Clone, Copy)]
 pub struct DebugOpts {
+	/// Print measured timings to stderr.
+	#[arg(long)]
 	pub timings: bool,
+
+	/// Dump a compilation stage to stderr.
+	#[arg(long, value_enum)]
 	pub emit: Option<Emit>,
+
+	/// Parse and type-check without running.
+	#[arg(long)]
 	pub check: bool,
+}
+
+fn load<M: cranelift_module::Module>(
+	compiler: &mut Compiler<M>,
+	entry: Entry,
+	root: &Path,
+) -> Result<loader::Program, Reported> {
+	let t = Instant::now();
+	let program = loader::load(entry, root)?;
+	compiler.timings.push(("load", t.elapsed()));
+	Ok(program)
+}
+
+/// Compile and run a snippet.
+pub fn run_snippet(name: &str, src: String, opts: DebugOpts) -> Result<(), Reported> {
+	run_source(vec![(name.into(), src)], Path::new("."), &[], opts)
 }
 
 /// Compile and run a program from its entry files.
@@ -37,9 +61,7 @@ pub fn run_source(entry: Entry, root: &Path, args: &[String], opts: DebugOpts) -
 		}
 	}
 
-	let t = Instant::now();
-	let program = loader::load(entry, root)?;
-	compiler.timings.push(("load", t.elapsed()));
+	let program = load(&mut compiler, entry, root)?;
 
 	if opts.emit == Some(Emit::Ast) {
 		for m in program.modules.iter().filter(|m| m.name == "main") {
@@ -47,13 +69,7 @@ pub fn run_source(entry: Entry, root: &Path, args: &[String], opts: DebugOpts) -
 		}
 	}
 
-	let code = match compiler.compile(&program) {
-		Ok(code) => code,
-		Err(error) => {
-			error.report_mapped(&program.map);
-			return Err(Reported);
-		}
-	};
+	let code = compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
 	if opts.check {
 		return Ok(());
 	}
@@ -106,13 +122,10 @@ pub fn build_source(
 	opts: DebugOpts,
 ) -> Result<(), Reported> {
 	let mut compiler = Compiler::object(stem, lib);
-	let t = Instant::now();
-	let program = loader::load(entry, root)?;
-	compiler.timings.push(("load", t.elapsed()));
-	let (obj, link_libs) = compiler.compile_object(&program, opts.timings).map_err(|e| {
-		e.report_mapped(&program.map);
-		Reported
-	})?;
+	let program = load(&mut compiler, entry, root)?;
+	let (obj, link_libs) = compiler
+		.compile_object(&program, opts.timings)
+		.map_err(|e| e.report_mapped(&program.map))?;
 	let tmp = std::env::temp_dir().join(format!("oi_{}", std::process::id()));
 	let write = |ext: &str, bytes: &[u8]| {
 		let path = tmp.with_extension(ext);
@@ -153,13 +166,10 @@ fn fail(msg: impl std::fmt::Display) -> Reported {
 
 /// Compile a program in test mode and run every `@test` fn in the main module.
 pub fn test_source(entry: Entry, root: &Path, pattern: Option<&str>) -> Result<(), Reported> {
-	let program = loader::load(entry, root)?;
 	let mut compiler = Compiler::default();
 	compiler.include_tests = true;
-	if let Err(error) = compiler.compile(&program) {
-		error.report_mapped(&program.map);
-		return Err(Reported);
-	}
+	let program = load(&mut compiler, entry, root)?;
+	compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
 	let total = compiler.tests.len();
 	if let Some(pattern) = pattern {
 		compiler.tests.retain(|(_, display, _)| display.contains(pattern));

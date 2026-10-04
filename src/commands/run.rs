@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use oi::Reported;
 use oi::driver::{DebugOpts, build_source, run_source, test_source};
-use oi::loader::Entry;
+use oi::loader::{Entry, read_src};
 
 /// Resolve the entry file.
 pub fn entry(file: Option<PathBuf>) -> PathBuf {
@@ -44,7 +44,7 @@ pub fn test(file: &Path, pattern: Option<&str>) -> Result<(), Reported> {
 
 pub fn files(file: &Path) -> Result<Entry, Reported> {
 	if !file.is_dir() {
-		return Ok(vec![(file.display().to_string(), read(file)?)]);
+		return Ok(vec![read_src(file)?]);
 	}
 	let mut paths: Vec<PathBuf> = std::fs::read_dir(file)
 		.map_err(unreadable(file))?
@@ -53,12 +53,7 @@ pub fn files(file: &Path) -> Result<Entry, Reported> {
 		.filter(|p| p.extension().is_some_and(|x| x == "oi"))
 		.collect();
 	paths.sort();
-	paths.into_iter().map(|p| Ok((p.display().to_string(), read(&p)?))).collect()
-}
-
-/// Read a source file.
-pub fn read(file: &Path) -> Result<String, Reported> {
-	std::fs::read_to_string(file).map_err(unreadable(file))
+	paths.iter().map(|p| read_src(p)).collect()
 }
 
 fn unreadable(file: &Path) -> impl Fn(std::io::Error) -> Reported + '_ {

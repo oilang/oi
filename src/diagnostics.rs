@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
 use chumsky::error::{Rich, RichReason};
 
+use crate::Reported;
 use crate::ast::Span;
 use crate::lexer::Token;
 
@@ -104,19 +105,18 @@ impl Diagnostic {
 	}
 
 	// Render through a source map, rebasing the span into its owning file.
-	pub fn report_mapped(&self, map: &SourceMap) {
+	pub fn report_mapped(&self, map: &SourceMap) -> Reported {
 		let (file, span) = map.locate(&self.span);
-		Diagnostic {
-			message: self.message.clone(),
-			span,
-			label: self.label.clone(),
-			note: self.note.clone(),
-		}
-		.report(&file.name, &file.src);
+		self.render(&file.name, &file.src, span);
+		Reported
 	}
 
 	// Render span to stderr.
 	pub fn report(&self, filename: &str, src: &str) {
+		self.render(filename, src, self.span.clone());
+	}
+
+	fn render(&self, filename: &str, src: &str, span: Range<usize>) {
 		let id = filename.to_string();
 		let color = match COLOR.get().copied().unwrap_or_default() {
 			ColorMode::Always => true,
@@ -127,11 +127,11 @@ impl Diagnostic {
 		};
 		let config = Config::default().with_color(color).with_index_type(IndexType::Byte);
 
-		let mut builder = Report::build(ReportKind::Error, (id.clone(), self.span.clone()))
+		let mut builder = Report::build(ReportKind::Error, (id.clone(), span.clone()))
 			.with_config(config)
 			.with_message(&self.message)
 			.with_label(
-				Label::new((id.clone(), self.span.clone()))
+				Label::new((id.clone(), span))
 					.with_message(self.label.as_deref().unwrap_or("here"))
 					.with_color(Color::Red),
 			);

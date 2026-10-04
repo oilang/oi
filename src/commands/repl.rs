@@ -4,7 +4,7 @@ use std::io::IsTerminal as _;
 use indoc::eprintdoc;
 use oi::Reported;
 use oi::ast::Expr;
-use oi::driver::{DebugOpts, run_source};
+use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
 use oi::loader::parse_file;
 
@@ -72,8 +72,7 @@ pub fn run() -> Result<(), Reported> {
 			_ => {
 				let src = format!("{session}{line}\n");
 				let raw = prescan(&lex_at(&src, 0)).0.into_iter().collect();
-				let entry = vec![("<repl>".into(), src)];
-				if run_source(entry, std::path::Path::new("."), &[], DebugOpts::default()).is_ok() {
+				if run_snippet("<repl>", src, DebugOpts::default()).is_ok() {
 					session.push_str(&defs(&line, &raw));
 				}
 			}
