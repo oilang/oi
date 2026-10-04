@@ -31,16 +31,20 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Enum `Display`.
 	pub(super) fn enum_name_str(&mut self, typ: &Typ, val: Value) -> Value {
-		let variants = self.variants_of(typ);
 		let tag = self.enum_tag(typ, val);
-		let mut ptr = self.str_const("");
-		for v in &variants {
-			let s = self.str_const(&v.name);
-			let disc = self.b.ins().iconst(self.int, v.disc);
-			let hit = self.b.ins().icmp(IntCC::Equal, tag, disc);
-			ptr = self.b.ins().select(hit, s, ptr);
+		let empty = self.str_const("");
+		let names: Vec<_> = self.variants_of(typ).into_iter().map(|v| (v.disc, v.name)).collect();
+		self.select_by_disc(tag, empty, &names)
+	}
+
+	// The string paired with `tag`'s discriminant, or else `out`.
+	pub(super) fn select_by_disc(&mut self, tag: Value, mut out: Value, strs: &[(i64, String)]) -> Value {
+		for (disc, s) in strs {
+			let s = self.str_const(s);
+			let hit = self.b.ins().icmp_imm(IntCC::Equal, tag, *disc);
+			out = self.b.ins().select(hit, s, out);
 		}
-		ptr
+		out
 	}
 
 	// Variant printing. Handles recursive sums.

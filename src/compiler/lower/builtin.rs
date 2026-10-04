@@ -385,15 +385,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let bt = variants.first().and_then(|v| v.backing.clone()).unwrap_or(Typ::Int(64));
 		if bt == Typ::Str {
-			let raw = |v: &VariantInfo| v.raw.clone().unwrap_or_else(|| v.name.clone());
-			let mut out = self.str_const(&raw(&variants[0]));
-			for v in &variants[1..] {
-				let d = self.b.ins().iconst(self.int, v.disc);
-				let hit = self.b.ins().icmp(IntCC::Equal, val, d);
-				let s = self.str_const(&raw(v));
-				out = self.b.ins().select(hit, s, out);
-			}
-			return Ok((out, Typ::Str));
+			let raws: Vec<_> = variants.into_iter().map(|v| (v.disc, v.raw.unwrap_or(v.name))).collect();
+			let first = self.str_const(&raws[0].1);
+			return Ok((self.select_by_disc(val, first, &raws[1..]), Typ::Str));
 		}
 		let cl = cl_type(&bt, self.int);
 		let val = if cl == self.int {
