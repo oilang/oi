@@ -646,9 +646,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::DotArray(None, elems) => match hint {
 				Some(Typ::Array(elem)) => self.array_lit(elems, Some(elem), expr.1),
-				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, elem, *n, expr.1),
+				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
-				_ => self.fixed_infer(elems, expr.1),
+				_ => self.fixed_lit(elems, None, expr.1),
 			},
 
 			Expr::DotTuple(args) => match hint {
@@ -663,14 +663,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				let typ = self.types().resolve(te, *span)?;
 				match &typ {
 					Typ::Array(elem) => self.array_lit(elems, Some(elem), expr.1),
-					Typ::FixedArray(elem, n) => self.fixed_lit(elems, elem, *n, expr.1),
+					Typ::FixedArray(elem, n) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 					Typ::Map(..) if elems.is_empty() => self.map_lit(&[], expr.1, Some(&typ)),
 					_ if elems.is_empty() => Err(Diagnostic::new(
 						"an exact array literal needs elements",
 						expr.1.into_range(),
 					)
 					.with_label(format!("write `[]{typ}.[]` for an empty dynamic array"))),
-					_ => self.fixed_lit(elems, &typ, elems.len(), expr.1),
+					_ => self.fixed_lit(elems, Some((&typ, elems.len())), expr.1),
 				}
 			}
 

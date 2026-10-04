@@ -184,28 +184,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((self.make_array(data, len, &typ), typ))
 	}
 
-	// Build a fixed-size array literal.
+	// Build a fixed-size array literal of `want` (element, length), or inferred from its elements.
 	pub(super) fn fixed_lit(
 		&mut self,
 		elems: &[Spanned<Expr>],
-		elem: &Typ,
-		n: usize,
+		want: Option<(&Typ, usize)>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		if elems.len() != n {
+		if let Some((_, n)) = want
+			&& elems.len() != n
+		{
 			let msg = format!("expected {n} elements, got {}", elems.len());
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of elements"));
 		}
-		let (vals, elem) = self.collect_elems(elems, Some(elem))?;
-		let elem = elem.expect("want given");
-		let ptr = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
-		self.store_all(ptr, vals, &elem);
-		Ok((ptr, Typ::FixedArray(Box::new(elem), n)))
-	}
-
-	// Infer a fixed array from its elements.
-	pub(super) fn fixed_infer(&mut self, elems: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
-		let (vals, elem) = self.collect_elems(elems, None)?;
+		let (vals, elem) = self.collect_elems(elems, want.map(|w| w.0))?;
 		let Some(elem) = elem else {
 			return Err(Diagnostic::new("cannot infer the element type here", span.into_range())
 				.with_label("needs at least one element to infer its type"));
