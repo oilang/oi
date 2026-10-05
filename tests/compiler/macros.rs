@@ -746,3 +746,21 @@ fn raw_body_must_close() {
 		"unterminated raw macro body",
 	);
 }
+
+#[test]
+fn def_reads_another_types_fields() {
+	check(
+		indoc! {r#"
+			cols! :: fn(t: Ast) Ast {
+				fs: []Ast = []
+				loop f in def(t).items { fs << `%{f.name}: []%{f.typ}` }
+				n := ident(t.str() + "Cols")
+				`%n :: struct { %{..fs} }`
+			}
+			Point :: struct { x: int, y: float }
+			cols!(Point)
+			print(PointCols.{x = [3], y = [1.5]}.y)
+		"#},
+		"[1.5]",
+	);
+}

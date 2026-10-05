@@ -2384,6 +2384,17 @@ main :: fn() {
 	# `parse` reads Oi source as an `Ast`, for codegen from strings and files
 	schema :: comp parse(fs.read("schema.oi")?)
 
+	# `def` looks up the definition a name refers to, so a macro can build from another type
+	cols! :: fn(t: Ast) Ast {
+		fs: []Ast = []
+		loop f in def(t).items {
+			fs << `%{f.name}: []%{f.typ}`
+		}
+		n := ident(t.str() + "Cols")
+		`%n :: struct { %{..fs} }`
+	}
+	cols!(Point) # PointCols :: struct { x: []int, y: []int }
+
 	# reflection in `comp`
 	debug_print[T] :: fn(value: T) {
 		comp loop field in type_info(T).fields {

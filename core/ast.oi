@@ -16,3 +16,8 @@ pub gensym :: fn(prefix: string) Ast {
 pub parse :: fn(src: string) Ast {
 	unsafe rt.oi_ast_parse(src)
 }
+
+## The definition `name` refers to, as an Ast.
+pub def :: fn(name: Ast) Ast {
+	unsafe rt.oi_ast_def(name)
+}

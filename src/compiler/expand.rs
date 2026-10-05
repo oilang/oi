@@ -285,6 +285,7 @@ impl Expander {
 		let arg = |i: usize| boxed.get(i).copied().unwrap_or(std::ptr::null_mut());
 		// SAFETY: stage-0 fns take at most MAX_PARAMS pointer args, all in registers on the ABIs cranelift targets, so a fixed-shape call just leaves the extras unread.
 		let f = unsafe { std::mem::transmute::<*const u8, fn(Ptr, Ptr, Ptr, Ptr) -> Ptr>(ptr) };
+		DEFS.with_borrow_mut(|d| d.0 = scope.clone());
 		let (e0, span) = unsafe { *Box::from_raw(f(arg(0), arg(1), arg(2), arg(3))) };
 		if let Some(msg) = ERROR.take() {
 			return fail(msg, e.1, format!("while running `{name}!`"));
@@ -380,6 +381,11 @@ pub fn expand(program: &Program, stage0: bool) -> Result<Expansion, Diagnostic> 
 	if called {
 		ex.compile_stage0(program, &mut rest)?;
 	}
+	let defs = program.items().map(|(_, i)| Expr::peel_meta(i).2);
+	DEFS.set((
+		Scope::default(),
+		defs.filter_map(|d| Some((d.0.def_name()?.to_string(), d.clone()))).collect(),
+	));
 	for m in &program.modules {
 		let items = rest.get_mut(&m.name).expect("every module was seeded above");
 		ex.expand(List(items), &m.scope, 0)?;
@@ -398,6 +404,7 @@ static HYGIENE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+	static DEFS: RefCell<(Scope, HashMap<String, Spanned<Expr>>)> = RefCell::default();
 }
 
 // Record a macro-run failure.
@@ -788,22 +795,19 @@ pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
 	Box::into_raw(Box::new((super::comp::scalar(tag, bits), (0..0).into())))
 }
 
-// A process symbol, since core declares it `foreign`
+// Process symbols.
+
 #[unsafe(export_name = "oi_ast_ident")]
 pub(crate) extern "C" fn rt_ast_ident(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let name = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) }).into_owned();
 	Box::into_raw(Box::new((Expr::Ident(name), Span::from(0..0))))
 }
-
-// A process symbol.
 #[unsafe(export_name = "oi_ast_gensym")]
 pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let prefix = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) });
 	let n = HYGIENE.fetch_add(1, Ordering::Relaxed) + 1;
 	Box::into_raw(Box::new((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0))))
 }
-
-// A process symbol.
 #[unsafe(export_name = "oi_ast_parse")]
 pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let src = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) }).into_owned();
@@ -815,6 +819,19 @@ pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Span
 		}
 	};
 	Box::into_raw(Box::new(node))
+}
+#[unsafe(export_name = "oi_ast_def")]
+pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr> {
+	let name = match unsafe { &(*a).0 } {
+		Expr::Ident(n) => n.clone(),
+		Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => format!("{m}.{field}"),
+		_ => String::new(),
+	};
+	let def = DEFS.with_borrow(|(scope, defs)| defs.get(&scope.qualify_name(&name)).cloned());
+	Box::into_raw(Box::new(def.unwrap_or_else(|| {
+		flag("`def` needs the name of a definition");
+		(Expr::Tuple(vec![]), Span::from(0..0))
+	})))
 }
 
 // A field as the Ast a param hole takes.
