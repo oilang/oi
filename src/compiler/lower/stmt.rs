@@ -203,9 +203,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.write_local(&local, ptr);
 				}
 
-				Expr::Append { name, value } => {
-					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::Append)?;
-					let elem = match &local.typ {
+				Expr::Append { name, value, .. } => {
+					self.mutable_local(name, stmt.1.into_range(), Mutation::Append)?;
+					let (ptr, typ) = self.expr(&place_read(stmt).unwrap())?;
+					let elem = match &typ {
 						Typ::Array(e) => (**e).clone(),
 						_ => {
 							return Err(
@@ -217,7 +218,6 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (val, vtyp) = self.check_expr(value, &elem)?;
 					let stride = self.elem_stride(&elem);
 					let size = self.b.ins().iconst(self.int, stride);
-					let ptr = self.read_local(&local);
 					// a shared buffer clones before it grows
 					self.cow_array(ptr, &elem);
 
@@ -504,13 +504,18 @@ fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	let read = match &stmt.0 {
 		Expr::Bind { name, .. }
 		| Expr::Assign { name, .. }
-		| Expr::Append { name, .. }
+		| Expr::Append { name, field: None, .. }
 		| Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
 		Expr::IndexAssign { name: n, index, .. } => Expr::Index {
 			collection: name(n),
 			index: index.clone(),
 		},
-		Expr::FieldAssign { name: n, field, .. } => Expr::Field {
+		Expr::FieldAssign { name: n, field, .. }
+		| Expr::Append {
+			name: n,
+			field: Some(field),
+			..
+		} => Expr::Field {
 			tuple: name(n),
 			field: field.clone(),
 		},

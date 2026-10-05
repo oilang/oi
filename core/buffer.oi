@@ -5,9 +5,7 @@ pub Buffer :: struct { data: []u8 = [] }
 
 Buffer :< {
 	pub write :: fn(mut self, s: string) {
-		d := self.data
-		d << []u8.(s)
-		self.data = d
+		self.data << []u8.(s)
 	}
 
 	pub bytes :: fn(self) []u8 {

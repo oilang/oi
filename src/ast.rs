@@ -178,9 +178,10 @@ pub enum Expr {
 		index: Box<Spanned<Expr>>,
 		value: Box<Spanned<Expr>>,
 	},
-	// `name << value`
+	// `name << value`, `name.field << value`
 	Append {
 		name: String,
+		field: Option<String>,
 		value: Box<Spanned<Expr>>,
 	},
 	// `name.delete[key]`

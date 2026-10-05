@@ -740,3 +740,22 @@ fn typed_literals() {
 	);
 	fail("print(^int.{})", "a reference must be initialized");
 }
+
+#[test]
+fn field_append() {
+	let src = indoc! {"
+		Bag :: struct { xs: []int = [] }
+		Bag :< { push :: fn(mut self, x: int) { self.xs << x << x + 1 } }
+		b := Bag.{}
+		b.push(1)
+		b.xs << 5
+		b.xs
+	"};
+	check(src, "[1, 2, 5]");
+	let src = indoc! {"
+		Bag :: struct { xs: []int = [] }
+		b :: Bag.{}
+		b.xs << 1
+	"};
+	fail(src, "cannot append to immutable `b`");
+}
