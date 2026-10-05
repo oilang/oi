@@ -79,27 +79,19 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [x] `::` in fn params should make immutable defaults for consistency
-	- [x] allow `none` in enums
-	- [x] `10..-2..` `revo`
-	- [x] `if let`/`while let` `rust`
 	- [ ] `loop let`/?`match let` `rust`
-	- [x] Julia/V style REPL banner `julia v`
 	- [ ] `:h <topic>` `vim revo`
-	- [x] ~`r#""#` `rust`~ `""""`/`r"""` `odin c# swift java`
-	- [x] either open field amendments up to anything, or handle ctx differently
-	- [ ] let `do` work on fn defs as well, or maybe just the return itself without brackets
 - [ ] `comp assert`
 - [ ] AoS, SoA, AoSoA
-- [x] implicit context `jai`
 - [ ] computed values `swift gdscript`
-- [x] thread version through repl and cli and docs and everything
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
-- [ ] make an `@implicit` trait that expects `str() string`, and use that for the "str/print everything "stuff
+- [ ] settle on good print/fmt/Display/str story
+	- "str/print everything" (using `@implicit`) `v`
+	- `Display` with non-allocating buffer writes `rust`
+	- `ToString` for string conversion / casts `rust`
 - [ ] channels
 - [ ] units and unit conversion
-- [x] `@noinit` `v`
 - [ ] `discard` and/or `pass` `nim gdscript`
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system

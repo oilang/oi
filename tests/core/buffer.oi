@@ -1,0 +1,23 @@
+test! "write and str" {
+	b := Buffer.{}
+	loop i in 0..100 { b.write("ab") }
+	assert! b.str().len == 200
+	assert! b.str().starts_with("abab")
+	assert! "{b}".ends_with("ab")
+}
+
+test! "bytes and len" {
+	b := Buffer.{}
+	b.write("hi")
+	assert! b.len() == 2
+	assert! b.bytes()[0] == 104
+}
+
+test! "clear" {
+	b := Buffer.{}
+	b.write("hi")
+	b.clear()
+	assert! b.len() == 0
+	b.write("yo")
+	assert! b.str() == "yo"
+}
