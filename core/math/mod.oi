@@ -174,3 +174,34 @@ pub pow :: fn(x: float, y: float) float {
 	if x < 0.0 { return nan }
 	exp(y * log(x))
 }
+
+## Square root.
+pub sqrt :: fn(x: float) float {
+	if x != x || x < 0.0 { return nan }
+	if x == 0.0 || x == inf { return x }
+	r := exp(log(x) / 2.0)
+	loop _ in 0..3 {
+		r = (r + x / r) / 2.0
+	}
+	r
+}
+
+## Round.
+pub round :: fn(x: float) float {
+	if x < 0.0 { -floor(0.5 - x) } else { floor(x + 0.5) }
+}
+
+## Truncate.
+pub trunc :: fn(x: float) int {
+	int.(x)
+}
+
+## Linear interpolation.
+pub lerp :: fn(from: float, to: float, by: float) float {
+	from + (to - from) * by
+}
+
+## Length of the hypotenuse.
+pub hypot :: fn(x: float, y: float) float {
+	sqrt(x ** 2 + y ** 2)
+}

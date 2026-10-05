@@ -54,16 +54,6 @@ hex_digit :: fn(c: u8) !int {
 	error("invalid hex digit")
 }
 
-## Encode a Unicode code point as UTF-8 bytes.
-utf8_encode :: fn(cp: int) string {
-	if cp < 0x80 { return string.([u8.(cp)]) }
-	if cp < 0x800 { return string.([u8.(0xc0 | cp >> 6), u8.(0x80 | cp & 0x3f)]) }
-	if cp < 0x10000 {
-		return string.([u8.(0xe0 | cp >> 12), u8.(0x80 | cp >> 6 & 0x3f), u8.(0x80 | cp & 0x3f)])
-	}
-	string.([u8.(0xf0 | cp >> 18), u8.(0x80 | cp >> 12 & 0x3f), u8.(0x80 | cp >> 6 & 0x3f), u8.(0x80 | cp & 0x3f)])
-}
-
 ## Quote and escape a string.
 quote :: fn(s: string) string {
 	out := "\""
@@ -159,7 +149,7 @@ P :< {
 						lo :: self.hex4()?
 						cp = 0x10000 + (cp - 0xd800) * 0x400 + (lo - 0xdc00)
 					}
-					utf8_encode(cp)
+					rune.(cp).str()
 				},
 				else => { return error("invalid escape at {self.i - 1}") },
 			}

@@ -52,43 +52,27 @@ string :< {
 
 	## Return string in uppercase.
 	upper :: fn(self) string {
-		out: []u8 = []
-		loop i in 0..self.len {
-			c :: self[i]
-			out << if c >= 97 && c <= 122 { c - 32 } else { c }
-		}
-		string.(out)
+		self.map_ascii(97, 122)
 	}
 
 	## Return string in lowercase.
 	lower :: fn(self) string {
+		self.map_ascii(65, 90)
+	}
+
+	## Flip the case bit of bytes in `lo..=hi`.
+	map_ascii :: fn(self, lo: u8, hi: u8) string {
 		out: []u8 = []
 		loop i in 0..self.len {
 			c :: self[i]
-			out << if c >= 65 && c <= 90 { c + 32 } else { c }
+			out << if c >= lo && c <= hi { c ~ 32 } else { c }
 		}
 		string.(out)
 	}
 
 	## Replace `from` with `to`.
 	replace :: fn(self, from: string, to: string) string {
-		if from.len == 0 { return self }
-
-		out: []u8 = []
-		i := 0
-		loop i < self.len {
-			if self[i..].starts_with(from) {
-				loop j in 0..to.len {
-					out << to[j]
-				}
-				i += from.len
-			} else {
-				out << self[i]
-				i += 1
-			}
-		}
-
-		string.(out)
+		self.split(from).join(to)
 	}
 
 	## Split on `sep`.

@@ -17,10 +17,14 @@ c_remove : fn(path: cstr) i32 : foreign
 @link.{name = "mkdir"}
 c_mkdir : fn(path: cstr, mode: u32) i32 : foreign
 
+check :: fn(ok: bool, what: string, path: string) ! {
+	if !ok do return error("cannot {what} {path}")
+}
+
 ## Read a file's contents as raw bytes.
 pub read_bytes :: fn(path: string) ![]u8 {
 	f := unsafe fopen(path.cstr(), "rb")
-	if f.is_null() do return error("cannot open {path}")
+	check(!f.is_null(), "open", path)?
 
 	out: []u8
 	loop {
@@ -51,7 +55,7 @@ pub append :: fn(path: string, s: string) ! {
 
 spill :: fn(path: string, s: string, mode: cstr) ! {
 	f := unsafe fopen(path.cstr(), mode)
-	if f.is_null() do return error("cannot open {path}")
+	check(!f.is_null(), "open", path)?
 
 	n :: unsafe fwrite(s.ptr, 1, usize.(s.len), f)
 	_ := unsafe fclose(f)
@@ -68,22 +72,18 @@ pub exists :: fn(path: string) bool {
 
 ## Delete a file or empty directory.
 pub remove :: fn(path: string) ! {
-	if unsafe c_remove(path.cstr()) != 0 {
-		return error("cannot remove {path}")
-	}
+	check(unsafe c_remove(path.cstr()) == 0, "remove", path)?
 }
 
 ## Create a directory.
 pub mkdir :: fn(path: string) ! {
-	if unsafe c_mkdir(path.cstr(), 0o755) != 0 {
-		return error("cannot create {path}")
-	}
+	check(unsafe c_mkdir(path.cstr(), 0o755) == 0, "create", path)?
 }
 
 ## Get list of entries in a directory.
 pub list :: fn(path: string) ![]string {
 	d := unsafe opendir(path.cstr())
-	if d.is_null() do return error("cannot open {path}")
+	check(!d.is_null(), "open", path)?
 
 	out: []string
 	loop {
