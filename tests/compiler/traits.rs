@@ -177,6 +177,33 @@ fn implicit_trait() {
 }
 
 #[test]
+fn every_type_is_str() {
+	let src = indoc! {"
+		Point :: struct { x: int, y: int }
+		Color :: enum { red, green }
+		show[T: Str] :: fn(v: T) string { v.str() }
+		print(show(Point.{1, 2}), show(Color.red), show(3))
+		print(Point is Str, Color is Str, int is Str)
+	"};
+	check(src, ["Point.{x = 1, y = 2} red 3", "true true true"]);
+}
+
+#[test]
+fn str_objects_render_their_own_way() {
+	let src = indoc! {r#"
+		Point :: struct { x: int }
+		Name :: struct { n: string }
+		Name :< { str :: fn(self) string { "name {self.n}" } }
+		Tag :: struct { t: int }
+		Tag : Str < { str :: fn(self) string { "tag {self.t}" } }
+		loop x in Str.[Point.{1}, Name.{"a"}, Tag.{7}] { print(x) }
+		t :: Tag.{2}
+		print(t, "{t}", t.str())
+	"#};
+	check(src, ["Point.{x = 1}", "name a", "tag 7", "tag 2 tag 2 tag 2"]);
+}
+
+#[test]
 fn is_on_a_trait_object() {
 	let src = indoc! {r#"
 		Animal :: trait {}

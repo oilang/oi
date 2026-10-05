@@ -749,14 +749,7 @@ assert!(Money.from(5).cents == Money.from("5").cents)
 ## blanket claims
 
 # claim a trait for every type that already meets a bound
-#{ TODO: this worked better before I made a big redesign pass. doesn't fit well anymore
-ToString :: trait {
-	to_string: fn(self) string
-}
-[T: Display] T : ToString < {
-	to_string :: fn(self) string { self.display() }
-}
-}#
+# TODO: revisit. my original plan doesn't apply anymore
 
 ## marker traits
 
@@ -1807,9 +1800,9 @@ main :: fn() {
 		}
 	}
 
-	# Display is auto-derived for enums, but can be overridden
-	Color : Display {
-		display :: fn(self) string {
+	# Str is auto-derived, but may be overridden
+	Color : Str < {
+		str :: fn(self) string {
 			match self {
 				.red => "🔴",
 				.green => "🟢",

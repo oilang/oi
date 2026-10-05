@@ -161,7 +161,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_frag(runtime::Tag::Raw, val, 0, false, sink);
 			}
 
-			Typ::Enum(_) | Typ::Sum(..) => {
+			Typ::Enum(name) | Typ::Sum(name, _) => {
+				if let Some(s) = self.str_impl(name, val, typ) {
+					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+				}
 				self.call_variant(&typ.clone(), val, quote, sink);
 			}
 

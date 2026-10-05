@@ -987,9 +987,9 @@ fn str_fill_overrides_derived() {
 		indoc! {r#"
 			E :: enum { a b }
 			E :< { str :: fn(self) string { "custom" } }
-			E.a.str()
+			print(E.a.str(), E.b)
 		"#},
-		"custom",
+		"custom custom",
 	);
 }
 

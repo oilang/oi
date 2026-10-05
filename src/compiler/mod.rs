@@ -1460,7 +1460,12 @@ impl<M: Module> Compiler<M> {
 					Ok(()) => {
 						self.trait_impls.insert(pair);
 					}
-					Err(_) => others.truncate(mark),
+					Err(_) => {
+						others.truncate(mark);
+						if *tn == role::STR {
+							self.trait_impls.insert(pair);
+						}
+					}
 				}
 			}
 		}
@@ -1663,7 +1668,10 @@ impl<M: Module> Compiler<M> {
 				continue;
 			}
 			let methods: Vec<&str> = trait_fns(tmethods).map(|(n, ..)| n).collect();
-			if methods.iter().any(|n| !funcs.contains_key(&format!("{typ}.{n}"))) {
+			if methods
+				.iter()
+				.any(|n| *n != "str" && !funcs.contains_key(&format!("{typ}.{n}")))
+			{
 				continue;
 			}
 			let m = methods.len();
@@ -1692,7 +1700,7 @@ impl<M: Module> Compiler<M> {
 				desc.write_data_addr(off as u32, gv, 2);
 			}
 			for (i, name) in methods.iter().enumerate() {
-				let id = funcs[&format!("{typ}.{name}")].id;
+				let id = funcs.get(&format!("{typ}.{name}")).map_or(render[typ.as_str()], |s| s.id);
 				self.wanted.push(id);
 				let fref = self.module.declare_func_in_data(id, &mut desc);
 				desc.write_function_addr((i * 8) as u32, fref);

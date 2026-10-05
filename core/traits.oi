@@ -30,6 +30,12 @@ pub Contains[T] :: trait { contains: fn(self, v: T) bool }
 pub Iterator[Item] :: trait { next: fn(mut self) ?Item }
 pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 
+# rendering
+
+## Every type renders, through its own `str` or else the derived printer.
+@implicit
+pub Str :: trait { str: fn(self) string }
+
 # conversions
 
 pub From[T] :: trait { from: fn(v: T) Self }

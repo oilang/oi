@@ -22,6 +22,7 @@ pub(crate) const ITERATOR: &str = "core::Iterator";
 pub(crate) const ITERABLE: &str = "core::Iterable";
 pub(crate) const ERROR: &str = "core::Error";
 pub(crate) const ALLOCATOR: &str = "core::Allocator";
+pub(crate) const STR: &str = "core::Str";
 
 // types
 pub(crate) const OPTION: &str = "core::Option";
