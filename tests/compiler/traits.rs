@@ -177,30 +177,58 @@ fn implicit_trait() {
 }
 
 #[test]
-fn every_type_is_str() {
+fn every_type_is_display() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		Color :: enum { red, green }
-		show[T: Str] :: fn(v: T) string { v.str() }
+		show[T: Display] :: fn(v: T) string { v.str() }
 		print(show(Point.{1, 2}), show(Color.red), show(3))
-		print(Point is Str, Color is Str, int is Str)
+		print(Point is Display, Color is Display, int is Display)
 	"};
 	check(src, ["Point.{x = 1, y = 2} red 3", "true true true"]);
 }
 
 #[test]
-fn str_objects_render_their_own_way() {
+fn display_objects_render_their_own_way() {
 	let src = indoc! {r#"
 		Point :: struct { x: int }
 		Name :: struct { n: string }
 		Name :< { str :: fn(self) string { "name {self.n}" } }
 		Tag :: struct { t: int }
-		Tag : Str < { str :: fn(self) string { "tag {self.t}" } }
-		loop x in Str.[Point.{1}, Name.{"a"}, Tag.{7}] { print(x) }
+		Tag : Display < { str :: fn(self) string { "tag {self.t}" } }
+		loop x in Display.[Point.{1}, Name.{"a"}, Tag.{7}] { print(x) }
 		t :: Tag.{2}
 		print(t, "{t}", t.str())
 	"#};
 	check(src, ["Point.{x = 1}", "name a", "tag 7", "tag 2 tag 2 tag 2"]);
+}
+
+#[test]
+fn fmt_overrides_display() {
+	let src = indoc! {r#"
+		Hex :: struct { n: int }
+		Hex :< { fmt :: fn(self, mut b: Buffer) { b.write("0x{self.n}") } }
+		h :: Hex.{255}
+		print(h, "{h}", h.str())
+		loop x in Display.[h] { print(x) }
+	"#};
+	check(src, ["0x255 0x255 0x255", "0x255"]);
+}
+
+#[test]
+fn generic_fmt_into_one_buffer() {
+	let src = indoc! {r#"
+		Point :: struct { x: int }
+		Name :: struct { n: string }
+		Name :< { str :: fn(self) string { "name {self.n}" } }
+		put[T: Display] :: fn(x: T, mut b: Buffer) { x.fmt(mut b) }
+		b := Buffer.{}
+		put(Point.{1}, mut b)
+		put(3, mut b)
+		put(Name.{"a"}, mut b)
+		print(b)
+	"#};
+	check(src, "Point.{x = 1}3name a");
 }
 
 #[test]

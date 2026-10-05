@@ -677,6 +677,10 @@ assert!(Kiwi is Fruit)
 assert!(Apple is Fruit)
 assert!(Bike is not Fruit)
 
+# every type is `Display`, rendered by its own `fmt` or `str`, or derived
+Kiwi :< { str :: fn(self) string { "kiwi" } }
+Apple :< { fmt :: fn(self, mut b: Buffer) { b.write("apple") } }
+
 ## static vs dynamic dispatch
 
 # A trait used as a bound is static: monomorphized per concrete type.
@@ -1800,8 +1804,8 @@ main :: fn() {
 		}
 	}
 
-	# Str is auto-derived, but may be overridden
-	Color : Str < {
+	# Display is auto-derived, but may be overridden
+	Color : Display < {
 		str :: fn(self) string {
 			match self {
 				.red => "🔴",

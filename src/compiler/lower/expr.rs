@@ -395,11 +395,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
-				if method == "str"
+
+				// Display defaults
+				if let Some((v, t)) = &bound
+					&& method == "str"
 					&& args.is_empty()
-					&& let Some((v, t)) = &bound
 				{
 					return Ok((self.derived_str(*v, t), Typ::Str));
+				}
+				if bound.is_some() && method == "fmt" {
+					let def = self.generic_fns[role::FMT_DERIVED].clone();
+					return self.call_generic(role::FMT_DERIVED, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
 
 				// make fn fields callable

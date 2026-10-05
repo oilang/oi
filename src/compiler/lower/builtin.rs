@@ -93,6 +93,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some(self.quote(&[(def, *at)], *at)?))
 			}
 
+			// Display.fmt's default. The type's own `str`, or the derived render
+			"__render" => {
+				let (val, typ) = self.expr(&args[0])?;
+				Ok(Some((self.derived_str(val, &typ), Typ::Str)))
+			}
+
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
 			"__comp_yield" => {
 				let (val, typ) = self.expr(&args[0])?;

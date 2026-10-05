@@ -22,7 +22,7 @@ pub(crate) const ITERATOR: &str = "core::Iterator";
 pub(crate) const ITERABLE: &str = "core::Iterable";
 pub(crate) const ERROR: &str = "core::Error";
 pub(crate) const ALLOCATOR: &str = "core::Allocator";
-pub(crate) const STR: &str = "core::Str";
+pub(crate) const DISPLAY: &str = "core::Display";
 
 // types
 pub(crate) const OPTION: &str = "core::Option";
@@ -35,6 +35,7 @@ pub(crate) const ALLOC: &str = "core::Alloc";
 // fns
 pub(crate) const ZERO: &str = "core::zero";
 pub(crate) const ALLOC_SHIM: &str = "core::alloc_shim";
+pub(crate) const FMT_DERIVED: &str = "core::fmt_derived";
 pub(crate) const STR_CONTAINS: &str = "string.contains";
 pub(crate) const ORIGIN: &str = "core::origin";
 pub(crate) const RAISE: &str = "core::raise";

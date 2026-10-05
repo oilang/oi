@@ -32,9 +32,24 @@ pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 
 # rendering
 
-## Every type renders, through its own `str` or else the derived printer.
+## Every type renders, through its own `fmt` or `str`, or the derived printer.
 @implicit
-pub Str :: trait { str: fn(self) string }
+pub Display :: trait {
+	fmt :: fn(self, mut b: Buffer) {
+		fmt_derived(self, mut b)
+	}
+
+	str :: fn(self) string {
+		b := Buffer.{}
+		self.fmt(mut b)
+		b.str()
+	}
+}
+
+## The derived render, for types without their own `fmt` or `str`.
+pub fmt_derived[T] :: fn(v: T, mut b: Buffer) {
+	b.write(__render(v))
+}
 
 # conversions
 

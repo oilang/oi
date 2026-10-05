@@ -25,4 +25,8 @@ Buffer :< {
 	pub str :: fn(self) string {
 		string.(self.data)
 	}
+
+	pub fmt :: fn(self, mut b: Buffer) {
+		b.write(self.str())
+	}
 }

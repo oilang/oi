@@ -14,12 +14,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("write", &[tag, bits, width, quote, sink_v]);
 	}
 
-	// A named type's `str` impl.
+	// A named type's Display fill.
 	fn str_impl(&mut self, name: &str, val: Value, typ: &Typ) -> Option<Value> {
 		let base = rc::base_name(name);
 		let sig = (self.funcs.get(&format!("{name}.str")).cloned())
 			.or_else(|| self.recv_instance(&format!("{base}.str"), typ))?;
-		(sig.params.len() == 1 && sig.ret == Typ::Str).then(|| self.emit_call(&sig, &[val]).0)
+		let derived = sig.default && self.funcs.get(&format!("{name}.fmt")).is_some_and(|f| f.default);
+		(!derived && sig.params.len() == 1 && sig.ret == Typ::Str).then(|| self.emit_call(&sig, &[val]).0)
 	}
 
 	// Universal `str` method.

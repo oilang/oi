@@ -26,7 +26,7 @@ pub(crate) struct TraitBody<'a> {
 // Whether a primitive natively satisfies std trait `tn`.
 pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	use Typ::*;
-	if tn == role::STR {
+	if tn == role::DISPLAY {
 		return true;
 	}
 	if matches!(tn, role::CONTAINS | role::ITERATOR | role::ITERABLE) {
@@ -392,6 +392,7 @@ pub(super) fn check_impls<'p>(
 					params_tuple: *params_tuple,
 					ret,
 					body: Box::leak(Box::new([s(body)])),
+					default: false,
 				});
 				continue;
 			}
@@ -412,6 +413,7 @@ pub(super) fn check_impls<'p>(
 				params_tuple: *params_tuple,
 				ret: ret.clone(),
 				body,
+				default: true,
 			});
 		}
 	}

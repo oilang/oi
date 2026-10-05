@@ -243,6 +243,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			unsafe_call: false,
 			pure: def.pure
 				|| (self.types.consts.anns.get(name)).is_some_and(|a| a.iter().any(|x| ann(x, role::PURE).is_some())),
+			default: false,
 		};
 		self.mono.insert(sym.clone(), fn_sig.clone());
 		self.pending.push((sym, def.clone(), subst));
