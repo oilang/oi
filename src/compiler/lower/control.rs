@@ -617,7 +617,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some((Expr::PatBind { .. }, _)) | None => (None, None),
 			Some((c, _)) if infallible(c) => (None, None),
 			Some(cond) => {
-				let cv = self.bool_value(cond, "`loop` condition")?;
+				let (cv, ct) = self.expr(cond)?;
+				if ct != Typ::Bool {
+					// non-bool headers are iterated
+					self.b.seal_block(top);
+					let wild = (Expr::Ident("_".into()), cond.1);
+					return self.for_value(&wild, (cv, ct), cond.1, body).map(Some);
+				}
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
 				self.b.switch_to_block(body_block);
@@ -750,9 +756,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		let (val, typ) = self.expr(iter)?;
+		let tv = self.expr(iter)?;
+		self.for_value(pat, tv, iter.1, body)
+	}
+
+	fn for_value(
+		&mut self,
+		pat: &Spanned<Expr>,
+		(val, typ): TypedVal,
+		span: Span,
+		body: &[Spanned<Expr>],
+	) -> Result<TypedVal, Diagnostic> {
 		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
-			return self.iter_loop(pat, body, (val, typ), iter.1);
+			return self.iter_loop(pat, body, (val, typ), span);
 		}
 		let zero = self.b.ins().iconst(self.int, 0);
 		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
@@ -770,8 +786,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ => {
 				return Err(
-					Diagnostic::new(format!("cannot iterate over {typ}"), iter.1.into_range())
-						.with_label("not iterable"),
+					Diagnostic::new(format!("cannot iterate over {typ}"), span.into_range()).with_label("not iterable")
 				);
 			}
 		};

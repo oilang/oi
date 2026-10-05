@@ -95,7 +95,7 @@ fn while_never_enters() {
 
 #[test]
 fn while_condition_must_be_bool() {
-	fail("loop 3 { }", "must be Bool");
+	fail("loop 3 {}", "cannot iterate");
 }
 
 // loops over ranges
@@ -338,4 +338,15 @@ fn do_bodies() {
 		i
 	"};
 	check(src, ["0", "1", "3"]);
+}
+
+#[test]
+fn loop_header_iterates_without_binding() {
+	let src = indoc! {"
+		n := 0
+		loop 2..4 { n += 10 }
+		loop [1 2 3] { n += 1 }
+		n
+	"};
+	check(src, "23");
 }

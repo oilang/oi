@@ -1426,7 +1426,8 @@ main :: fn() {
 
 	# `loop {}`: infinite
 	# `loop <cond> {}`: while
-	# `loop <pattern> in <iter> {}`: for
+	# `loop <iter> {}`: for
+	# `loop <pattern> in <iter> {}`: for with bindings
 
 	# forever
 	loop {
@@ -1439,6 +1440,9 @@ main :: fn() {
 		print("are we there yet?")
 		i += 1
 	}
+
+	# any iterable header runs the body once per item
+	loop 0..3 { print("hi") }
 
 	# `loop <expr>` makes the expression the body
 	loop if i < 6 { i += 1 } else { break }
