@@ -1,5 +1,5 @@
 use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, spanned};
-use crate::ast::{BinOp, Expr, Spanned, TypeExpr};
+use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
 use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
@@ -192,26 +192,26 @@ pub(super) fn stmt<'token, I>(
 	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
 	// index assignment
-	let index_assign =
-		ident()
-			.then(bracket(p.expr.clone()))
-			.then(rhs.clone())
-			.map_with(move |((name, index), (op, value)), ex| {
-				let collection = Box::new((Expr::Ident(name.clone()), ex.span()));
-				let lhs = Expr::Index {
-					collection,
-					index: Box::new(index.clone()),
-				};
-				let value = fold(op, lhs, value, ex.span());
-				(
-					Expr::IndexAssign {
-						name,
-						index: Box::new(index),
-						value: Box::new(value),
-					},
-					ex.span(),
-				)
-			});
+	let index_assign = ident()
+		.then(just(Token::Dot).ignore_then(ident()).or_not())
+		.then(bracket(p.expr.clone()))
+		.then(rhs.clone())
+		.map_with(move |(((name, field), index), (op, value)), ex| {
+			let lhs = Expr::Index {
+				collection: Box::new(ast::place(&name, field.as_ref(), ex.span())),
+				index: Box::new(index.clone()),
+			};
+			let value = fold(op, lhs, value, ex.span());
+			(
+				Expr::IndexAssign {
+					name,
+					field,
+					index: Box::new(index),
+					value: Box::new(value),
+				},
+				ex.span(),
+			)
+		});
 
 	// map deletion
 	let map_delete = ident()

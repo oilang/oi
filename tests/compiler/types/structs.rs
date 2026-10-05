@@ -759,3 +759,28 @@ fn field_append() {
 	"};
 	fail(src, "cannot append to immutable `b`");
 }
+
+#[test]
+fn field_index_assign() {
+	let src = indoc! {"
+		Bag :: struct { xs: []int = [] }
+		Bag :< {
+			bump :: fn(mut self, i: int) {
+				self.xs[i] += 10
+			}
+		}
+		b := Bag.{ xs = [1, 2, 3] }
+		old := b.xs
+		b.bump(0)
+		b.xs[2] = 7
+		print(old)
+		b.xs
+	"};
+	check(src, ["[1, 2, 3]", "[11, 2, 7]"]);
+	let src = indoc! {"
+		Bag :: struct { xs: []int = [] }
+		b :: Bag.{}
+		b.xs[0] = 1
+	"};
+	fail(src, "cannot assign to element of immutable `b`");
+}

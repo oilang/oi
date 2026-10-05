@@ -172,9 +172,10 @@ pub enum Expr {
 		collection: Box<Spanned<Expr>>,
 		range: Option<Box<Spanned<Expr>>>,
 	},
-	// `name[index] = value`
+	// `name[index] = value`, `name.field[index] = value`
 	IndexAssign {
 		name: String,
+		field: Option<String>,
 		index: Box<Spanned<Expr>>,
 		value: Box<Spanned<Expr>>,
 	},
@@ -718,6 +719,21 @@ pub struct UseItem {
 impl UseItem {
 	pub fn remote(&self) -> &Spanned<String> {
 		self.rename_of.as_ref().unwrap_or(&self.local)
+	}
+}
+
+// `name` or `name.field`
+pub fn place(name: &str, field: Option<&String>, span: Span) -> Spanned<Expr> {
+	let id = (Expr::Ident(name.into()), span);
+	match field {
+		Some(field) => (
+			Expr::Field {
+				tuple: Box::new(id),
+				field: field.clone(),
+			},
+			span,
+		),
+		None => id,
 	}
 }
 

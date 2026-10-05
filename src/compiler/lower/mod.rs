@@ -14,7 +14,7 @@ use super::{
 	has_ann, is_c_struct, is_range, mentions, oi_symbol, param_cl, role, sugar, sum_remap, trait_fns, type_expr,
 	typeid,
 };
-use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr};
+use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, place};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::Scope;
 use crate::runtime;

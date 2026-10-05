@@ -138,21 +138,28 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 
-				Expr::IndexAssign { name, index, value } => {
+				Expr::IndexAssign {
+					name,
+					field,
+					index,
+					value,
+				} => {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
-					if let Typ::Map(k, v) = local.typ.clone() {
+					let collection = place(name, field.as_ref(), stmt.1);
+					let (ptr, typ) = self.expr(&collection)?;
+					// TODO: map fields need the cow'd ptr written back
+					if let (Typ::Map(k, v), None) = (typ.clone(), field) {
 						let (k, v) = (*k, *v);
 						let (tag, key_bits) = self.map_key(index, &k)?;
 						let val = self.stored(value, &v, &format!("{v} value of map"), "a map")?;
 						self.move_resource(value, &v)?;
 						let val = self.copy_in(val, &v);
 						let val_bits = self.map_bits(val);
-						let ptr = self.read_local(&local);
 						let ptr = self.map_rt("set", ptr, tag, key_bits, &[val_bits]);
 						self.write_local(&local, ptr);
 						continue;
 					}
-					let elem = match &local.typ {
+					let elem = match &typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						Typ::Str => {
 							return Err(Diagnostic::new(
@@ -163,7 +170,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						t if self.claims(t, role::INDEX_ASSIGN) => {
 							let call = Expr::MethodCall {
-								recv: Box::new((Expr::Ident(name.clone()), stmt.1)),
+								recv: Box::new(collection),
 								method: "index_assign".into(),
 								type_args: vec![],
 								args: vec![(**index).clone(), (**value).clone()],
@@ -178,16 +185,15 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 						}
 					};
-					let ptr = self.read_local(&local);
 					// a shared buffer clones before the element write
-					if matches!(local.typ, Typ::Array(_)) {
+					if matches!(typ, Typ::Array(_)) {
 						self.cow_array(ptr, &elem);
 					}
 					let idx = self.int_value(index, "array index")?;
 					let idx = self.intcast(idx, self.int, true);
 					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
 					let val = self.copy_in(val, &elem);
-					let (data, len) = self.array_parts(ptr, &local.typ);
+					let (data, len) = self.array_parts(ptr, &typ);
 					self.store_index(data, len, &elem, idx, val, stmt.1);
 				}
 
@@ -502,20 +508,13 @@ impl<'a, M: Module> Translator<'a, M> {
 fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	let name = |n: &String| Box::new((Expr::Ident(n.clone()), stmt.1));
 	let read = match &stmt.0 {
-		Expr::Bind { name, .. }
-		| Expr::Assign { name, .. }
-		| Expr::Append { name, field: None, .. }
-		| Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
-		Expr::IndexAssign { name: n, index, .. } => Expr::Index {
-			collection: name(n),
+		Expr::Bind { name, .. } | Expr::Assign { name, .. } | Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
+		Expr::Append { name, field, .. } => return Some(place(name, field.as_ref(), stmt.1)),
+		Expr::IndexAssign { name, field, index, .. } => Expr::Index {
+			collection: Box::new(place(name, field.as_ref(), stmt.1)),
 			index: index.clone(),
 		},
-		Expr::FieldAssign { name: n, field, .. }
-		| Expr::Append {
-			name: n,
-			field: Some(field),
-			..
-		} => Expr::Field {
+		Expr::FieldAssign { name: n, field, .. } => Expr::Field {
 			tuple: name(n),
 			field: field.clone(),
 		},
