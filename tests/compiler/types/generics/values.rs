@@ -67,3 +67,13 @@ fn a_value_where_a_type_belongs() {
 		"`B` is a type parameter",
 	);
 }
+
+#[test]
+fn a_value_param_infers_from_a_fixed_array() {
+	let src = indoc! {r"
+		last[T, N: int] :: fn(xs: [N]T) T { xs[N - 1] }
+		xs: [3]int = .[1, 2, 3]
+		print(last(xs))
+	"};
+	check(src, "3");
+}

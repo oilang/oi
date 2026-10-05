@@ -26,7 +26,13 @@ pub(super) fn unify(
 		(TypeExpr::Array(e), Typ::Array(c)) | (TypeExpr::Variadic(e), Typ::Array(c)) => {
 			unify(e, c, params, subst, generics)
 		}
-		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) if matches!(n.0, Expr::Int(n) if n == *cn as i64) => {
+		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) => {
+			let size = Typ::Const(*cn as i64);
+			match &n.0 {
+				Expr::Int(n) if *n != *cn as i64 => return Ok(()),
+				Expr::Ident(p) => unify(&TypeExpr::Name(p.clone()), &size, params, subst, generics)?,
+				_ => {}
+			}
 			unify(e, c, params, subst, generics)
 		}
 		(TypeExpr::Map(k, v), Typ::Map(ck, cv)) => {
