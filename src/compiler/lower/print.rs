@@ -23,10 +23,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		(!derived && sig.params.len() == 1 && sig.ret == Typ::Str).then(|| self.emit_call(&sig, &[val]).0)
 	}
 
-	// Universal `str` method.
-	pub(crate) fn derived_str(&mut self, val: Value, typ: &Typ) -> Value {
+	// Universal `str`, or `repr` when quoted.
+	pub(crate) fn derived_str(&mut self, val: Value, typ: &Typ, quote: bool) -> Value {
 		let mark = self.rt_call("str_mark", &[]).unwrap();
-		self.emit_print(val, typ, false, runtime::Sink::Buf);
+		self.emit_print(val, typ, quote, runtime::Sink::Buf);
 		self.rt_call("str_take", &[mark]).unwrap()
 	}
 

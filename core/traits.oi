@@ -51,6 +51,25 @@ pub fmt_derived[T] :: fn(v: T, mut b: Buffer) {
 	b.write(__render(v))
 }
 
+## Every type debugs, through its own `debug` or the derived printer.
+@implicit
+pub Debug :: trait {
+	debug :: fn(self, mut b: Buffer) {
+		debug_derived(self, mut b)
+	}
+
+	repr :: fn(self) string {
+		b := Buffer.{}
+		self.debug(mut b)
+		b.str()
+	}
+}
+
+## Derived debug renderer.
+pub debug_derived[T] :: fn(v: T, mut b: Buffer) {
+	b.write(__repr(v))
+}
+
 # conversions
 
 pub From[T] :: trait { from: fn(v: T) Self }

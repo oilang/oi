@@ -514,7 +514,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if panic_in_main {
 			let msg = if is_result {
 				let e = self.ld_word(val, 8);
-				self.derived_str(e, &err_typ)
+				self.derived_str(e, &err_typ, false)
 			} else {
 				self.str_const("unwrapped `none`")
 			};
@@ -548,7 +548,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (sad, done) = self.fork(tag);
 		self.b.switch_to_block(sad);
 		let e = self.ld_word(val, 8);
-		let mut msg = self.derived_str(e, &err);
+		let mut msg = self.derived_str(e, &err, false);
 		if let Some(sig) = (err == Typ::Error).then(|| self.funcs.get(role::ORIGIN).cloned()).flatten() {
 			let (at, _) = self.emit_call(&sig, &[e]);
 			msg = self.rt_call("str_concat", &[msg, at]).unwrap();

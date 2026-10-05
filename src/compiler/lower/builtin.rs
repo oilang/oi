@@ -93,10 +93,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some(self.quote(&[(def, *at)], *at)?))
 			}
 
-			// Display.fmt's default. The type's own `str`, or the derived render
-			"__render" => {
+			// `fmt` and `debug` defaults
+			"__render" | "__repr" => {
 				let (val, typ) = self.expr(&args[0])?;
-				Ok(Some((self.derived_str(val, &typ), Typ::Str)))
+				Ok(Some((self.derived_str(val, &typ, name == "__repr"), Typ::Str)))
 			}
 
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
@@ -112,7 +112,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The call site as a `Src`.
 	pub(super) fn src_lit(&mut self, span: Span) -> Result<TypedVal, Diagnostic> {
-		let (file, line, _) = self.map.locate_span(span.into_range());
+		let (file, line, ..) = self.map.locate_span(span.into_range());
 		let field = |n: &str, e| (Some(n.to_string()), (e, span));
 		let fields = [
 			field("file", Expr::String(file.to_string())),

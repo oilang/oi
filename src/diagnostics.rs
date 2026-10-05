@@ -55,10 +55,12 @@ impl SourceMap {
 	}
 
 	// Get actual source/metadata for a program-wide span.
-	pub fn locate_span(&self, span: Range<usize>) -> (&str, usize, &str) {
+	pub fn locate_span(&self, span: Range<usize>) -> (&str, usize, usize, &str) {
 		let (file, local) = self.locate(&span);
-		let line = file.src[..local.start].matches('\n').count() + 1;
-		(&file.name, line, &file.src[local])
+		let before = &file.src[..local.start];
+		let line = before.matches('\n').count() + 1;
+		let col = before[before.rfind('\n').map_or(0, |i| i + 1)..].chars().count() + 1;
+		(&file.name, line, col, &file.src[local])
 	}
 }
 

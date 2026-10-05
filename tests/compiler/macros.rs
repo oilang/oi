@@ -3,9 +3,12 @@ use crate::helpers::*;
 
 #[test]
 fn dbg_passes_value_through() {
-	let (out, err) = run_streams("dbg!(1 + 2)");
-	assert_eq!(out.trim(), "3");
-	assert!(err.contains("1 + 2 = 3"), "stderr:\n{err}");
+	let (out, err) = run_streams(r#"print(dbg!(1 + 2), dbg!("hi"))"#);
+	assert_eq!(out, "3 hi");
+	assert_eq!(
+		err.lines().collect::<Vec<_>>(),
+		["[<stdin>:1:7] 1 + 2 = 3", r#"[<stdin>:1:20] "hi" = "hi""#]
+	);
 }
 
 #[test]

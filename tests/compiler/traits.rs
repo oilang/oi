@@ -216,6 +216,17 @@ fn fmt_overrides_display() {
 }
 
 #[test]
+fn every_type_is_debug() {
+	let src = indoc! {r#"
+		Point :: struct { x: int, s: string }
+		Hex :: struct { n: int }
+		Hex :< { debug :: fn(self, mut b: Buffer) { b.write("Hex({self.n})") } }
+		print("hi".repr(), 3.repr(), Point.{1, "a"}.repr(), Hex.{255}.repr())
+	"#};
+	check(src, r#""hi" 3 Point.{x = 1, s = "a"} Hex(255)"#);
+}
+
+#[test]
 fn generic_fmt_into_one_buffer() {
 	let src = indoc! {r#"
 		Point :: struct { x: int }

@@ -1652,7 +1652,7 @@ impl<M: Module> Compiler<M> {
 			};
 			let (mut trans, block) = self.translator(&def, &funcs, base);
 			let val = trans.b.block_params(block)[0];
-			let s = trans.derived_str(val, &styp);
+			let s = trans.derived_str(val, &styp, false);
 			trans.emit_return(s, Typ::Str, (0..0).into())?;
 			trans.b.finalize();
 			render.insert(name.clone(), self.finish_fn(&oi_symbol(&format!("{name}#str"))));

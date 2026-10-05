@@ -338,8 +338,8 @@ impl<'a, M: Module> Translator<'a, M> {
 						recv_typ,
 						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::Sum(..) | Typ::CStr | Typ::Rune
 					);
-					if method == "str" && args.is_empty() && !has_str_impl {
-						return Ok((self.derived_str(recv_val, &recv_typ), Typ::Str));
+					if matches!(method.as_str(), "str" | "repr") && args.is_empty() && !has_str_impl {
+						return Ok((self.derived_str(recv_val, &recv_typ, method == "repr"), Typ::Str));
 					}
 					if let Typ::Trait(tn) = &recv_typ {
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
@@ -396,16 +396,21 @@ impl<'a, M: Module> Translator<'a, M> {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
 
-				// Display defaults
+				// Display and Debug defaults
 				if let Some((v, t)) = &bound
-					&& method == "str"
+					&& matches!(method.as_str(), "str" | "repr")
 					&& args.is_empty()
 				{
-					return Ok((self.derived_str(*v, t), Typ::Str));
+					return Ok((self.derived_str(*v, t, method == "repr"), Typ::Str));
 				}
-				if bound.is_some() && method == "fmt" {
-					let def = self.generic_fns[role::FMT_DERIVED].clone();
-					return self.call_generic(role::FMT_DERIVED, &def, type_args, args, bound.zip(recv_expr), expr.1);
+				if bound.is_some() && matches!(method.as_str(), "fmt" | "debug") {
+					let derived = if method == "fmt" {
+						role::FMT_DERIVED
+					} else {
+						role::DEBUG_DERIVED
+					};
+					let def = self.generic_fns[derived].clone();
+					return self.call_generic(derived, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
 
 				// make fn fields callable
