@@ -26,6 +26,11 @@ pub Shr :: trait { shr: fn(self, other: int) Self }
 # membership
 pub Contains[T] :: trait { contains: fn(self, v: T) bool }
 
+# indexing
+# TODO: handle index oob
+pub Index[I, T] :: trait { index: fn(self, i: I) T }
+pub IndexAssign[I, T] :: trait { index_assign: fn(mut self, i: I, v: T) }
+
 # iteration
 pub Iterator[Item] :: trait { next: fn(mut self) ?Item }
 pub Iterable[Iter] :: trait { iter: fn(self) Iter }

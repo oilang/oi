@@ -214,6 +214,27 @@ fn contains_drives_in() {
 }
 
 #[test]
+fn index_traits_drive_brackets() {
+	let src = indoc! {"
+		Grid :: struct { cells: []int = [0 0 0 0] }
+		Grid : Index[(int, int), int] < {
+			index :: fn(self, p: (int, int)) int { self.cells[p.0 * 2 + p.1] }
+		}
+		Grid : IndexAssign[(int, int), int] < {
+			index_assign :: fn(mut self, p: (int, int), v: int) {
+				c := self.cells
+				c[p.0 * 2 + p.1] = v
+				self.cells = c
+			}
+		}
+		g := Grid.{}
+		g[(1, 0)] = 7
+		print(g[(1, 0)], g.cells)
+	"};
+	check(src, "7 [0, 0, 7, 0]");
+}
+
+#[test]
 fn a_type_argument_picks_the_operator_claim() {
 	let src = indoc! {"
 		V :: struct { x: int }

@@ -29,7 +29,10 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
-	if matches!(tn, role::CONTAINS | role::ITERATOR | role::ITERABLE) {
+	if matches!(
+		tn,
+		role::CONTAINS | role::INDEX | role::INDEX_ASSIGN | role::ITERATOR | role::ITERABLE
+	) {
 		return false;
 	}
 	match typ {

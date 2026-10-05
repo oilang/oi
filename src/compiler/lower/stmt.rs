@@ -161,10 +161,20 @@ impl<'a, M: Module> Translator<'a, M> {
 							)
 							.with_label("cannot assign into a string"));
 						}
+						t if self.claims(t, role::INDEX_ASSIGN) => {
+							let call = Expr::MethodCall {
+								recv: Box::new((Expr::Ident(name.clone()), stmt.1)),
+								method: "index_assign".into(),
+								type_args: vec![],
+								args: vec![(**index).clone(), (**value).clone()],
+							};
+							self.expr(&(call, stmt.1))?;
+							continue;
+						}
 						_ => {
 							return Err(
 								Diagnostic::new(format!("`{name}` is not an array"), stmt.1.into_range())
-									.with_label("not an array"),
+									.with_label(format!("implement `{}` to assign into it", role::INDEX_ASSIGN)),
 							);
 						}
 					};

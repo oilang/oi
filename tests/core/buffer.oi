@@ -21,3 +21,11 @@ test! "clear" {
 	b.write("yo")
 	assert! b.str() == "yo"
 }
+
+test! "index" {
+	b := Buffer.{}
+	b.write("hi")
+	b[0] = 72
+	assert! b[0] == 72
+	assert! b.str() == "Hi"
+}

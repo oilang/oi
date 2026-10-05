@@ -711,9 +711,20 @@ impl<'a, M: Module> Translator<'a, M> {
 						let (data, len) = self.array_parts(ptr, &typ);
 						Ok((self.load_index(data, len, &elem, idx, collection.1), elem))
 					}
+					t if self.claims(t, role::INDEX) => {
+						let recv = format!("$recv{}", self.vars.len());
+						self.hidden_local(recv.clone(), ptr, typ.clone());
+						let call = Expr::MethodCall {
+							recv: Box::new((Expr::Ident(recv), collection.1)),
+							method: "index".into(),
+							type_args: vec![],
+							args: vec![(**index).clone()],
+						};
+						self.expr(&(call, expr.1))
+					}
 					_ => Err(
 						Diagnostic::new(format!("cannot index {typ}"), collection.1.into_range())
-							.with_label("not indexable"),
+							.with_label(format!("implement `{}` for `{typ}` to index it", role::INDEX)),
 					),
 				}
 			}

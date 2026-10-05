@@ -30,3 +30,17 @@ Buffer :< {
 		b.write(self.str())
 	}
 }
+
+# TODO: handle index oob
+Buffer : Index[int, u8] < {
+	index :: fn(self, i: int) u8 { self.data[i] }
+}
+
+# TODO: handle index oob
+Buffer : IndexAssign[int, u8] < {
+	index_assign :: fn(mut self, i: int, v: u8) {
+		d := self.data
+		d[i] = v
+		self.data = d
+	}
+}

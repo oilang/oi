@@ -584,6 +584,12 @@ Bag : Contains[int] < {
 }
 assert!(2 in Bag.{ items = [1 2 3] })
 
+# `x[i]` and `x[i] = v` dispatch to `Index[I, T]` and `IndexAssign[I, T]` claims
+Bag : Index[int, int] < {
+	index :: fn(self, i: int) int { self.items[i] }
+}
+assert!(Bag.{ items = [1 2 3] }[1] == 2)
+
 # enums can claim operator traits too
 Dir :: enum { up, down }
 Dir : Ord < {
