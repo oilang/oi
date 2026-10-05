@@ -8,6 +8,32 @@ use std::mem::size_of;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicI64, Ordering};
 
+// Flush stdout, then fail without a core dump.
+fn die() -> ! {
+	let _ = std::io::Write::flush(&mut std::io::stdout());
+	std::process::exit(101);
+}
+
+macro_rules! fatal {
+	($($t:tt)*) => {{
+		eprintln!($($t)*);
+		die()
+	}};
+}
+
+// A `repr(i64)` enum the JIT passes across the ABI as a raw i64.
+trait Decode: Copy {
+	const COUNT: i64;
+	const WHAT: &str;
+
+	fn from_i64(v: i64) -> Self {
+		if !(0..Self::COUNT).contains(&v) {
+			fatal!("invalid {}: {v}", Self::WHAT);
+		}
+		unsafe { std::mem::transmute_copy(&v) }
+	}
+}
+
 // Type tag shared with the compiler.
 #[repr(i64)]
 #[derive(Clone, Copy)]
@@ -20,28 +46,9 @@ pub enum Tag {
 	Raw,
 }
 
-impl Tag {
-	// Checked conversion from the raw i64 the JIT passes across the ABI.
-	fn from_i64(v: i64) -> Tag {
-		match v {
-			0 => Tag::Bool,
-			1 => Tag::Int,
-			2 => Tag::UInt,
-			3 => Tag::Float,
-			4 => Tag::Str,
-			5 => Tag::Raw,
-			_ => {
-				eprintln!("invalid tag: {v}");
-				die();
-			}
-		}
-	}
-}
-
-// Flush stdout, then fail without a core dump.
-fn die() -> ! {
-	let _ = std::io::Write::flush(&mut std::io::stdout());
-	std::process::exit(101);
+impl Decode for Tag {
+	const COUNT: i64 = 6;
+	const WHAT: &str = "tag";
 }
 
 // Output sink for writing.
@@ -53,18 +60,9 @@ pub enum Sink {
 	Buf,
 }
 
-impl Sink {
-	fn from_i64(v: i64) -> Sink {
-		match v {
-			0 => Sink::Out,
-			1 => Sink::Err,
-			2 => Sink::Buf,
-			_ => {
-				eprintln!("invalid sink: {v}");
-				die();
-			}
-		}
-	}
+impl Decode for Sink {
+	const COUNT: i64 = 3;
+	const WHAT: &str = "sink";
 }
 
 thread_local! {
@@ -93,7 +91,12 @@ pub struct StrHeader {
 /// `header` must point to a valid string header.
 pub unsafe fn str_bytes<'a>(header: *const StrHeader) -> &'a [u8] {
 	let StrHeader { data, len } = unsafe { *header };
-	if data == 0 {
+	unsafe { bytes(data, len) }
+}
+
+// Null-safe byte slice.
+unsafe fn bytes<'a>(data: i64, len: i64) -> &'a [u8] {
+	if data == 0 || len <= 0 {
 		&[]
 	} else {
 		unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) }
@@ -172,8 +175,7 @@ pub unsafe extern "C" fn panic_oob(ctx: *const i64, index: i64, len: i64, at: *c
 #[unsafe(export_name = "oi_pow_int")]
 pub extern "C" fn pow_int(base: i64, exp: i64) -> i64 {
 	if exp < 0 {
-		eprintln!("negative exponent: {exp}");
-		die();
+		fatal!("negative exponent: {exp}");
 	}
 	base.wrapping_pow(exp as u32)
 }
@@ -191,8 +193,7 @@ unsafe fn abort_with(ctx: *const i64, at: *const i64, prefix: &str, msg: *const 
 		hook(msg as i64, at as i64, ctx as i64, obj);
 	}
 	let msg = unsafe { str_lossy(msg) };
-	eprintln!("{prefix}{msg}");
-	die();
+	fatal!("{prefix}{msg}");
 }
 
 /// Print an assertion failure message and abort.
@@ -227,12 +228,7 @@ pub unsafe extern "C" fn fail(msg: *const StrHeader) {
 #[unsafe(export_name = "oi_str_from_bytes")]
 pub unsafe extern "C" fn str_from_bytes(a: *const Allocator, header: *const Header) -> *const StrHeader {
 	let Header { data, len, .. } = unsafe { *header };
-	if data == 0 {
-		return str_new(a, &[]);
-	}
-	str_new(a, unsafe {
-		std::slice::from_raw_parts(data as *const u8, len as usize)
-	})
+	str_new(a, unsafe { bytes(data, len) })
 }
 
 /// Compare two string handles.
@@ -294,12 +290,7 @@ pub unsafe extern "C" fn cstr_str(a: *const Allocator, ptr: i64) -> *const StrHe
 /// `data` must be null or point to at least `len` readable bytes.
 #[unsafe(export_name = "oi_ptr_string")]
 pub unsafe extern "C" fn ptr_string(a: *const Allocator, data: i64, len: i64) -> *const StrHeader {
-	if data == 0 || len <= 0 {
-		return str_new(a, &[]);
-	}
-	str_new(a, unsafe {
-		std::slice::from_raw_parts(data as *const u8, len as usize)
-	})
+	str_new(a, unsafe { bytes(data, len) })
 }
 
 /// Copy bytes from `data` into a fresh rc'd array buffer.
@@ -405,8 +396,7 @@ unsafe fn call_proc(a: *const Allocator, mode: i64, size: i64, old: *mut u8, old
 	let p: AllocProc = unsafe { std::mem::transmute((*a).proc) };
 	let out = unsafe { p((*a).data as *mut u8, mode, size, 8, old, old_size) };
 	if mode == ALLOC && out.is_null() {
-		eprintln!("allocator returned null for {size} bytes");
-		die();
+		fatal!("allocator returned null for {size} bytes");
 	}
 	out
 }
@@ -455,6 +445,24 @@ unsafe fn owner(ptr: *const u8) -> *const Allocator {
 	unsafe { ptr.sub(PREFIX).add(8) as *const Allocator }
 }
 
+// The refcount sitting before a buffer or box.
+unsafe fn rc(p: *const u8) -> *mut i64 {
+	unsafe { p.sub(8) as *mut i64 }
+}
+
+// Drop one ref, true at zero.
+unsafe fn rc_dec(p: *const u8) -> bool {
+	unsafe {
+		*rc(p) -= 1;
+		*rc(p) == 0
+	}
+}
+
+// Copy `n` elements of `w` bytes.
+unsafe fn copy_elems(src: *const u8, dst: *mut u8, n: i64, w: i64) {
+	unsafe { std::ptr::copy_nonoverlapping(src, dst, (n * w) as usize) }
+}
+
 // Allocate an element buffer with its refcount at data[-8], count starting at 1.
 unsafe fn buffer_alloc(a: *const Allocator, bytes: i64) -> *mut u8 {
 	unsafe {
@@ -480,7 +488,7 @@ pub struct Header {
 pub unsafe extern "C" fn array_share(header: *const Header) -> *const Header {
 	let h = unsafe { *header };
 	if h.data != 0 {
-		unsafe { *((h.data - 8) as *mut i64) += 1 };
+		unsafe { *rc(h.data as *const u8) += 1 };
 	}
 	let out = unsafe { alloc(owner(header.cast()), size_of::<Header>() as i64) } as *mut Header;
 	unsafe { *out = h };
@@ -497,12 +505,8 @@ pub unsafe extern "C" fn array_release(header: *mut Header) {
 		return;
 	}
 	let Header { data, .. } = unsafe { *header };
-	if data != 0 {
-		let rc = (data - 8) as *mut i64;
-		unsafe { *rc -= 1 };
-		if unsafe { *rc } == 0 {
-			unsafe { free((data - 8) as *mut u8) };
-		}
+	if data != 0 && unsafe { rc_dec(data as *const u8) } {
+		unsafe { free((data - 8) as *mut u8) };
 	}
 	unsafe { free(header as *mut u8) };
 }
@@ -514,13 +518,13 @@ pub unsafe extern "C" fn array_release(header: *mut Header) {
 #[unsafe(export_name = "oi_array_cow")]
 pub unsafe extern "C" fn array_cow(a: *const Allocator, header: *mut Header, elem_size: i64) {
 	let Header { data, len, .. } = unsafe { *header };
-	if data == 0 || unsafe { *((data - 8) as *const i64) } <= 1 {
+	if data == 0 || unsafe { *rc(data as *const u8) } <= 1 {
 		return;
 	}
 	let new_data = unsafe { buffer_alloc(a, len * elem_size) };
 	unsafe {
-		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
-		*((data - 8) as *mut i64) -= 1;
+		copy_elems(data as *const u8, new_data, len, elem_size);
+		*rc(data as *const u8) -= 1;
 		(*header).data = new_data as i64;
 		(*header).cap = len;
 	}
@@ -579,8 +583,7 @@ pub unsafe extern "C" fn slice(
 	let new_data = unsafe { buffer_alloc(a, view_len * elem_size) };
 	let out = unsafe { alloc(a, size_of::<Header>() as i64) } as *mut Header;
 	unsafe {
-		let src = (data + start * elem_size) as *const u8;
-		std::ptr::copy_nonoverlapping(src, new_data, (view_len * elem_size) as usize);
+		copy_elems((data + start * elem_size) as *const u8, new_data, view_len, elem_size);
 		*out = Header {
 			data: new_data as i64,
 			len: view_len,
@@ -622,12 +625,15 @@ pub unsafe extern "C" fn str_slice(
 pub unsafe extern "C" fn array_write_back(parent: *mut Header, lo: i64, len: i64, src: *const Header, elem_size: i64) {
 	let Header { data, len: slen, .. } = unsafe { *src };
 	if slen != len {
-		eprintln!("projection changed length: expected {len} elements, got {slen}");
-		die();
+		fatal!("projection changed length: expected {len} elements, got {slen}");
 	}
 	unsafe {
-		let dst = ((*parent).data + lo * elem_size) as *mut u8;
-		std::ptr::copy_nonoverlapping(data as *const u8, dst, (len * elem_size) as usize);
+		copy_elems(
+			data as *const u8,
+			((*parent).data + lo * elem_size) as *mut u8,
+			len,
+			elem_size,
+		);
 	}
 }
 
@@ -644,7 +650,7 @@ pub unsafe extern "C" fn array_reserve(a: *const Allocator, header: *mut Header,
 	let new_cap = (cap.max(1) * 2).max(min_cap);
 	let new_data = unsafe { buffer_alloc(a, new_cap * elem_size) };
 	unsafe {
-		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
+		copy_elems(data as *const u8, new_data, len, elem_size);
 		(*header).data = new_data as i64;
 		(*header).cap = new_cap;
 		if data != 0 {
@@ -668,7 +674,7 @@ pub unsafe extern "C" fn array_extend(a: *const Allocator, dst: *mut Header, src
 	unsafe {
 		let dst_data = (*dst).data as *mut u8;
 		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
-		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
+		copy_elems(src_data as *const u8, dst_tail, src_len, elem_size);
 		(*dst).len = dst_len + src_len;
 	}
 }
@@ -681,7 +687,7 @@ pub unsafe extern "C" fn ref_share(ptr: *mut u8) -> *mut u8 {
 	if ptr.is_null() {
 		return ptr;
 	}
-	unsafe { *(ptr.sub(8) as *mut i64) += 1 };
+	unsafe { *rc(ptr) += 1 };
 	ptr
 }
 
@@ -734,9 +740,7 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 		return;
 	}
 	unsafe {
-		let rc = ptr.sub(8) as *mut i64;
-		*rc -= 1;
-		if *rc == 0 {
+		if rc_dec(ptr) {
 			// remove freed boxes to avoid `collect_cycles` walking freed memory
 			ROOTS.with(|r| r.borrow_mut().remove(&(ptr as usize)));
 			trace(ptr, desc(ptr), true, &mut |c| ref_release(c));
@@ -778,7 +782,7 @@ fn mark_gray(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	}
 	unsafe {
 		trace(s, desc(s), false, &mut |t| {
-			*(t.sub(8) as *mut i64) -= 1;
+			*rc(t) -= 1;
 			mark_gray(t, c);
 		})
 	};
@@ -789,7 +793,7 @@ fn scan(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	if c.get(&(s as usize)) != Some(&Color::Gray) {
 		return;
 	}
-	if unsafe { *(s.sub(8) as *const i64) } > 0 {
+	if unsafe { *rc(s) } > 0 {
 		scan_black(s, c);
 	} else {
 		c.insert(s as usize, Color::White);
@@ -801,7 +805,7 @@ fn scan_black(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	c.insert(s as usize, Color::Black);
 	unsafe {
 		trace(s, desc(s), false, &mut |t| {
-			*(t.sub(8) as *mut i64) += 1;
+			*rc(t) += 1;
 			if c.get(&(t as usize)) != Some(&Color::Black) {
 				scan_black(t, c);
 			}
@@ -911,8 +915,8 @@ enum MapKey {
 	Str(Vec<u8>),
 }
 
-fn map_key(tag: Tag, bits: i64) -> MapKey {
-	match tag {
+fn map_key(tag: i64, bits: i64) -> MapKey {
+	match Tag::from_i64(tag) {
 		Tag::Str => MapKey::Str(unsafe { str_bytes(bits as *const StrHeader) }.to_vec()),
 		_ => MapKey::Raw(bits),
 	}
@@ -988,11 +992,10 @@ unsafe fn map_cow(a: *const Allocator, map: *mut OiMap) -> *mut OiMap {
 #[unsafe(export_name = "oi_map_get")]
 pub unsafe extern "C" fn map_get(map: *mut OiMap, tag: i64, bits: i64) -> i64 {
 	let map = unsafe { &*map };
-	match map.entries.get(&map_key(Tag::from_i64(tag), bits)) {
+	match map.entries.get(&map_key(tag, bits)) {
 		Some(v) => *v,
 		None => {
-			eprintln!("key not found in map");
-			die();
+			fatal!("key not found in map");
 		}
 	}
 }
@@ -1003,7 +1006,7 @@ pub unsafe extern "C" fn map_get(map: *mut OiMap, tag: i64, bits: i64) -> i64 {
 #[unsafe(export_name = "oi_map_set")]
 pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64, value: i64) -> *mut OiMap {
 	let map = unsafe { map_cow(a, map) };
-	unsafe { &mut *map }.entries.insert(map_key(Tag::from_i64(tag), bits), value);
+	unsafe { &mut *map }.entries.insert(map_key(tag, bits), value);
 	map
 }
 
@@ -1013,7 +1016,7 @@ pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64,
 #[unsafe(export_name = "oi_map_delete")]
 pub unsafe extern "C" fn map_delete(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64) -> *mut OiMap {
 	let map = unsafe { map_cow(a, map) };
-	unsafe { &mut *map }.entries.remove(&map_key(Tag::from_i64(tag), bits));
+	unsafe { &mut *map }.entries.remove(&map_key(tag, bits));
 	map
 }
 
@@ -1030,7 +1033,7 @@ pub unsafe extern "C" fn map_len(map: *mut OiMap) -> i64 {
 /// `map` must be a valid, live `OiMap` pointer and `out` a writable i64 slot.
 #[unsafe(export_name = "oi_map_find")]
 pub unsafe extern "C" fn map_find(map: *mut OiMap, tag: i64, bits: i64, out: *mut i64) -> i64 {
-	let Some(v) = unsafe { &*map }.entries.get(&map_key(Tag::from_i64(tag), bits)) else {
+	let Some(v) = unsafe { &*map }.entries.get(&map_key(tag, bits)) else {
 		return 0;
 	};
 	unsafe { *out = *v };
