@@ -56,3 +56,15 @@ fn item_subjects() {
 	"};
 	check(src, ["7", "9"]);
 }
+
+#[test]
+fn glob_import() {
+	let src = indoc! {"
+		with use math
+		f :: fn() int { max(1, 9) }
+		print(max(2, 7))
+		print(f())
+	"};
+	check(src, ["7", "9"]);
+	fail("with use math.{ max }", "`with` needs a module import");
+}

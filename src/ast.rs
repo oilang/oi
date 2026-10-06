@@ -309,6 +309,7 @@ pub enum Expr {
 		name: Option<Spanned<String>>,
 		path: Vec<Spanned<String>>,
 		group: Option<Vec<UseItem>>,
+		with: bool,
 	},
 	// `pub expr`, `pub(scope) expr`
 	Pub(Vis, Box<Spanned<Expr>>),

@@ -63,6 +63,7 @@ pub struct Scope {
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
 	pub files: Vec<(Range<usize>, Scope)>,
+	pub withs: Vec<String>,
 }
 
 // Whether `name` is a reserved hook trait.
@@ -391,6 +392,7 @@ impl Loader {
 		let main = m.name == "main";
 		let file_start = m.items.len();
 		let mut locals = vec![];
+		let mut withs = vec![];
 		if let Some((Expr::Module(name), span)) = file.first() {
 			if m.scope.header.get_or_insert_with(|| name.clone()) != name {
 				return Err(err(
@@ -425,7 +427,13 @@ impl Loader {
 					"not a definition",
 				));
 			}
-			if let Expr::Use { name, path, group } = &item.0 {
+			if let Expr::Use {
+				name,
+				path,
+				group,
+				with,
+			} = &item.0
+			{
 				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
 				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
@@ -457,6 +465,9 @@ impl Loader {
 				if narrows || items.is_empty() {
 					// bind the module itself, or narrowed to its specified items
 					let local = name.as_ref().unwrap_or(&path[depth - 1]).0.clone();
+					if *with {
+						withs.push(local.clone());
+					}
 					let only =
 						narrows.then(|| items.iter().map(|it| (it.local.0.clone(), it.remote().0.clone())).collect());
 					let vis = Visible {
@@ -473,6 +484,12 @@ impl Loader {
 							"conflicting import",
 						));
 					}
+				} else if *with {
+					return Err(err(
+						"`with` needs a module import",
+						item.1,
+						"these are already bare names",
+					));
 				} else {
 					// bind the items
 					for it in &items {
@@ -650,6 +667,7 @@ impl Loader {
 			env: env.filter_map(|k| m.scope.env.remove_entry(&k)).collect(),
 			visible: std::mem::take(&mut m.scope.visible),
 			module: m.scope.module.clone(),
+			withs,
 			..Scope::default()
 		})
 	}

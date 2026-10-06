@@ -374,13 +374,23 @@ where
 	let use_item = spanned(ident())
 		.then(just(Token::DoubleColon).ignore_then(spanned(ident())).or_not())
 		.map(|(local, rename_of)| UseItem { local, rename_of });
-	let use_decl = spanned(ident())
-		.then_ignore(just(Token::DoubleColon))
+	let use_decl = just(Token::With)
 		.or_not()
+		.then(spanned(ident()).then_ignore(just(Token::DoubleColon)).or_not())
 		.then_ignore(just(Token::Use))
 		.then(spanned(ident()).separated_by(just(Token::Dot)).at_least(1).collect())
 		.then(just(Token::Dot).ignore_then(brace(loose_list(use_item))).or_not())
-		.map_with(|((name, path), group), ex| (Expr::Use { name, path, group }, ex.span()))
+		.map_with(|(((w, name), path), group), ex| {
+			(
+				Expr::Use {
+					name,
+					path,
+					group,
+					with: w.is_some(),
+				},
+				ex.span(),
+			)
+		})
 		.boxed();
 	let public = vis
 		.clone()
