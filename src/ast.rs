@@ -125,6 +125,8 @@ pub enum Expr {
 
 	Comp(Box<Spanned<Expr>>),
 	Unsafe(Box<Spanned<Expr>>),
+	// `with a, b expr`
+	With(Vec<Spanned<Expr>>),
 
 	ArgMod(Access, Box<Spanned<Expr>>),
 
@@ -439,6 +441,7 @@ impl Expr {
 			| Expr::StructDef { fills: body, .. }
 			| Expr::Claim { fills: body, .. }
 			| Expr::Block(body)
+			| Expr::With(body)
 			| Expr::Quote(body)
 			| Expr::EnumDef { fills: body, .. }
 			| Expr::TraitDef { methods: body, .. } => f(List(body)),
@@ -808,6 +811,7 @@ pub struct Param {
 	pub access: Access,
 	pub mutable: bool,
 	pub public: bool,
+	pub with: bool,
 	pub annotations: Vec<Annotation>,
 }
 
@@ -821,6 +825,7 @@ impl Param {
 			access: Access::Read,
 			mutable: false,
 			public: false,
+			with: false,
 			annotations: vec![],
 		}
 	}

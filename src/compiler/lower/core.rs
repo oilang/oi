@@ -212,6 +212,58 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(local)
 	}
 
+	pub(super) fn open_with(&mut self, subjects: &[Spanned<Expr>]) -> Result<TypedVal, Diagnostic> {
+		for s in subjects {
+			let (Expr::Bind { name, .. } | Expr::Ident(name)) = &s.0 else {
+				unreachable!()
+			};
+			if matches!(s.0, Expr::Bind { .. }) {
+				self.block_tail(std::slice::from_ref(s), None)?;
+			}
+			self.withs.push(name.clone());
+		}
+		Ok(self.unit_value())
+	}
+
+	// Lower member access through a `with` subject.
+	pub(super) fn through_with(&self, e: &Spanned<Expr>) -> Result<Option<Spanned<Expr>>, Diagnostic> {
+		let (Expr::Ident(name) | Expr::Call { name, .. } | Expr::Assign { name, .. }) = &e.0 else {
+			return Ok(None);
+		};
+		if self.vars.contains_key(name) {
+			return Ok(None);
+		}
+		let supplies = |s: &&String| match self.vars.get(*s).map(|l| self.peeled(&l.typ)) {
+			Some(Typ::Struct(sn, fs)) => {
+				self.struct_field(&sn, &fs, name, e.1).is_ok()
+					|| self.funcs.contains_key(&format!("{sn}.{name}"))
+					|| self.generic_fns.contains_key(&format!("{}.{name}", rc::base_name(&sn)))
+			}
+			_ => false,
+		};
+		let mut hits = self.withs.iter().filter(supplies);
+		let s = match (hits.next(), hits.next()) {
+			(Some(a), Some(b)) => {
+				return Err(Diagnostic::new(format!("`{name}` is ambiguous"), e.1.into_range())
+					.with_label(format!("both `{a}` and `{b}` supply it")));
+			}
+			(Some(s), _) => s.clone(),
+			(None, _) => return Ok(None),
+		};
+		let (recv, field) = (Box::new((Expr::Ident(s.clone()), e.1)), name.clone());
+		let member = match e.0.clone() {
+			Expr::Call { type_args, args, .. } => Expr::MethodCall {
+				recv,
+				method: field,
+				type_args,
+				args,
+			},
+			Expr::Assign { value, .. } => Expr::FieldAssign { name: s, field, value },
+			_ => Expr::Field { tuple: recv, field },
+		};
+		Ok(Some((member, e.1)))
+	}
+
 	// A static reads and writes through its cell.
 	pub fn seed_statics(&mut self, inits: &[(String, Span, Option<Spanned<Expr>>)]) -> Result<(), Diagnostic> {
 		let cells: Vec<_> = self

@@ -405,6 +405,35 @@ where
 		.ignore_then(header_expr.clone())
 		.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 		.boxed();
+
+	let subject = header_expr.clone().map(|e| match e.0 {
+		Expr::Ident(_) => e,
+		_ => {
+			let (name, value) = (format!("with#{}", e.1.start), Some(Box::new(e.clone())));
+			let bind = Expr::Bind {
+				mutable: false,
+				name,
+				typ: None,
+				value,
+			};
+			(bind, e.1)
+		}
+	});
+
+	// with expressions
+	let with_expr = just(Token::With)
+		.ignore_then(list1(p.bind.clone().or(subject)))
+		.then(p.block.clone().or_not())
+		.map_with(|(subjects, body), ex| {
+			let with = (Expr::With(subjects), ex.span());
+			match body {
+				Some(body) => (Expr::Block(std::iter::once(with).chain(body).collect()), ex.span()),
+				None => with,
+			}
+		})
+		.boxed();
+
+	// unsafe
 	let unsafe_expr = just(Token::Unsafe)
 		.ignore_then(p.expr.clone())
 		.map_with(|inner, ex| (Expr::Unsafe(Box::new(inner)), ex.span()))
@@ -460,6 +489,7 @@ where
 		match_expr,
 		comp_expr,
 		unsafe_expr,
+		with_expr,
 		for_expr,
 		loop_expr,
 		break_expr,

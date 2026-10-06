@@ -32,11 +32,11 @@ fn method_trailing_fn() {
 	let src = indoc! {"
 		Box :: struct { n: int }
 		Box :< {
-			with :: fn(self, f: fn() int) int { self.n + f() }
+			add :: fn(self, f: fn() int) int { self.n + f() }
 			m :: fn(self, k: int, f: fn() int) int { self.n + k + f() }
 		}
 		b :: Box.{ n = 10 }
-		print(b.with fn() int { 5 })
+		print(b.add fn() int { 5 })
 		b.m(1) fn() int { 5 }
 	"};
 	check(src, ["15", "16"]);

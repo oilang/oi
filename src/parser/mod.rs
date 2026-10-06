@@ -202,7 +202,11 @@ fn shadow_params(params: &[Param], mut body: Vec<Spanned<Expr>>) -> Vec<Spanned<
 		};
 		(decl, p.span)
 	});
-	body.splice(0..0, copies);
+	let withs = params
+		.iter()
+		.filter(|p| p.with)
+		.map(|p| (Expr::With(vec![(Expr::Ident(p.name.clone()), p.span)]), p.span));
+	body.splice(0..0, copies.chain(withs));
 	body
 }
 
@@ -320,12 +324,12 @@ where
 			.then(default_value)
 			.map(|(tok, (typ, default))| (typ, default, tok == Token::Bind)))
 		.boxed();
-	let param = access
-		.clone()
+	let param = just(Token::With)
 		.or_not()
+		.then(access.clone().or_not())
 		.then(ident())
 		.then(param_type.clone().or_not())
-		.map_with(|((access, name), typed), ex| {
+		.map_with(|(((with, access), name), typed), ex| {
 			let (typ, default, mutable) = match typed {
 				Some((t, d, m)) => (Some(t), d, m),
 				None => (None, None, false),
@@ -335,6 +339,7 @@ where
 				default,
 				access: access.unwrap_or_default(),
 				mutable,
+				with: with.is_some(),
 				..Param::new(name, typ, ex.span())
 			}
 		});

@@ -28,6 +28,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					);
 					&zeroed
 				}
+				Expr::Assign { .. } if let Some(member) = self.through_with(stmt)? => {
+					zeroed = member;
+					&zeroed
+				}
 				_ => stmt,
 			};
 			match &stmt.0 {

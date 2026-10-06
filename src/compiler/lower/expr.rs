@@ -77,7 +77,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							Some(c) => self.expr(&c),
 							None => match self.types.type_params.get(name) {
 								Some(&Typ::Const(n)) => Ok((self.b.ins().iconst(self.int, n), Typ::Int(64))),
-								_ => Err(e),
+								_ => self.through_with(expr)?.ok_or(e).and_then(|m| self.lower(&m, hint)),
 							},
 						}
 					}
@@ -226,10 +226,14 @@ impl<'a, M: Module> Translator<'a, M> {
 								Err(Diagnostic::new(format!("`{name}` is a macro"), expr.1.into_range())
 									.with_label(format!("write `{name}!(...)`")))
 							}
-							None => Err(
-								Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
-									.with_label("not defined"),
-							),
+							None => match self.through_with(expr)? {
+								Some(member) => self.lower(&member, hint),
+								None => Err(Diagnostic::new(
+									format!("undefined function `{name}`"),
+									expr.1.into_range(),
+								)
+								.with_label("not defined")),
+							},
 						},
 					},
 				}
@@ -965,6 +969,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Comp(_) => Err(Diagnostic::new("`comp` isn't supported here", expr.1.into_range())
 				.with_label("can't run at compile time")),
+
+			Expr::With(subjects) => self.open_with(subjects),
 
 			Expr::Unsafe(inner) => {
 				self.unsafely += 1;

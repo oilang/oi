@@ -2248,7 +2248,7 @@ main :: fn() {
 	with req do header("x", "1")
 
 	# it's a binding qualifier like `mut`, and can go wherever a name is bound
-	update :: fn(with self, dt: f32) { pos += vel * dt }
+	update :: fn(with mut self, dt: f32) { pos += vel * dt }
 	loop with e in entities { pos += vel * dt }
 	with a, b { }
 
