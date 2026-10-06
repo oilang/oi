@@ -39,7 +39,7 @@ tags: []
 - comptime `zig revo nim`
 - no parens needed for simple conditionals `v rust go nu`
 - generics `rust v`
-- `with` for cascading
+- `with` `odin jai kotlin`
 - metaprogramming
 - block expressions `rust`
 - compound types `rust`
@@ -98,7 +98,6 @@ tags: []
 ## consider
 - `nil`
 - using `#` for annotations despite comment clash
-- `using`/`with` `odin javascript`
 - allowing quotes/AST outside of macros, for code generators and stuff
 - `let-else` `rust`
 - submodules `use raylib.math`

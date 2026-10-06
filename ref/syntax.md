@@ -2025,7 +2025,7 @@ main :: fn() {
 	spawn {
 		do_work()
 	}
-	mutex.with { do_work() }
+	mutex.lock { do_work() }
 
 	# composed with leading literals, function calls may be written like this:
 	# retry(3, fn { ... })
@@ -2234,6 +2234,29 @@ main :: fn() {
 		}
 	}
 	assert!(count_letters("hi, mom!") == 4)
+
+	## with
+
+	# `with` puts a subject's members in scope as bare names
+	with p := Particle.{}
+	pos = Vec3.{ 0, 1, 0 }
+	vel.y += 9.8
+	spawn()
+
+	# a block scopes it and yields the block
+	n := with p { pos.len() }
+	with req do header("x", "1")
+
+	# it's a binding qualifier like `mut`, and can go wherever a name is bound
+	update :: fn(with self, dt: f32) { pos += vel * dt }
+	loop with e in entities { pos += vel * dt }
+	with a, b { }
+
+	# works with anything with members
+	with math { sin(x) + cos(x) }
+
+	# locals win, and two subjects supplying one name is an error where it's used
+	# `p.x` always works on a named subject
 
 	## metaprogramming
 
