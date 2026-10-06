@@ -80,7 +80,7 @@ fn has_comp(e: &mut Expr) -> bool {
 	found
 }
 
-fn is_def(e: &Expr) -> bool {
+pub(super) fn is_def(e: &Expr) -> bool {
 	matches!(
 		e,
 		Expr::Fn { .. }

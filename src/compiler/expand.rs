@@ -46,8 +46,6 @@ struct Expander {
 	publics: HashSet<String>,
 	// keeps the stage-0 JIT and its code alive for every call this pass makes
 	stage0: Option<Compiler>,
-	// inside comp, where quotes are allowed
-	in_comp: bool,
 	hoisted: Vec<Spanned<Expr>>,
 }
 
@@ -199,16 +197,15 @@ impl Expander {
 			.modules
 			.iter()
 			.map(|m| {
-				let mut items = if m.name == "main" {
-					vec![]
-				} else {
-					// a body calling a user macro needs expanded
-					rest.get_mut(&m.name)
-						.expect("every module was seeded")
-						.iter_mut()
-						.filter_map(|it| (!self.calls_macro(&mut it.0, &m.scope)).then(|| it.clone()))
-						.collect()
+				let lent = |e: &Expr| match e {
+					_ if m.name != "main" => true,
+					Expr::Fn { name, .. } => name != "main",
+					Expr::Bind { .. } => false,
+					_ => super::comp::is_def(e),
 				};
+				let mut items: Vec<_> = (rest.get_mut(&m.name).expect("every module was seeded").iter_mut())
+					.filter_map(|it| (lent(&it.0) && !self.calls_macro(&mut it.0, &m.scope)).then(|| it.clone()))
+					.collect();
 				items.extend(defs.iter().filter(|d| owner(d) == m.name).cloned());
 				Module {
 					name: m.name.clone(),
@@ -220,6 +217,7 @@ impl Expander {
 		let mut synthetic = with_modules(program, modules);
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
+		compiler.stage0 = true;
 		compiler.roots = self.macros.keys().cloned().collect();
 		compiler.compile(&synthetic)?;
 		for (name, (_, ptr)) in &mut self.macros {
@@ -368,14 +366,7 @@ impl Expander {
 				self.expand_types(&mut e.0, scope, depth)?;
 				match &e.0 {
 					Expr::Fn { name, .. } if name.contains('!') => Ok(()),
-					Expr::Comp(_) => {
-						let outer = std::mem::replace(&mut self.in_comp, true);
-						let r = e.0.try_children(|c| self.expand(c, scope, depth));
-						self.in_comp = outer;
-						r
-					}
-					Expr::Quote(_) if self.in_comp => Ok(()),
-					Expr::Quote(_) => fail("quotes are only allowed inside macro definitions", e.1, "stray quote"),
+					Expr::Quote(_) => Ok(()),
 					Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {
 						fail("unquotes only make sense inside a macro template", e.1, "stray unquote")
 					}
@@ -393,10 +384,9 @@ impl Expander {
 type Expansion = (HashMap<String, Vec<Spanned<Expr>>>, Option<Compiler>);
 
 // Expand all macro calls across a program's modules.
-pub fn expand(program: &Program, stage0: bool) -> Result<Expansion, Diagnostic> {
+pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
 	let mut ex = Expander {
 		publics: program.publics.clone(),
-		in_comp: stage0,
 		..Default::default()
 	};
 	let mut rest: HashMap<String, Vec<Spanned<Expr>>> = HashMap::new();

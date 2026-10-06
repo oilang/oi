@@ -2339,6 +2339,8 @@ main :: fn() {
 	# quasi-quote evals to `Ast`
 	# paired backticks around valid Oi
 	q := `2 + 2`
+	# quotes work in any comptime code, so plain helper fns can build Ast for a macro
+	double :: fn(e: Ast) Ast { `%e * 2` }
 
 	# %name unquotes a comptime value, %{expr} unquotes an expression
 	n := 2

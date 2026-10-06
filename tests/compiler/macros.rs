@@ -212,6 +212,32 @@ fn macro_ret_must_be_ast() {
 }
 
 #[test]
+fn quotes_in_comp() {
+	check(
+		indoc! {"
+			double :: fn(x: Ast) Ast { `%x * 2` }
+			dub! :: fn(x: Ast) Ast { double(x) }
+			print(dub!(3))
+		"},
+		"6",
+	);
+	check(
+		indoc! {"
+			P :: struct { x: int }
+			getx :: fn(p: P) int { p.x }
+			twice! :: fn(e: Ast) Ast { `%e * 2` }
+			main :: fn() { print(twice!(getx(P.{ 3 }))) }
+		"},
+		"6",
+	);
+}
+
+#[test]
+fn runtime_quote_is_rejected() {
+	fail("q := `1 + 2`", "quotes only exist at comptime");
+}
+
+#[test]
 fn unquote_lifts_primitives() {
 	check(
 		indoc! {r#"

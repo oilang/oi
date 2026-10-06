@@ -994,7 +994,7 @@ impl<M: Module> Compiler<M> {
 
 		// expand user macros to AST
 		let t = Instant::now();
-		let (mut expanded, mut stage0) = expand(program, self.stage0)?;
+		let (mut expanded, mut stage0) = expand(program)?;
 		self.timings.push(("expand", t.elapsed()));
 		for m in &program.modules {
 			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
@@ -2034,6 +2034,7 @@ impl<M: Module> Compiler<M> {
 			wanted: &mut self.wanted,
 			roots: &mut self.roots,
 			c_callback: false,
+			comptime: self.stage0,
 			printers: &mut self.printers,
 			descs: &mut self.descs,
 			string_idx: &mut self.string_idx,

@@ -65,6 +65,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub wanted: &'a mut Vec<FuncId>,
 	pub roots: &'a mut Vec<String>,
 	pub c_callback: bool,
+	pub comptime: bool,
 	pub printers: &'a mut Vec<(String, Typ, bool, runtime::Sink)>,
 	pub descs: &'a mut HashMap<String, DataId>,
 	pub string_idx: &'a mut usize,

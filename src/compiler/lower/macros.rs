@@ -5,6 +5,9 @@ use super::*;
 impl<'a, M: Module> Translator<'a, M> {
 	// Lower a quote. Register its template and build the Ast it produces at runtime.
 	pub(super) fn quote(&mut self, stmts: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
+		if !self.comptime {
+			return Err(Diagnostic::new("quotes only exist at comptime", span.into_range()).with_label("runtime quote"));
+		}
 		let (tpl, slots) = expand::register(stmts, span)?;
 		let mut ptrs = Vec::with_capacity(slots.len());
 		for slot in &slots {
