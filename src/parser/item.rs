@@ -2,7 +2,7 @@ use super::{
 	Member, P, Parsers, Rec, brace, bracket, fn_def, ident, list, list1, loose_list, named_ret, paren, spanned,
 	split_members, trailing_list, trailing_list1,
 };
-use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem};
+use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem, Vis};
 use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
@@ -20,6 +20,9 @@ where
 	let name_head = p.def_name.clone().then(p.type_params.clone());
 	let item_head = name_head.clone().then_ignore(just(Token::DoubleColon));
 	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
+	let vis = just(Token::Pub)
+		.ignore_then(paren(just(Token::Ident("package".into()))).to(Vis::Package).or_not())
+		.map(|v| v.unwrap_or(Vis::Pub));
 
 	// fn defs
 	let func = item_head
@@ -288,7 +291,7 @@ where
 		.or_not()
 		.then(func.clone().or(p.unquote.clone()).or(bare_fill).or(const_fill))
 		.map_with(|(pub_, f), ex| match pub_ {
-			Some(_) => (Expr::Pub(Box::new(f)), ex.span()),
+			Some(_) => (Expr::Pub(Vis::Pub, Box::new(f)), ex.span()),
 			None => f,
 		});
 	let fill = p.annotations.clone().or_not().then(fill).map_with(|(anns, f), ex| match anns {
@@ -379,19 +382,20 @@ where
 		.then(just(Token::Dot).ignore_then(brace(loose_list(use_item))).or_not())
 		.map_with(|((name, path), group), ex| (Expr::Use { name, path, group }, ex.span()))
 		.boxed();
-	let public = just(Token::Pub)
-		.ignore_then(def.clone().or(use_decl.clone()).or(p.bind.clone()).or(p.macro_def.clone()))
-		.map_with(|d, ex| (Expr::Pub(Box::new(d)), ex.span()))
+	let public = vis
+		.clone()
+		.then(def.clone().or(use_decl.clone()).or(p.bind.clone()).or(p.macro_def.clone()))
+		.map_with(|(v, d), ex| (Expr::Pub(v, Box::new(d)), ex.span()))
 		.boxed();
 	// annotations
 	let annotated = p
 		.annotations
 		.clone()
-		.then(just(Token::Pub).or_not())
+		.then(vis.or_not())
 		.then(def.clone().or(p.bind.clone()))
 		.map_with(|((anns, public), item), ex| {
 			let item = match public {
-				Some(_) => (Expr::Pub(Box::new(item)), ex.span()),
+				Some(v) => (Expr::Pub(v, Box::new(item)), ex.span()),
 				None => item,
 			};
 			(Expr::Annotated(anns, Box::new(item)), ex.span())

@@ -16,7 +16,7 @@ use super::{
 };
 use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam, place};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::Scope;
+use crate::loader::{Publics, Scope};
 use crate::runtime;
 
 mod anon;
@@ -56,7 +56,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub core_traits: &'a HashSet<String>,
 	pub module_scopes: &'a HashMap<String, Scope>,
 	pub map: &'a SourceMap,
-	pub publics: &'a HashSet<String>,
+	pub publics: &'a Publics,
 	pub core_origin: &'a HashSet<String>,
 	pub privates: &'a HashMap<String, HashSet<String>>,
 	pub reexports: &'a HashMap<String, String>,

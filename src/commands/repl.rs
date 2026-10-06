@@ -108,7 +108,7 @@ fn defs(line: &str, raw: &HashSet<String>) -> String {
 
 fn is_def(e: &Expr) -> bool {
 	match e {
-		Expr::Pub(b) | Expr::Annotated(_, b) => is_def(&b.0),
+		Expr::Pub(_, b) | Expr::Annotated(_, b) => is_def(&b.0),
 		Expr::Bind { .. } | Expr::Use { .. } | Expr::Claim { .. } | Expr::MacroDef { .. } => true,
 		_ => e.def_name().is_some(),
 	}

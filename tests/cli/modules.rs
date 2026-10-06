@@ -199,6 +199,29 @@ fn member_visibility() {
 }
 
 #[test]
+fn package_visibility() {
+	let home = Project::new()
+		.file(
+			"lib/greet/lib.oi",
+			["module greet", "use util", "pub hi :: fn() int { util.inner() }"],
+		)
+		.file(
+			"lib/util/lib.oi",
+			["module util", "pub(package) inner :: fn() int { 42 }"],
+		);
+	let entry = Project::new();
+	let exec = |key: &str, dir: &std::path::Path| {
+		oi(&["exec", "use greet\nprint(greet.hi())"])
+			.current_dir(&entry)
+			.env(key, dir)
+			.run(None)
+	};
+	// one package on OI_PATH, two once installed
+	assert_eq!(ok(exec("OI_PATH", &home.as_ref().join("lib"))), "42");
+	assert!(err(exec("OI_HOME", home.as_ref())).contains("private to module `util`"));
+}
+
+#[test]
 fn traits_are_module_scoped() {
 	let p = Project::new()
 		.main([

@@ -10,7 +10,7 @@ use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, include_dir};
 
 use crate::Reported;
-use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem};
+use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -118,12 +118,30 @@ pub struct Visible {
 	pub only: Option<HashMap<String, String>>,
 }
 
+// Qualified names visible outside their module, and each module's package.
+#[derive(Default, Clone)]
+pub struct Publics {
+	pub vis: HashMap<String, Vis>,
+	pub packages: HashMap<String, PathBuf>,
+}
+
+impl Publics {
+	// Whether a key is visible from a given module.
+	pub fn is_visible(&self, key: &str, from: &str) -> bool {
+		let owner = key.split_once("::").map_or("", |(m, _)| m);
+		match self.vis.get(key) {
+			Some(Vis::Package) => self.packages.get(owner) == self.packages.get(from),
+			v => v.is_some(),
+		}
+	}
+}
+
 // A whole program, with its source files and modules and pubs, oh my.
 #[derive(Default)]
 pub struct Program {
 	pub map: SourceMap,
 	pub modules: Vec<Module>,
-	pub publics: HashSet<String>,
+	pub publics: Publics,
 	pub reexports: HashMap<String, String>,
 	pub consts: HashMap<String, Spanned<Expr>>,
 	pub annotations: HashMap<String, Vec<Annotation>>,
@@ -235,7 +253,7 @@ fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) ->
 // Fill an associated const fill.
 fn const_fill(e: &Expr) -> Option<(&String, &Spanned<Expr>)> {
 	match e {
-		Expr::Pub(b) => const_fill(&b.0),
+		Expr::Pub(_, b) => const_fill(&b.0),
 		Expr::Bind {
 			name, value: Some(v), ..
 		} => Some((name, v)),
@@ -244,15 +262,15 @@ fn const_fill(e: &Expr) -> Option<(&String, &Spanned<Expr>)> {
 }
 
 // The definition an attribute macro wraps, and whether it is public.
-fn wrapped_def(e: &mut Expr) -> Option<(bool, &mut String)> {
+fn wrapped_def(e: &mut Expr) -> Option<(Option<Vis>, &mut String)> {
 	match e {
-		Expr::Pub(b) => wrapped_def(&mut b.0).map(|(_, n)| (true, n)),
+		Expr::Pub(v, b) => wrapped_def(&mut b.0).map(|(_, n)| (Some(*v), n)),
 		Expr::Annotated(_, b) => wrapped_def(&mut b.0),
 		Expr::Fn { name, .. }
 		| Expr::StructDef { name, .. }
 		| Expr::EnumDef { name, .. }
 		| Expr::TypeAlias { name, .. }
-		| Expr::TraitDef { name, .. } => Some((false, name)),
+		| Expr::TraitDef { name, .. } => Some((None, name)),
 		_ => None,
 	}
 }
@@ -307,13 +325,13 @@ struct Loader {
 	entry_paths: Vec<PathBuf>,
 	map: SourceMap,
 	modules: Vec<Module>,
-	publics: HashSet<String>,
+	publics: Publics,
 	reexports: HashMap<String, String>,
 	consts: HashMap<String, Spanned<Expr>>,
 	annotations: HashMap<String, Vec<Annotation>>,
 	// import stack
 	loading: Vec<String>,
-	selected: Vec<(String, String, Span)>,
+	selected: Vec<(String, String, String, Span)>,
 	// modules loaded from the embedded core tree, allowed to import internal mods
 	core_origin: HashSet<String>,
 	raw_macros: HashSet<String>,
@@ -331,7 +349,7 @@ impl Loader {
 		m: &mut Module,
 		name: &mut String,
 		qualify: bool,
-		public: bool,
+		public: Option<Vis>,
 		span: Span,
 	) -> Result<(), Diagnostic> {
 		let bare = name.clone();
@@ -342,8 +360,8 @@ impl Loader {
 			let msg = format!("`{bare}` is defined twice in module `{}`", m.name);
 			return Err(err(msg, span, "duplicate definition"));
 		}
-		if public {
-			self.publics.insert(name.clone());
+		if let Some(v) = public {
+			self.publics.vis.insert(name.clone(), v);
 		}
 		Ok(())
 	}
@@ -393,10 +411,9 @@ impl Loader {
 				return Err(err("`module` must come first", item.1, "move it to the top"));
 			}
 			// peel off `pub` wrapper
-			let public = matches!(item.0, Expr::Pub(_));
-			let mut item = match item {
-				(Expr::Pub(inner), _) => *inner,
-				item => item,
+			let (public, mut item) = match item {
+				(Expr::Pub(v, inner), _) => (Some(v), *inner),
+				item => (None, item),
 			};
 			if !anns.is_empty()
 				&& item.0.def_name().is_none()
@@ -426,10 +443,11 @@ impl Loader {
 				// ensure every imported item is public in its module
 				for it in &items {
 					let (remote, span) = it.remote();
-					self.selected.push((module.clone(), remote.clone(), *span));
+					self.selected
+						.push((module.clone(), remote.clone(), m.scope.module.clone(), *span));
 				}
 				let narrows = name.is_some() && group.is_some();
-				if public && (items.is_empty() || narrows) {
+				if public.is_some() && (items.is_empty() || narrows) {
 					return Err(err(
 						"only item imports can be re-exported yet",
 						item.1,
@@ -461,7 +479,7 @@ impl Loader {
 						let (local, span) = &it.local;
 						locals.push(local.clone());
 						let target = format!("{module}::{}", it.remote().0);
-						if public {
+						if public.is_some() {
 							self.reexports.insert(format!("{}::{local}", m.name), target.clone());
 						}
 						m.scope.env.insert(format!("{local}!"), format!("{target}!"));
@@ -485,12 +503,12 @@ impl Loader {
 				m.items.remove(file_start + i);
 				m.scope.env.remove(name.as_str());
 				self.annotations.remove(&prev);
-				self.publics.remove(&prev);
+				self.publics.vis.remove(&prev);
 			}
 			if let Expr::MacroCall { args, .. } = &mut item.0
 				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
 			{
-				self.define(m, name, !main, public || pubbed, span)?;
+				self.define(m, name, !main, public.or(pubbed), span)?;
 				m.items.push(item);
 				continue;
 			}
@@ -764,6 +782,14 @@ impl Loader {
 			if !files.is_empty() {
 				self.core_origin.insert(name.to_string());
 			}
+		} else {
+			let lib = self.roots.last() == Some(root);
+			let pkg = if lib {
+				root.join(dir.split('/').next().unwrap())
+			} else {
+				root.clone()
+			};
+			self.publics.packages.insert(name.to_string(), pkg);
 		}
 		Ok(files)
 	}
@@ -813,7 +839,7 @@ impl Loader {
 
 	// Every module implicitly uses core.
 	fn seed_prelude(&mut self) {
-		let core_pub: Vec<&String> = self.publics.iter().filter(|q| q.starts_with("core::")).collect();
+		let core_pub: Vec<&String> = self.publics.vis.keys().filter(|q| q.starts_with("core::")).collect();
 		for m in self.modules.iter_mut().filter(|m| m.name != "core") {
 			let core = Visible {
 				module: "core".into(),
@@ -858,7 +884,7 @@ impl Loader {
 
 	// Ensure selected names are public within their module.
 	fn check_selected(&self, reexports: &HashMap<String, String>) -> Result<(), Reported> {
-		for (module, name, span) in &self.selected {
+		for (module, name, from, span) in &self.selected {
 			let m = self.modules.iter().find(|m| &m.name == module).unwrap();
 			let is_def = |q: &String| {
 				self.consts.contains_key(q)
@@ -877,7 +903,7 @@ impl Loader {
 					format!("`{name}` cannot be imported"),
 					"only fns and types can be imported for now",
 				),
-				Some(q) if !self.publics.contains(q) => {
+				Some(q) if !self.publics.is_visible(q, from) => {
 					(format!("`{name}` is private to module `{module}`"), "not public")
 				}
 				_ => continue,
@@ -914,7 +940,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 			.collect(),
 		map: SourceMap::default(),
 		modules: vec![],
-		publics: HashSet::new(),
+		publics: Publics::default(),
 		reexports: HashMap::new(),
 		consts: HashMap::new(),
 		annotations: HashMap::new(),
@@ -926,6 +952,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
+	loader.publics.packages.insert(String::new(), root.to_path_buf());
 	loader.load_files("main", entry)?;
 	let reexports = loader.resolve_reexports();
 	loader.seed_prelude();

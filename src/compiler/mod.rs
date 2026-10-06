@@ -15,7 +15,7 @@ use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail};
-use crate::loader::{Program, Scope, is_hook_trait, is_literal};
+use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal};
 use crate::runtime;
 
 mod cache;
@@ -572,7 +572,7 @@ pub struct Compiler<M: Module = JITModule> {
 	core_traits: HashSet<String>,
 	descs: HashMap<String, DataId>,
 	defined: HashSet<FuncId>,
-	publics: HashSet<String>,
+	publics: Publics,
 	core_origin: HashSet<String>,
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
@@ -639,7 +639,7 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 
 fn comptime_only(e: &Expr) -> bool {
 	match e {
-		Expr::Pub(inner) | Expr::Annotated(_, inner) => comptime_only(&inner.0),
+		Expr::Pub(_, inner) | Expr::Annotated(_, inner) => comptime_only(&inner.0),
 		Expr::Fn { params, ret, .. } => {
 			params.iter().any(|p| mentions(&p.typ, "Ast")) || ret.as_ref().is_some_and(|r| mentions(&r.0, "Ast"))
 		}
@@ -813,7 +813,7 @@ impl<M: Module> Compiler<M> {
 			core_traits: HashSet::new(),
 			descs: HashMap::new(),
 			defined: HashSet::new(),
-			publics: HashSet::new(),
+			publics: Publics::default(),
 			core_origin: HashSet::new(),
 			privates: HashMap::new(),
 			reexports: HashMap::new(),

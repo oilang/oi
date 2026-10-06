@@ -310,8 +310,8 @@ pub enum Expr {
 		path: Vec<Spanned<String>>,
 		group: Option<Vec<UseItem>>,
 	},
-	// `pub expr`
-	Pub(Box<Spanned<Expr>>),
+	// `pub expr`, `pub(scope) expr`
+	Pub(Vis, Box<Spanned<Expr>>),
 
 	// `@annotation`
 	Annotated(Vec<Annotation>, Box<Spanned<Expr>>),
@@ -373,7 +373,7 @@ impl Expr {
 			_ => (&[][..], e),
 		};
 		match &e.0 {
-			Expr::Pub(inner) => (anns, true, inner),
+			Expr::Pub(_, inner) => (anns, true, inner),
 			_ => (anns, false, e),
 		}
 	}
@@ -406,7 +406,7 @@ impl Expr {
 			| Expr::Ref(v)
 			| Expr::Deref(v)
 			| Expr::DerefAssign { value: v, .. }
-			| Expr::Pub(v)
+			| Expr::Pub(_, v)
 			| Expr::Propagate(v)
 			| Expr::Negative(v)
 			| Expr::Not(v)
@@ -799,6 +799,13 @@ impl std::fmt::Display for Access {
 			Access::Move => "move",
 		})
 	}
+}
+
+// `pub` or `pub(scope)`
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Vis {
+	Pub,
+	Package,
 }
 
 // A function parameter or struct field declaration.

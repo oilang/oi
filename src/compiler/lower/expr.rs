@@ -487,7 +487,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let key = format!("{module}::{target}");
 					let key = self.reexports.get(&key).cloned().unwrap_or(key);
 					if let Some(l) = self.vars.get(&key).cloned().filter(|l| l.stat) {
-						if !self.publics.contains(&key) {
+						if !self.publics.is_visible(&key, &self.types.scope.module) {
 							let msg = format!("`{field}` is private to module `{module}`");
 							return Err(Diagnostic::new(msg, expr.1.into_range()).with_label("not public"));
 						}
@@ -496,7 +496,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((val, l.typ));
 					}
 					let (msg, label) = match self.types.consts.map.get(&key).cloned() {
-						Some(c) if self.publics.contains(&key) => return self.expr(&c),
+						Some(c) if self.publics.is_visible(&key, &self.types.scope.module) => return self.expr(&c),
 						Some(_) => (format!("`{field}` is private to module `{module}`"), "not public"),
 						None if self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key) => {
 							(format!("`{field}` is a function, call it"), "add `()`")
@@ -957,7 +957,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new("`defer` is only allowed as a statement", expr.1.into_range())
 					.with_label("not a value"),
 			),
-			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(_) => {
+			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(..) => {
 				unreachable!("not an expression")
 			}
 			Expr::MacroDef { .. } => unreachable!("removed by macro expansion"),

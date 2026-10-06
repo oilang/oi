@@ -182,7 +182,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let key = format!("{module}::{method}");
 		let key = self.reexports.get(&key).cloned().unwrap_or(key);
 		let known = self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key);
-		if !self.publics.contains(&key) {
+		if !self.publics.is_visible(&key, &self.types.scope.module) {
 			let (msg, label) = if known {
 				(format!("`{method}` is private to module `{module}`"), "not public")
 			} else {

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
-use crate::loader::{Module, Program, Scope};
+use crate::loader::{Module, Program, Publics, Scope};
 use crate::runtime;
 
 use super::Compiler;
@@ -43,7 +43,7 @@ struct Expander {
 	// name -> (arity, stage-0 fn pointer)
 	macros: HashMap<String, (usize, *const u8)>,
 	// qualified names visible outside their own module
-	publics: HashSet<String>,
+	publics: Publics,
 	// keeps the stage-0 JIT and its code alive for every call this pass makes
 	stage0: Option<Compiler>,
 	hoisted: Vec<Spanned<Expr>>,
@@ -289,7 +289,7 @@ impl Expander {
 			return fail(format!("cannot find module `{module}`"), span, "no such module");
 		};
 		let key = format!("{}::{rest}!", vis.module);
-		if !self.publics.contains(&key) {
+		if !self.publics.is_visible(&key, &scope.module) {
 			return fail(format!("`{rest}` is private to module `{module}`"), span, "not public");
 		}
 		Ok(key)

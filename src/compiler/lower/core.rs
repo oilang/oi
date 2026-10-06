@@ -244,7 +244,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => match self.import_item(&Expr::Ident(s.to_string()), name, e.1) {
 				Ok(Some((m, t))) => {
 					let key = format!("{m}::{t}");
-					self.publics.contains(self.reexports.get(&key).unwrap_or(&key))
+					self.publics
+						.is_visible(self.reexports.get(&key).unwrap_or(&key), &self.types.scope.module)
 				}
 				_ => {
 					let key = format!("{}.{name}", self.qualify(s));
