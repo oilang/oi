@@ -1193,6 +1193,24 @@ impl<M: Module> Compiler<M> {
 							self.generic_claims.insert((typ.clone(), tn.clone()), bounds);
 							// generic fills
 							if !is_hook_trait(tn) {
+								// unfilled defaults
+								let ms = traits.get(tn.as_str()).map_or(&[][..], |t| t.3);
+								let decls: Vec<TraitFn> = trait_fns(ms).collect();
+								let filled = |n: &str| {
+									(fills.iter())
+										.any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn { name, .. } if name == n))
+								};
+								for d in ms {
+									if matches!(&d.0, Expr::Fn { name, body, .. } if !body.is_empty() && !filled(name))
+									{
+										let claim = Fills {
+											decls: &decls,
+											..Fills::default()
+										};
+										let d = std::slice::from_ref(d);
+										self.register_fills(typ, type_params, d, scope, &mut others, claim)?;
+									}
+								}
 								continue;
 							}
 						}

@@ -885,4 +885,15 @@ fn generic_claims() {
 		print(Box[int] is Eq, Box[Foo] is Eq, same(Box.{ v = 2 }, Box.{ v = 2 }))
 	"#};
 	check(src, ["3 ab", "true false true"]);
+
+	let src = indoc! {r#"
+		Sh :: trait {
+			s: fn(self) string
+			loud :: fn(self) string { self.s().upper() }
+		}
+		Box[T] :: struct { v: T }
+		Box[T] : Sh < { s :: fn(self) string { "{self.v} box" } }
+		Box.{ 1 }.loud()
+	"#};
+	check(src, "1 BOX");
 }
