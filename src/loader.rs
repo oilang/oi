@@ -328,6 +328,7 @@ struct Loader {
 	modules: Vec<Module>,
 	publics: Publics,
 	reexports: HashMap<String, String>,
+	reexported_modules: HashMap<String, Visible>,
 	consts: HashMap<String, Spanned<Expr>>,
 	annotations: HashMap<String, Vec<Annotation>>,
 	// import stack
@@ -455,11 +456,11 @@ impl Loader {
 						.push((module.clone(), remote.clone(), m.scope.module.clone(), *span));
 				}
 				let narrows = name.is_some() && group.is_some();
-				if public.is_some() && (items.is_empty() || narrows) {
+				if public == Some(Vis::Package) {
 					return Err(err(
-						"only item imports can be re-exported yet",
+						"only `pub` imports can be re-exported",
 						item.1,
-						"import it privately instead",
+						"`pub(package) use` is not a thing yet",
 					));
 				}
 				if narrows || items.is_empty() {
@@ -474,6 +475,9 @@ impl Loader {
 						module: module.clone(),
 						only,
 					};
+					if public.is_some() {
+						self.reexported_modules.insert(format!("{}::{local}", m.name), vis.clone());
+					}
 					// handle re-importing
 					if let Some(prev) = m.scope.visible.insert(local.clone(), vis)
 						&& (narrows || prev.only.is_some() || prev.module != *module)
@@ -673,10 +677,22 @@ impl Loader {
 	}
 
 	// Seal a module, then load its imports.
-	fn seal(&mut self, module: Module, imports: Vec<(String, Span)>) -> Result<(), Reported> {
+	fn seal(&mut self, mut module: Module, imports: Vec<(String, Span)>) -> Result<(), Reported> {
 		self.loading.push(module.name.clone());
-		self.modules.push(module);
+		let at = self.modules.len();
+		self.modules.push(Module::new(&module.name));
 		for (name, span) in imports {
+			self.load_module(&name, span)?;
+		}
+		// narrow after imports, so their re-exports are known
+		let mut reached = vec![];
+		for (range, scope) in &mut module.scope.files {
+			for item in module.items.iter_mut().filter(|i| range.contains(&i.1.start)) {
+				self.reach_submodules(item, scope, &mut reached);
+			}
+		}
+		self.modules[at] = module;
+		for (name, span) in reached {
 			self.load_module(&name, span)?;
 		}
 		self.loading.pop();
@@ -696,11 +712,7 @@ impl Loader {
 		});
 		for (result, base) in parsed.into_iter().zip(bases) {
 			let items = result.map_err(|ds| self.report(ds))?;
-			let start = module.items.len();
-			let mut scope = self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
-			for item in &mut module.items[start..] {
-				self.reach_submodules(item, &mut scope, &mut imports);
-			}
+			let scope = self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
 			module.scope.files.push((base..base + self.map.src(base).len(), scope));
 		}
 		self.seal(module, imports)
@@ -735,13 +747,16 @@ impl Loader {
 		});
 		if let Expr::Field { tuple, field } = &e.0
 			&& let Expr::Ident(head) = &tuple.0
-			&& let Some(Visible { module, only: None }) = scope.visible.get(head)
-			&& let module = self.canon(&format!("{module}.{field}"))
-			&& self.is_module(&module)
-		{
+			&& let Some(Visible { module, only }) = scope.visible.get(head)
+			&& let Some(vis) = self.reexported_modules.get(&format!("{module}::{field}")).cloned().or_else(|| {
+				let module = self.canon(&format!("{module}.{field}"));
+				(only.is_none() && self.is_module(&module)).then(|| {
+					imports.push((module.clone(), e.1));
+					Visible { module, only: None }
+				})
+			}) {
 			let local = format!("{head}.{field}");
-			imports.push((module.clone(), e.1));
-			scope.visible.insert(local.clone(), Visible { module, only: None });
+			scope.visible.insert(local.clone(), vis);
 			e.0 = Expr::Ident(local);
 		}
 	}
@@ -960,6 +975,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		modules: vec![],
 		publics: Publics::default(),
 		reexports: HashMap::new(),
+		reexported_modules: HashMap::new(),
 		consts: HashMap::new(),
 		annotations: HashMap::new(),
 		loading: vec![],

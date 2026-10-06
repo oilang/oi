@@ -340,11 +340,31 @@ fn reexport_chain() {
 }
 
 #[test]
+fn reexport_module() {
+	for (top, call) in [
+		("pub use base", "top.base.hi()"),
+		("pub b :: use base.{ hi }", "top.b.hi()"),
+		("pub use mid", "top.mid.base.hi()"),
+	] {
+		let p = Project::new()
+			.main(["use top", &format!("print({call})")])
+			.lib("top", [top])
+			.lib("mid", ["pub use base"])
+			.lib("base", ["pub hi :: fn() int { 7 }", "pub bye :: fn() int { 8 }"]);
+		p.check("7");
+	}
+	let p = Project::new()
+		.main(["use top", "print(top.b.bye())"])
+		.lib("top", ["pub b :: use base.{ hi }"])
+		.lib("base", ["pub hi :: fn() int { 7 }", "pub bye :: fn() int { 8 }"]);
+	p.fail_with("is not part of");
+}
+
+#[test]
 fn reexport_fails() {
 	for (mid, expected) in [
 		("use base.hi", "has no function `hi`"),
-		("pub use base", "only item imports can be re-exported"),
-		("pub io :: use base.{ hi }", "only item imports can be re-exported"),
+		("pub(package) use base", "only `pub` imports"),
 	] {
 		let p = Project::new()
 			.main(["use mid", "print(mid.hi())"])
