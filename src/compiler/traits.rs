@@ -67,18 +67,6 @@ pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = Trait
 	})
 }
 
-// Whether a literal's kind matches a declared field type.
-fn literal_fits(lit: &Expr, want: &Typ) -> bool {
-	use Typ::*;
-	match lit {
-		Expr::Int(_) => matches!(want, Int(_) | UInt(_) | ISize | USize | Float(_) | Rune),
-		Expr::Float(_) => matches!(want, Float(_)),
-		Expr::String(_) => matches!(want, Str),
-		Expr::Bool(_) => matches!(want, Bool),
-		_ => false,
-	}
-}
-
 // Complete a fill's signature from the trait's declaration.
 // An empty, non-tuple param list means the header was omitted entirely.
 pub(crate) fn fill_from_decl(
@@ -279,9 +267,12 @@ pub(super) fn check_impls<'p>(
 					None => return missing(),
 				},
 			};
-			if !literal_fits(&lit.0, &want) {
+			if matches!(lit.0, Expr::Atom(_)) || !lit_matches(&lit.0, &want) {
 				let msg = format!("`{key}` must be a `{want}` literal to satisfy trait `{tn}`");
 				return fail(msg, lit.1, "wrong kind of literal");
+			}
+			if let (Expr::Int(n), Typ::Float(_)) = (&lit.0, &want) {
+				consts.insert(key, (Expr::Float(*n as f64), lit.1));
 			}
 		}
 		let mut sig_aliases = types.aliases.clone();
@@ -298,6 +289,14 @@ pub(super) fn check_impls<'p>(
 				None => Typ::unit(),
 			};
 			Ok(Typ::Fn(params, Box::new(ret)))
+		};
+		let same_sig = |name: &str, got: Typ, want: Typ, at: Span| match got == want {
+			true => Ok(()),
+			false => fail(
+				format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`"),
+				at,
+				"wrong signature",
+			),
 		};
 		for m in methods {
 			let Expr::Fn {
@@ -322,10 +321,7 @@ pub(super) fn check_impls<'p>(
 			{
 				gother.typ = wother.typ.clone();
 			}
-			if got != want {
-				let msg = format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`");
-				return fail(msg, m.1, "wrong signature");
-			}
+			same_sig(name, got, want, m.1)?;
 		}
 		for t in *tmethods {
 			let Expr::Fn {
@@ -347,11 +343,7 @@ pub(super) fn check_impls<'p>(
 			if !defaults.contains_key(&key)
 				&& let Some(f) = others.iter().find(|f| f.key == format!("{typ}.{name}"))
 			{
-				let (got, want) = (sig(&f.params, &f.ret)?, sig(params, ret)?);
-				if got != want {
-					let msg = format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`");
-					return fail(msg, span, "wrong signature");
-				}
+				same_sig(name, sig(&f.params, &f.ret)?, sig(params, ret)?, span)?;
 				continue;
 			}
 			// vias

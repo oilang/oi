@@ -711,6 +711,22 @@ fn dyn_field_from_const() {
 }
 
 #[test]
+fn int_fill_of_float_field() {
+	let src = indoc! {"
+		Deep :: trait {
+			depth: float
+			get :: fn(self) float { self.depth }
+		}
+		Rock :: struct {}
+		Rock : Deep < { depth :: 3 }
+		d : Deep : Rock.{}
+		print(Rock.{}.get())
+		print(d.depth)
+	"};
+	check(src, ["3.0", "3.0"]);
+}
+
+#[test]
 fn rejects_wrong_type_fill() {
 	fail(
 		indoc! {"
