@@ -573,6 +573,7 @@ pub struct Compiler<M: Module = JITModule> {
 	descs: HashMap<String, DataId>,
 	defined: HashSet<FuncId>,
 	publics: HashSet<String>,
+	core_origin: HashSet<String>,
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
 	consts: HashMap<String, Spanned<Expr>>,
@@ -813,6 +814,7 @@ impl<M: Module> Compiler<M> {
 			descs: HashMap::new(),
 			defined: HashSet::new(),
 			publics: HashSet::new(),
+			core_origin: HashSet::new(),
 			privates: HashMap::new(),
 			reexports: HashMap::new(),
 			consts: HashMap::new(),
@@ -983,6 +985,7 @@ impl<M: Module> Compiler<M> {
 
 		self.cache = cache::Store::open(&program.roots[0]);
 		self.publics = program.publics.clone();
+		self.core_origin = program.core_origin.clone();
 		self.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
 		self.map = program.map.clone();
@@ -2037,6 +2040,7 @@ impl<M: Module> Compiler<M> {
 			module_scopes: &self.module_scopes,
 			map: &self.map,
 			publics: &self.publics,
+			core_origin: &self.core_origin,
 			privates: &self.privates,
 			reexports: &self.reexports,
 			statics: &self.statics,

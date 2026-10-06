@@ -394,6 +394,23 @@ fn dir_wins_over_single_file_module() {
 }
 
 #[test]
+fn core_root_beside_local_module() {
+	let p = Project::new()
+		.main([
+			"use math",
+			"cm :: use core.math",
+			"print(math.hi() + cm.abs(-3) + core.math.max(1, 2))",
+		])
+		.lib("math", ["pub hi :: fn() int { 7 }"]);
+	p.check("12");
+
+	let p = Project::new()
+		.main(["use math", "print(math.abs(-3))"])
+		.lib("math", ["pub hi :: fn() int { 7 }"]);
+	p.fail_with("local `math` shadows `core.math`");
+}
+
+#[test]
 fn subdir_is_a_submodule() {
 	for main in [
 		"use foo\nprint(foo.api.gen() + foo.hi())",

@@ -144,6 +144,14 @@ fn err(msg: impl Into<String>, span: Span, label: &str) -> Diagnostic {
 	Diagnostic::new(msg.into(), span.into_range()).with_label(label)
 }
 
+// Hint `core.x` when a local `x` shadows it.
+pub(crate) fn shadow_note(d: Diagnostic, module: &str, core_origin: &HashSet<String>) -> Diagnostic {
+	match CORE.get_dir(module.replace('.', "/")) {
+		Some(_) if !core_origin.contains(module) => d.with_note(format!("local `{module}` shadows `core.{module}`")),
+		_ => d,
+	}
+}
+
 // Ensure const values are literals.
 pub(crate) fn is_literal(e: &Expr) -> bool {
 	match e {
@@ -405,7 +413,7 @@ impl Loader {
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
 				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
 				let depth = path.len() - usize::from(!whole);
-				let module = &dotted(depth);
+				let module = &self.canon(&dotted(depth));
 				// a `.item` import tail acts as a one-item group
 				let items: Vec<UseItem> = match (path.get(depth), group) {
 					(Some(it), _) => vec![UseItem {
@@ -615,11 +623,16 @@ impl Loader {
 
 		// imports stay with the file that wrote them
 		let env = locals.into_iter().flat_map(|l| [format!("{l}!"), l]);
+		let core = Visible {
+			module: "core".into(),
+			only: None,
+		};
+		m.scope.visible.entry("core".into()).or_insert(core);
 		Ok(Scope {
 			env: env.filter_map(|k| m.scope.env.remove_entry(&k)).collect(),
 			visible: std::mem::take(&mut m.scope.visible),
 			module: m.scope.module.clone(),
-			files: vec![],
+			..Scope::default()
 		})
 	}
 
@@ -660,7 +673,22 @@ impl Loader {
 	// Whether `name` is a module dir.
 	fn is_module(&self, name: &str) -> bool {
 		let path = name.replace('.', "/");
-		self.roots.iter().any(|r| r.join(&path).is_dir()) || CORE.get_dir(&path).is_some()
+		self.roots.iter().any(|r| r.join(&path).is_dir())
+			|| CORE.get_dir(path.strip_prefix("core/").unwrap_or(&path)).is_some()
+	}
+
+	// Whether root `r` has module `dir`.
+	fn on_disk(&self, r: &Path, dir: &str) -> bool {
+		let file = r.join(format!("{dir}.oi"));
+		r.join(dir).is_dir() || (file.is_file() && !self.entry_paths.contains(&file))
+	}
+
+	// `core.x` is `x` unless shadowed.
+	fn canon(&self, name: &str) -> String {
+		match name.strip_prefix("core.") {
+			Some(x) if !self.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
+			_ => name.into(),
+		}
 	}
 
 	// Rewrite `m.sub` to an import of submodule `sub`.
@@ -672,7 +700,7 @@ impl Loader {
 		if let Expr::Field { tuple, field } = &e.0
 			&& let Expr::Ident(head) = &tuple.0
 			&& let Some(Visible { module, only: None }) = scope.visible.get(head)
-			&& let module = format!("{module}.{field}")
+			&& let module = self.canon(&format!("{module}.{field}"))
 			&& self.is_module(&module)
 		{
 			let local = format!("{head}.{field}");
@@ -705,12 +733,11 @@ impl Loader {
 
 	// Find a module's files on disk, falling back to the embedded core tree.
 	fn module_files(&mut self, name: &str, from_core: bool) -> Result<Vec<(String, String)>, Reported> {
-		let dir = &name.replace('.', "/");
+		// `core.x` skips fs
+		let from_core = from_core || name.starts_with("core.");
+		let dir = &name.strip_prefix("core.").unwrap_or(name).replace('.', "/");
 		let file = format!("{dir}.oi");
-		let has = |r: &&PathBuf| {
-			r.join(dir).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
-		};
-		let root = self.roots.iter().find(has).unwrap_or(&self.roots[0]);
+		let root = self.roots.iter().find(|r| self.on_disk(r, dir)).unwrap_or(&self.roots[0]);
 		let mut disk = if !from_core {
 			walk_oi(&root.join(dir))
 		} else {
@@ -855,7 +882,7 @@ impl Loader {
 				}
 				_ => continue,
 			};
-			return Err(self.report([err(msg, *span, label)]));
+			return Err(self.report([shadow_note(err(msg, *span, label), module, &self.core_origin)]));
 		}
 		Ok(())
 	}
