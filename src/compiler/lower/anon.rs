@@ -124,6 +124,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
 			self_name,
 			module: self.types.scope.module.clone(),
+			span,
 			pure: self.pure,
 			ctx,
 		};

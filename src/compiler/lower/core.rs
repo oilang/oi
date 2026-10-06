@@ -8,9 +8,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.types
 	}
 
-	// The scope of the module a fn was written in.
-	pub(super) fn home_scope(&self, module: &str) -> &'a Scope {
-		&self.module_scopes[if module.is_empty() { "main" } else { module }]
+	// The scope of the file a fn was written in.
+	pub(super) fn home_scope(&self, def: &GenericFnDef) -> &'a Scope {
+		let module = &def.module;
+		self.module_scopes[if module.is_empty() { "main" } else { module }].at(def.span)
 	}
 
 	// Qualify a bare top-level name against the module's own items.

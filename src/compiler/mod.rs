@@ -175,6 +175,7 @@ pub(crate) struct GenericFnDef {
 	pub captures: Vec<(String, Typ, bool)>,
 	pub self_name: Option<String>,
 	pub module: String,
+	pub span: Span,
 	pub pure: bool,
 	pub ctx: Option<String>,
 }
@@ -188,6 +189,7 @@ impl GenericFnDef {
 		body: &[Spanned<Expr>],
 		type_params: Vec<TypeParam>,
 		module: &str,
+		span: Span,
 	) -> Self {
 		GenericFnDef {
 			params,
@@ -198,6 +200,7 @@ impl GenericFnDef {
 			captures: vec![],
 			self_name: None,
 			module: module.into(),
+			span,
 			pure: false,
 			ctx: Some(CONTEXT.into()),
 		}
@@ -922,7 +925,7 @@ impl<M: Module> Compiler<M> {
 			let mut all_params = type_params.to_vec();
 			all_params.extend(mtp.clone());
 			qualify_bounds(scope, &mut all_params);
-			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module);
+			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module, m.1);
 			self.generics.insert(key, def);
 		}
 		Ok(())
@@ -985,7 +988,12 @@ impl<M: Module> Compiler<M> {
 		self.map = program.map.clone();
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		self.module_scopes = scopes.iter().map(|(&k, &v)| (k.to_string(), v.clone())).collect();
-		let scope_of = |key: &str| scopes[key.split_once("::").map_or("main", |(m, _)| m)];
+		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
+		let scope_of = |key: &str| {
+			defs.get(key)
+				.copied()
+				.unwrap_or_else(|| scopes[key.split_once("::").map_or("main", |(m, _)| m)])
+		};
 		self.annotations = program
 			.annotations
 			.iter()
@@ -1005,10 +1013,10 @@ impl<M: Module> Compiler<M> {
 				if let Some(name) = inner.0.def_name()
 					&& !anns.is_empty()
 				{
-					let anns = qualify_anns(&m.scope, anns);
+					let anns = qualify_anns(m.scope.at(inner.1), anns);
 					self.annotations.entry(name.into()).or_default().extend(anns);
 				}
-				*item = inner.clone();
+				*item = (inner.0.clone(), item.1);
 			}
 		}
 		// fold `comp` expressions to literals
@@ -1055,8 +1063,10 @@ impl<M: Module> Compiler<M> {
 			program
 				.modules
 				.iter()
-				.flat_map(|m| expanded[&m.name].iter().map(move |i| (&m.scope, i)))
+				.flat_map(|m| expanded[&m.name].iter().map(move |i| (m.scope.at(i.1), i)))
 		};
+		let defs: HashMap<&str, &Scope> = items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
+		let scope_of = |key: &str| defs.get(key).copied().unwrap_or_else(|| scope_of(key));
 
 		let has_main = items().any(|(_, i)| matches!(&i.0, Expr::Fn { name, .. } if name == "main"));
 
@@ -1262,6 +1272,7 @@ impl<M: Module> Compiler<M> {
 						body,
 						type_params,
 						&scope.module,
+						item.1,
 					);
 					self.generics.insert(name.clone(), def);
 				}
@@ -1773,7 +1784,7 @@ impl<M: Module> Compiler<M> {
 			}
 		};
 
-		let types = base.with_scope(scopes["main"]);
+		let types = base.with_scope(scopes["main"].at(entry.first().map_or_else(Span::default, |e| e.1)));
 		let ret = match main_ret {
 			Some((te, span)) => Some((types.resolve(te, *span)?, *span)),
 			None => None,
@@ -1839,7 +1850,7 @@ impl<M: Module> Compiler<M> {
 				}
 				continue;
 			};
-			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }];
+			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
 			let ret = ret.or_else(|| Some((self.mono[&sym].ret.clone(), (0..0).into())));

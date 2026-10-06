@@ -189,7 +189,7 @@ impl Expander {
 	) -> Result<(), Diagnostic> {
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		for e in &mut self.defs {
-			let scope = scopes[owner(e)];
+			let scope = scopes[owner(e)].at(e.1);
 			direct_calls(&mut e.0, &self.macros, scope, false);
 		}
 		let defs = std::mem::take(&mut self.defs);
@@ -204,7 +204,9 @@ impl Expander {
 					_ => super::comp::is_def(e),
 				};
 				let mut items: Vec<_> = (rest.get_mut(&m.name).expect("every module was seeded").iter_mut())
-					.filter_map(|it| (lent(&it.0) && !self.calls_macro(&mut it.0, &m.scope)).then(|| it.clone()))
+					.filter_map(|it| {
+						(lent(&it.0) && !self.calls_macro(&mut it.0, m.scope.at(it.1))).then(|| it.clone())
+					})
 					.collect();
 				items.extend(defs.iter().filter(|d| owner(d) == m.name).cloned());
 				Module {
@@ -344,14 +346,18 @@ impl Expander {
 			List(body) => {
 				let mut i = 0;
 				while i < body.len() {
-					match self.call(&body[i], scope, depth)? {
-						Some(stmts) => {
+					let (file, span) = (scope.at(body[i].1), body[i].1);
+					match self.call(&body[i], file, depth)? {
+						Some(mut stmts) => {
+							if !scope.files.is_empty() {
+								stmts.iter_mut().for_each(|s| s.1 = span);
+							}
 							let n = stmts.len();
 							body.splice(i..i + 1, stmts);
 							i += n;
 						}
 						None => {
-							self.expand(One(&mut body[i]), scope, depth)?;
+							self.expand(One(&mut body[i]), file, depth)?;
 							i += 1;
 						}
 					}
@@ -409,7 +415,7 @@ pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
 		rest.get_mut(&m.name)
 			.unwrap()
 			.iter_mut()
-			.any(|it| ex.calls_macro(&mut it.0, &m.scope))
+			.any(|it| ex.calls_macro(&mut it.0, m.scope.at(it.1)))
 	});
 	if called {
 		ex.compile_stage0(program, &mut rest)?;

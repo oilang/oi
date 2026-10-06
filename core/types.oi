@@ -1,5 +1,7 @@
 module core
 
+use rt
+
 # ranges
 
 pub Range :: struct { start: int, end: ?int, step: int }

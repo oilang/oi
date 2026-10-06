@@ -30,11 +30,13 @@ tags: []
 	- every .oi file in the dir contributes to the module
 	- modules looks for single adjacent files if no folder exists (`use foo` finds `./foo.oi`)
 	- no mod/index files are needed, so `mod.oi` is merely a file
-	- a subdir is a submodule: `raylib/math/` is `raylib.math`, its files declare `module math`
+	- a subdir is a submodule: `raylib/math/` is `raylib.math`, named by its dir
 	- importing a parent reaches its submodules, `use raylib` then `raylib.math.lerp(a, b)`
+	- `core` is a root too: `use core.math`, a local `math/` still wins for bare `use math`
 }#
 
-# declare module
+# optional header, the module is named by its dir
+# when present every file in the dir must agree
 module module_name
 
 # imports are dot-separated paths
@@ -48,6 +50,10 @@ use fs.{ stream, sock :: socket }
 # import aliases
 # `use` is an expression, and thus it may be bound
 mysha256 :: use hash.sha256
+
+# `with use` globs a module's names into this file
+with use math
+with m :: use math
 
 # visibility
 
@@ -127,10 +133,11 @@ foo :: fn() {
 }
 
 # use `pub` modifier to make visible to outside modules
-# TODO: likely `pub(scope)` a la Rust
 pub bar :: fn() {
 	print("bar")
 }
+# `pub(package)` is visible to every module under the same root, hidden outside
+pub(package) baz :: fn() {}
 
 # param modifiers
 

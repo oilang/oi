@@ -54,6 +54,19 @@ fn duplicate_name_across_files_rejected() {
 }
 
 #[test]
+fn imports_are_per_file() {
+	let p = Project::new()
+		.main(["use foo", "print(foo.hi())"])
+		.file(
+			"foo/a.oi",
+			["module foo", "use bar.two", "pub hi :: fn() int { two() + one() }"],
+		)
+		.file("foo/b.oi", ["module foo", "one :: fn() int { two() - 1 }"])
+		.lib("bar", ["pub two :: fn() int { 2 }"]);
+	p.fail_with("undefined function `two`");
+}
+
+#[test]
 fn import_alias() {
 	let p = Project::new()
 		.main(["f :: use foo", "print(f.hi())"])

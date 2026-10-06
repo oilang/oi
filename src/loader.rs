@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use chumsky::{input::Stream, prelude::*};
@@ -60,6 +61,7 @@ pub struct Scope {
 	pub env: HashMap<String, String>,
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
+	pub files: Vec<(Range<usize>, Scope)>,
 }
 
 // Whether `name` is a reserved hook trait.
@@ -73,6 +75,14 @@ pub(crate) fn hook_method(name: &str) -> &'static str {
 }
 
 impl Scope {
+	// The scope of the file holding `span`.
+	pub(crate) fn at(&self, span: Span) -> &Scope {
+		self.files
+			.iter()
+			.find(|(r, _)| r.contains(&span.start))
+			.map_or(self, |(_, s)| s)
+	}
+
 	// Resolve a bare name through this module's env, qualifying a miss into its own module.
 	pub(crate) fn qualify_name(&self, name: &str) -> String {
 		if let Some((m, t)) = name.split_once('.') {
@@ -121,9 +131,11 @@ pub struct Program {
 }
 
 impl Program {
-	// All items with their module's scope.
+	// All items with their file's scope.
 	pub fn items(&self) -> impl Iterator<Item = (&Scope, &Spanned<Expr>)> {
-		self.modules.iter().flat_map(|m| m.items.iter().map(move |i| (&m.scope, i)))
+		self.modules
+			.iter()
+			.flat_map(|m| m.items.iter().map(move |i| (m.scope.at(i.1), i)))
 	}
 }
 
@@ -348,10 +360,11 @@ impl Loader {
 		m: &mut Module,
 		imports: &mut Vec<(String, Span)>,
 		mut file: Vec<Spanned<Expr>>,
-	) -> Result<(), Diagnostic> {
+	) -> Result<Scope, Diagnostic> {
 		let main = m.name == "main";
 		let leaf = m.name.rsplit('.').next().unwrap_or_default();
 		let file_start = m.items.len();
+		let mut locals = vec![];
 		// enforce V-like module declaration rules (for now, as a pretty sane starting point)
 		match file.first() {
 			Some((Expr::Module(name), span)) if main && name != "main" => {
@@ -452,6 +465,7 @@ impl Loader {
 					// bind the items
 					for it in &items {
 						let (local, span) = &it.local;
+						locals.push(local.clone());
 						let target = format!("{module}::{}", it.remote().0);
 						if public {
 							self.reexports.insert(format!("{}::{local}", m.name), target.clone());
@@ -612,7 +626,15 @@ impl Loader {
 			m.items.push(item);
 			m.items.append(&mut assoc_types);
 		}
-		Ok(())
+
+		// imports stay with the file that wrote them
+		let env = locals.into_iter().flat_map(|l| [format!("{l}!"), l]);
+		Ok(Scope {
+			env: env.filter_map(|k| m.scope.env.remove_entry(&k)).collect(),
+			visible: std::mem::take(&mut m.scope.visible),
+			module: m.scope.module.clone(),
+			files: vec![],
+		})
 	}
 
 	// Seal a module, then load its imports.
@@ -637,12 +659,14 @@ impl Loader {
 			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b, raw))).collect();
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
 		});
-		for result in parsed {
+		for (result, base) in parsed.into_iter().zip(bases) {
 			let items = result.map_err(|ds| self.report(ds))?;
-			self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
-		}
-		for item in &mut module.items {
-			self.reach_submodules(item, &mut module.scope, &mut imports);
+			let start = module.items.len();
+			let mut scope = self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
+			for item in &mut module.items[start..] {
+				self.reach_submodules(item, &mut scope, &mut imports);
+			}
+			module.scope.files.push((base..base + self.map.src(base).len(), scope));
 		}
 		self.seal(module, imports)
 	}
@@ -764,8 +788,8 @@ impl Loader {
 				(alias.clone(), target.clone())
 			})
 			.collect();
-		for m in &mut self.modules {
-			for target in m.scope.env.values_mut() {
+		for (_, s) in self.modules.iter_mut().flat_map(|m| &mut m.scope.files) {
+			for target in s.env.values_mut() {
 				if let Some(t) = resolved.get(target) {
 					*target = t.clone();
 				}
@@ -790,6 +814,18 @@ impl Loader {
 					.or_insert_with(|| (*q).clone());
 			}
 		}
+
+		// files see their module's names under their own imports
+		for m in &mut self.modules {
+			for (_, f) in &mut m.scope.files {
+				for (k, v) in &m.scope.env {
+					f.env.entry(k.clone()).or_insert_with(|| v.clone());
+				}
+				for (k, v) in &m.scope.visible {
+					f.visible.entry(k.clone()).or_insert_with(|| v.clone());
+				}
+			}
+		}
 	}
 
 	// Re-resolve claim targets once the prelude is seeded.
@@ -801,14 +837,14 @@ impl Loader {
 				if let Expr::Claim { typ, .. } = &mut item.0
 					&& !crate::compiler::TypeCtx::builtin_type(typ)
 				{
-					*typ = m.scope.qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
+					*typ = m.scope.at(item.1).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
 				}
 			}
 		}
 	}
 
 	// Ensure selected names are public within their module.
-	fn check_selected(&self) -> Result<(), Reported> {
+	fn check_selected(&self, reexports: &HashMap<String, String>) -> Result<(), Reported> {
 		for (module, name, span) in &self.selected {
 			let m = self.modules.iter().find(|m| &m.name == module).unwrap();
 			let is_def = |q: &String| {
@@ -820,7 +856,8 @@ impl Loader {
 						})
 					})
 			};
-			let found = m.scope.env.get(name).or_else(|| m.scope.env.get(&format!("{name}!")));
+			let found = (m.scope.env.get(name).or_else(|| m.scope.env.get(&format!("{name}!"))))
+				.or_else(|| reexports.get(&format!("{module}::{name}")));
 			let (msg, label) = match found {
 				None => (format!("module `{module}` has no `{name}`"), "no such name"),
 				Some(q) if !is_def(q) => (
@@ -880,7 +917,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	let reexports = loader.resolve_reexports();
 	loader.seed_prelude();
 	loader.resolve_claims();
-	loader.check_selected()?;
+	loader.check_selected(&reexports)?;
 	Ok(Program {
 		roots: loader.roots.clone(),
 		map: loader.map,

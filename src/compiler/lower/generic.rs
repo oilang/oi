@@ -197,7 +197,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if subst.contains_key(&p.name) {
 				continue;
 			}
-			let typ = self.types().with_scope(self.home_scope(&def.module)).resolve(te, *span)?;
+			let typ = self.types().with_scope(self.home_scope(def)).resolve(te, *span)?;
 			subst.insert(p.name.clone(), typ);
 		}
 		Ok(())
@@ -214,7 +214,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(sig) = self.mono.get(&sym) {
 			return Ok(sig.clone());
 		}
-		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(&def.module));
+		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
 		let params = types.resolve_params(&def.params)?;
 		let ret = match &def.ret {
 			Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,

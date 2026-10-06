@@ -109,11 +109,11 @@ tags: []
 - `for/else`, `while/else` `python`
 - `match{}/or` (in addition to the planned `match{else}`)
 	- or at least clean up the usage of one of them
-- `if` unwrapping `v rust`
+- [x] `if` unwrapping `v rust`
 - using `not` or `!` in pipelines to achieve things like V's `val !in arr`
 - `noop` macro
 - int/float suffixes `let y: i32 = 13i32; let f: f64 = 1.3f64;` `rust`
-- maybe allow omitting `x in ` in a loop, like `loop 0..4`, because you can always use `$`
+- [x] maybe allow omitting `x in ` in a loop, like `loop 0..4`, because you can always use `$`
 - maybe named tuple args aren't a good thing
 	- just making structs more lightweight to use might be better, idk
 - CLI help docs, like Nushell and Cargo
