@@ -778,6 +778,11 @@ impl Loader {
 	fn seed_prelude(&mut self) {
 		let core_pub: Vec<&String> = self.publics.iter().filter(|q| q.starts_with("core::")).collect();
 		for m in self.modules.iter_mut().filter(|m| m.name != "core") {
+			let core = Visible {
+				module: "core".into(),
+				only: None,
+			};
+			m.scope.visible.entry("core".into()).or_insert(core);
 			for q in &core_pub {
 				m.scope
 					.env

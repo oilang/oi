@@ -32,6 +32,12 @@ fn import_trait() {
 }
 
 #[test]
+fn core_is_bound() {
+	check(["f :: fn(a: core.Alloc) { print(core.inf) }", "f(core.arena())"], "inf");
+	check(["core :: 3", "print(core)"], "3");
+}
+
+#[test]
 fn import_nested_path() {
 	fail("use a.b.c", "cannot find module `a.b`");
 	fail("x :: use a.b.{ c }", "cannot find module `a.b`");
