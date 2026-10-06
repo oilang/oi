@@ -58,6 +58,7 @@ impl Module {
 // A module's view of names.
 #[derive(Default, Clone)]
 pub struct Scope {
+	header: Option<String>,
 	pub env: HashMap<String, String>,
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
@@ -362,32 +363,17 @@ impl Loader {
 		mut file: Vec<Spanned<Expr>>,
 	) -> Result<Scope, Diagnostic> {
 		let main = m.name == "main";
-		let leaf = m.name.rsplit('.').next().unwrap_or_default();
 		let file_start = m.items.len();
 		let mut locals = vec![];
-		// enforce V-like module declaration rules (for now, as a pretty sane starting point)
-		match file.first() {
-			Some((Expr::Module(name), span)) if main && name != "main" => {
-				return Err(err("the entry file is module `main`", *span, "rename it to `main`"));
-			}
-			Some((Expr::Module(name), span)) if name != leaf => {
+		if let Some((Expr::Module(name), span)) = file.first() {
+			if m.scope.header.get_or_insert_with(|| name.clone()) != name {
 				return Err(err(
-					format!("this file must declare `module {leaf}`"),
+					"files in this module disagree",
 					*span,
-					"wrong module name",
+					"module name differs from the first file",
 				));
 			}
-			Some((Expr::Module(_), _)) => {
-				file.remove(0);
-			}
-			Some((_, span)) if !main => {
-				return Err(err(
-					format!("this file must declare `module {leaf}`"),
-					*span,
-					"add it as the first line",
-				));
-			}
-			_ => {}
+			file.remove(0);
 		}
 		for item in file {
 			// peel off annotations

@@ -26,13 +26,26 @@ fn private_fn_rejected() {
 }
 
 #[test]
-fn wrong_module_decl_names_the_file() {
+fn module_headers_must_agree() {
 	let p = Project::new()
 		.main(["use foo", "print(foo.hi())"])
-		.file("foo/lib.oi", ["module bar", "pub hi :: fn() int { 1 }"]);
+		.file("foo/a.oi", ["module foo", "pub hi :: fn() int { 1 }"])
+		.file("foo/b.oi", ["module bar", "pub yo :: fn() int { 2 }"]);
 	let out = err(p.run());
-	assert!(out.contains("foo/lib.oi"), "{out}");
-	assert!(out.contains("module foo"), "{out}");
+	assert!(out.contains("foo/b.oi"), "{out}");
+	assert!(out.contains("disagree"), "{out}");
+}
+
+#[test]
+fn headerless_module_and_entry_run() {
+	let p = Project::new()
+		.file("main.oi", ["module app", "use foo", "print(foo.hi())"])
+		.file("foo/lib.oi", ["module bar", "pub hi :: fn() int { 1 }"]);
+	p.check("1");
+	let p = Project::new()
+		.file("main.oi", ["use foo", "print(foo.hi())"])
+		.file("foo/lib.oi", ["pub hi :: fn() int { 1 }"]);
+	p.check("1");
 }
 
 #[test]

@@ -11,7 +11,7 @@ fn pub_fn_runs() {
 #[test]
 fn module_decl() {
 	check(["module main", r#"print("ok")"#], "ok");
-	fail("module other", "the entry file is module `main`");
+	check(["module other", r#"print("ok")"#], "ok");
 	fail(["x :: 1", "module main"], "`module` must come first");
 }
 
