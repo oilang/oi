@@ -210,3 +210,14 @@ fn do_guard_return() {
 	"};
 	check(src, "5");
 }
+
+#[test]
+fn header_bind_unwraps() {
+	let src = indoc! {r#"
+		a: ?int = 3
+		b: ?int = none
+		if v := a { print(v) } else { print("none") }
+		if v := b { print(v) } else { print("none") }
+	"#};
+	check(src, ["3", "none"]);
+}

@@ -1393,6 +1393,9 @@ main :: fn() {
 	if .quarter.(state) := coin do print(state) # :wa
 	if .penny := coin do print("a penny") else do print("not a penny")
 
+	# binding a `?T` or `!T` unwraps it
+	if v := maybe do print(v)
+
 	# `do` takes a single statement instead of a block, anywhere a block is expected
 	if i == 2 do print("two")
 	if i > 0 do print("positive") else do print("nope")

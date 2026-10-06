@@ -350,3 +350,13 @@ fn loop_header_iterates_without_binding() {
 	"};
 	check(src, "23");
 }
+
+#[test]
+fn header_bind_unwraps() {
+	let src = indoc! {"
+		it := 0..3
+		loop n := it.next() { print(n) }
+		print(:done)
+	"};
+	check(src, ["0", "1", "2", ":done"]);
+}

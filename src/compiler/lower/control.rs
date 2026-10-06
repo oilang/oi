@@ -63,12 +63,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		if infallible(&cond.0) {
-			if let Some([first, ..]) = els {
-				let msg = "this binding always succeeds, so `else` can never run";
-				return Err(Diagnostic::new(msg, first.1.into_range()).with_label("unreachable"));
-			}
-			let body: Vec<_> = std::iter::once(cond.clone()).chain(then.iter().cloned()).collect();
-			return self.scoped(|s| s.block_tail(&body, target));
+			return self.scoped(|s| {
+				s.expr(cond)?;
+				if let Some((id, arm)) = s.unwrap_arm(cond, then) {
+					return s.match_expr(&id, &[arm], els, Some(&[]), target, span);
+				}
+				if let Some([first, ..]) = els {
+					let msg = "this binding always succeeds, so `else` can never run";
+					return Err(Diagnostic::new(msg, first.1.into_range()).with_label("unreachable"));
+				}
+				s.block_tail(then, target)
+			});
 		}
 
 		if let Expr::PatBind { pat, value, .. } = &cond.0 {
@@ -634,8 +639,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		// a body expression that can fall through ends the loop when it does
 		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match (cond, body) {
 			(Some(c), _) if infallible(&c.0) => {
-				let body: Vec<_> = std::iter::once(c.clone()).chain(body.iter().cloned()).collect();
-				s.block(&body)
+				s.expr(c)?;
+				match s.unwrap_arm(c, body) {
+					Some((id, arm)) => s.match_expr(&id, &[arm], None, Some(&[(Expr::Break(None), c.1)]), None, c.1),
+					None => s.block(body),
+				}
 			}
 			(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
 				let arm = MatchArm {
@@ -663,6 +671,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
 		}
+	}
+
+	// `v := opt` re-matches `v` to bind the payload
+	fn unwrap_arm(&self, cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Option<(Spanned<Expr>, MatchArm)> {
+		let Expr::Bind { name, .. } = &cond.0 else { return None };
+		self.fallible_split(&self.vars.get(name)?.typ)?;
+		let id = (Expr::Ident(name.clone()), cond.1);
+		let arm = MatchArm {
+			patterns: vec![id.clone()],
+			body: body.to_vec(),
+			..Default::default()
+		};
+		Some((id, arm))
 	}
 
 	// Push a loop frame, run `body` in a child scope, then pop the frame.
