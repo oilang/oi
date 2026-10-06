@@ -42,7 +42,8 @@ where
 			let tuple_field = ident().then_ignore(just(Token::Colon)).or_not().then(te.clone());
 			let tuple = paren(loose_list1(tuple_field)).map(TypeExpr::Tuple);
 			// arrays
-			let len = spanned(select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident)));
+			let len = select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident));
+			let len = spanned(len).or(unquote.clone());
 			let array = just(Token::LBracket)
 				.ignore_then(len.or_not())
 				.then_ignore(just(Token::RBracket))

@@ -1,0 +1,14 @@
+Vec2 :: struct { x: f32, y: f32 }
+Particle :: struct { pos: Vec2, life: f32 }
+
+life :: fn(ps: @soa [4]Particle, i: int) f32 {
+	ps[i].life
+}
+
+test! "gather and scatter" {
+	ps: @soa [4]Particle
+	ps[1] = .{ pos = .{1, 2}, life = 3 }
+	assert! ps[1].pos.y == 2
+	assert! life(ps, 1) == 3
+	assert! ps.life.len == 4
+}

@@ -48,6 +48,7 @@ struct Expander {
 	stage0: Option<Compiler>,
 	// inside comp, where quotes are allowed
 	in_comp: bool,
+	hoisted: Vec<Spanned<Expr>>,
 }
 
 // Every name a pattern binds.
@@ -82,9 +83,10 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 	}
 }
 
-// The name bound by a definition.
+// The name a `%name` can take.
 fn def_name(e: &mut Expr) -> Option<&mut String> {
 	match e {
+		Expr::Field { field, .. } | Expr::IndexAssign { field: Some(field), .. } => Some(field),
 		Expr::Bind { name, .. }
 		| Expr::Fn { name, .. }
 		| Expr::StructDef { name, .. }
@@ -234,8 +236,48 @@ impl Expander {
 				let key = self.resolve(name, scope, (0..0).into()).unwrap_or_default();
 				found |= self.macros.contains_key(&key);
 			}
+			x.types()
+				.into_iter()
+				.for_each(|t| t.walk_mut(&mut |t| found |= self.type_call(t, scope).is_some()));
 		});
 		found
+	}
+
+	// A `name!(T)` call.
+	fn type_call(&self, t: &TypeExpr, scope: &Scope) -> Option<Spanned<Expr>> {
+		if let TypeExpr::Annotated(anns, inner) = t
+			&& let [(Expr::Ident(name), span)] = &anns[..]
+			&& self.macros.contains_key(&resolve_bare(name, scope))
+		{
+			let (name, args) = (name.clone(), vec![(type_ast(inner), *span)]);
+			return Some((Expr::MacroCall { name, args }, *span));
+		}
+		None
+	}
+
+	// Swap each `@name T` type for the one `name!(T)` defines, hoisting its definitions.
+	fn expand_types(&mut self, e: &mut Expr, scope: &Scope, depth: usize) -> Result<(), Diagnostic> {
+		let mut res = Ok(());
+		for t in e.types() {
+			t.walk_mut(&mut |t| {
+				if res.is_ok()
+					&& let Some(call) = self.type_call(t, scope)
+				{
+					res = self.call(&call, scope, depth).map(|defs| {
+						let mut defs = defs.unwrap_or_default();
+						defs.iter_mut()
+							.filter_map(|d| def_name(&mut d.0))
+							.for_each(|n| *n = scope.qualify_name(n));
+						let name = defs.first().and_then(|d| d.0.def_name()).unwrap_or_default().to_string();
+						if !self.hoisted.iter().any(|h| h.0.def_name() == Some(&name)) {
+							self.hoisted.extend(defs);
+						}
+						*t = TypeExpr::Name(name);
+					});
+				}
+			});
+		}
+		res
 	}
 
 	// Resolve a macro call against scope, enforcing privacy.
@@ -323,6 +365,7 @@ impl Expander {
 					e.0 = one(stmts, e.1).0;
 					return Ok(());
 				}
+				self.expand_types(&mut e.0, scope, depth)?;
 				match &e.0 {
 					Expr::Fn { name, .. } if name.contains('!') => Ok(()),
 					Expr::Comp(_) => {
@@ -389,6 +432,7 @@ pub fn expand(program: &Program, stage0: bool) -> Result<Expansion, Diagnostic> 
 	for m in &program.modules {
 		let items = rest.get_mut(&m.name).expect("every module was seeded above");
 		ex.expand(List(items), &m.scope, 0)?;
+		items.append(&mut ex.hoisted);
 	}
 	Ok((rest, ex.stage0))
 }
@@ -566,8 +610,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			*params_tuple |= params.len() != 1;
 		}
 		Expr::StructDef { fields, .. } => fill_sig(fields, None, args),
-		Expr::Bind { typ: Some((t, _)), .. } => fill_type(t, args),
-		_ => {}
+		_ => e.0.types().into_iter().for_each(|t| fill_type(t, args)),
 	}
 	match &mut e.0 {
 		Expr::Call { args: list, .. }
@@ -579,6 +622,11 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		Expr::MethodCall { recv, args: list, .. } => {
 			fill(recv, bound, args, suffix);
 			splice(list, bound, args, suffix);
+		}
+		Expr::StructLit { fields, .. } if fields.iter().all(|(n, _)| n.is_none()) => {
+			let mut list = fields.drain(..).map(|(_, v)| v).collect();
+			splice(&mut list, bound, args, suffix);
+			*fields = list.into_iter().map(|v| (None, v)).collect();
 		}
 		_ => e.0.for_children(|c| match c {
 			List(list) => splice(list, bound, args, suffix),
@@ -834,6 +882,14 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 	})))
 }
 
+// A type as an Ast.
+fn type_ast(t: &TypeExpr) -> Expr {
+	match t {
+		TypeExpr::Name(n) => Expr::Ident(n.clone()),
+		t => Expr::TypePat(t.clone()),
+	}
+}
+
 // A field as the Ast a param hole takes.
 fn field_ast(f: &Param) -> Expr {
 	let bind = Expr::Bind {
@@ -856,15 +912,14 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });
 	match (m, subject) {
 		(b"notes", _) => list(notes.iter().map(|n| Box::into_raw(Box::new(n.clone())) as i64).collect()),
-		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(match t {
-			TypeExpr::Name(n) => Expr::Ident(n.clone()),
-			t => Expr::TypePat(t.clone()),
-		}),
+		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
+		(b"typ", Expr::TypePat(TypeExpr::Array(t) | TypeExpr::FixedArray(t, _))) => ast(type_ast(t)),
 		(b"typ", Expr::Fn { ret: None, .. }) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
 		(b"typ", _) => {
 			flag("this Ast has no type");
 			ast(Expr::Tuple(vec![]))
 		}
+		(b"len", Expr::TypePat(TypeExpr::FixedArray(_, n))) => ast(n.0.clone()),
 		(b"int", Expr::Int(n)) => *n,
 		(b"int", _) => {
 			flag("`.int()` needs an Ast holding an Int literal");

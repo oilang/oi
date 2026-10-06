@@ -475,7 +475,8 @@ where
 		// NOTE: chained tuple access like `x.0.1` lexes `0.1` as a float, hence the split
 		select! { Token::Float(s) => Dot::Fields(s.split('.').map(String::from).collect()) },
 		// `[T]` is type args or subscript, based on whether a call follows
-		ident()
+		p.def_name
+			.clone()
 			.then(call_type_args.or_not().then(args.clone()).or_not())
 			.map(|(name, call)| match call {
 				Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),

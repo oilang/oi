@@ -1,0 +1,31 @@
+module core
+
+## The struct of arrays `@soa [N]T` stands for, one `[N]` column per field of `T`.
+pub soa! :: fn(t: Ast) Ast {
+	cols: []Ast
+	gets: []Ast
+	sets: []Ast
+
+	e := t.typ
+	n := ident("@soa [" + t.len.str() + "]" + e.str())
+	loop f in def(e).items {
+		k := f.name
+		cols << `%k: [%{t.len}]%{f.typ}`
+		gets << `self.%k[i]`
+		sets << `self.%k[i] = v.%k`
+	}
+
+	`
+		%n :: struct { %{..cols} }
+		%n : Index[int, %e] < {
+			index :: fn(self, i: int) %e {
+				%e.{ %{..gets} }
+			}
+		}
+		%n : IndexAssign[int, %e] < {
+			index_assign :: fn(mut self, i: int, v: %e) {
+				%{..sets}
+			}
+		}
+	`
+}

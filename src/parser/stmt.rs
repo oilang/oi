@@ -193,7 +193,7 @@ pub(super) fn stmt<'token, I>(
 
 	// index assignment
 	let index_assign = ident()
-		.then(just(Token::Dot).ignore_then(ident()).or_not())
+		.then(just(Token::Dot).ignore_then(p.def_name.clone()).or_not())
 		.then(bracket(p.expr.clone()))
 		.then(rhs.clone())
 		.map_with(move |(((name, field), index), (op, value)), ex| {

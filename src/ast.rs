@@ -376,13 +376,25 @@ impl Expr {
 		}
 	}
 
+	// Every type this expression spells out.
+	pub fn types(&mut self) -> Vec<&mut TypeExpr> {
+		match self {
+			Expr::Bind { typ: Some((t, _)), .. } | Expr::Cast { target: (t, _), .. } => vec![t],
+			Expr::Fn { params, ret, .. } | Expr::AnonFn { params, ret, .. } | Expr::MacroDef { params, ret, .. } => {
+				let ret = ret.iter_mut().map(|(t, _)| t);
+				params.iter_mut().map(|p| &mut p.typ).chain(ret).collect()
+			}
+			Expr::StructDef { fields, .. } => fields.iter_mut().map(|p| &mut p.typ).collect(),
+			Expr::Claim { traits, .. } => traits.iter_mut().flat_map(|(_, ts)| ts).map(|(t, _)| t).collect(),
+			_ => vec![],
+		}
+	}
+
 	// Visit every direct child, in whichever shape it's stored.
 	pub fn for_children(&mut self, mut f: impl FnMut(Child)) {
+		self.types().into_iter().for_each(|t| t.holes(|e| f(One(e))));
 		match self {
-			Expr::Bind { typ, value, .. } => {
-				typ.iter_mut().for_each(|(t, _)| t.holes(|e| f(One(e))));
-				value.iter_mut().for_each(|v| f(One(v)));
-			}
+			Expr::Bind { value, .. } => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::Return(value) => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::Defer { body, .. } => f(One(body)),
 			Expr::Assign { value: v, .. }
@@ -409,10 +421,7 @@ impl Expr {
 				f(List(anns));
 				f(One(v));
 			}
-			Expr::Cast { target, args } => {
-				target.0.holes(|e| f(One(e)));
-				f(List(args));
-			}
+			Expr::Cast { args, .. } => f(List(args)),
 			Expr::Index {
 				collection: a,
 				index: b,
@@ -424,20 +433,13 @@ impl Expr {
 				f(One(a));
 				f(One(b));
 			}
-			Expr::Fn { params, ret, body, .. }
-			| Expr::AnonFn { params, ret, body, .. }
-			| Expr::MacroDef { params, ret, body, .. } => {
-				let sig = params.iter_mut().map(|p| &mut p.typ).chain(ret.iter_mut().map(|(t, _)| t));
-				sig.for_each(|t| t.holes(|e| f(One(e))));
-				f(List(body));
-			}
-			Expr::StructDef { fields, fills, .. } => {
-				fields.iter_mut().for_each(|p| p.typ.holes(|e| f(One(e))));
-				f(List(fills));
-			}
-			Expr::Block(body)
-			| Expr::Quote(body)
+			Expr::Fn { body, .. }
+			| Expr::AnonFn { body, .. }
+			| Expr::MacroDef { body, .. }
+			| Expr::StructDef { fills: body, .. }
 			| Expr::Claim { fills: body, .. }
+			| Expr::Block(body)
+			| Expr::Quote(body)
 			| Expr::EnumDef { fills: body, .. }
 			| Expr::TraitDef { methods: body, .. } => f(List(body)),
 			Expr::Call { args, .. }
@@ -672,10 +674,10 @@ impl TypeExpr {
 
 	// Every unquote in this type.
 	pub fn holes(&mut self, mut f: impl FnMut(&mut Spanned<Expr>)) {
-		self.walk_mut(&mut |t| {
-			if let TypeExpr::Unquote(e) = t {
-				f(e);
-			}
+		self.walk_mut(&mut |t| match t {
+			TypeExpr::Unquote(e) => f(e),
+			TypeExpr::FixedArray(_, e) if matches!(e.0, Expr::Unquote(_) | Expr::UnquoteExpr(_)) => f(e),
+			_ => {}
 		});
 	}
 
