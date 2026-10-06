@@ -33,8 +33,8 @@ fn import_trait() {
 
 #[test]
 fn import_nested_path() {
-	fail("use a.b.c", "nested module paths aren't supported yet");
-	fail("x :: use a.b.{ c }", "nested module paths aren't supported yet");
+	fail("use a.b.c", "cannot find module `a.b`");
+	fail("x :: use a.b.{ c }", "cannot find module `a.b`");
 }
 
 #[test]

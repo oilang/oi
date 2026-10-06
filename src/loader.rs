@@ -9,7 +9,7 @@ use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, include_dir};
 
 use crate::Reported;
-use crate::ast::{Annotation, BinOp, Expr, Span, Spanned, TypeExpr, UseItem};
+use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -262,9 +262,7 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 	let mut files = vec![];
 	for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
 		let path = entry.path();
-		if path.is_dir() {
-			files.extend(walk_oi(&path));
-		} else if path.extension().is_some_and(|x| x == "oi") {
+		if path.extension().is_some_and(|x| x == "oi") {
 			files.push(path);
 		}
 	}
@@ -352,15 +350,16 @@ impl Loader {
 		mut file: Vec<Spanned<Expr>>,
 	) -> Result<(), Diagnostic> {
 		let main = m.name == "main";
+		let leaf = m.name.rsplit('.').next().unwrap_or_default();
 		let file_start = m.items.len();
 		// enforce V-like module declaration rules (for now, as a pretty sane starting point)
 		match file.first() {
 			Some((Expr::Module(name), span)) if main && name != "main" => {
 				return Err(err("the entry file is module `main`", *span, "rename it to `main`"));
 			}
-			Some((Expr::Module(name), span)) if *name != m.name => {
+			Some((Expr::Module(name), span)) if name != leaf => {
 				return Err(err(
-					format!("this file must declare `module {}`", m.name),
+					format!("this file must declare `module {leaf}`"),
 					*span,
 					"wrong module name",
 				));
@@ -370,7 +369,7 @@ impl Loader {
 			}
 			Some((_, span)) if !main => {
 				return Err(err(
-					format!("this file must declare `module {}`", m.name),
+					format!("this file must declare `module {leaf}`"),
 					*span,
 					"add it as the first line",
 				));
@@ -403,16 +402,13 @@ impl Loader {
 				));
 			}
 			if let Expr::Use { name, path, group } = &item.0 {
-				let (module, _) = &path[0];
-				if path.len() > 2 || (path.len() == 2 && group.is_some()) {
-					return Err(err(
-						"nested module paths aren't supported yet",
-						item.1,
-						"flatten the path",
-					));
-				}
+				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
+				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
+				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
+				let depth = path.len() - usize::from(!whole);
+				let module = &dotted(depth);
 				// a `.item` import tail acts as a one-item group
-				let items: Vec<UseItem> = match (path.get(1), group) {
+				let items: Vec<UseItem> = match (path.get(depth), group) {
 					(Some(it), _) => vec![UseItem {
 						local: name.clone().unwrap_or_else(|| it.clone()),
 						rename_of: Some(it.clone()),
@@ -435,7 +431,7 @@ impl Loader {
 				}
 				if narrows || items.is_empty() {
 					// bind the module itself, or narrowed to its specified items
-					let local = name.as_ref().map_or(module, |(n, _)| n).clone();
+					let local = name.as_ref().unwrap_or(&path[depth - 1]).0.clone();
 					let only =
 						narrows.then(|| items.iter().map(|it| (it.local.0.clone(), it.remote().0.clone())).collect());
 					let vis = Visible {
@@ -645,7 +641,35 @@ impl Loader {
 			let items = result.map_err(|ds| self.report(ds))?;
 			self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
 		}
+		for item in &mut module.items {
+			self.reach_submodules(item, &mut module.scope, &mut imports);
+		}
 		self.seal(module, imports)
+	}
+
+	// Whether `name` is a module dir.
+	fn is_module(&self, name: &str) -> bool {
+		let path = name.replace('.', "/");
+		self.roots.iter().any(|r| r.join(&path).is_dir()) || CORE.get_dir(&path).is_some()
+	}
+
+	// Rewrite `m.sub` to an import of submodule `sub`.
+	fn reach_submodules(&self, e: &mut Spanned<Expr>, scope: &mut Scope, imports: &mut Vec<(String, Span)>) {
+		e.0.for_children(|c| match c {
+			Child::List(list) => list.iter_mut().for_each(|e| self.reach_submodules(e, scope, imports)),
+			Child::One(e) => self.reach_submodules(e, scope, imports),
+		});
+		if let Expr::Field { tuple, field } = &e.0
+			&& let Expr::Ident(head) = &tuple.0
+			&& let Some(Visible { module, only: None }) = scope.visible.get(head)
+			&& let module = format!("{module}.{field}")
+			&& self.is_module(&module)
+		{
+			let local = format!("{head}.{field}");
+			imports.push((module.clone(), e.1));
+			scope.visible.insert(local.clone(), Visible { module, only: None });
+			e.0 = Expr::Ident(local);
+		}
 	}
 
 	// Load a dir as one module.
@@ -671,18 +695,19 @@ impl Loader {
 
 	// Find a module's files on disk, falling back to the embedded core tree.
 	fn module_files(&mut self, name: &str, from_core: bool) -> Result<Vec<(String, String)>, Reported> {
-		let file = format!("{name}.oi");
+		let dir = &name.replace('.', "/");
+		let file = format!("{dir}.oi");
 		let has = |r: &&PathBuf| {
-			r.join(name).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
+			r.join(dir).is_dir() || (r.join(&file).is_file() && !self.entry_paths.contains(&r.join(&file)))
 		};
 		let root = self.roots.iter().find(has).unwrap_or(&self.roots[0]);
 		let mut disk = if !from_core {
-			walk_oi(&root.join(name))
+			walk_oi(&root.join(dir))
 		} else {
 			Vec::default()
 		};
 		disk.sort();
-		let candidate = root.join(file);
+		let candidate = root.join(&file);
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
 			disk.iter().map(|path| read_src(path)).collect::<Result<_, _>>()?
 		} else if !from_core && candidate.is_file() && !self.entry_paths.contains(&candidate) {
@@ -691,10 +716,10 @@ impl Loader {
 			vec![]
 		};
 		if files.is_empty() {
-			files = match (CORE.get_dir(name), CORE.get_file(format!("{name}.oi"))) {
+			files = match (CORE.get_dir(dir), CORE.get_file(&file)) {
 				(Some(d), _) => core_files(d),
 				(_, Some(f)) => vec![(
-					format!("core/{name}.oi"),
+					format!("core/{file}"),
 					f.contents_utf8().unwrap_or_default().to_string(),
 				)],
 				_ => vec![],

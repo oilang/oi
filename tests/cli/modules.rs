@@ -368,12 +368,17 @@ fn dir_wins_over_single_file_module() {
 }
 
 #[test]
-fn subdir_folds_into_module() {
-	let p = Project::new()
-		.main(["use foo", "print(foo.hi())"])
-		.lib("foo", ["pub hi :: fn() int { gen() }"])
-		.file("foo/api/gen.oi", ["module foo", "pub gen :: fn() int { 7 }"]);
-	p.check("7");
+fn subdir_is_a_submodule() {
+	for main in [
+		"use foo\nprint(foo.api.gen() + foo.hi())",
+		"use foo.api.gen\nprint(gen() + 1)",
+	] {
+		let p = Project::new()
+			.main([main])
+			.lib("foo", ["pub hi :: fn() int { 1 }"])
+			.file("foo/api/gen.oi", ["module api", "pub gen :: fn() int { 7 }"]);
+		p.check("8");
+	}
 }
 
 #[test]

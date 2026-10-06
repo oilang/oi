@@ -30,6 +30,8 @@ tags: []
 	- every .oi file in the dir contributes to the module
 	- modules looks for single adjacent files if no folder exists (`use foo` finds `./foo.oi`)
 	- no mod/index files are needed, so `mod.oi` is merely a file
+	- a subdir is a submodule: `raylib/math/` is `raylib.math`, its files declare `module math`
+	- importing a parent reaches its submodules, `use raylib` then `raylib.math.lerp(a, b)`
 }#
 
 # declare module

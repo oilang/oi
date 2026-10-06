@@ -535,7 +535,7 @@ impl TypeCtx<'_> {
 			// an omitted param type that no expected fn type filled in
 			return fail("parameter needs a type", span, "nothing here supplies one");
 		}
-		if let Some((m, t)) = name.split_once('.') {
+		if let Some((m, t)) = name.split_once('.').filter(|_| !name.contains("::")) {
 			let Some(vis) = self.scope.visible.get(m) else {
 				return fail(format!("unknown module `{m}`"), span, "not imported");
 			};
