@@ -236,14 +236,6 @@ fn a_generic_claim_drops_each_instance() {
 		],
 		["built", "drop two", "drop 1"],
 	);
-	fail(
-		[
-			"Show :: trait { show : fn(self) }",
-			"Box[T] :: struct { val: T }",
-			"Box[T] : Show < { show :: fn(self) {} }",
-		],
-		"generic trait claims aren't supported yet",
-	);
 }
 
 const REF: &str = indoc! {r#"

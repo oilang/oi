@@ -79,24 +79,21 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [ ] `loop let`/?`match let` `rust`
 	- [ ] `:h <topic>` `vim revo`
+	- [ ] generic trait claims
 - [ ] `comp assert`
 - [ ] AoS, SoA, AoSoA
 - [ ] computed values `swift gdscript`
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
-- [ ] settle on good print/fmt/Display/str story
-	- "str/print everything" (using `@implicit`) `v`
-	- `Display` with non-allocating buffer writes `rust`
-	- `ToString` for string conversion / casts `rust`
+- [x] settle on good print/fmt/Display/str story
 - [ ] channels
 - [ ] units and unit conversion
 - [ ] `discard` and/or `pass` `nim gdscript`
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
-- [ ] swizzle `odin`
+- [ ] swizzle (tried implementing, but I'm going to add core vector types instead) `odin`
 - [ ] allow fn math with arithmetic traits
 ## consider
 - `nil`
@@ -108,7 +105,7 @@ tags: []
 - explicit core access `core.print` or `use core.{ print }` or something
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
-- `loop <expr>` rather than any special case dispatch
+- [x] `loop <expr>` rather than any special case dispatch
 - I kind of like Rust's `pub(scope)` concept where you specify what it's public for
 - `for/else`, `while/else` `python`
 - `match{}/or` (in addition to the planned `match{else}`)

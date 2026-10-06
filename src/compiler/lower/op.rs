@@ -75,8 +75,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// `Eq` fill, or structural diff by default.
 	fn emit_val_eq(&mut self, a: Value, b: Value, t: &Typ, owner: &str, span: Span) -> Result<Value, Diagnostic> {
-		if let Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) = t
-			&& let Some(sig) = self.fill(n, role::EQ, "eq", 2)
+		if let Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) = t
+			&& let Some(sig) = self.fill(t, role::EQ, "eq", 2)
 		{
 			return Ok(self.emit_call(&sig, &[a, b]).0);
 		}
@@ -100,12 +100,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// The `method` fill of trait `tn` claimed for `name`, if any.
-	pub(super) fn fill(&self, name: &str, tn: &str, method: &str, arity: usize) -> Option<FnSig> {
-		let claimed = self.trait_impls.contains(&(name.to_string(), tn.to_string()));
-		self.funcs
-			.get(&format!("{name}.{method}"))
-			.cloned()
-			.filter(|s| claimed && s.params.len() == arity)
+	pub(super) fn fill(&mut self, typ: &Typ, tn: &str, method: &str, arity: usize) -> Option<FnSig> {
+		let name = typ.key();
+		let found = match self.trait_impls.contains(&(name.clone(), tn.to_string())) {
+			true => self.funcs.get(&format!("{name}.{method}")).cloned(),
+			false if self.claims(typ, tn) => self.recv_instance(&format!("{}.{method}", rc::base_name(&name)), typ),
+			false => None,
+		};
+		found.filter(|s| s.params.len() == arity)
 	}
 
 	// Inside its own methods, a newtype without a trait claim operates on its field.
@@ -138,9 +140,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Whether `typ` claims `tn`.
 	pub(super) fn claims(&self, typ: &Typ, tn: &str) -> bool {
 		let key = typ.key();
+		let generic = self.generic_claims.get(&(rc::base_name(&key).to_string(), tn.to_string()));
 		self.trait_impls.contains(&(key.clone(), tn.to_string()))
-			|| self.generic_claims.contains(&(rc::base_name(&key).to_string(), tn.to_string()))
-			|| (self.core_traits.contains(tn) && builtin_claim(typ, tn))
+			|| generic.is_some_and(|tps| {
+				let args = self.types.generics.instance_args(&key).unwrap_or_default();
+				(tps.iter().zip(&args)).all(|(p, a)| p.bound.as_ref().is_none_or(|b| self.claims(a, b)))
+			}) || (self.core_traits.contains(tn) && builtin_claim(typ, tn))
 	}
 
 	// Compare two heap blocks slot by slot.
@@ -327,14 +332,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		&mut self,
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
-		rhint: impl FnOnce(&Self, &Typ) -> Typ,
+		rhint: impl FnOnce(&mut Self, &Typ) -> Typ,
 	) -> Result<(TypedVal, TypedVal), Diagnostic> {
 		if l.0.anon() && !r.0.anon() {
 			let rhs = self.expr(r)?;
 			return Ok((self.check_expr(l, &rhs.1)?, rhs));
 		}
 		let lhs = self.expr(l)?;
-		let rhs = self.check_expr(r, &rhint(self, &lhs.1))?;
+		let hint = rhint(self, &lhs.1);
+		let rhs = self.check_expr(r, &hint)?;
 		Ok((lhs, rhs))
 	}
 
@@ -373,8 +379,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| match lt {
-			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => {
-				s.fill(n, tn, method, 2).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
+			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) => {
+				s.fill(lt, tn, method, 2).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 			}
 			_ => lt.clone(),
 		})?;
@@ -384,7 +390,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &lt {
 			// overloads
 			let key = format!("{name}.{method}");
-			let plain = self.fill(name, tn, method, 2);
+			let plain = self.fill(&lt, tn, method, 2);
 			let picked = (plain.clone().filter(|s| s.params[1].typ == rt))
 				.or_else(|| self.find_fill(&key, 1, &rt))
 				.or(plain);
@@ -411,7 +417,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if matches!(op, BinOp::Add | BinOp::Mul)
 			&& matches!(lt, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_))
 			&& let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &rt
-			&& let Some(sig) = (self.fill(name, tn, method, 2).filter(|s| s.params[1].typ == lt))
+			&& let Some(sig) = (self.fill(&rt, tn, method, 2).filter(|s| s.params[1].typ == lt))
 				.or_else(|| self.find_fill(&format!("{name}.{method}"), 1, &lt))
 		{
 			return Ok(self.emit_call(&sig, &[rv, lv]));
@@ -571,8 +577,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let IntCC::Equal | IntCC::NotEqual = icc {
 					let eq = self.emit_val_eq(lv, rv, l, &lt.to_string(), span)?;
 					self.b.ins().icmp_imm(cc, eq, 0)
-				} else if let Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) = l
-					&& let Some(sig) = self.fill(n, role::ORD, "lt", 2)
+				} else if let Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) = l
+					&& let Some(sig) = self.fill(l, role::ORD, "lt", 2)
 				{
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };
 					let less = self.emit_call(&sig, &[a, b]).0;

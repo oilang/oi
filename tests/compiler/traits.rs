@@ -868,3 +868,21 @@ fn associated_types() {
 	"#};
 	fail(src, "`R.get` is `fn(R) string`, trait `It` declares `fn(R) int`");
 }
+
+#[test]
+fn generic_claims() {
+	let src = indoc! {r#"
+		Box[T] :: struct { v: T }
+		Box[T] : Add < {
+			add :: fn(self, o: Self) Self { Box.{ v = self.v + o.v } }
+		}
+		Box[T: Ord] : Eq < {
+			eq :: { !(self.v < $.1.v) && !($.1.v < self.v) }
+		}
+		Foo :: struct { x: int }
+		same[T: Eq] :: fn(a: T, b: T) bool { a == b }
+		print((Box.{ v = 1 } + Box.{ v = 2 }).v, (Box.{ v = "a" } + Box.{ v = "b" }).v)
+		print(Box[int] is Eq, Box[Foo] is Eq, same(Box.{ v = 2 }, Box.{ v = 2 }))
+	"#};
+	check(src, ["3 ab", "true false true"]);
+}

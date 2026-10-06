@@ -91,10 +91,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				trait_name,
 				negated,
 			} => {
-				if let Expr::Ident(name) = &subject.0
+				if let Some(te) = TypeExpr::from_expr(&subject.0)
+					&& let TypeExpr::Name(name) | TypeExpr::Generic(name, _) = &te
 					&& !self.vars.contains_key(name)
 				{
-					let typ = self.types().resolve(&TypeExpr::Name(name.clone()), subject.1)?;
+					let typ = self.types().resolve(&te, subject.1)?;
 					let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
 					let holds = self.claims(&typ, tn) ^ negated;
 					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
@@ -130,11 +131,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				let out = match self.own_field(&typ, role::NEG) {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(_) => self.b.ins().fneg(v),
-					Typ::Struct(name, _) | Typ::Enum(name) => match self.fill(name, role::NEG, "neg", 1) {
+					t @ (Typ::Struct(..) | Typ::Enum(_)) => match self.fill(t, role::NEG, "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
-								.with_label(format!("claim `Neg` for `{name}`")));
+								.with_label(format!("claim `Neg` for `{t}`")));
 						}
 					},
 					_ => {
@@ -172,12 +173,12 @@ impl<'a, M: Module> Translator<'a, M> {
 						let v = self.b.ins().bnot(v);
 						self.narrow(v, t)
 					}
-					Typ::Struct(name, _) | Typ::Enum(name) => match self.fill(name, role::NOT, "not", 1) {
+					t @ (Typ::Struct(..) | Typ::Enum(_)) => match self.fill(t, role::NOT, "not", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return Err(
 								Diagnostic::new(format!("cannot apply `!` to {typ}"), expr.1.into_range())
-									.with_label(format!("claim `Not` for `{name}`")),
+									.with_label(format!("claim `Not` for `{t}`")),
 							);
 						}
 					},

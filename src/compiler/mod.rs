@@ -565,7 +565,7 @@ pub struct Compiler<M: Module = JITModule> {
 	wanted: Vec<FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	trait_impls: HashSet<(String, String)>,
-	generic_claims: HashSet<(String, String)>,
+	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
 	core_traits: HashSet<String>,
 	descs: HashMap<String, DataId>,
 	defined: HashSet<FuncId>,
@@ -805,7 +805,7 @@ impl<M: Module> Compiler<M> {
 			wanted: Vec::new(),
 			printers: Vec::new(),
 			trait_impls: HashSet::new(),
-			generic_claims: HashSet::new(),
+			generic_claims: HashMap::new(),
 			core_traits: HashSet::new(),
 			descs: HashMap::new(),
 			defined: HashSet::new(),
@@ -886,16 +886,16 @@ impl<M: Module> Compiler<M> {
 				let msg = format!("duplicate fill `{key}`");
 				return fail(msg, m.1, "one fill per name");
 			}
+			let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
+				Some(decl) => fill_from_decl(params, *params_tuple, ret, *decl, m.1)?,
+				None if params.is_empty() && !params_tuple => {
+					let msg = format!("no trait method `{name}` supplies a signature");
+					return fail(msg, m.1, "write the `fn` header out");
+				}
+				None => (params.clone(), *params_tuple, ret.clone()),
+			};
+			let (params, ret) = subst_sig(&params, &ret, claim.targs);
 			if type_params.is_empty() && mtp.is_empty() {
-				let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
-					Some(decl) => fill_from_decl(params, *params_tuple, ret, *decl, m.1)?,
-					None if params.is_empty() && !params_tuple => {
-						let msg = format!("no trait method `{name}` supplies a signature");
-						return fail(msg, m.1, "write the `fn` header out");
-					}
-					None => (params.clone(), *params_tuple, ret.clone()),
-				};
-				let (params, ret) = subst_sig(&params, &ret, claim.targs);
 				others.push(FnItem {
 					key,
 					scope,
@@ -918,11 +918,11 @@ impl<M: Module> Compiler<M> {
 				}
 			};
 			let by = [("Self".to_string(), self_ty)];
-			let (params, ret) = subst_sig(params, ret, &by);
+			let (params, ret) = subst_sig(&params, &ret, &by);
 			let mut all_params = type_params.to_vec();
 			all_params.extend(mtp.clone());
 			qualify_bounds(scope, &mut all_params);
-			let def = GenericFnDef::new(params, *params_tuple, ret, body, all_params, &scope.module);
+			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module);
 			self.generics.insert(key, def);
 		}
 		Ok(())
@@ -1185,9 +1185,16 @@ impl<M: Module> Compiler<M> {
 					}
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					for (tn, args) in &claimed {
-						if !type_params.is_empty() && !is_hook_trait(tn) {
-							let msg = "generic trait claims aren't supported yet".to_string();
-							return fail(msg, item.1, "remove the type parameters");
+						if type_params.is_empty() {
+							self.trait_impls.insert((typ.clone(), tn.clone()));
+						} else {
+							let mut bounds = type_params.clone();
+							qualify_bounds(scope, &mut bounds);
+							self.generic_claims.insert((typ.clone(), tn.clone()), bounds);
+							// generic fills
+							if !is_hook_trait(tn) {
+								continue;
+							}
 						}
 						trait_bodies.push(TraitBody {
 							span: item.1,
@@ -1198,10 +1205,6 @@ impl<M: Module> Compiler<M> {
 							methods: fills,
 							scope,
 						});
-						match type_params.is_empty() {
-							true => self.trait_impls.insert((typ.clone(), tn.clone())),
-							false => self.generic_claims.insert((typ.clone(), tn.clone())),
-						};
 					}
 					let decls: Vec<TraitFn> = claimed
 						.iter()
@@ -1470,8 +1473,8 @@ impl<M: Module> Compiler<M> {
 		}
 
 		for b in trait_bodies.iter().filter(|b| b.trait_name == "Copy") {
-			let drops = |set: &HashSet<(String, String)>| set.contains(&(b.typ.to_string(), "Drop".into()));
-			if drops(&self.trait_impls) || drops(&self.generic_claims) {
+			let drops = (b.typ.to_string(), "Drop".to_string());
+			if self.trait_impls.contains(&drops) || self.generic_claims.contains_key(&drops) {
 				continue;
 			}
 			let msg = format!("`{}` claims `Copy` without `Drop`, so nothing runs the hook", b.typ);

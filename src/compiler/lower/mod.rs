@@ -14,7 +14,7 @@ use super::{
 	has_ann, is_c_struct, is_range, mentions, oi_symbol, param_cl, role, sugar, sum_remap, trait_fns, type_expr,
 	typeid,
 };
-use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, place};
+use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam, place};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::Scope;
 use crate::runtime;
@@ -52,7 +52,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub types: TypeCtx<'a>,
 	pub generic_fns: &'a HashMap<String, GenericFnDef>,
 	pub trait_impls: &'a HashSet<(String, String)>,
-	pub generic_claims: &'a HashSet<(String, String)>,
+	pub generic_claims: &'a HashMap<(String, String), Vec<TypeParam>>,
 	pub core_traits: &'a HashSet<String>,
 	pub module_scopes: &'a HashMap<String, Scope>,
 	pub map: &'a SourceMap,
