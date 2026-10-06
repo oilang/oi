@@ -80,7 +80,7 @@ tags: []
 # TODO
 - immediate
 	- [ ] `:h <topic>` `vim revo`
-	- [ ] generic trait claims
+	- [x] generic trait claims
 - [ ] `comp assert`
 - [ ] AoS, SoA, AoSoA
 - [ ] computed values `swift gdscript`
@@ -100,8 +100,8 @@ tags: []
 - using `#` for annotations despite comment clash
 - allowing quotes/AST outside of macros, for code generators and stuff
 - `let-else` `rust`
-- submodules `use raylib.math`
-- explicit core access `core.print` or `use core.{ print }` or something
+- [x] submodules `use raylib.math`
+- [x] explicit core access `core.print` or `use core.{ print }` or something
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
 - [x] `loop <expr>` rather than any special case dispatch

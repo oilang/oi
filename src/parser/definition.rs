@@ -17,6 +17,15 @@ enum Dot {
 	Method(String, Vec<Spanned<TypeExpr>>, Vec<Spanned<Expr>>),
 }
 
+// `with` opens a bound name over the body.
+fn open_bound(bound: &Spanned<Expr>, body: &mut Vec<Spanned<Expr>>) -> bool {
+	let (Expr::Ident(name) | Expr::Bind { name, .. }) = &bound.0 else {
+		return false;
+	};
+	body.insert(0, (Expr::With(vec![(Expr::Ident(name.clone()), bound.1)]), bound.1));
+	true
+}
+
 fn pipe_step((e, span): Spanned<Expr>) -> Spanned<Expr> {
 	match e {
 		Expr::Ident(name) => (
@@ -280,14 +289,18 @@ where
 
 	let if_expr = recursive(|if_expr| {
 		just(Token::If)
-			.ignore_then(header_cond.clone())
+			.ignore_then(just(Token::With).or_not())
+			.then(header_cond.clone())
 			.then(p.block.clone())
 			.then(
 				just(Token::Else)
 					.ignore_then(if_expr.map(|e| vec![e]).or(p.block.clone()))
 					.or_not(),
 			)
-			.map_with(|((cond, then), els), ex| {
+			.validate(|(((with, cond), mut then), els), ex, emitter| {
+				if with.is_some() && !open_bound(&cond, &mut then) {
+					emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
+				}
 				(
 					Expr::If {
 						cond: Box::new(cond),
@@ -321,11 +334,15 @@ where
 		.boxed();
 
 	let for_expr = just(Token::Loop)
-		.ignore_then(p.pat.clone().or(p.pat_name.clone()))
+		.ignore_then(just(Token::With).or_not())
+		.then(p.pat.clone().or(p.pat_name.clone()))
 		.then_ignore(just(Token::In))
 		.then(header_expr.clone().map(Box::new))
 		.then(p.block.clone())
-		.map_with(|((pat, iter), body), ex| {
+		.validate(|(((with, pat), iter), mut body), ex, emitter| {
+			if with.is_some() && !open_bound(&pat, &mut body) {
+				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
+			}
 			(
 				Expr::For {
 					pat: Box::new(pat),
@@ -342,7 +359,7 @@ where
 	let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 	// match expression
-	let binding = ident().then_ignore(just(Token::At)).or_not();
+	let binding = just(Token::With).or_not().then(ident()).then_ignore(just(Token::At)).or_not();
 	let arm_end = choice((
 		just(Token::Comma).ignored(),
 		just(Token::RBrace).rewind().ignored(),
@@ -358,10 +375,15 @@ where
 		.then(trailing_list1(match_pat.clone()))
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
-		.map(|((binding, patterns), body)| MatchArm {
-			binding,
-			patterns,
-			body,
+		.map_with(|((binding, patterns), mut body), ex| {
+			if let Some((Some(_), name)) = &binding {
+				open_bound(&(Expr::Ident(name.clone()), ex.span()), &mut body);
+			}
+			MatchArm {
+				binding: binding.map(|(_, name)| name),
+				patterns,
+				body,
+			}
 		})
 		.boxed();
 	let arm_spread = p.unquote.clone().map(|e| MatchArm {

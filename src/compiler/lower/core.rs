@@ -239,7 +239,17 @@ impl<'a, M: Module> Translator<'a, M> {
 					|| self.funcs.contains_key(&format!("{sn}.{name}"))
 					|| self.generic_fns.contains_key(&format!("{}.{name}", rc::base_name(&sn)))
 			}
-			_ => false,
+			Some(_) => false,
+			None => match self.import_item(&Expr::Ident(s.to_string()), name, e.1) {
+				Ok(Some((m, t))) => {
+					let key = format!("{m}::{t}");
+					self.publics.contains(self.reexports.get(&key).unwrap_or(&key))
+				}
+				_ => {
+					let key = format!("{}.{name}", self.qualify(s));
+					self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key)
+				}
+			},
 		};
 		let mut hits = self.withs.iter().filter(supplies);
 		let s = match (hits.next(), hits.next()) {
