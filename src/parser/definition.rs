@@ -132,7 +132,7 @@ where
 	let struct_body = brace(loose_list(struct_field_entry.clone()));
 
 	// explicit generic args
-	let call_type_args = bracket(list1(spanned(types::type_arg(p.type_expr.clone()))));
+	let call_type_args = types::type_args(p.type_expr.clone());
 
 	// struct literals
 	let struct_lit = p
@@ -167,11 +167,7 @@ where
 		.then_ignore(dot().rewind())
 		.map(|(name, args)| Expr::TypePat(TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect())));
 
-	let call_tail = call_type_args
-		.clone()
-		.filter(|a: &Vec<Spanned<TypeExpr>>| types::settled_by_parser(a.len(), &a[0].0))
-		.or_not()
-		.then(args.clone());
+	let call_tail = call_type_args.clone().filter(|a| types::settled(a)).or_not().then(args.clone());
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {
 		Some((type_args, args)) => Expr::Call {
 			name,
@@ -540,12 +536,13 @@ where
 	// array subscripts
 	let subscript = bracket(p.expr.clone().map(Some).or(just(Token::DotDot).map(|_| None))).boxed();
 
-	// infix operator builder
-	let binop = |prec, tok: Token, op: BinOp| {
-		infix(left(prec), just(tok), move |l, _, r, ex| {
+	// infix operator builders
+	let binop_with = |assoc, pre: P<'token, I, ()>, tok: Token, op: BinOp| {
+		infix(assoc, pre.ignore_then(just(tok)), move |l, _, r, ex| {
 			(Expr::Binary(op, Box::new(l), Box::new(r)), ex.span())
 		})
 	};
+	let binop = |prec, tok, op| binop_with(left(prec), empty().boxed(), tok, op);
 
 	let core = atom
 		.pratt((
@@ -628,16 +625,10 @@ where
 				_ => (Expr::Not(Box::new(rhs)), ex.span()),
 			}),
 			// arithmetic
-			infix(right(12), just(Token::StarStar), |l, _, r, ex| {
-				(Expr::Binary(BinOp::Pow, Box::new(l), Box::new(r)), ex.span())
-			}),
+			binop_with(right(12), empty().boxed(), Token::StarStar, BinOp::Pow),
 			binop(11, Token::Asterisk, BinOp::Mul),
 			binop(11, Token::Slash, BinOp::Div),
-			infix(
-				left(11),
-				p.same_line.clone().ignore_then(just(Token::Percent)),
-				|l, _, r, ex| (Expr::Binary(BinOp::Mod, Box::new(l), Box::new(r)), ex.span()),
-			),
+			binop_with(left(11), p.same_line.clone(), Token::Percent, BinOp::Mod),
 			binop(10, Token::Plus, BinOp::Add),
 			binop(10, Token::Minus, BinOp::Sub),
 			// bitwise
