@@ -409,10 +409,14 @@ where
 		.boxed();
 
 	// ast literals
-	let quote = match_arm
-		.map_with(|a, ex| (Expr::Arm(a), ex.span()))
-		.or(p.item.clone())
-		.or(p.stmt.clone())
+	let quote = just(Token::Backtick)
+		.not()
+		.ignore_then(
+			match_arm
+				.map_with(|a, ex| (Expr::Arm(a), ex.span()))
+				.or(p.item.clone())
+				.or(p.stmt.clone()),
+		)
 		.repeated()
 		.at_least(1)
 		.collect::<Vec<_>>()
