@@ -190,6 +190,14 @@ impl<'a> TypeCtx<'a> {
 			|| (self.enums.borrow().get(name)).is_some_and(|vs| !vs.is_empty() && !enum_boxed(vs))
 	}
 
+	// The discriminant an atom names in a payload-free enum.
+	pub fn unit_disc(&self, typ: &Typ, atom: &str) -> Option<i64> {
+		let Typ::Enum(name) = typ else { return None };
+		let enums = self.enums.borrow();
+		let vs = enums.get(name).filter(|vs| !enum_boxed(vs))?;
+		vs.iter().find(|v| v.name == atom).map(|v| v.disc)
+	}
+
 	// A generic instance's substitution.
 	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
 		TypeCtx { type_params, ..self }

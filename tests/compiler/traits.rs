@@ -727,6 +727,26 @@ fn int_fill_of_float_field() {
 }
 
 #[test]
+fn atom_fill_of_enum_field() {
+	let src = indoc! {"
+		Size :: enum { small, big }
+		Sized :: trait { size: Size = :small }
+		Rock :: struct {}
+		Rock : Sized < { size :: :big }
+		Pebble :: struct {}
+		Pebble :< Sized
+		zoo : []Sized : [Rock.{}, Pebble.{}]
+		loop z in zoo { print(z.size) }
+		print(Rock.size == .big)
+	"};
+	check(src, ["big", "small", "true"]);
+	fail(
+		"Shape :: enum { dot, circle(float) }\nT :: trait { s: Shape }\nR :: struct {}\nR : T < { s :: :dot }",
+		"must be a `Shape` literal",
+	);
+}
+
+#[test]
 fn rejects_wrong_type_fill() {
 	fail(
 		indoc! {"

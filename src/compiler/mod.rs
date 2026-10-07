@@ -1721,7 +1721,12 @@ impl<M: Module> Compiler<M> {
 					Some((enc, _)) => bytes[(m + i) * 8..(m + i + 1) * 8].copy_from_slice(&enc.to_le_bytes()),
 					None => {
 						let want = base.resolve(&tf.typ, tf.span)?;
-						let lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
+						let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
+						if let Expr::Cast { args, .. } = &lit
+							&& let [(Expr::Atom(a), _)] = &args[..]
+						{
+							lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait"));
+						}
 						let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
 						const_slots.push(((m + i) * 8, self.const_cell(&sym, &lit, &want)));
 					}
