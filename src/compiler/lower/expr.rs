@@ -712,6 +712,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(Typ::Array(elem)) => self.array_lit(elems, Some(elem), expr.1),
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
+				// built through `From[[]T]` fills
+				Some(t)
+					if let Some(sig) = self.sole_fill(&format!("{t}.from"))
+						&& let Typ::Array(elem) = access_peel(&sig.params[0].typ) =>
+				{
+					let (v, _) = self.array_lit(elems, Some(elem), expr.1)?;
+					Ok((self.emit_call(&sig, &[v]).0, t.clone()))
+				}
 				_ => self.fixed_lit(elems, None, expr.1),
 			},
 

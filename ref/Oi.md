@@ -83,7 +83,8 @@ tags: []
 	- [x] generic trait claims
 - [ ] `comp assert`
 - [~] AoS, SoA, AoSoA
-- [ ] computed values `swift gdscript`
+- [ ] computed values `swift gdscript c# kotlin`
+	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
 - [x] settle on good print/fmt/Display/str story

@@ -25,3 +25,8 @@ test! "dynamic columns grow and iterate" {
 	assert! total == 10
 	assert! ps[1..3].life[1] == 1
 }
+
+test! "builds from an anon array" {
+	ps: @soa []Particle = .[ .{ life = 1 } .{ life = 2 } ]
+	assert! ps.life[1] == 2
+}
