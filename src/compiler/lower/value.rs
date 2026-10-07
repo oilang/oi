@@ -453,6 +453,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((v.disc, vec![(name.clone(), v.payload[0].clone(), 8)]));
 		}
 
+		// support `with Enum`
+		let through = self.through_with(pat)?;
+		let pat = through.as_ref().unwrap_or(pat);
+
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
 			Expr::Atom(v) => (v, &[]),

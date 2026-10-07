@@ -58,6 +58,18 @@ fn item_subjects() {
 }
 
 #[test]
+fn enum_variants() {
+	let src = indoc! {"
+		Color :: enum { red, green }
+		with Color {
+			c := green
+			print(match c { red => 1, green => 2 })
+		}
+	"};
+	check(src, "2");
+}
+
+#[test]
 fn glob_import() {
 	let src = indoc! {"
 		with use math

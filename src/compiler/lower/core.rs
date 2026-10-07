@@ -249,7 +249,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				_ => {
 					let key = format!("{}.{name}", self.qualify(s));
-					self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key)
+					self.funcs.contains_key(&key)
+						|| self.generic_fns.contains_key(&key)
+						|| matches!(self.types().resolve(&TypeExpr::Name(s.to_string()), e.1),
+							Ok(Typ::Enum(n)) if self.enum_variants(&n).iter().any(|v| v.name == *name))
 				}
 			},
 		};
