@@ -187,8 +187,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Trait(tn) => {
 				let (_, _, tfields, tmethods) = self.types.traits[tn.as_str()];
 				let slot = (trait_fns(tmethods).count() + tfields.len()) * 8;
-				let vtable = self.ld_word(val, 0);
-				let data = self.ld_word(val, 8);
+				let (vtable, data) = self.unbox(val);
 				let fnptr = self.ld_word(vtable, slot as i32);
 				let sig = Typ::Fn(vec![FnParam::new(typ.clone())], Box::new(Typ::Str));
 				let Ok((s, _)) = self.call_value("str", Callee::Addr(fnptr), &sig, &[], Some(data), (0..0).into())

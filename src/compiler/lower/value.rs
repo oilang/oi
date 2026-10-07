@@ -545,6 +545,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		(start, end, step, open)
 	}
 
+	pub(super) fn upto(&mut self, n: Value, span: Span) -> Result<TypedVal, Diagnostic> {
+		let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
+		self.make_range(zero, Some(n), one, span)
+	}
+
 	pub(super) fn range_value(
 		&mut self,
 		start: &Spanned<Expr>,
@@ -988,6 +993,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Box an owned `data` pointer behind `vtable`.
 	pub(super) fn box_with(&mut self, vtable: Value, data: Value) -> Value {
 		self.heap_slots(&[vtable, data])
+	}
+
+	// The `(vtable, data)` behind a trait object box.
+	pub(super) fn unbox(&mut self, boxv: Value) -> (Value, Value) {
+		(self.ld_word(boxv, 0), self.ld_word(boxv, 8))
 	}
 
 	pub(super) fn float_lit(&mut self, x: f64, w: u16, span: Span) -> Result<Value, Diagnostic> {

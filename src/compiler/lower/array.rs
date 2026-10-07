@@ -59,8 +59,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let Some(inner) = inner else { break };
 			let (val, typ) = self.expr(inner)?;
 			if let Typ::Int(_) = typ {
-				let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
-				let (val, rtyp) = self.make_range(zero, Some(val), one, inner.1)?;
+				let (val, rtyp) = self.upto(val, inner.1)?;
 				unify_elem(&mut elem, &rtyp, inner.1)?;
 				let (data, len) = self.heap_alloc(vec![val], &rtyp);
 				parts.push(self.make_array(data, len, &Typ::Array(Box::new(rtyp))));

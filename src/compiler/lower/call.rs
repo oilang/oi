@@ -313,8 +313,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				})),
 				Typ::Array(_) => out.push((Expr::Spread(ident()), *at)),
 				Typ::Int(_) => {
-					let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
-					(val, typ) = self.make_range(zero, Some(val), one, inner.1)?;
+					(val, typ) = self.upto(val, inner.1)?;
 					out.push(*ident());
 				}
 				_ => {
@@ -850,8 +849,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some((te, s)) => self.types().resolve(te, *s)?,
 			None => Typ::unit(),
 		};
-		let vtable = self.ld_word(boxv, 0);
-		let data = self.ld_word(boxv, 8);
+		let (vtable, data) = self.unbox(boxv);
 		let fnptr = self.ld_word(vtable, (idx * 8) as i32);
 		let typ = Typ::Fn(typs, Box::new(ret));
 		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
@@ -880,8 +878,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
 		};
 		let ftyp = self.types().resolve(&tfields[idx].typ, tfields[idx].span)?;
-		let vtable = self.ld_word(boxv, 0);
-		let data = self.ld_word(boxv, 8);
+		let (vtable, data) = self.unbox(boxv);
 		let m = trait_fns(tmethods).count();
 		// slot offset lives after the method pointers in the vtable
 		let off = self.ld_word(vtable, ((m + idx) * 8) as i32);

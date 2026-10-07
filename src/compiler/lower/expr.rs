@@ -866,8 +866,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							.with_label("`..` spreads only inside a literal or a call"),
 					);
 				};
-				let (zero, one) = (self.b.ins().iconst(types::I64, 0), self.b.ins().iconst(types::I64, 1));
-				self.make_range(zero, Some(val), one, expr.1)
+				self.upto(val, expr.1)
 			}
 
 			Expr::Range { start, end, inclusive } => self.range_value(start, end.as_deref(), *inclusive, expr.1),
