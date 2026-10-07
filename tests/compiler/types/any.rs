@@ -61,3 +61,18 @@ fn print_dispatches_on_typeid() {
 		["3", "hi", "P.{x = 4}", "<any>"],
 	);
 }
+
+#[test]
+fn eq_dispatches_on_typeid() {
+	check(
+		indoc! {r#"
+			P :: struct { x: int }
+			a: any = P.{ x = 1 }
+			b: any = P.{ x = 1 }
+			c: any = "1"
+			z: any
+			print(a == b, a == c, z == z)
+		"#},
+		"true false true",
+	);
+}

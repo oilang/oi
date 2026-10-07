@@ -41,8 +41,14 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Compare two boxed enums.
 	// Checks that tags match, and for the hit variant every payload slot matches.
-	pub(super) fn emit_enum_eq(&mut self, a: Value, b: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
-		let variants = self.variants_of(typ);
+	fn emit_enum_eq(
+		&mut self,
+		a: Value,
+		b: Value,
+		typ: &Typ,
+		variants: &[VariantInfo],
+		span: Span,
+	) -> Result<Value, Diagnostic> {
 		let owner = typ.to_string();
 		let ta = self.enum_tag(typ, a);
 		let tb = self.enum_tag(typ, b);
@@ -78,17 +84,46 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.emit_val_eq(a, b, &inner, owner, span);
 		}
 		match t {
+			Typ::Any => {
+				let callee = self.import_fn(&oi_symbol("eq_any"), &[self.int; 2], Some(types::I8));
+				let call = self.b.ins().call(callee, &[a, b]);
+				Ok(self.b.inst_results(call)[0])
+			}
 			t if let Some(slots) = eq_slots(t) => self.slots_eq(a, b, 0, &slots, &t.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
 			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
 			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_niche(t) => {
-				self.emit_enum_eq(a, b, t, span)
+				self.emit_enum_eq(a, b, t, &self.variants_of(t), span)
 			}
 			t if comparable(t) => Ok(self.emit_eq(a, b, t)),
 			t => Err(
 				Diagnostic::new(format!("cannot compare {owner}: contains {t}"), span.into_range())
 					.with_label(format!("claim `Eq` for `{owner}` to define equality")),
 			),
+		}
+	}
+
+	// Payloads without equality compare by identity.
+	pub(crate) fn emit_any_eq(&mut self, a: Value, b: Value) -> Value {
+		let variants: Vec<_> = (self.any_types.clone().into_iter())
+			.map(|t| VariantInfo::new(t.key(), typeid(&t), vec![if self.has_eq(&t) { t } else { Typ::ISize }]))
+			.collect();
+		self.emit_enum_eq(a, b, &Typ::Any, &variants, Span::default())
+			.ok()
+			.expect("has_eq")
+	}
+
+	fn has_eq(&mut self, t: &Typ) -> bool {
+		if t.nominal().is_some() && self.fill(t, role::EQ, "eq", 2).is_some() {
+			return true;
+		}
+		match t.newtype().unwrap_or(t).clone() {
+			t if let Some(slots) = eq_slots(&t) => slots.iter().all(|s| self.has_eq(s)),
+			Typ::Array(e) | Typ::FixedArray(e, _) | Typ::Map(_, e) => self.has_eq(&e),
+			t if t.is_enumish() && t != Typ::Any => {
+				self.variants_of(&t).iter().flat_map(|v| &v.payload).all(|p| self.has_eq(p))
+			}
+			t => t == Typ::Any || comparable(&t),
 		}
 	}
 

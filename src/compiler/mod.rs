@@ -9,7 +9,7 @@ use cranelift::codegen;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleReloc};
+use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, Module, ModuleReloc};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::BinaryFormat;
 
@@ -1919,6 +1919,26 @@ impl<M: Module> Compiler<M> {
 			trans.b.finalize();
 			self.finish_fn(&sym);
 		}
+
+		// once every type coerced into `any` is known
+		let sym = oi_symbol("eq_any");
+		if let Some(FuncOrDataId::Func(id)) = self.module.declarations().get_name(&sym)
+			&& !self.defined.contains(&id)
+		{
+			let params = vec![(String::new(), Typ::Any, Access::Read); 2];
+			let def = FnDef {
+				params: &params,
+				..FnDef::default()
+			};
+			let (mut trans, block) = self.translator(&def, funcs, types);
+			trans.b.func.signature.returns.push(AbiParam::new(types::I8));
+			let [a, b]: [Value; 2] = trans.b.block_params(block).try_into().unwrap();
+			let eq = trans.emit_any_eq(a, b);
+			trans.b.ins().return_(&[eq]);
+			trans.b.finalize();
+			self.finish_fn(&sym);
+		}
+
 		self.pending.pop()
 	}
 
