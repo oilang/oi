@@ -34,8 +34,7 @@ pub soa! :: fn(t: Ast) Ast {
 					%o
 				}
 			}
-		`
-		grow << `
+
 			%n : Index[Range, %n] < {
 				index :: fn(self, r: Range) Self { %n.{ %{..slices} } }
 			}

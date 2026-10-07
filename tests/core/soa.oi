@@ -19,7 +19,9 @@ test! "dynamic columns grow and iterate" {
 	ps << .{ pos = .{4, 5}, life = 6 } << .{ life = 1 }
 	assert! ps.len() == 3
 	assert! ps.pos[1].x == 4
+
 	total: f32 = 0
 	loop p in ps { total += p.life }
 	assert! total == 10
+	assert! ps[1..3].life[1] == 1
 }

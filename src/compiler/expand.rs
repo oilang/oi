@@ -774,7 +774,16 @@ pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, l
 			let arg = if n.starts_with("...") {
 				// SAFETY: the lowerer passes a `[]Ast` header for splat slots
 				let elems = unsafe { runtime::array_elems(p.cast()) };
-				Arg::Seq(elems.iter().map(|&q| unsafe { (*(q as *mut Spanned<Expr>)).clone() }).collect())
+				// flatten multi-stmt quotes, which arrive as a block
+				Arg::Seq(
+					elems
+						.iter()
+						.flat_map(|&q| match unsafe { (*(q as *mut Spanned<Expr>)).clone() } {
+							(Expr::Block(v), _) => v,
+							e => vec![e],
+						})
+						.collect(),
+				)
 			} else {
 				Arg::Ast(unsafe { &*p })
 			};
