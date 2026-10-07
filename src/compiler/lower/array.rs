@@ -392,6 +392,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value, span: Span) {
 		let addr = self.elem_addr(data, len, elem, idx, span);
+		if self.needs_release(elem) {
+			let old = self.load_elem(addr, 0, elem);
+			self.release_value(old, elem);
+		}
 		self.store_elem(addr, 0, elem, val);
 	}
 

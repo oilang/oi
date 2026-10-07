@@ -113,6 +113,24 @@ fn map_values_drop_with_their_last_owner() {
 }
 
 #[test]
+fn index_and_field_stores_move_and_drop_the_old_value() {
+	check(
+		[
+			FILE,
+			"Box :: struct { f: File }",
+			"a := [File.{fd = 1}]",
+			"b := Box.{f = File.{fd = 2}}",
+			"f :: File.{fd = 3}",
+			"g :: File.{fd = 4}",
+			"a[0] = f",
+			"b.f = g",
+			r#"print("set")"#,
+		],
+		["drop 1", "drop 2", "set", "drop 4", "drop 3"],
+	);
+}
+
+#[test]
 fn an_unbound_resource_drops_at_scope_exit() {
 	check([FILE, "File.{fd = 1}", r#"print("end")"#], ["end", "drop 1"]);
 }

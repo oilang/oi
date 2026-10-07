@@ -40,7 +40,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Whether a scope must release a value of this type.
-	fn needs_release(&self, typ: &Typ) -> bool {
+	pub(super) fn needs_release(&self, typ: &Typ) -> bool {
 		releasable(typ) || self.is_resource(typ)
 	}
 
@@ -145,12 +145,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if self.is_resource(typ) {
 				self.run_hook(val, typ, name, "drop");
 			}
-			for (i, f) in fields.iter().enumerate() {
-				if owns(&f.typ) || self.is_resource(&f.typ) {
-					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
-					self.release_field(fv, &f.typ);
-				}
-			}
+			self.release_slots(val, 0, &field_types(fields));
 		} else if let Typ::Tuple(fields) = typ
 			&& self.is_resource(typ)
 		{
@@ -181,9 +176,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Release the owned slots of an aggregate type.
 	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
-			if self.needs_release(t) {
+			if owns(t) || self.is_resource(t) {
 				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
-				self.release_value(fv, t);
+				self.release_field(fv, t);
 			}
 		}
 	}

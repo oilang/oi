@@ -182,6 +182,17 @@ fn struct_owns_its_nested_structs() {
 }
 
 #[test]
+fn tuple_frees_its_struct_elements() {
+	let held = indoc! {"
+		File :: struct { fd: int }
+		File : Drop < { drop :: fn(mut self) {} }
+		P :: struct { n: int }
+		t :: (File.{fd = 1}, P.{n = 2})
+	"};
+	assert_eq!(leaks(held), leaks("t :: (1, 2)"));
+}
+
+#[test]
 fn omitted_handle_field_has_one_owner() {
 	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len)"]);
 }

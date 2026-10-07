@@ -156,7 +156,6 @@ impl<'a, M: Module> Translator<'a, M> {
 						let (k, v) = (*k, *v);
 						let (tag, key_bits) = self.map_key(index, &k)?;
 						let val = self.stored(value, &v, &format!("{v} value of map"), "a map")?;
-						self.move_resource(value, &v)?;
 						let val = self.copy_in(val, &v);
 						let val_bits = self.map_bits(val);
 						let ptr = self.map_rt("set", ptr, tag, key_bits, &[val_bits]);
@@ -427,6 +426,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		closure_escape(want, value.1.into_range(), &format!("stored in {place}"))?;
+		self.move_resource(value, want)?;
 		Ok(val)
 	}
 
