@@ -15,7 +15,7 @@ use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail};
-use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal};
+use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
 
 mod cache;
@@ -995,7 +995,7 @@ impl<M: Module> Compiler<M> {
 		let scope_of = |key: &str| {
 			defs.get(key)
 				.copied()
-				.unwrap_or_else(|| scopes[key.split_once("::").map_or("main", |(m, _)| m)])
+				.unwrap_or_else(|| scopes[module_of(key).unwrap_or("main")])
 		};
 		self.annotations = program
 			.annotations
@@ -2101,11 +2101,8 @@ impl<M: Module> Compiler<M> {
 			}
 			let mutable = *access == Access::Mut;
 			let local = Local {
-				var,
-				typ: typ.clone(),
-				mutable,
 				boxed: mutable && name != "self",
-				stat: false,
+				..Local::plain(var, typ.clone(), mutable)
 			};
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
@@ -2150,11 +2147,8 @@ impl<M: Module> Compiler<M> {
 				let var = trans.b.declare_var(cl);
 				trans.b.def_var(var, val);
 				let local = Local {
-					var,
-					typ: typ.clone(),
-					mutable: *boxed,
 					boxed: *boxed,
-					stat: false,
+					..Local::plain(var, typ.clone(), *boxed)
 				};
 				trans.vars.insert(name.clone(), local);
 			}

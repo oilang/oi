@@ -1,7 +1,7 @@
 use super::call::{arg_slots, pack_varargs};
 use super::*;
 use crate::ast::TypeParam;
-use crate::compiler::{ann, role};
+use crate::compiler::{has_ann, role};
 
 // Extend `subst` by matching a declared type against a concrete arg type.
 pub(super) fn unify(
@@ -76,13 +76,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		recv: Option<(TypedVal, &Spanned<Expr>)>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		if self
-			.types
-			.consts
-			.anns
-			.get(name)
-			.is_some_and(|a| a.iter().any(|x| ann(x, "unsafe").is_some()))
-		{
+		if has_ann(self.types.consts.anns, name, "unsafe") {
 			self.require_unsafe(name, span)?;
 		}
 		let self_n = recv.is_some() as usize;
@@ -247,8 +241,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			foreign: false,
 			ctx: def.ctx.clone(),
 			unsafe_call: false,
-			pure: def.pure
-				|| (self.types.consts.anns.get(name)).is_some_and(|a| a.iter().any(|x| ann(x, role::PURE).is_some())),
+			pure: def.pure || has_ann(self.types.consts.anns, name, role::PURE),
 			default: false,
 		};
 		self.mono.insert(sym.clone(), fn_sig.clone());

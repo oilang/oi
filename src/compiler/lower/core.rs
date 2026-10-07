@@ -58,7 +58,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Ensure that no private members are accessed from outside their module.
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = rc::base_name(typ);
-		let owner = def.split_once("::").map_or("", |(m, _)| m);
+		let owner = module_of(def).unwrap_or_default();
 		if owner == self.types.scope.module || !self.privates.get(def).is_some_and(|ms| ms.contains(member)) {
 			return Ok(());
 		}
@@ -69,7 +69,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Enforce `@noinit`.
 	pub(super) fn check_noinit(&self, name: &str, span: Span) -> Result<(), Diagnostic> {
 		let base = rc::base_name(name);
-		let owner = base.split_once("::").map_or("", |(m, _)| m);
+		let owner = module_of(base).unwrap_or_default();
 		if owner == self.types.scope.module || !has_ann(self.types.consts.anns, base, role::NOINIT) {
 			return Ok(());
 		}

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, Expr, Span, Spanned};
 use crate::diagnostics::Diagnostic;
-use crate::loader::{Module, Program};
+use crate::loader::{Module, Program, module_of};
 use crate::runtime;
 
 use super::{Compiler, role};
@@ -242,9 +242,7 @@ pub(crate) fn eval(
 	for m in program.modules.iter().rev() {
 		let mut comps: Vec<String> = consts
 			.iter()
-			.filter(|(k, v)| {
-				k.split_once("::").map_or("main", |(owner, _)| owner) == m.name && matches!(v.0, Expr::Comp(_))
-			})
+			.filter(|(k, v)| module_of(k).unwrap_or("main") == m.name && matches!(v.0, Expr::Comp(_)))
 			.map(|(k, _)| k.clone())
 			.collect();
 		// comp expressions may reference siblings, so retry until a pass gets stuck

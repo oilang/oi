@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
-use crate::loader::{Module, Program, Publics, Scope};
+use crate::loader::{Module, Program, Publics, Scope, module_of};
 use crate::runtime;
 
 use super::Compiler;
@@ -105,7 +105,7 @@ fn resolve_bare(name: &str, scope: &Scope) -> String {
 // Get a fn's defining module, encoded in its qualified name.
 fn owner(e: &Spanned<Expr>) -> &str {
 	match &e.0 {
-		Expr::Fn { name, .. } => name.rsplit_once("::").map_or("main", |(m, _)| m),
+		Expr::Fn { name, .. } => module_of(name).unwrap_or("main"),
 		_ => "main",
 	}
 }

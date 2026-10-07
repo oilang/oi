@@ -127,10 +127,15 @@ pub struct Publics {
 	pub packages: HashMap<String, PathBuf>,
 }
 
+// The module a qualified key belongs to.
+pub(crate) fn module_of(key: &str) -> Option<&str> {
+	key.split_once("::").map(|(m, _)| m)
+}
+
 impl Publics {
 	// Whether a key is visible from a given module.
 	pub fn is_visible(&self, key: &str, from: &str) -> bool {
-		let owner = key.split_once("::").map_or("", |(m, _)| m);
+		let owner = module_of(key).unwrap_or_default();
 		match self.vis.get(key) {
 			Some(Vis::Package) => self.packages.get(owner) == self.packages.get(from),
 			v => v.is_some(),

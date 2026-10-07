@@ -16,7 +16,7 @@ use super::{
 };
 use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam, place};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::{Publics, Scope};
+use crate::loader::{Publics, Scope, module_of};
 use crate::runtime;
 
 mod anon;
