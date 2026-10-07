@@ -743,6 +743,95 @@ pub fn place(name: &str, field: Option<&String>, span: Span) -> Spanned<Expr> {
 	}
 }
 
+// Bind each computed index in a place chain.
+pub fn pin(place: &mut Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	let mut binds = vec![];
+	if let Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } = &mut place.0 {
+		binds = pin(base);
+	}
+	if let Expr::Index { index, .. } = &mut place.0
+		&& !matches!(index.0, Expr::Ident(_) | Expr::Int(_) | Expr::String(_) | Expr::Atom(_))
+	{
+		let name = format!("$i{}_{}", index.1.start, index.1.end);
+		let ident = (Expr::Ident(name.clone()), index.1);
+		binds.push(bind(&name, std::mem::replace(index, ident)));
+	}
+	binds
+}
+
+// Assignment for a field/index chain off a binding.
+pub fn assign(mut place: Spanned<Expr>, op: Option<BinOp>, value: Spanned<Expr>, span: Span) -> Spanned<Expr> {
+	let mut stmts = pin(&mut place);
+	let value = match op {
+		Some(op) => (Expr::Binary(op, Box::new(place.clone()), Box::new(value)), span),
+		None => value,
+	};
+	stmts.push(set(place, value, span));
+	match stmts.len() {
+		1 => stmts.pop().unwrap(),
+		_ => (Expr::Block(stmts), span),
+	}
+}
+
+// `name` or `name.field`, the inverse of `place`.
+fn unplace(e: &Expr) -> Option<(String, Option<String>)> {
+	match e {
+		Expr::Ident(name) => Some((name.clone(), None)),
+		Expr::Field { tuple, field } if let Expr::Ident(name) = &tuple.0 => Some((name.clone(), Some(field.clone()))),
+		_ => None,
+	}
+}
+
+fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Expr> {
+	let value = Box::new(value);
+	match unplace(&place.0) {
+		Some((name, None)) => return (Expr::Assign { name, value }, span),
+		Some((name, Some(field))) => return (Expr::FieldAssign { name, field, value }, span),
+		None => {}
+	}
+	if let Expr::Index { collection, index } = &place.0
+		&& let Some((name, field)) = unplace(&collection.0)
+	{
+		let index = index.clone();
+		return (
+			Expr::IndexAssign {
+				name,
+				field,
+				index,
+				value,
+			},
+			span,
+		);
+	}
+	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. }) = &mut place.0 else {
+		unreachable!("not a place")
+	};
+	let t = format!("$t{}_{}", base.1.start, base.1.end);
+	let base = std::mem::replace(&mut **base, (Expr::Ident(t.clone()), span));
+	let out = bind(&format!("{t}r"), place.clone());
+	let stmts = vec![
+		bind(&t, base.clone()),
+		set(place, *value, span),
+		set(base, (Expr::Ident(t), span), span),
+		out,
+	];
+	(Expr::Block(stmts), span)
+}
+
+pub fn bind(name: &str, value: Spanned<Expr>) -> Spanned<Expr> {
+	let span = value.1;
+	let value = Some(Box::new(value));
+	(
+		Expr::Bind {
+			mutable: true,
+			name: name.into(),
+			typ: None,
+			value,
+		},
+		span,
+	)
+}
+
 pub fn record_args(fields: Vec<(Option<String>, Spanned<Expr>)>, span: Span) -> Vec<Spanned<Expr>> {
 	if fields.iter().all(|(n, _)| n.is_none()) {
 		return fields.into_iter().map(|(_, v)| v).collect();

@@ -54,6 +54,23 @@ fn compound_assign_field() {
 }
 
 #[test]
+fn nested_place_assign() {
+	check(
+		indoc! {"
+			P :: struct { x: int }
+			ps := [P.{1}, P.{2}]
+			g := [[1, 2], [3, 4]]
+			i := 0
+			at :: fn(mut i: int) int { i += 1  i }
+			ps[at(mut i)].x += 10
+			g[1][0] = 7
+			(ps[1].x, g[1][0], i)
+		"},
+		"(12, 7, 1)",
+	);
+}
+
+#[test]
 fn declare_zero_int() {
 	check(["n: int", "n"], "0");
 }

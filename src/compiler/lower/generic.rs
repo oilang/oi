@@ -169,7 +169,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let sig = self.declare_instance(name, def, subst)?;
 		let out = self.emit_call(&sig, &vals);
-		self.reload_lent(&lent);
+		self.reload_lent(&lent)?;
 		Ok(out)
 	}
 

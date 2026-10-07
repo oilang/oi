@@ -5,6 +5,8 @@ life :: fn(ps: @soa [4]Particle, i: int) f32 {
 	ps[i].life
 }
 
+kill :: fn(mut p: Particle) { p.life = 0 }
+
 test! "gather and scatter" {
 	ps: @soa [4]Particle
 	ps[1] = .{ pos = .{1, 2}, life = 3 }
@@ -29,4 +31,11 @@ test! "dynamic columns grow and iterate" {
 test! "builds from an anon array" {
 	ps: @soa []Particle = .[ .{ life = 1 } .{ life = 2 } ]
 	assert! ps.life[1] == 2
+}
+
+test! "writes one column through a row" {
+	ps: @soa []Particle = .[ .{ life = 1 } .{ life = 2 } ]
+	ps[1].life -= 0.5
+	kill(mut ps[0])
+	assert! ps.life[0] == 0 && ps.life[1] == 1.5
 }

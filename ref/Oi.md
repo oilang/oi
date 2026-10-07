@@ -82,7 +82,7 @@ tags: []
 	- [ ] `:h <topic>` `vim revo`
 	- [x] generic trait claims
 - [ ] `comp assert`
-- [~] AoS, SoA, AoSoA
+- [x] AoS, SoA, AoSoA
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
@@ -106,7 +106,7 @@ tags: []
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
 - [x] `loop <expr>` rather than any special case dispatch
-- I kind of like Rust's `pub(scope)` concept where you specify what it's public for
+- [x] I kind of like Rust's `pub(scope)` concept where you specify what it's public for
 - `for/else`, `while/else` `python`
 - `match{}/or` (in addition to the planned `match{else}`)
 	- or at least clean up the usage of one of them

@@ -182,28 +182,6 @@ pub(super) fn stmt<'token, I>(
 	))
 	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
-	// index assignment
-	let index_assign = ident()
-		.then(just(Token::Dot).ignore_then(p.def_name.clone()).or_not())
-		.then(bracket(p.expr.clone()))
-		.then(rhs.clone())
-		.map_with(move |(((name, field), index), (op, value)), ex| {
-			let lhs = Expr::Index {
-				collection: Box::new(ast::place(&name, field.as_ref(), ex.span())),
-				index: Box::new(index.clone()),
-			};
-			let value = fold(op, lhs, value, ex.span());
-			(
-				Expr::IndexAssign {
-					name,
-					field,
-					index: Box::new(index),
-					value: Box::new(value),
-				},
-				ex.span(),
-			)
-		});
-
 	// map deletion
 	let map_delete = ident()
 		.then_ignore(just(Token::Dot))
@@ -230,27 +208,27 @@ pub(super) fn stmt<'token, I>(
 				(Expr::DerefAssign { name, value }, ex.span())
 			});
 
-	// field assignment
-	let field_assign = ident()
-		.then_ignore(just(Token::Dot))
-		.then(ident().or(select! { Token::Int(n) => n.to_string() }))
-		.then(rhs)
-		.map_with(move |((name, field), (op, value)), ex| {
-			let tuple = Box::new((Expr::Ident(name.clone()), ex.span()));
-			let lhs = Expr::Field {
-				tuple,
-				field: field.clone(),
-			};
-			let value = fold(op, lhs, value, ex.span());
-			(
-				Expr::FieldAssign {
-					name,
+	// assignment through a field/index chain
+	let seg = just(Token::Dot)
+		.ignore_then(p.def_name.clone().or(select! { Token::Int(n) => n.to_string() }))
+		.map(Ok)
+		.or(bracket(p.expr.clone()).map(Err));
+	let place_assign = spanned(ident().map(Expr::Ident))
+		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
+			let e = match seg {
+				Ok(field) => Expr::Field {
+					tuple: Box::new(lhs),
 					field,
-					value: Box::new(value),
 				},
-				ex.span(),
-			)
-		});
+				Err(index) => Expr::Index {
+					collection: Box::new(lhs),
+					index: Box::new(index),
+				},
+			};
+			(e, ex.span())
+		})
+		.then(rhs)
+		.map_with(|(place, (op, value)), ex| ast::assign(place, op, value, ex.span()));
 
 	let (b, destructure) = binds(p, p.juxt_expr.clone(), p.pat.clone());
 	bind.define(b);
@@ -281,10 +259,9 @@ pub(super) fn stmt<'token, I>(
 	place.define(
 		destructure
 			.or(bind.clone())
-			.or(field_assign)
+			.or(place_assign)
 			.or(deref_assign)
 			.or(assign.clone())
-			.or(index_assign)
 			.or(map_delete),
 	);
 

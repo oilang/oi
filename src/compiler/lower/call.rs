@@ -85,6 +85,7 @@ pub(super) enum Callee {
 pub(super) enum Lent {
 	Whole(Local),
 	Slice { parent: Local, lo: Value, len: Value },
+	Place(Local, Box<Spanned<Expr>>),
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -250,7 +251,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (vals, lent) = self.call_args(name, &params, recv, recv_expr, args, span)?;
 		let out = self.emit_call(&sig, &vals);
-		self.reload_lent(&lent);
+		self.reload_lent(&lent)?;
 		Ok(out)
 	}
 
@@ -494,7 +495,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				let local = self.local(name, inner.1.into_range())?;
 				(self.read_local(&local), local.typ.clone(), Lent::Whole(local))
 			}
-			_ => unreachable!("check_muts admits only idents and ident-based slices"),
+			_ => {
+				let (mut place, name) = (inner.clone(), format!("$lent{}_{}", inner.1.start, inner.1.end));
+				let mut stmts = crate::ast::pin(&mut place);
+				stmts.push(crate::ast::bind(&name, place.clone()));
+				for e in &stmts {
+					self.expr(e)?;
+				}
+				let tmp = self.local(&name, inner.1.into_range())?;
+				let back = crate::ast::assign(place, None, (Expr::Ident(name), inner.1), inner.1);
+				(self.read_local(&tmp), tmp.typ.clone(), Lent::Place(tmp, Box::new(back)))
+			}
 		};
 		let slot = self.stack_slot(8);
 		self.st(slot, 0, cur);
@@ -502,12 +513,16 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// After a call, reload a binding.
-	pub(super) fn reload_lent(&mut self, lent: &[(Value, Lent)]) {
+	pub(super) fn reload_lent(&mut self, lent: &[(Value, Lent)]) -> Result<(), Diagnostic> {
 		for (slot, entry) in lent {
-			let (Lent::Whole(local) | Lent::Slice { parent: local, .. }) = entry;
+			let (Lent::Whole(local) | Lent::Slice { parent: local, .. } | Lent::Place(local, _)) = entry;
 			let val = self.ld_typ(*slot, 0, &local.typ);
 			match entry {
 				Lent::Whole(local) => self.write_local(local, val),
+				Lent::Place(tmp, back) => {
+					self.write_local(tmp, val);
+					self.expr(back)?;
+				}
 				Lent::Slice { parent, lo, len } => {
 					let elem = array_elem(&parent.typ).clone();
 					let base = self.read_local(parent);
@@ -518,6 +533,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 		}
+		Ok(())
 	}
 
 	// Callsite access checks.
@@ -555,12 +571,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			if want != Access::Mut {
 				continue;
 			}
-			let name = match &arg_inner(arg).0 {
-				Expr::Slice { collection, .. } => {
-					self.mut_place(collection, "only a mutable binding can be lent `mut`")?
-				}
-				_ => self.mut_place(arg_inner(arg), "only a mutable binding can be lent `mut`")?,
-			};
+			let name = self.mut_place(
+				Self::place_root(arg_inner(arg)),
+				"only a mutable binding can be lent `mut`",
+			)?;
 			let mut touched = HashSet::new();
 			let others = args.iter().enumerate().filter(|&(j, _)| j != i).filter_map(|(_, a)| *a);
 			for e in recv.into_iter().chain(others) {
@@ -572,6 +586,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		Ok(())
+	}
+
+	// The binding a field/index/slice chain hangs off.
+	fn place_root(e: &Spanned<Expr>) -> &Spanned<Expr> {
+		match &e.0 {
+			Expr::Field { tuple: b, .. } | Expr::Index { collection: b, .. } | Expr::Slice { collection: b, .. } => {
+				Self::place_root(b)
+			}
+			_ => e,
+		}
 	}
 
 	// Require a mutable binding place.
@@ -731,7 +755,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.inst_results(call)[0]
 		};
 		let ret_val = if c_abi { self.c_norm(ret_val, ret) } else { ret_val };
-		self.reload_lent(&lent);
+		self.reload_lent(&lent)?;
 		self.temp(ret_val, ret);
 		Ok((ret_val, ret.clone()))
 	}
