@@ -55,15 +55,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let hit = self.b.ins().band(tags_eq, same);
 			let (body, next) = self.fork(hit);
 			self.b.switch_to_block(body);
-			for (i, ft) in v.payload.iter().enumerate() {
-				let fa = self.ld_typ(a, ((i + 1) * 8) as i32, ft);
-				let fb = self.ld_typ(b, ((i + 1) * 8) as i32, ft);
-				let fe = self.emit_val_eq(fa, fb, ft, &owner, span)?;
-				let fe = self.b.ins().icmp_imm(IntCC::NotEqual, fe, 0);
-				let prev = self.b.use_var(eq);
-				let acc = self.b.ins().band(prev, fe);
-				self.b.def_var(eq, acc);
-			}
+			let all = self.slots_eq(a, b, 8, &v.payload, &owner, span)?;
+			self.b.def_var(eq, all);
 			self.b.ins().jump(merge, &[]);
 			self.b.switch_to_block(next);
 		}
@@ -75,7 +68,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// `Eq` fill, or structural diff by default.
 	fn emit_val_eq(&mut self, a: Value, b: Value, t: &Typ, owner: &str, span: Span) -> Result<Value, Diagnostic> {
-		if let Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) = t
+		if t.nominal().is_some()
 			&& let Some(sig) = self.fill(t, role::EQ, "eq", 2)
 		{
 			return Ok(self.emit_call(&sig, &[a, b]).0);
@@ -85,7 +78,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.emit_val_eq(a, b, &inner, owner, span);
 		}
 		match t {
-			t if eq_slots(t).is_some() => self.emit_slots_eq(a, b, t, span),
+			t if let Some(slots) = eq_slots(t) => self.slots_eq(a, b, 0, &slots, &t.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
 			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
 			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_niche(t) => {
@@ -148,17 +141,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			}) || (self.core_traits.contains(tn) && builtin_claim(typ, tn))
 	}
 
-	// Compare two heap blocks slot by slot.
-	fn emit_slots_eq(&mut self, a: Value, b: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
-		let Some(slots) = eq_slots(typ) else {
-			unreachable!("emit_slots_eq on {typ}")
-		};
-		let owner = typ.to_string();
+	// Compare two heap blocks slot by slot, from byte `base`.
+	fn slots_eq(
+		&mut self,
+		a: Value,
+		b: Value,
+		base: i32,
+		slots: &[Typ],
+		owner: &str,
+		span: Span,
+	) -> Result<Value, Diagnostic> {
 		let mut acc = self.b.ins().iconst(types::I8, 1);
 		for (i, st) in slots.iter().enumerate() {
-			let fa = self.ld_typ(a, (i * 8) as i32, st);
-			let fb = self.ld_typ(b, (i * 8) as i32, st);
-			let eq = self.emit_val_eq(fa, fb, st, &owner, span)?;
+			let fa = self.ld_typ(a, base + (i * 8) as i32, st);
+			let fb = self.ld_typ(b, base + (i * 8) as i32, st);
+			let eq = self.emit_val_eq(fa, fb, st, owner, span)?;
 			let eq = self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0);
 			acc = self.b.ins().band(acc, eq);
 		}
@@ -378,16 +375,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			BinOp::Shr => (role::SHR, "shr"),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
-		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| match lt {
-			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) => {
-				s.fill(lt, tn, method, 2).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
-			}
-			_ => lt.clone(),
+		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
+			(lt.nominal().and_then(|_| s.fill(lt, tn, method, 2))).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 		})?;
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 
-		if let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &lt {
+		if let Some(name) = lt.nominal() {
 			// overloads
 			let key = format!("{name}.{method}");
 			let plain = self.fill(&lt, tn, method, 2);
@@ -416,7 +410,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// commutative operators
 		if matches!(op, BinOp::Add | BinOp::Mul)
 			&& matches!(lt, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_))
-			&& let Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) = &rt
+			&& let Some(name) = rt.nominal()
 			&& let Some(sig) = (self.fill(&rt, tn, method, 2).filter(|s| s.params[1].typ == lt))
 				.or_else(|| self.find_fill(&format!("{name}.{method}"), 1, &lt))
 		{
@@ -554,11 +548,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			icc
 		};
-		let ne_cc = if icc == IntCC::NotEqual {
-			IntCC::Equal
-		} else {
-			IntCC::NotEqual
-		};
 		let raw = match (&lt, &rt) {
 			(Typ::Int(_), Typ::Int(_))
 			| (Typ::UInt(_), Typ::UInt(_))
@@ -577,7 +566,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let IntCC::Equal | IntCC::NotEqual = icc {
 					let eq = self.emit_val_eq(lv, rv, l, &lt.to_string(), span)?;
 					self.b.ins().icmp_imm(cc, eq, 0)
-				} else if let Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(_) = l
+				} else if l.nominal().is_some()
 					&& let Some(sig) = self.fill(l, role::ORD, "lt", 2)
 				{
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };
@@ -597,14 +586,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
-			(Typ::Str, Typ::Str) | (Typ::Error, Typ::Error) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
-				let typ = lt.clone();
-				let eq = self.emit_eq(lv, rv, &typ);
-				self.b.ins().icmp_imm(ne_cc, eq, 0)
-			}
-			(Typ::Ast, Typ::Str) | (Typ::Str, Typ::Ast) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
-				let (ast_val, str_val) = if lt == Typ::Ast { (lv, rv) } else { (rv, lv) };
-				let eq = self.ast_method(ast_val, "==", Some(str_val));
+			(Typ::Str, Typ::Str) | (Typ::Error, Typ::Error) | (Typ::Ast, Typ::Str) | (Typ::Str, Typ::Ast)
+				if matches!(icc, IntCC::Equal | IntCC::NotEqual) =>
+			{
+				let eq = match (&lt, &rt) {
+					(Typ::Ast, _) => self.ast_method(lv, "==", Some(rv)),
+					(_, Typ::Ast) => self.ast_method(rv, "==", Some(lv)),
+					_ => self.emit_eq(lv, rv, &lt),
+				};
+				let ne_cc = if icc == IntCC::Equal {
+					IntCC::NotEqual
+				} else {
+					IntCC::Equal
+				};
 				self.b.ins().icmp_imm(ne_cc, eq, 0)
 			}
 			_ => {

@@ -139,14 +139,9 @@ impl<M: Module> Translator<'_, M> {
 
 	// bool is a byte in C but a word in Oi.
 	fn c_load(&mut self, typ: &Typ, c: Value, off: i32) -> Value {
-		let mem = MemFlags::new();
-		match (typ.newtype().unwrap_or(typ), typ.c_enum(&self.types)) {
-			(Typ::Bool, _) => self.b.ins().uload8(self.int, mem, c, off),
-			(_, Some(b)) => {
-				let v = self.b.ins().load(cl_type(&b, self.int), mem, c, off);
-				self.c_norm(v, typ)
-			}
-			_ => self.b.ins().load(cl_type(typ, self.int), mem, c, off),
+		match typ.newtype().unwrap_or(typ) {
+			Typ::Bool => self.b.ins().uload8(self.int, MemFlags::new(), c, off),
+			t => self.load_elem(c, off, t),
 		}
 	}
 
@@ -166,15 +161,10 @@ impl<M: Module> Translator<'_, M> {
 	}
 
 	fn c_store(&mut self, typ: &Typ, v: Value, c: Value, off: i32) {
-		let mem = MemFlags::new();
-		match (typ.newtype().unwrap_or(typ), typ.c_enum(&self.types)) {
-			(Typ::Bool, _) => self.b.ins().istore8(mem, v, c, off),
-			(_, Some(b)) => {
-				let v = self.b.ins().ireduce(cl_type(&b, self.int), v);
-				self.b.ins().store(mem, v, c, off)
-			}
-			_ => self.b.ins().store(mem, v, c, off),
-		};
+		match typ.newtype().unwrap_or(typ) {
+			Typ::Bool => _ = self.b.ins().istore8(MemFlags::new(), v, c, off),
+			t => self.store_elem(c, off, t, v),
+		}
 	}
 
 	// Copy each field between its Oi slot and its C offset.

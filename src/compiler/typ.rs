@@ -177,6 +177,14 @@ impl Typ {
 		}
 	}
 
+	// The declared name of a struct or enum.
+	pub fn nominal(&self) -> Option<&str> {
+		match self {
+			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => Some(n),
+			_ => None,
+		}
+	}
+
 	// Whether a value can cross the C ABI.
 	pub fn is_c_repr(&self, types: &TypeCtx) -> bool {
 		match self.newtype().unwrap_or(self) {

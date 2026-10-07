@@ -113,10 +113,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A `@nozero` type, or a struct carrying one.
 	pub(super) fn nozero<'t>(&self, typ: &'t Typ) -> Option<&'t str> {
-		let name = match typ {
-			Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => n.as_str(),
-			_ => return None,
-		};
+		let name = typ.nominal()?;
 		if has_ann(self.types.consts.anns, rc::base_name(name), role::NOZERO) {
 			return Some(name);
 		}
