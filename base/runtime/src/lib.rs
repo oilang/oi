@@ -114,10 +114,15 @@ pub fn str_new(a: *const Allocator, bytes: &[u8]) -> *const StrHeader {
 	unsafe {
 		let data = raw_alloc(a, len + 1);
 		std::ptr::copy_nonoverlapping(bytes.as_ptr(), data, bytes.len());
-		let out = raw_alloc(a, size_of::<StrHeader>() as i64) as *mut StrHeader;
-		*out = StrHeader { data: data as i64, len };
-		out
+		str_header(a, data as i64, len)
 	}
+}
+
+// Strings are never freed, so their handles skip alloc's counted prefix.
+unsafe fn str_header(a: *const Allocator, data: i64, len: i64) -> *const StrHeader {
+	let out = unsafe { raw_alloc(a, size_of::<StrHeader>() as i64) } as *mut StrHeader;
+	unsafe { *out = StrHeader { data, len } };
+	out
 }
 
 // Render one value to a string.
@@ -481,6 +486,13 @@ pub struct Header {
 	cap: i64,
 }
 
+// A counted array handle holding the given header.
+unsafe fn new_header(a: *const Allocator, h: Header) -> *const Header {
+	let out = unsafe { alloc(a, size_of::<Header>() as i64) } as *mut Header;
+	unsafe { *out = h };
+	out
+}
+
 /// Clone a header, sharing its buffer with a refcount bump.
 /// # Safety
 /// `header` must point to a valid array header.
@@ -490,9 +502,7 @@ pub unsafe extern "C" fn array_share(header: *const Header) -> *const Header {
 	if h.data != 0 {
 		unsafe { *rc(h.data as *const u8) += 1 };
 	}
-	let out = unsafe { alloc(owner(header.cast()), size_of::<Header>() as i64) } as *mut Header;
-	unsafe { *out = h };
-	out
+	unsafe { new_header(owner(header.cast()), h) }
 }
 
 /// Drop one ref to an array.
@@ -539,15 +549,12 @@ pub fn array_of(elems: &[i64], width: i64) -> *const Header {
 			std::ptr::copy_nonoverlapping(v.to_le_bytes().as_ptr(), data.add(i * width as usize), width as usize)
 		};
 	}
-	let out = unsafe { alloc(system_allocator(), size_of::<Header>() as i64) } as *mut Header;
-	unsafe {
-		*out = Header {
-			data: data as i64,
-			len,
-			cap: len,
-		}
+	let h = Header {
+		data: data as i64,
+		len,
+		cap: len,
 	};
-	out
+	unsafe { new_header(system_allocator(), h) }
 }
 
 /// Read an array header's elements as pointer-sized ints.
@@ -581,16 +588,13 @@ pub unsafe extern "C" fn slice(
 	}
 	let view_len = end - start;
 	let new_data = unsafe { buffer_alloc(a, view_len * elem_size) };
-	let out = unsafe { alloc(a, size_of::<Header>() as i64) } as *mut Header;
-	unsafe {
-		copy_elems((data + start * elem_size) as *const u8, new_data, view_len, elem_size);
-		*out = Header {
-			data: new_data as i64,
-			len: view_len,
-			cap: view_len,
-		};
-	}
-	out
+	unsafe { copy_elems((data + start * elem_size) as *const u8, new_data, view_len, elem_size) };
+	let h = Header {
+		data: new_data as i64,
+		len: view_len,
+		cap: view_len,
+	};
+	unsafe { new_header(a, h) }
 }
 
 /// View a range of a string through a fresh handle sharing the same buffer.
@@ -608,14 +612,7 @@ pub unsafe extern "C" fn str_slice(
 		eprintln!("slice range {start}..{end} out of bounds for string of length {len}");
 		die();
 	}
-	let out = unsafe { alloc(a, size_of::<StrHeader>() as i64) } as *mut StrHeader;
-	unsafe {
-		*out = StrHeader {
-			data: data + start,
-			len: end - start,
-		}
-	};
-	out
+	unsafe { str_header(a, data + start, end - start) }
 }
 
 /// Write a `mut` slice projection back into its parent buffer at `lo`.

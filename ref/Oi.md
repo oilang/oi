@@ -82,7 +82,7 @@ tags: []
 	- [ ] `:h <topic>` `vim revo`
 	- [x] generic trait claims
 - [ ] `comp assert`
-- [ ] AoS, SoA, AoSoA
+- [~] AoS, SoA, AoSoA
 - [ ] computed values `swift gdscript`
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
@@ -98,7 +98,7 @@ tags: []
 ## consider
 - `nil`
 - using `#` for annotations despite comment clash
-- allowing quotes/AST outside of macros, for code generators and stuff
+- [x] allowing quotes/AST outside of macros, for code generators and stuff
 - `let-else` `rust`
 - [x] submodules `use raylib.math`
 - [x] explicit core access `core.print` or `use core.{ print }` or something

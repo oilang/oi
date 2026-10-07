@@ -26,6 +26,11 @@ fn slices() {
 }
 
 #[test]
+fn str_slice_is_leak_free() {
+	assert_clean([r#"s :: "hello""#, "print(s[1..3])"]);
+}
+
+#[test]
 fn fn_call_and_return() {
 	assert_clean(indoc! {"
 		make :: fn() []int { [1, 2] }
