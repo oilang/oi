@@ -503,8 +503,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = array_elem(&parent.typ).clone();
 					let base = self.read_local(parent);
 					self.cow_array(base, &elem);
-					let stride = self.elem_stride(&elem);
-					let size = self.b.ins().iconst(self.int, stride);
+					let size = self.stride_val(&elem);
 					self.rt_call("array_write_back", &[base, *lo, *len, val, size]);
 					self.release_value(val, &parent.typ);
 				}

@@ -85,8 +85,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (data, len) = self.heap_alloc(Vec::new(), &elem);
 		let out = self.make_array(data, len, &typ);
-		let size = self.elem_stride(&elem);
-		let size = self.b.ins().iconst(self.int, size);
+		let size = self.stride_val(&elem);
 		for part in parts {
 			self.rt_call("array_extend", &[out, part, size]);
 		}
@@ -251,8 +250,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Clone the buffer before a write if it's shared.
 	pub(super) fn cow_array(&mut self, header: Value, elem: &Typ) {
-		let stride = self.elem_stride(elem);
-		let size = self.b.ins().iconst(self.int, stride);
+		let size = self.stride_val(elem);
 		self.rt_call("array_cow", &[header, size]);
 	}
 
@@ -311,8 +309,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let elem = array_elem(&typ).clone();
 		let len = self.array_len(ptr);
 		let (lo, hi) = self.slice_bounds(range, len)?;
-		let stride = self.elem_stride(&elem);
-		let size = self.b.ins().iconst(self.int, stride);
+		let size = self.stride_val(&elem);
 		Ok((self.rt_call("slice", &[ptr, lo, hi, size]).unwrap(), lo, elem))
 	}
 
@@ -336,8 +333,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.rt_call("str_slice", &[ptr, lo, hi]).unwrap(), Typ::Str));
 		}
 		let elem = array_elem(&typ).clone();
-		let stride = self.elem_stride(&elem);
-		let size = self.b.ins().iconst(self.int, stride);
+		let size = self.stride_val(&elem);
 		let out = self.rt_call("slice", &[ptr, lo, hi, size]).unwrap();
 		let typ = Typ::Array(Box::new(elem));
 		self.temp(out, &typ);
@@ -411,6 +407,12 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn elem_stride(&self, elem: &Typ) -> i64 {
 		elem_size(&self.elem_mem(elem))
+	}
+
+	// An element's stride as a runtime arg.
+	pub(super) fn stride_val(&mut self, elem: &Typ) -> Value {
+		let stride = self.elem_stride(elem);
+		self.b.ins().iconst(self.int, stride)
 	}
 
 	pub(super) fn load_elem(&mut self, addr: Value, off: i32, elem: &Typ) -> Value {
