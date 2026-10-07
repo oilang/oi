@@ -24,6 +24,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// The local under a `<<` overload that appends rather than shifts.
+	fn grow_target(&self, l: &Spanned<Expr>) -> Option<String> {
+		match &l.0 {
+			Expr::Ident(n) => {
+				let sig = self.sole_fill(&format!("{}.shl", self.vars.get(n)?.typ.nominal()?))?;
+				(!matches!(sig.params[1].typ, Typ::Int(_))).then(|| n.clone())
+			}
+			Expr::Binary(BinOp::Shl, l, _) => self.grow_target(l),
+			_ => None,
+		}
+	}
+
+	// `recv[index]` through its `Index` claim.
+	fn index_call(&mut self, (ptr, typ): TypedVal, index: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
+		let recv = format!("$recv{}", self.vars.len());
+		self.hidden_local(recv.clone(), ptr, typ);
+		let recv = Box::new((Expr::Ident(recv), span));
+		let call = Expr::MethodCall {
+			recv,
+			method: "index".into(),
+			type_args: vec![],
+			args: vec![index.clone()],
+		};
+		self.expr(&(call, span))
+	}
+
 	pub(super) fn lower(&mut self, expr: &Spanned<Expr>, hint: Option<&Typ>) -> Result<TypedVal, Diagnostic> {
 		if let Some(t) = hint
 			&& let Some(v) = self.coerce_lit(expr, t)?
@@ -160,6 +186,19 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.expr(l)?;
 						let value = r.clone();
 						self.lower(&(Expr::Append { name, field, value }, expr.1), hint)
+					}
+					// overloaded appending
+					None if let Some(name) = self.grow_target(l) => {
+						self.expr(l)?;
+						let (recv, args) = (Box::new((Expr::Ident(name.clone()), l.1)), vec![(**r).clone()]);
+						let call = Expr::MethodCall {
+							recv,
+							method: "shl".into(),
+							type_args: vec![],
+							args,
+						};
+						let value = Box::new((call, expr.1));
+						self.lower(&(Expr::Assign { name, value }, expr.1), hint)
 					}
 					None => self.binop(*op, l, r, expr.1),
 				},
@@ -725,17 +764,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let (data, len) = self.array_parts(ptr, &typ);
 						Ok((self.load_index(data, len, &elem, idx, collection.1), elem))
 					}
-					t if self.claims(t, role::INDEX) => {
-						let recv = format!("$recv{}", self.vars.len());
-						self.hidden_local(recv.clone(), ptr, typ.clone());
-						let call = Expr::MethodCall {
-							recv: Box::new((Expr::Ident(recv), collection.1)),
-							method: "index".into(),
-							type_args: vec![],
-							args: vec![(**index).clone()],
-						};
-						self.expr(&(call, expr.1))
-					}
+					t if self.claims(t, role::INDEX) => self.index_call((ptr, typ), index, expr.1),
 					_ => Err(
 						Diagnostic::new(format!("cannot index {typ}"), collection.1.into_range())
 							.with_label(format!("implement `{}` for `{typ}` to index it", role::INDEX)),
@@ -746,6 +775,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Slice { collection, range } => {
 				let (ptr, typ) = self.expr(collection)?;
 				let range = range.as_deref();
+				if let Some(r) = range
+					&& self.claims(&typ, role::INDEX)
+				{
+					return self.index_call((ptr, typ), r, expr.1);
+				}
 				if typ == Typ::Str {
 					let len = self.array_len(ptr);
 					let (lo, hi) = self.slice_bounds(range, len)?;

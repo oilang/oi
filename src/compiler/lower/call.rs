@@ -265,7 +265,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if args.is_empty() || !self.funcs.keys().any(|k| k.starts_with(&tag)) {
 			return Ok(None);
 		}
-		let (val, typ) = self.expr(&args[0])?;
+		let (val, typ) = match self.sole_fill(key) {
+			Some(s) => self.check_expr(&args[0], access_peel(&s.params[skip].typ))?,
+			None => self.expr(&args[0])?,
+		};
 		let Some(sig) = self.find_fill(key, skip, &typ) else {
 			let msg = format!("no claim fills `{}` for a `{typ}`", display_name(key));
 			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("no matching claim"));
@@ -285,6 +288,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let hit =
 			(keys.into_iter()).find(|k| self.funcs[*k].params.get(skip).is_some_and(|p| access_peel(&p.typ) == typ))?;
 		Some(self.funcs[hit].clone())
+	}
+
+	// The fill of `key`, if only one claim has it.
+	pub(super) fn sole_fill(&self, key: &str) -> Option<FnSig> {
+		let tag = format!("{key}#");
+		let mut hits = self.funcs.iter().filter(|(k, _)| k.starts_with(&tag));
+		hits.next().filter(|_| hits.next().is_none()).map(|(_, s)| s.clone())
 	}
 
 	// Swap each spread `..x` for reads of a hidden temp holding x.

@@ -40,7 +40,10 @@ where
 			let name = dotted_name.clone().map(TypeExpr::Name);
 			let unit = just(Token::LParen).then(just(Token::RParen)).to(TypeExpr::unit());
 			let tuple_field = ident().then_ignore(just(Token::Colon)).or_not().then(te.clone());
-			let tuple = paren(loose_list1(tuple_field)).map(TypeExpr::Tuple);
+			let tuple = paren(loose_list1(tuple_field)).map(|mut fs| match &fs[..] {
+				[(None, _)] => fs.pop().unwrap().1,
+				_ => TypeExpr::Tuple(fs),
+			});
 			// arrays
 			let len = select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident));
 			let len = spanned(len).or(unquote.clone());

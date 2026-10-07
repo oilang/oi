@@ -16,10 +16,10 @@ test! "gather and scatter" {
 test! "dynamic columns grow and iterate" {
 	ps: @soa []Particle
 	ps <<= Particle.{ pos = .{1, 2}, life = 3 }
-	ps = ps << Particle.{ pos = .{4, 5}, life = 6 }
-	assert! ps.len() == 2
+	ps << .{ pos = .{4, 5}, life = 6 } << .{ life = 1 }
+	assert! ps.len() == 3
 	assert! ps.pos[1].x == 4
 	total: f32 = 0
 	loop p in ps { total += p.life }
-	assert! total == 9
+	assert! total == 10
 }

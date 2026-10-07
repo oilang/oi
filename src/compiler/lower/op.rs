@@ -376,7 +376,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
-			(lt.nominal().and_then(|_| s.fill(lt, tn, method, 2))).map_or(lt.clone(), |sig| sig.params[1].typ.clone())
+			let sig = (lt.nominal())
+				.and_then(|n| s.fill(lt, tn, method, 2).or_else(|| s.sole_fill(&format!("{n}.{method}"))));
+			sig.map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 		})?;
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());

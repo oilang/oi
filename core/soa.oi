@@ -6,6 +6,7 @@ pub soa! :: fn(t: Ast) Ast {
 	gets: []Ast
 	sets: []Ast
 	pushes: []Ast
+	slices: []Ast
 	grow: []Ast
 
 	e := t.typ
@@ -17,10 +18,12 @@ pub soa! :: fn(t: Ast) Ast {
 	first := fields[0].name
 	loop f in fields {
 		k := f.name
+		if k == "len" do panic!("@soa " + e.str() + ": a `len` field collides with `len()`")
 		cols << if fixed { `%k: [%{t.len}]%{f.typ}` } else { `%k: []%{f.typ}` }
 		gets << `self.%k[i]`
 		sets << `self.%k[i] = v.%k`
 		pushes << `%o.%k << v.%k`
+		slices << `self.%k[r]`
 	}
 	if !fixed {
 		grow << `
@@ -28,6 +31,19 @@ pub soa! :: fn(t: Ast) Ast {
 				shl :: fn(self, v: %e) Self {
 					%o := self
 					%{..pushes}
+					%o
+				}
+			}
+		`
+		grow << `
+			%n : Index[Range, %n] < {
+				index :: fn(self, r: Range) Self { %n.{ %{..slices} } }
+			}
+
+			%n : From[[]%e] < {
+				from :: fn(v: []%e) Self {
+					%o: Self
+					loop x in v { %o << x }
 					%o
 				}
 			}
