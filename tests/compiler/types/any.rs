@@ -47,3 +47,17 @@ fn assertion_casts() {
 	check(["x: any = 7", "int.(x)"], "some.(7)");
 	check(["x: any = 7", "string.(x)"], "none");
 }
+
+#[test]
+fn print_dispatches_on_typeid() {
+	check(
+		indoc! {r#"
+			P :: struct { x: int }
+			xs: []any = [3, "hi", P.{ x = 4 }]
+			loop x in xs { print(x) }
+			y: any
+			print(y)
+		"#},
+		["3", "hi", "P.{x = 4}", "<any>"],
+	);
+}

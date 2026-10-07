@@ -567,6 +567,7 @@ pub struct Compiler<M: Module = JITModule> {
 	pending: Vec<Pending>,
 	wanted: Vec<FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
+	any_types: Vec<Typ>,
 	trait_impls: HashSet<(String, String)>,
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
 	core_traits: HashSet<String>,
@@ -808,6 +809,7 @@ impl<M: Module> Compiler<M> {
 			pending: Vec::new(),
 			wanted: Vec::new(),
 			printers: Vec::new(),
+			any_types: Vec::new(),
 			trait_impls: HashSet::new(),
 			generic_claims: HashMap::new(),
 			core_traits: HashSet::new(),
@@ -1902,7 +1904,9 @@ impl<M: Module> Compiler<M> {
 
 	// Queued printer bodies, and whatever they queued in turn.
 	fn compile_printers(&mut self, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Option<Pending> {
-		while let Some((sym, typ, quote, sink)) = self.printers.pop() {
+		while let Some(i) = (self.printers.iter().rposition(|p| p.1 != Typ::Any)).or(self.printers.len().checked_sub(1))
+		{
+			let (sym, typ, quote, sink) = self.printers.remove(i);
 			let params = [(String::new(), typ.clone(), Access::Read)];
 			let def = FnDef {
 				params: &params,
@@ -2054,6 +2058,7 @@ impl<M: Module> Compiler<M> {
 			c_callback: false,
 			comptime: self.stage0,
 			printers: &mut self.printers,
+			any_types: &mut self.any_types,
 			descs: &mut self.descs,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,

@@ -866,6 +866,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if *to == Typ::Any {
 			let id = typeid(from);
+			if !self.any_types.contains(from) {
+				self.any_types.push(from.clone());
+			}
 			let v = VariantInfo::new(from.key(), id, vec![from.clone()]);
 			return Ok((self.make_enum(&[v], id, &[val]), Typ::Any));
 		}
