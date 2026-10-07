@@ -1679,7 +1679,7 @@ impl<M: Module> Compiler<M> {
 			if render.contains_key(&name) {
 				continue;
 			}
-			let styp = base.named(&name, (0..0).into())?;
+			let styp = base.named(&name, Span::default())?;
 			let param = [("self".into(), styp.clone(), Access::Read)];
 			let def = FnDef {
 				params: &param,
@@ -1688,7 +1688,7 @@ impl<M: Module> Compiler<M> {
 			let (mut trans, block) = self.translator(&def, &funcs, base);
 			let val = trans.b.block_params(block)[0];
 			let s = trans.derived_str(val, &styp, false);
-			trans.emit_return(s, Typ::Str, (0..0).into())?;
+			trans.emit_return(s, Typ::Str, Span::default())?;
 			trans.b.finalize();
 			render.insert(name.clone(), self.finish_fn(&oi_symbol(&format!("{name}#str"))));
 		}
@@ -1824,7 +1824,7 @@ impl<M: Module> Compiler<M> {
 				}
 				let types = base.with_aliases(&aliases).with_scope(item.scope);
 				let (params, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
-				let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), (0..0).into())));
+				let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), Span::default())));
 				self.translate(
 					FnDef {
 						params: &params,
@@ -1856,7 +1856,7 @@ impl<M: Module> Compiler<M> {
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
-			let ret = ret.or_else(|| Some((self.mono[&sym].ret.clone(), (0..0).into())));
+			let ret = ret.or_else(|| Some((self.mono[&sym].ret.clone(), Span::default())));
 			let self_sig = self.mono[&sym].clone();
 			self.translate(
 				FnDef {
@@ -1866,7 +1866,10 @@ impl<M: Module> Compiler<M> {
 					body: &def.body,
 					captures: &def.captures,
 					ctx: self_sig.ctx.clone(),
-					ctxless: self_sig.ctx.is_none().then(|| def.body.first().map_or((0..0).into(), |s| s.1)),
+					ctxless: self_sig
+						.ctx
+						.is_none()
+						.then(|| def.body.first().map_or(Span::default(), |s| s.1)),
 					root_ctx: self.roots.contains(&sym),
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
@@ -2121,7 +2124,7 @@ impl<M: Module> Compiler<M> {
 		}
 
 		if def.ctxless.is_none() {
-			let typ = trans.types.named(def.ctx.as_deref().unwrap_or(CONTEXT), (0..0).into())?;
+			let typ = trans.types.named(def.ctx.as_deref().unwrap_or(CONTEXT), Span::default())?;
 			let ctx = match def.ctx.is_some() && !def.root_ctx {
 				true => param_vals[def.params.len()],
 				false => trans.root_ctx(&typ)?,
@@ -2165,7 +2168,7 @@ impl<M: Module> Compiler<M> {
 
 		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());
 		if let Some((val, typ)) = trans.block_tail(def.body, tail_target.as_ref())? {
-			let span = def.body.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());
+			let span = def.body.last().map(|s| s.1).or(decl_span).unwrap_or_default();
 			if let Some(e) = def.body.last() {
 				trans.move_resource(e, &typ)?;
 			}

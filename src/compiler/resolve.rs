@@ -364,7 +364,7 @@ impl TypeCtx<'_> {
 	pub fn value_param(&self, p: &TypeParam) -> bool {
 		p.bound.as_deref().is_some_and(|b| {
 			!self.traits.contains_key(b)
-				&& (self.named(b, (0..0).into()).is_ok() || Self::builtin_type(b.rsplit("::").next().unwrap_or(b)))
+				&& (self.named(b, Span::default()).is_ok() || Self::builtin_type(b.rsplit("::").next().unwrap_or(b)))
 		})
 	}
 

@@ -192,7 +192,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (vtable, data) = self.unbox(val);
 				let fnptr = self.ld_word(vtable, slot as i32);
 				let sig = Typ::Fn(vec![FnParam::new(typ.clone())], Box::new(Typ::Str));
-				let Ok((s, _)) = self.call_value("str", Callee::Addr(fnptr), &sig, &[], Some(data), (0..0).into())
+				let Ok((s, _)) = self.call_value("str", Callee::Addr(fnptr), &sig, &[], Some(data), Span::default())
 				else {
 					unreachable!("no args to check")
 				};

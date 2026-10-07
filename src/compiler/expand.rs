@@ -174,7 +174,7 @@ impl Expander {
 			type_params: vec![],
 			params_tuple: params.len() != 1,
 			params,
-			ret: Some((TypeExpr::Name("Ast".into()), (0..0).into())),
+			ret: Some((TypeExpr::Name("Ast".into()), Span::default())),
 			body,
 		};
 		self.defs.push((f, span));
@@ -233,7 +233,7 @@ impl Expander {
 		let mut found = false;
 		e.walk(&mut |x| {
 			if let Expr::MacroCall { name, .. } = x {
-				let key = self.resolve(name, scope, (0..0).into()).unwrap_or_default();
+				let key = self.resolve(name, scope, Span::default()).unwrap_or_default();
 				found |= self.macros.contains_key(&key);
 			}
 			x.types()
@@ -481,7 +481,7 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 		Expr::Quote(_) => *nested = true,
 		Expr::Unquote(n) => push_name(slots, n),
 		Expr::UnquoteExpr(inner) | Expr::UnquoteSplat(inner) => {
-			let taken = std::mem::replace(inner.as_mut(), (Expr::Unquote(String::new()), (0..0).into()));
+			let taken = std::mem::replace(inner.as_mut(), (Expr::Unquote(String::new()), Span::default()));
 			let (key, slot) = match e {
 				Expr::UnquoteSplat(_) => (format!("...{}", slots.len()), Slot::Splat(taken)),
 				_ => (slots.len().to_string(), Slot::Expr(taken)),
@@ -490,7 +490,7 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 			*e = Expr::Unquote(key);
 		}
 		Expr::UnquoteBind(binder, bind) => {
-			let placeholder = (Expr::Unquote(String::new()), (0..0).into());
+			let placeholder = (Expr::Unquote(String::new()), Span::default());
 			if let Some(name) = name_slot(&mut bind.0) {
 				*name = format!("%{}", slots.len());
 			}
@@ -783,7 +783,7 @@ pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, l
 		.collect();
 	let mut stmts = tpl.stmts.clone();
 	splice(&mut stmts, &tpl.bound, &map, suffix);
-	let span = stmts.first().map_or((0..0).into(), |s| s.1);
+	let span = stmts.first().map_or(Span::default(), |s| s.1);
 	leak(one(stmts, span))
 }
 
@@ -824,7 +824,7 @@ fn split(e: &Expr) -> (String, Vec<Spanned<Expr>>) {
 			One(one) => std::slice::from_mut(one),
 		};
 		for one in list {
-			kids.push(std::mem::replace(one, (Expr::Tuple(vec![]), Span::from(0..0))));
+			kids.push(std::mem::replace(one, (Expr::Tuple(vec![]), Span::default())));
 		}
 	});
 	(format!("{e:?}"), kids)
@@ -841,7 +841,7 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 }
 
 pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
-	leak((super::comp::scalar(tag, bits), (0..0).into()))
+	leak((super::comp::scalar(tag, bits), Span::default()))
 }
 
 // Process symbols.
@@ -849,22 +849,22 @@ pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
 #[unsafe(export_name = "oi_ast_ident")]
 pub(crate) extern "C" fn rt_ast_ident(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let name = unsafe { runtime::str_string(s) };
-	leak((Expr::Ident(name), Span::from(0..0)))
+	leak((Expr::Ident(name), Span::default()))
 }
 #[unsafe(export_name = "oi_ast_gensym")]
 pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let prefix = unsafe { runtime::str_string(s) };
 	let n = HYGIENE.fetch_add(1, Ordering::Relaxed) + 1;
-	leak((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0)))
+	leak((Expr::Ident(format!("{prefix}#{n}")), Span::default()))
 }
 #[unsafe(export_name = "oi_ast_parse")]
 pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let src = unsafe { runtime::str_string(s) };
 	let node = match crate::loader::parse_file(&src, 0, &HashSet::new()) {
-		Ok(stmts) => one(stmts, (0..0).into()),
+		Ok(stmts) => one(stmts, Span::default()),
 		Err(ds) => {
 			flag(ds.first().map_or("parse failed", Diagnostic::message));
-			(Expr::Tuple(vec![]), Span::from(0..0))
+			(Expr::Tuple(vec![]), Span::default())
 		}
 	};
 	leak(node)
@@ -879,7 +879,7 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 	let def = DEFS.with_borrow(|(scope, defs)| defs.get(&scope.qualify_name(&name)).cloned());
 	leak(def.unwrap_or_else(|| {
 		flag("`def` needs the name of a definition");
-		(Expr::Tuple(vec![]), Span::from(0..0))
+		(Expr::Tuple(vec![]), Span::default())
 	}))
 }
 
@@ -907,7 +907,7 @@ fn field_ast(f: &Param) -> Expr {
 
 // Ast dispatch for the lowerer.
 pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime::StrHeader, arg: i64) -> i64 {
-	let ast = |e: Expr| leak((e, Span::from(0..0))) as i64;
+	let ast = |e: Expr| leak((e, Span::default())) as i64;
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
 	let m = unsafe { runtime::str_bytes(m) };
 	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });

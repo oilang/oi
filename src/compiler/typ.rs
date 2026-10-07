@@ -5,7 +5,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cranelift::prelude::*;
 
-use crate::ast::{Access, Annotation, Expr, Param, Spanned, TypeExpr};
+use crate::ast::{Access, Annotation, Expr, Param, Span, Spanned, TypeExpr};
 use crate::compiler::resolve::TypeCtx;
 use crate::compiler::role;
 
@@ -374,9 +374,10 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 		}
 		Typ::Struct(n, _) | Typ::TupleStruct(n, _) | Typ::Enum(n) => named(n)?,
 		Typ::Array(e) => TypeExpr::Array(Box::new(type_expr(e)?)),
-		Typ::FixedArray(e, n) => {
-			TypeExpr::FixedArray(Box::new(type_expr(e)?), Box::new((Expr::Int(*n as i64), (0..0).into())))
-		}
+		Typ::FixedArray(e, n) => TypeExpr::FixedArray(
+			Box::new(type_expr(e)?),
+			Box::new((Expr::Int(*n as i64), Span::default())),
+		),
 		Typ::Map(k, v) => TypeExpr::Map(Box::new(type_expr(k)?), Box::new(type_expr(v)?)),
 		Typ::Tuple(fs) => TypeExpr::Tuple(
 			fs.iter()
