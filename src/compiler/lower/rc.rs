@@ -272,6 +272,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		boxp
 	}
 
+	// An rc'd `any`, with typeid and payload.
+	pub(super) fn any_box(&mut self, id: Value, val: Value, typ: &Typ) -> Value {
+		let desc = self.trace_desc(&format!("any {}", typ.key()), &[Typ::ISize, typ.clone()]);
+		let boxp = self.rc_alloc(16, &[desc]);
+		let val = self.copy_in(val, typ);
+		self.store_slots(boxp, &[id, val]);
+		self.temp(boxp, &Typ::Any);
+		boxp
+	}
+
 	// A fresh rc'd block of `bytes`.
 	pub(super) fn rc_alloc(&mut self, bytes: i64, head: &[Value]) -> Value {
 		let words = head.len() as i64 + 1;
@@ -468,7 +478,7 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 	match typ {
 		Typ::Array(_) => Some(("array_share", "array_release")),
 		Typ::Map(..) => Some(("map_share", "map_release")),
-		t if ref_like(t) => Some(("ref_share", "ref_release")),
+		t if ref_like(t) || *t == Typ::Any => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
 	}
 }

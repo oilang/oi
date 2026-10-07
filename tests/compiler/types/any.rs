@@ -71,8 +71,13 @@ fn eq_dispatches_on_typeid() {
 			b: any = P.{ x = 1 }
 			c: any = "1"
 			z: any
-			print(a == b, a == c, z == z)
+			print(a == b, a == c, z == z, typeid.(a), typeid.(a) == typeid.(3))
 		"#},
-		"true false true",
+		"true false true P false",
 	);
+}
+
+#[test]
+fn ref_payload_cycle_is_collected() {
+	assert_clean(["N :: struct { v: any }", "a := &N.{}", "a.v = a", "0"]);
 }

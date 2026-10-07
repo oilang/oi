@@ -592,7 +592,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			| (Typ::USize, Typ::USize)
 			| (Typ::Bool, Typ::Bool)
 			| (Typ::Rune, Typ::Rune)
-			| (Typ::Atom, Typ::Atom) => self.b.ins().icmp(icc, lv, rv),
+			| (Typ::Atom, Typ::Atom)
+			| (Typ::TypeId, Typ::TypeId) => self.b.ins().icmp(icc, lv, rv),
 			(l, _) if lt == rt && eq_dispatchable(l) => {
 				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedLessThanOrEqual);
 				let negated = matches!(

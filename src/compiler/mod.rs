@@ -1904,7 +1904,8 @@ impl<M: Module> Compiler<M> {
 
 	// Queued printer bodies, and whatever they queued in turn.
 	fn compile_printers(&mut self, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Option<Pending> {
-		while let Some(i) = (self.printers.iter().rposition(|p| p.1 != Typ::Any)).or(self.printers.len().checked_sub(1))
+		while let Some(i) = (self.printers.iter().rposition(|p| !matches!(p.1, Typ::Any | Typ::TypeId)))
+			.or(self.printers.len().checked_sub(1))
 		{
 			let (sym, typ, quote, sink) = self.printers.remove(i);
 			let params = [(String::new(), typ.clone(), Access::Read)];

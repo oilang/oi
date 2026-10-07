@@ -62,17 +62,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().call(callee, &[val]);
 	}
 
-	// Dispatch on the box's typeid over every type coerced into `any`.
-	fn emit_any(&mut self, val: Value, quote: bool, sink: runtime::Sink) {
+	// Dispatch on the typeid over every type coerced into `any`.
+	fn emit_any(&mut self, val: Value, typ: &Typ, quote: bool, sink: runtime::Sink) {
 		let done = self.b.create_block();
-		let tag = self.enum_tag(&Typ::Any, val);
+		let tag = self.enum_tag(typ, val);
 		for t in self.any_types.clone() {
-			self.on_variant(tag, typeid(&t), done, |s| {
-				let pv = s.ld_typ(val, 8, &t);
-				s.emit_print(pv, &t, quote, sink);
+			self.on_variant(tag, typeid(&t), done, |s| match typ {
+				Typ::Any => {
+					let pv = s.ld_typ(val, 8, &t);
+					s.emit_print(pv, &t, quote, sink)
+				}
+				_ => s.write_lit(&t.to_string(), sink),
 			});
 		}
-		self.write_lit("<any>", sink);
+		self.write_lit(&format!("<{typ}>"), sink);
 		self.b.ins().jump(done, &[]);
 		self.b.seal_block(done);
 		self.b.switch_to_block(done);
@@ -80,8 +83,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Payload `Display`.
 	pub(crate) fn emit_variant(&mut self, typ: &Typ, val: Value, quote: bool, sink: runtime::Sink) {
-		if *typ == Typ::Any {
-			return self.emit_any(val, quote, sink);
+		if matches!(typ, Typ::Any | Typ::TypeId) {
+			return self.emit_any(val, typ, quote, sink);
 		}
 		let named = !matches!(typ, Typ::Sum(..));
 		let done = self.b.create_block();
@@ -196,7 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let s = self.ast_method(val, "str", None);
 				self.emit_print(s, &Typ::Str, quote, sink)
 			}
-			Typ::Any => self.call_variant(typ, val, quote, sink),
+			Typ::Any | Typ::TypeId => self.call_variant(typ, val, quote, sink),
 
 			Typ::Annotated(_, t) => self.emit_print(val, &t.clone(), quote, sink),
 

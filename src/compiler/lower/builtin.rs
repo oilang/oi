@@ -218,6 +218,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				),
 			};
 		};
+		if *target == Typ::TypeId {
+			let (val, typ) = self.expr(value)?;
+			let id = match typ {
+				Typ::Any => self.enum_tag(&typ, val),
+				t => self.typeid_of(&t),
+			};
+			return Ok((id, Typ::TypeId));
+		}
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
 		}

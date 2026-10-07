@@ -210,6 +210,7 @@ fn builtin(name: &str) -> Option<Typ> {
 		"cstr" => Typ::CStr,
 		"atom" => Typ::Atom,
 		"any" => Typ::Any,
+		"typeid" => Typ::TypeId,
 		"()" => Typ::unit(),
 		"Error" => Typ::Error,
 		"Ast" => Typ::Ast,

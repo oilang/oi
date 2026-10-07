@@ -162,7 +162,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
 			Typ::Rune => self.b.ins().iconst(types::I32, 0),
-			Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr => self.b.ins().iconst(self.int, 0),
+			Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr | Typ::TypeId => self.b.ins().iconst(self.int, 0),
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
 				let def = self.generic_fns[role::ZERO].clone();
@@ -213,7 +213,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Any => {
 				let z = self.b.ins().iconst(self.int, 0);
-				self.heap_slots(&[z, z])
+				self.any_box(z, z, &Typ::ISize)
 			}
 			Typ::Map(..) => {
 				let m = self.call_map_new();
@@ -370,6 +370,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn enum_tag(&mut self, typ: &Typ, val: Value) -> Value {
 		if *typ == Typ::Any {
 			self.ld_word(val, 0)
+		} else if *typ == Typ::TypeId {
+			val
 		} else if rc::opt_niche(typ) {
 			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, 0);
 			self.b.ins().uextend(self.int, nz)
@@ -378,6 +380,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			val
 		}
+	}
+
+	// Register a type for `any` dispatch.
+	pub(super) fn typeid_of(&mut self, t: &Typ) -> Value {
+		if !self.any_types.contains(t) {
+			self.any_types.push(t.clone());
+		}
+		self.b.ins().iconst(self.int, typeid(t))
 	}
 
 	// Build an Option value.
@@ -865,12 +875,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.box_error(val, from), Typ::Error));
 		}
 		if *to == Typ::Any {
-			let id = typeid(from);
-			if !self.any_types.contains(from) {
-				self.any_types.push(from.clone());
-			}
-			let v = VariantInfo::new(from.key(), id, vec![from.clone()]);
-			return Ok((self.make_enum(&[v], id, &[val]), Typ::Any));
+			let id = self.typeid_of(from);
+			return Ok((self.any_box(id, val, from), Typ::Any));
 		}
 		if let Typ::Annotated(anns, inner) = from
 			&& **inner == *to
