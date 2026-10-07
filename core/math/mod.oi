@@ -155,26 +155,6 @@ pub tan :: fn(x: float) float {
 	sin(x) / cos(x)
 }
 
-## `x` raised to the power `y`.
-## ref: https://en.wikipedia.org/wiki/Exponentiation_by_squaring
-pub pow :: fn(x: float, y: float) float {
-	if y == 0.0 { return 1.0 }
-	if y == floor(y) && abs(y) < 4294967296.0 {
-		n := abs(y)
-		r := 1.0
-		base := x
-		loop n > 0.0 {
-			half :: floor(n / 2.0)
-			if n - half * 2.0 >= 1.0 { r *= base }
-			base *= base
-			n = half
-		}
-		return if y < 0.0 { 1.0 / r } else { r }
-	}
-	if x < 0.0 { return nan }
-	exp(y * log(x))
-}
-
 ## Square root.
 pub sqrt :: fn(x: float) float {
 	if x != x || x < 0.0 { return nan }

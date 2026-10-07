@@ -1,11 +1,5 @@
 use math
 
-test! "pow" {
-	assert! math.pow(2, 0) == 1
-	assert! math.pow(2, 5) == 32
-	assert! math.pow(1.5, 2) == 2.25
-}
-
 test! "constants" {
 	assert! math.pi > 3.1 && math.pi < 3.2
 }
