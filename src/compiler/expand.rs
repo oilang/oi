@@ -322,7 +322,7 @@ impl Expander {
 				Expr::Quote(q) => one(q.clone(), a.1),
 				_ => a.clone(),
 			})
-			.map(|s| Box::into_raw(Box::new(s)))
+			.map(leak)
 			.collect();
 		let arg = |i: usize| boxed.get(i).copied().unwrap_or(std::ptr::null_mut());
 		// SAFETY: stage-0 fns take at most MAX_PARAMS pointer args, all in registers on the ABIs cranelift targets, so a fixed-shape call just leaves the extras unread.
@@ -538,7 +538,7 @@ pub(crate) fn register(stmts: &[Spanned<Expr>], span: Span) -> Result<(usize, Ve
 		})
 		.collect();
 	let tpl = Template { names, stmts, bound };
-	Ok((Box::into_raw(Box::new(tpl)) as usize, slots))
+	Ok((leak(tpl) as usize, slots))
 }
 
 // One pass over a template copy.
@@ -784,7 +784,12 @@ pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, l
 	let mut stmts = tpl.stmts.clone();
 	splice(&mut stmts, &tpl.bound, &map, suffix);
 	let span = stmts.first().map_or((0..0).into(), |s| s.1);
-	Box::into_raw(Box::new(one(stmts, span)))
+	leak(one(stmts, span))
+}
+
+// Box a value for compiled code to hold.
+fn leak<T>(v: T) -> *mut T {
+	Box::into_raw(Box::new(v))
 }
 
 // Wrap loose stmts into a block when more than one.
@@ -805,7 +810,7 @@ pub(crate) extern "C" fn rt_quote_match(tpl: usize, subject: *mut Spanned<Expr>,
 		return 0;
 	}
 	for (i, b) in binds.into_iter().enumerate() {
-		unsafe { *outs.add(i) = Box::into_raw(Box::new(b)) };
+		unsafe { *outs.add(i) = leak(b) };
 	}
 	1
 }
@@ -836,25 +841,25 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 }
 
 pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
-	Box::into_raw(Box::new((super::comp::scalar(tag, bits), (0..0).into())))
+	leak((super::comp::scalar(tag, bits), (0..0).into()))
 }
 
 // Process symbols.
 
 #[unsafe(export_name = "oi_ast_ident")]
 pub(crate) extern "C" fn rt_ast_ident(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
-	let name = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) }).into_owned();
-	Box::into_raw(Box::new((Expr::Ident(name), Span::from(0..0))))
+	let name = unsafe { runtime::str_string(s) };
+	leak((Expr::Ident(name), Span::from(0..0)))
 }
 #[unsafe(export_name = "oi_ast_gensym")]
 pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
-	let prefix = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) });
+	let prefix = unsafe { runtime::str_string(s) };
 	let n = HYGIENE.fetch_add(1, Ordering::Relaxed) + 1;
-	Box::into_raw(Box::new((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0))))
+	leak((Expr::Ident(format!("{prefix}#{n}")), Span::from(0..0)))
 }
 #[unsafe(export_name = "oi_ast_parse")]
 pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
-	let src = String::from_utf8_lossy(unsafe { runtime::str_bytes(s) }).into_owned();
+	let src = unsafe { runtime::str_string(s) };
 	let node = match crate::loader::parse_file(&src, 0, &HashSet::new()) {
 		Ok(stmts) => one(stmts, (0..0).into()),
 		Err(ds) => {
@@ -862,7 +867,7 @@ pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Span
 			(Expr::Tuple(vec![]), Span::from(0..0))
 		}
 	};
-	Box::into_raw(Box::new(node))
+	leak(node)
 }
 #[unsafe(export_name = "oi_ast_def")]
 pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr> {
@@ -872,10 +877,10 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 		_ => String::new(),
 	};
 	let def = DEFS.with_borrow(|(scope, defs)| defs.get(&scope.qualify_name(&name)).cloned());
-	Box::into_raw(Box::new(def.unwrap_or_else(|| {
+	leak(def.unwrap_or_else(|| {
 		flag("`def` needs the name of a definition");
 		(Expr::Tuple(vec![]), Span::from(0..0))
-	})))
+	}))
 }
 
 // A type as an Ast.
@@ -902,12 +907,12 @@ fn field_ast(f: &Param) -> Expr {
 
 // Ast dispatch for the lowerer.
 pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime::StrHeader, arg: i64) -> i64 {
-	let ast = |e: Expr| Box::into_raw(Box::new((e, Span::from(0..0)))) as i64;
+	let ast = |e: Expr| leak((e, Span::from(0..0))) as i64;
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
 	let m = unsafe { runtime::str_bytes(m) };
 	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });
 	match (m, subject) {
-		(b"notes", _) => list(notes.iter().map(|n| Box::into_raw(Box::new(n.clone())) as i64).collect()),
+		(b"notes", _) => list(notes.iter().map(|n| leak(n.clone()) as i64).collect()),
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
 		(b"typ", Expr::TypePat(TypeExpr::Array(t) | TypeExpr::FixedArray(t, _))) => ast(type_ast(t)),
 		(b"typ", Expr::Fn { ret: None, .. }) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
@@ -962,12 +967,12 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			| Expr::Call { args: v, .. }
 			| Expr::MacroCall { args: v, .. }
 			| Expr::Claim { fills: v, .. },
-		) => list(v.iter().map(|e| Box::into_raw(Box::new(e.clone())) as i64).collect()),
+		) => list(v.iter().map(|e| leak(e.clone()) as i64).collect()),
 		(b"items", Expr::StructDef { fields, .. } | Expr::Fn { params: fields, .. }) => {
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}
 		(b"items", Expr::StructLit { fields, .. }) => {
-			list(fields.iter().map(|(_, v)| Box::into_raw(Box::new(v.clone())) as i64).collect())
+			list(fields.iter().map(|(_, v)| leak(v.clone()) as i64).collect())
 		}
 		(b"items", Expr::EnumDef { variants, .. }) => {
 			list(variants.iter().map(|v| ast(Expr::Ident(v.name.clone()))).collect())
@@ -977,7 +982,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			list(vec![])
 		}
 		(b"fills", Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } | Expr::Claim { fills, .. }) => {
-			list(fills.iter().map(|e| Box::into_raw(Box::new(e.clone())) as i64).collect())
+			list(fills.iter().map(|e| leak(e.clone()) as i64).collect())
 		}
 		(b"fills", _) => {
 			flag("this Ast has no fills");

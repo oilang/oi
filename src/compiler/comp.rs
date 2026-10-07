@@ -41,7 +41,7 @@ pub(crate) extern "C" fn rt_comp_yield(tag: i64, val: i64) {
 
 pub(crate) extern "C" fn rt_comp_struct(name: *const runtime::StrHeader, nfields: i64) {
 	// SAFETY: `name` is a str constant the JIT just built
-	let name = String::from_utf8_lossy(unsafe { runtime::str_bytes(name) }).into_owned();
+	let name = unsafe { runtime::str_string(name) };
 	STACK.with_borrow_mut(|s| s.push(Entry::Struct(name, nfields as usize)));
 }
 
@@ -100,7 +100,7 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 		TAG_FLOAT => Expr::Float(f64::from_bits(v as u64)),
 		TAG_BOOL => Expr::Bool(v != 0),
 		// SAFETY: `v` is a str handle the runtime just produced
-		TAG_STR => Expr::String(String::from_utf8_lossy(unsafe { runtime::str_bytes(v as *const _) }).into_owned()),
+		TAG_STR => Expr::String(unsafe { runtime::str_string(v as *const _) }),
 		// SAFETY: `v` is an Ast handle, a box the quote runtime leaked
 		TAG_AST => unsafe { (*(v as *mut Spanned<Expr>)).0.clone() },
 		_ => Expr::Tuple(vec![]),
