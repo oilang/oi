@@ -646,7 +646,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
 		let ret_val = if sig.ret.is_unit() {
-			self.b.ins().iconst(self.int, 0)
+			self.unit_value().0
 		} else if sig.foreign {
 			self.c_norm(self.b.inst_results(call)[0], &sig.ret)
 		} else {
@@ -716,7 +716,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let sig_ref = self.b.import_signature(sig);
 		let call = self.b.ins().call_indirect(sig_ref, addr, &vals);
 		let ret_val = if is_unit {
-			self.b.ins().iconst(self.int, 0)
+			self.unit_value().0
 		} else {
 			self.b.inst_results(call)[0]
 		};

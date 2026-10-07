@@ -3,7 +3,11 @@ use super::*;
 impl<'a, M: Module> Translator<'a, M> {
 	pub fn write_lit(&mut self, s: &str, sink: runtime::Sink) {
 		let ptr = self.str_const(s);
-		self.emit_frag(runtime::Tag::Raw, ptr, 0, false, sink);
+		self.raw(ptr, sink);
+	}
+
+	fn raw(&mut self, s: Value, sink: runtime::Sink) {
+		self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
 	}
 
 	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, width: u16, quote: bool, sink: runtime::Sink) {
@@ -91,7 +95,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			});
 		}
 		let ptr = self.enum_name_str(typ, val);
-		self.emit_frag(runtime::Tag::Raw, ptr, 0, false, sink);
+		self.raw(ptr, sink);
 		self.b.ins().jump(done, &[]);
 		self.b.seal_block(done);
 		self.b.switch_to_block(done);
@@ -126,7 +130,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Typ::Struct(sname, fields) => {
 				if let Some(s) = self.str_impl(sname, val, typ) {
-					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+					return self.raw(s, sink);
 				}
 				// less-noisy anonymous struct names
 				let anon = sname.starts_with("struct{");
@@ -146,7 +150,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Typ::TupleStruct(name, fields) => {
 				if let Some(s) = self.str_impl(name, val, typ) {
-					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+					return self.raw(s, sink);
 				}
 				let name = display_name(name).to_string();
 				let body = Typ::Tuple(fields.clone());
@@ -158,13 +162,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_print(val, &body, quote, sink);
 			}
 
-			Typ::Atom => {
-				self.emit_frag(runtime::Tag::Raw, val, 0, false, sink);
-			}
+			Typ::Atom => self.raw(val, sink),
 
 			Typ::Enum(name) | Typ::Sum(name, _) => {
 				if let Some(s) = self.str_impl(name, val, typ) {
-					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+					return self.raw(s, sink);
 				}
 				self.call_variant(&typ.clone(), val, quote, sink);
 			}
@@ -194,7 +196,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				else {
 					unreachable!("no args to check")
 				};
-				self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+				self.raw(s, sink);
 			}
 
 			Typ::Error => {
@@ -204,7 +206,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Typ::Rune => {
 				if let Some(s) = self.str_impl("rune", val, typ) {
-					return self.emit_frag(runtime::Tag::Raw, s, 0, false, sink);
+					return self.raw(s, sink);
 				}
 				let n = self.b.ins().uextend(self.int, val);
 				self.emit_frag(runtime::Tag::UInt, n, 0, quote, sink);

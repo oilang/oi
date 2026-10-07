@@ -3,34 +3,6 @@ use super::*;
 use crate::ast::record_args;
 use crate::compiler::role;
 
-// Error when a `@required` field, or a `@nozero` one without a default, isn't fulfilled.
-fn check_required(
-	name: &str,
-	struct_fields: &[FieldDef],
-	entries: &[(Option<String>, Spanned<Expr>)],
-	span: Span,
-	nozero: impl Fn(&FieldDef) -> bool,
-) -> Result<(), Diagnostic> {
-	let required = |f: &&FieldDef| {
-		f.annotations
-			.iter()
-			.any(|a| matches!(&a.0, Expr::Ident(n) if n == role::REQUIRED))
-			|| (f.default.is_none() && nozero(f))
-	};
-	for (i, f) in struct_fields.iter().enumerate().filter(|(_, f)| required(f)) {
-		let set = entries.iter().enumerate().any(|(j, (n, v))| {
-			matches!(v.0, Expr::Spread(_)) || n.as_deref() == Some(f.name.as_str()) || (n.is_none() && i == j)
-		});
-		if !set {
-			return Err(
-				Diagnostic::new(format!("`{name}.{}` is required", f.name), span.into_range())
-					.with_label("set it in the literal"),
-			);
-		}
-	}
-	Ok(())
-}
-
 // Give a symbol its bytes.
 pub(crate) fn define_once<M: Module>(m: &mut M, id: DataId, desc: &DataDescription) {
 	match m.define_data(id, desc) {
@@ -63,15 +35,46 @@ pub(crate) fn define_ptr_data<M: Module>(m: &mut M, sym: &str, target: DataId, t
 }
 
 impl<'a, M: Module> Translator<'a, M> {
-	pub(super) fn str_const(&mut self, s: &str) -> Value {
-		let len = s.len() as i64;
-		let mut bytes = s.as_bytes().to_vec();
-		bytes.push(0);
+	// Error when a `@required` field, or a `@nozero` one without a default, isn't fulfilled.
+	fn check_required(
+		&self,
+		name: &str,
+		struct_fields: &[FieldDef],
+		entries: &[(Option<String>, Spanned<Expr>)],
+		span: Span,
+	) -> Result<(), Diagnostic> {
+		let required = |f: &&FieldDef| {
+			f.annotations
+				.iter()
+				.any(|a| matches!(&a.0, Expr::Ident(n) if n == role::REQUIRED))
+				|| (f.default.is_none() && self.nozero(&f.typ).is_some())
+		};
+		for (i, f) in struct_fields.iter().enumerate().filter(|(_, f)| required(f)) {
+			let set = entries.iter().enumerate().any(|(j, (n, v))| {
+				matches!(v.0, Expr::Spread(_)) || n.as_deref() == Some(f.name.as_str()) || (n.is_none() && i == j)
+			});
+			if !set {
+				return Err(
+					Diagnostic::new(format!("`{name}.{}` is required", f.name), span.into_range())
+						.with_label("set it in the literal"),
+				);
+			}
+		}
+		Ok(())
+	}
+
+	// Get a fresh symbol holding a NUL-terminated `s`.
+	fn fresh_cstr(&mut self, s: &str) -> (String, DataId) {
 		let sym = format!("__str_{}", *self.string_idx);
 		*self.string_idx += 1;
-		let bytes_id = define_data(&mut self.module, &format!("{sym}_bytes"), bytes);
+		let id = define_data(&mut self.module, &sym, [s.as_bytes(), &[0]].concat());
+		(sym, id)
+	}
+
+	pub(super) fn str_const(&mut self, s: &str) -> Value {
+		let (sym, bytes_id) = self.fresh_cstr(s);
 		let hdr_sym = format!("{sym}_hdr");
-		define_ptr_data(&mut self.module, &hdr_sym, bytes_id, &len.to_le_bytes());
+		define_ptr_data(&mut self.module, &hdr_sym, bytes_id, &(s.len() as i64).to_le_bytes());
 		self.data_addr(&hdr_sym)
 	}
 
@@ -284,11 +287,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
 			(Expr::String(s), Typ::CStr) => {
-				let mut bytes = s.as_bytes().to_vec();
-				bytes.push(0);
-				let sym = format!("__str_{}", *self.string_idx);
-				*self.string_idx += 1;
-				define_data(&mut self.module, &sym, bytes);
+				let (sym, _) = self.fresh_cstr(s);
 				self.data_addr(&sym)
 			}
 			(Expr::Atom(name), Typ::Sum(..)) => {
@@ -1268,7 +1267,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.st(base, (idx * 8) as i32, val);
 		}
-		check_required(&name, &struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
+		self.check_required(&name, &struct_fields, fields, span)?;
 		let typ = Typ::Struct(name.clone(), struct_fields);
 		self.temp(ptr, &typ);
 		Ok((ptr, typ))
@@ -1404,7 +1403,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let Typ::Struct(_, struct_fields) = &typ else {
 			unreachable!()
 		};
-		check_required(name, struct_fields, fields, span, |f| self.nozero(&f.typ).is_some())?;
+		self.check_required(name, struct_fields, fields, span)?;
 		let ptr = self.struct_slot(struct_fields, &[])?;
 		for (idx, val, vtyp, vspan) in provided {
 			let expected = &struct_fields[idx].typ;
