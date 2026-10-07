@@ -280,6 +280,7 @@ fn for_loop_break_value_or_else() {
 fn break_value_errors() {
 	fail("x := break", "never produce a value");
 	fail("loop { x := continue }", "never produce a value");
+	fail("fn() int { 1 + return 0 }", "never produce a value");
 	fail("loop { if true { break 1 } else { break } }", "mismatched types");
 }
 

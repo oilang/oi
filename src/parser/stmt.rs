@@ -175,13 +175,6 @@ pub(super) fn stmt<'token, I>(
 			}),
 	);
 
-	// return statements
-	let ret_stmt = choice((
-		just(Token::Return).ignore_then(p.juxt_expr.clone().or_not()),
-		just(Token::BareReturn).to(None),
-	))
-	.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
-
 	// map deletion
 	let map_delete = ident()
 		.then_ignore(just(Token::Dot))
@@ -280,8 +273,7 @@ pub(super) fn stmt<'token, I>(
 
 	// statements
 	stmt.define(
-		doc.or(ret_stmt)
-			.or(defer_stmt)
+		doc.or(defer_stmt)
 			.or(place.clone())
 			.or(p.macro_def.clone())
 			.or(macro_stmt)

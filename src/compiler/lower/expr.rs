@@ -988,9 +988,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				format!("`{}` is a type, not a value", self.types().resolve(te, expr.1)?),
 				expr.1.into_range(),
 			)),
-			Expr::Return(..) => unreachable!("return in expression position"),
-			Expr::Break(_) | Expr::Continue => Err(Diagnostic::new(
-				"`break` and `continue` never produce a value",
+			Expr::Return(_) | Expr::Break(_) | Expr::Continue => Err(Diagnostic::new(
+				"`return`, `break`, and `continue` never produce a value",
 				expr.1.into_range(),
 			)
 			.with_label("this diverges")),

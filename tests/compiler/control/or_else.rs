@@ -64,6 +64,19 @@ fn fallback_can_diverge() {
 }
 
 #[test]
+fn bare_return_diverges() {
+	let src = indoc! {"
+		f :: fn(o: ?int) int {
+			y := o or return 0
+			z := match o { .none => return 0, .some.(v) => v }
+			y + z
+		}
+		f(?int.(none)) + f(?int.(2))
+	"};
+	check(src, "4");
+}
+
+#[test]
 fn fallback_can_panic() {
 	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
 	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");

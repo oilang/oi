@@ -352,6 +352,11 @@ where
 	let break_expr = just(Token::Break)
 		.ignore_then(p.same_line.clone().ignore_then(p.expr.clone()).or_not())
 		.map_with(|v, ex| (Expr::Break(v.map(Box::new)), ex.span()));
+	let return_expr = choice((
+		just(Token::Return).ignore_then(juxt_expr.clone().or_not()),
+		just(Token::BareReturn).to(None),
+	))
+	.map_with(|v, ex| (Expr::Return(v.map(Box::new)), ex.span()));
 	let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 	// match expression
@@ -514,7 +519,7 @@ where
 		with_expr,
 		for_expr,
 		loop_expr,
-		break_expr,
+		break_expr.or(return_expr),
 		continue_expr,
 		anon_fn.clone(),
 		bad,
