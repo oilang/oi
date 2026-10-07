@@ -438,8 +438,8 @@ fn raw_lex(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 }
 
 // Expands vars in strings.
-fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan)> {
-	let bad = || vec![(Token::Error(src[span.start..span.end].to_string()), span)];
+fn expand_string(s: &str, span: SimpleSpan, text: &str) -> Vec<(Token, SimpleSpan)> {
+	let bad = || vec![(Token::Error(text.to_string()), span)];
 	let part = |toks: &mut Vec<(Token, SimpleSpan)>, t: Token| {
 		if toks.len() > 1 {
 			toks.push((Token::Plus, span));
@@ -447,7 +447,7 @@ fn expand_string(s: &str, span: SimpleSpan, src: &str) -> Vec<(Token, SimpleSpan
 		toks.push((t, span));
 	};
 	// width of the open delimiter
-	let open = src[span.start..].bytes().take_while(|&b| b == b'"').count();
+	let open = text.bytes().take_while(|&b| b == b'"').count();
 	let (mut toks, mut lit) = (vec![(Token::LParen, span)], String::new());
 	let mut it = s.char_indices();
 	while let Some((i, c)) = it.next() {
@@ -582,46 +582,39 @@ pub fn splice_raw(
 }
 
 // Lex `src`, shifting every span by `base` so a file lexed in isolation lands at its offset in the `Program`.
-pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
-	lex(src)
-		.into_iter()
-		.map(|(t, s)| (t, (s.start + base..s.end + base).into()))
-		.collect()
-}
-
-// Lex `src`.
 // Converts errors into tokens so parsing stays recoverable.
 // Inserts `DocBreak` between consecutive `Doc` tokens separated by at least one newline.
-pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
-	let raw = raw_lex(src, 0);
+pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
+	let raw = raw_lex(src, base);
+	let text = |from: usize, to: usize| &src[from - base..to - base];
 	let mut out = Vec::with_capacity(raw.len() + 4);
 	for i in 0..raw.len() {
 		let (tok, span) = &raw[i];
 		if i > 0
 			&& let (Token::Doc(_), Token::Doc(_)) = (&raw[i - 1].0, tok)
 		{
-			let gap = &src[raw[i - 1].1.end..span.start];
+			let gap = text(raw[i - 1].1.end, span.start);
 			if gap.bytes().filter(|&b| b == b'\n').count() > 1 {
 				out.push((Token::DocBreak, (raw[i - 1].1.end..span.start).into()));
 			}
 		}
 		match tok {
-			Token::Return if raw.get(i + 1).is_some_and(|(_, next)| src[span.end..next.start].contains('\n')) => {
+			Token::Return if raw.get(i + 1).is_some_and(|(_, n)| text(span.end, n.start).contains('\n')) => {
 				out.push((Token::BareReturn, *span))
 			}
 			Token::Dot if i > 0 => {
-				let gap = &src[raw[i - 1].1.end..span.start];
+				let gap = text(raw[i - 1].1.end, span.start);
 				let spaced = !gap.is_empty() && !gap.contains('\n');
 				out.push((if spaced { Token::SpaceDot } else { Token::Dot }, *span));
 			}
 			// asymmetric spacing is a negation
 			Token::Minus if i > 0 => {
-				let before = &src[raw[i - 1].1.end..span.start];
-				let after = raw.get(i + 1).map(|(_, next)| &src[span.end..next.start]);
+				let before = text(raw[i - 1].1.end, span.start);
+				let after = raw.get(i + 1).map(|(_, next)| text(span.end, next.start));
 				let lead = !before.is_empty() && !before.contains('\n') && after == Some("");
 				out.push((if lead { Token::SpaceMinus } else { Token::Minus }, *span));
 			}
-			Token::String(s) => out.extend(expand_string(s, *span, src)),
+			Token::String(s) => out.extend(expand_string(s, *span, text(span.start, span.end))),
 			Token::RawString(s) => out.push((Token::String(s.clone()), *span)),
 			_ => out.push((tok.clone(), *span)),
 		}
