@@ -129,10 +129,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Fresh rc'd heap buffer holding `vals`.
 	fn heap_alloc(&mut self, vals: Vec<Value>, elem: &Typ) -> (Value, Value) {
 		let n = vals.len();
-		let base = self.call_alloc_bytes(n as i64 * self.elem_stride(elem) + 8);
-		let one = self.b.ins().iconst(self.int, 1);
-		self.st(base, 0, one);
-		let data = self.b.ins().iadd_imm(base, 8);
+		let data = self.rc_alloc(n as i64 * self.elem_stride(elem), &[]);
 		self.store_all(data, vals, elem);
 		(data, self.b.ins().iconst(self.int, n as i64))
 	}
@@ -222,11 +219,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The underlying buffer clone waits for a write.
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
 		if let Typ::Struct(_, fields) = typ {
-			let fields = fields.clone();
 			let heap = self.call_alloc(fields.len());
-			self.assign_fields(val, heap, &fields, false);
-			self.settle(val, heap, typ);
-			return heap;
+			return self.copy_struct(val, heap, typ, fields);
 		}
 		// a fixed array's buffer is inline, so a copy must escape the frame with its owner
 		if let Typ::FixedArray(elem, n) = typ {
@@ -246,6 +240,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			return val;
 		};
 		self.rt_call(share, &[val]).unwrap()
+	}
+
+	// Copy a struct's fields into `dst`, settling ownership.
+	pub(super) fn copy_struct(&mut self, val: Value, dst: Value, typ: &Typ, fields: &[FieldDef]) -> Value {
+		self.assign_fields(val, dst, fields, false);
+		self.settle(val, dst, typ);
+		dst
 	}
 
 	// Clone the buffer before a write if it's shared.

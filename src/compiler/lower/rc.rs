@@ -39,6 +39,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Whether a scope must release a value of this type.
+	fn needs_release(&self, typ: &Typ) -> bool {
+		releasable(typ) || self.is_resource(typ)
+	}
+
 	// Check whether a resource copies through its hook instead of moving.
 	pub(super) fn is_copy(&self, typ: &Typ) -> bool {
 		match typ {
@@ -153,7 +158,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
 			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 			for v in self.variants_of(typ) {
-				if !v.payload.iter().any(|t| releasable(t) || self.is_resource(t)) {
+				if !v.payload.iter().any(|t| self.needs_release(t)) {
 					continue;
 				}
 				// release payloads under their own tag
@@ -176,7 +181,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Release the owned slots of an aggregate type.
 	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
-			if releasable(t) || self.is_resource(t) {
+			if self.needs_release(t) {
 				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
 				self.release_value(fv, t);
 			}
@@ -241,11 +246,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Register a producer's fresh handle with the innermost scope.
 	pub(super) fn temp(&mut self, val: Value, typ: &Typ) {
-		if releasable(typ) || self.is_resource(typ) {
+		if self.needs_release(typ) {
 			let var = self.b.declare_var(self.int);
 			self.b.def_var(var, val);
 			self.temps.insert(val, var);
-			self.scopes.last_mut().expect("scope").push((var, typ.clone()));
+			self.own_local(var, typ);
 		}
 	}
 
@@ -255,12 +260,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Struct(name, fields) => (name.clone(), field_types(fields)),
 			t => (t.key(), vec![t.clone()]),
 		};
-		let base = self.call_alloc_bytes((slots.len() * 8) as i64 + 16);
 		let descv = self.trace_desc(&key, &slots);
-		self.st(base, 0, descv);
-		let one = self.b.ins().iconst(self.int, 1);
-		self.st(base, 8, one);
-		let boxp = self.b.ins().iadd_imm(base, 16);
+		let boxp = self.rc_alloc((slots.len() * 8) as i64, &[descv]);
 		for i in 0..slots.len() as i32 {
 			let v = match typ {
 				Typ::Struct(..) => self.ld_word(ptr, i * 8),
@@ -269,6 +270,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.st(boxp, i * 8, v);
 		}
 		boxp
+	}
+
+	// A fresh rc'd block of `bytes`.
+	pub(super) fn rc_alloc(&mut self, bytes: i64, head: &[Value]) -> Value {
+		let words = head.len() as i64 + 1;
+		let base = self.call_alloc_bytes(bytes + words * 8);
+		let one = self.b.ins().iconst(self.int, 1);
+		self.store_slots(base, &[head, &[one]].concat());
+		self.b.ins().iadd_imm(base, words * 8)
 	}
 
 	// Declare a named binding that owns its value.
@@ -291,7 +301,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Make the innermost scope responsible for releasing a variable.
 	pub fn own_local(&mut self, var: Variable, typ: &Typ) {
-		if releasable(typ) || self.is_resource(typ) {
+		if self.needs_release(typ) {
 			self.scopes.last_mut().expect("scope").push((var, typ.clone()));
 		}
 	}
@@ -360,7 +370,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new("cannot move a local out of a defer body", span).with_label("runs on every exit")
 			);
 		}
-		if releasable(&local.typ) || self.is_resource(&local.typ) {
+		if self.needs_release(&local.typ) {
 			let depth = self
 				.scopes
 				.iter()
@@ -420,11 +430,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		match typ {
 			Typ::Struct(_, fields) => {
-				let fields = fields.clone();
 				let dst = self.stack_slot((fields.len() * 8) as u32);
-				self.assign_fields(val, dst, &fields, false);
-				self.settle(val, dst, typ);
-				dst
+				self.copy_struct(val, dst, typ, fields)
 			}
 			_ => self.copy_in(val, typ),
 		}
