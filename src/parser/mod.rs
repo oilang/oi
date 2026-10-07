@@ -107,6 +107,14 @@ where
 	p.map_with(|o, ex| (o, ex.span()))
 }
 
+// Whether a binder pair like `:=`/`::` is mutable.
+fn binder<'token, I>(pair: [Token; 2]) -> impl Parser<'token, I, bool, extra::Err<Rich<'token, Token>>> + Clone
+where
+	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+{
+	one_of(pair).map(|t| matches!(t, Token::Bind | Token::Assign))
+}
+
 // The parsers the grammars borrow from each other.
 pub(super) struct Parsers<'token, I>
 where
@@ -270,24 +278,27 @@ where
 			None => first,
 		});
 
-	let gap = |sp: Span| Span::from(sp.end..sp.start);
-	// a guard that the next token has no token gap following it
-	let adjacent = empty().map_with(move |_, ex| gap(ex.span())).try_map(move |sp: Span, _| {
-		match src.get(sp.start - origin..sp.end - origin) {
-			Some("") => Ok(()),
-			_ => Err(Rich::custom(sp, "must immediately follow, with no space")),
-		}
-	});
-	// a guard that the next token opens on the same line
-	let same_line = empty().map_with(move |_, ex| gap(ex.span())).try_map(move |sp: Span, _| {
-		match src.get(sp.start - origin..sp.end - origin) {
-			Some(gap) if gap.contains('\n') => Err(Rich::custom(sp, "must continue on the same line")),
-			_ => Ok(()),
-		}
-	});
+	// a guard on the source text between the previous token and the next
+	let gap_guard = move |ok: fn(Option<&str>) -> bool, msg: &'static str| {
+		empty().map_with(|_, ex| ex.span()).try_map(move |sp: Span, _| {
+			let gap = Span::from(sp.end..sp.start);
+			match ok(src.get(gap.start - origin..gap.end - origin)) {
+				true => Ok(()),
+				false => Err(Rich::custom(gap, msg)),
+			}
+		})
+	};
+	// the next token has no token gap following it
+	let adjacent = gap_guard(|gap| gap == Some(""), "must immediately follow, with no space");
+	// the next token opens on the same line
+	let same_line = gap_guard(
+		|gap| !gap.is_some_and(|g| g.contains('\n')),
+		"must continue on the same line",
+	);
+	// a token glued to the next one
+	let sigil = move |tok| just(tok).then_ignore(adjacent);
 
-	let unquote = just(Token::Percent)
-		.then_ignore(adjacent)
+	let unquote = sigil(Token::Percent)
 		.ignore_then(ident().map(Expr::Unquote).or(brace(expr.clone()).map(|e| match e {
 			(Expr::Spread(inner), _) => Expr::UnquoteSplat(inner),
 			e => Expr::UnquoteExpr(Box::new(e)),
@@ -315,14 +326,14 @@ where
 
 	let param_type = just(Token::Colon)
 		.ignore_then(type_expr.clone())
-		.then(one_of([Token::Assign, Token::Colon]).then(expr.clone()).or_not())
+		.then(binder([Token::Assign, Token::Colon]).then(expr.clone()).or_not())
 		.map(|(typ, def)| match def {
-			Some((tok, e)) => (typ, Some(e), tok == Token::Assign),
+			Some((mutable, e)) => (typ, Some(e), mutable),
 			None => (typ, None, false),
 		})
-		.or(one_of([Token::Bind, Token::DoubleColon])
+		.or(binder([Token::Bind, Token::DoubleColon])
 			.then(default_value)
-			.map(|(tok, (typ, default))| (typ, default, tok == Token::Bind)))
+			.map(|(mutable, (typ, default))| (typ, default, mutable)))
 		.boxed();
 	let param = just(Token::With)
 		.or_not()
@@ -346,15 +357,12 @@ where
 	let param_hole = unquote
 		.clone()
 		.map_with(|u, ex| Param::new(String::new(), TypeExpr::Unquote(Box::new(u)), ex.span()));
-	let name_hole = just(Token::Percent)
-		.then_ignore(adjacent)
-		.ignore_then(brace(ident()))
-		.then(param_type)
-		.map_with(|(name, (typ, default, mutable)), ex| Param {
-			default,
-			mutable,
-			..Param::new(format!("%{name}"), typ, ex.span())
-		});
+	let name_hole = sigil(Token::Percent).ignore_then(brace(ident())).then(param_type);
+	let name_hole = name_hole.map_with(|(name, (typ, default, mutable)), ex| Param {
+		default,
+		mutable,
+		..Param::new(format!("%{name}"), typ, ex.span())
+	});
 	let param = name_hole.or(param_hole.clone()).or(param).boxed();
 	// NOTE: a trailing comma forces a tuple even for one param
 	let params = paren(
@@ -389,10 +397,7 @@ where
 	// bindings
 	let annot = spanned(type_expr.clone());
 	// macro bindings
-	let hole_ident = just(Token::Percent)
-		.then_ignore(adjacent)
-		.ignore_then(ident())
-		.map(|n| format!("%{n}"));
+	let hole_ident = sigil(Token::Percent).ignore_then(ident()).map(|n| format!("%{n}"));
 	let def_name = ident().or(hole_ident.clone()).boxed();
 	let path = ident().separated_by(just(Token::Dot)).at_least(1).collect::<Vec<_>>();
 	let lit_path = path.map(|p| p.join(".")).or(hole_ident.clone()).boxed();

@@ -1,4 +1,4 @@
-use super::{P, Parsers, Rec, brace, bracket, ident, loose_list, paren, spanned};
+use super::{P, Parsers, Rec, binder, brace, bracket, ident, loose_list, paren, spanned};
 use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
 use crate::lexer::Token;
 
@@ -72,9 +72,7 @@ where
 		.or(ident().map(|n| (n, None)))
 		.boxed();
 
-	let value_tail = just(Token::Bind)
-		.to(true)
-		.or(just(Token::DoubleColon).to(false))
+	let value_tail = binder([Token::Bind, Token::DoubleColon])
 		.then(value.clone())
 		.map(|(mutable, value)| (mutable, None, Some(value)));
 	let sandwich_tail = just(Token::Colon)
@@ -84,13 +82,7 @@ where
 			}
 			t
 		}))
-		.then(
-			just(Token::Assign)
-				.to(true)
-				.or(just(Token::Colon).to(false))
-				.then(value.clone())
-				.or_not(),
-		)
+		.then(binder([Token::Assign, Token::Colon]).then(value.clone()).or_not())
 		.map(|(typ, tail)| match tail {
 			Some((mutable, value)) => (mutable, Some(typ), Some(value)),
 			None => (true, Some(typ), None),
@@ -116,9 +108,8 @@ where
 		.boxed();
 	let destructure = pat
 		.then(
-			just(Token::Bind)
-				.to(Some(true))
-				.or(just(Token::DoubleColon).to(Some(false)))
+			binder([Token::Bind, Token::DoubleColon])
+				.map(Some)
 				.or(just(Token::Assign).to(None)),
 		)
 		.then(value)
