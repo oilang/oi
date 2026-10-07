@@ -927,9 +927,13 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			0
 		}
 		// the variant name, lowercased
-		(b"kind", e) => ast(Expr::Ident(
-			format!("{e:?}").split(['(', ' ']).next().unwrap().to_lowercase(),
-		)),
+		(b"kind", e) => {
+			let name = match e {
+				Expr::TypePat(t) => format!("{t:?}"),
+				e => format!("{e:?}"),
+			};
+			ast(Expr::Ident(name.split(['(', ' ']).next().unwrap().to_lowercase()))
+		}
 		(b"str", e) => {
 			let s = match e {
 				Expr::Ident(s) | Expr::String(s) => s.clone(),

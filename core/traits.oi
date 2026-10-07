@@ -20,7 +20,7 @@ pub Not :: trait { not: fn(self) Self }
 pub BitAnd[Rhs = Self] :: trait { bitand: fn(self, other: Rhs) Self }
 pub BitOr[Rhs = Self] :: trait { bitor: fn(self, other: Rhs) Self }
 pub BitXor[Rhs = Self] :: trait { bitxor: fn(self, other: Rhs) Self }
-pub Shl :: trait { shl: fn(self, other: int) Self }
+pub Shl[Rhs = int] :: trait { shl: fn(self, other: Rhs) Self }
 pub Shr :: trait { shr: fn(self, other: int) Self }
 
 # membership

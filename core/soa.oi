@@ -1,22 +1,44 @@
 module core
 
-## The struct of arrays `@soa [N]T` stands for, one `[N]` column per field of `T`.
+## The struct of arrays `@soa [N]T` stands for, one column per field of `T`.
 pub soa! :: fn(t: Ast) Ast {
 	cols: []Ast
 	gets: []Ast
 	sets: []Ast
+	pushes: []Ast
+	grow: []Ast
 
 	e := t.typ
-	n := ident("@soa [" + t.len.str() + "]" + e.str())
-	loop f in def(e).items {
+	fixed := t.kind == "fixedarray"
+	n := ident(if fixed { "@soa [" + t.len.str() + "]" } else { "@soa []" } + e.str())
+	it := ident(n.str() + " iter")
+	o := gensym("out")
+	fields := def(e).items
+	first := fields[0].name
+	loop f in fields {
 		k := f.name
-		cols << `%k: [%{t.len}]%{f.typ}`
+		cols << if fixed { `%k: [%{t.len}]%{f.typ}` } else { `%k: []%{f.typ}` }
 		gets << `self.%k[i]`
 		sets << `self.%k[i] = v.%k`
+		pushes << `%o.%k << v.%k`
+	}
+	if !fixed {
+		grow << `
+			%n : Shl[%e] < {
+				shl :: fn(self, v: %e) Self {
+					%o := self
+					%{..pushes}
+					%o
+				}
+			}
+		`
 	}
 
 	`
 		%n :: struct { %{..cols} }
+		%n :< {
+			len :: fn(self) int { self.%first.len }
+		}
 		%n : Index[int, %e] < {
 			index :: fn(self, i: int) %e {
 				%e.{ %{..gets} }
@@ -26,6 +48,18 @@ pub soa! :: fn(t: Ast) Ast {
 			index_assign :: fn(mut self, i: int, v: %e) {
 				%{..sets}
 			}
+		}
+		%{..grow}
+		%it :: struct { soa: %n, at: int }
+		%it : Iterator[%e] < {
+			next :: fn(mut self) ?%e {
+				if self.at >= self.soa.len() do return none
+				self.at += 1
+				self.soa[self.at - 1]
+			}
+		}
+		%n : Iterable[%it] < {
+			iter :: fn(self) %it { %it.{ self, 0 } }
 		}
 	`
 }
