@@ -82,7 +82,7 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 }
 
 // The name a `%name` can take.
-fn def_name(e: &mut Expr) -> Option<&mut String> {
+fn name_slot(e: &mut Expr) -> Option<&mut String> {
 	match e {
 		Expr::Field { field, .. } | Expr::IndexAssign { field: Some(field), .. } => Some(field),
 		Expr::Bind { name, .. }
@@ -266,7 +266,7 @@ impl Expander {
 					res = self.call(&call, scope, depth).map(|defs| {
 						let mut defs = defs.unwrap_or_default();
 						defs.iter_mut()
-							.filter_map(|d| def_name(&mut d.0))
+							.filter_map(|d| name_slot(&mut d.0))
 							.for_each(|n| *n = scope.qualify_name(n));
 						let name = defs.first().and_then(|d| d.0.def_name()).unwrap_or_default().to_string();
 						if !self.hoisted.iter().any(|h| h.0.def_name() == Some(&name)) {
@@ -491,14 +491,14 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 		}
 		Expr::UnquoteBind(binder, bind) => {
 			let placeholder = (Expr::Unquote(String::new()), (0..0).into());
-			if let Some(name) = def_name(&mut bind.0) {
+			if let Some(name) = name_slot(&mut bind.0) {
 				*name = format!("%{}", slots.len());
 			}
 			slots.push(Slot::Expr(std::mem::replace(binder.as_mut(), placeholder)));
 			*e = std::mem::replace(&mut bind.0, Expr::Unquote(String::new()));
 		}
 		_ => {
-			if let Some(n) = def_name(e).and_then(|n| n.strip_prefix('%')) {
+			if let Some(n) = name_slot(e).and_then(|n| n.strip_prefix('%')) {
 				push_name(slots, n);
 			}
 			if let Expr::Fn { params, .. } | Expr::AnonFn { params, .. } = e {
@@ -581,7 +581,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}
 		_ => {}
 	}
-	if let Some(name) = def_name(&mut e.0)
+	if let Some(name) = name_slot(&mut e.0)
 		&& let Some(param) = name.strip_prefix('%')
 	{
 		match &args[param] {

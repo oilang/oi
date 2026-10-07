@@ -1,4 +1,5 @@
 use super::*;
+pub(super) use crate::compiler::{int_max, int_min, uint_max};
 
 // Create field Binds from idents.
 pub(super) fn field_binds<'a>(
@@ -116,26 +117,6 @@ pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
 		Typ::Str => Some(runtime::Tag::Str),
 		Typ::Atom => Some(runtime::Tag::Str),
 		_ => None,
-	}
-}
-
-pub(super) fn uint_max(width: u16) -> i64 {
-	if width >= 64 {
-		u64::MAX as i64
-	} else {
-		((1u64 << width) - 1) as i64
-	}
-}
-
-pub(super) fn int_min(width: u16) -> i64 {
-	if width >= 64 { i64::MIN } else { -(1i64 << (width - 1)) }
-}
-
-pub(super) fn int_max(width: u16) -> i64 {
-	if width >= 64 {
-		i64::MAX
-	} else {
-		(1i64 << (width - 1)) - 1
 	}
 }
 

@@ -11,6 +11,7 @@ use include_dir::{Dir, include_dir};
 
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis};
+use crate::compiler::{int_max, int_min, uint_max};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -189,12 +190,11 @@ fn numeric_bound(name: &str, hi: bool) -> Option<i64> {
 	if width == 0 || width > 64 {
 		return None;
 	}
-	let shift = 64 - width;
 	Some(match (name.starts_with('u'), hi) {
-		(true, true) => (u64::MAX >> shift) as i64,
+		(true, true) => uint_max(width),
 		(true, false) => 0,
-		(false, true) => i64::MAX >> shift,
-		(false, false) => i64::MIN >> shift,
+		(false, true) => int_max(width),
+		(false, false) => int_min(width),
 	})
 }
 

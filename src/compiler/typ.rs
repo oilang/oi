@@ -419,6 +419,19 @@ pub(crate) fn access_wrap(access: Access, typ: Typ) -> Typ {
 	}
 }
 
+// Bounds of a `width`-bit int, as i64 bits.
+pub(crate) fn int_min(width: u16) -> i64 {
+	i64::MIN >> (64 - width)
+}
+
+pub(crate) fn int_max(width: u16) -> i64 {
+	i64::MAX >> (64 - width)
+}
+
+pub(crate) fn uint_max(width: u16) -> i64 {
+	(u64::MAX >> (64 - width)) as i64
+}
+
 pub(crate) fn oi_symbol(name: &str) -> String {
 	format!("oi_{}", name.replace('.', "__").replace("::", "$"))
 }

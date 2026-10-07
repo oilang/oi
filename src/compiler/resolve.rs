@@ -82,9 +82,9 @@ pub(super) fn apply_backing(
 		}
 	} else {
 		let (lo, hi) = match &bt {
-			Typ::Int(w) if *w < 64 => (-(1i64 << (w - 1)), (1i64 << (w - 1)) - 1),
-			Typ::Int(_) | Typ::ISize => (i64::MIN, i64::MAX),
-			Typ::UInt(w) if *w < 64 => (0, (1i64 << w) - 1),
+			Typ::Int(w) => (int_min(*w), int_max(*w)),
+			Typ::ISize => (i64::MIN, i64::MAX),
+			Typ::UInt(w) if *w < 64 => (0, uint_max(*w)),
 			Typ::UInt(_) | Typ::USize => (0, i64::MAX),
 			t => {
 				// TODO: come up with a better label
