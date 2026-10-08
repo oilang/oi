@@ -8,28 +8,15 @@ fn atom_literal() {
 }
 
 #[test]
-fn atom_bind() {
-	check("x :: :apple\nx", ":apple");
-}
-
-#[test]
-fn atom_eq_same() {
-	check(":foo == :foo", "true");
-}
-
-#[test]
-fn atom_eq_different() {
-	check(":foo == :bar", "false");
-}
-
-#[test]
-fn atom_ne() {
-	check(":foo != :bar", "true");
-}
-
-#[test]
-fn atom_two_bindings_eq() {
-	check("a :: :thing\nb :: :thing\na == b", "true");
+fn atom_equality() {
+	check(
+		[
+			"a :: :thing",
+			"b :: :thing",
+			"print(a, a == b, :foo == :bar, :foo != :bar)",
+		],
+		":thing true false true",
+	);
 }
 
 #[test]

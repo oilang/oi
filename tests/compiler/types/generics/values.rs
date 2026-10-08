@@ -47,23 +47,16 @@ fn a_value_param_takes_a_const() {
 }
 
 #[test]
-fn a_type_where_a_value_belongs() {
+fn param_kind_mismatch() {
 	fail(
-		indoc! {"
-			repeat[T, N: int] :: fn(x: T) [N]T { out: [N]T; out }
-			print(repeat[int, int](1))
-		"},
+		[
+			"repeat[T, N: int] :: fn(x: T) [N]T { out: [N]T; out }",
+			"print(repeat[int, int](1))",
+		],
 		"`N` is a value parameter",
 	);
-}
-
-#[test]
-fn a_value_where_a_type_belongs() {
 	fail(
-		indoc! {"
-			first[A, B] :: fn(a: A, b: B) A { a }
-			print(first[int, 2](1, 2))
-		"},
+		["first[A, B] :: fn(a: A, b: B) A { a }", "print(first[int, 2](1, 2))"],
 		"`B` is a type parameter",
 	);
 }

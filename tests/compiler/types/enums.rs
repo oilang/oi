@@ -1,103 +1,22 @@
 use crate::helpers::*;
 
 #[test]
-fn user_enum_with_common_variants() {
-	check(
-		indoc! {r#"
-			MyOption :: enum { none some }
-			MyOption.none
-		"#},
-		"none",
-	);
-	check(
-		indoc! {r#"
-			MyResult :: enum { ok err }
-			MyResult.ok
-		"#},
-		"ok",
-	);
-}
-
-#[test]
-fn builtins_still_work() {
-	check("?int.(none)", "none");
-	check("!int.(42)", "ok.(42)");
-}
-
-#[test]
-fn qualified_access() {
-	check(["Color :: enum { red green blue }", "Color.red"], "red");
-	check(["Color :: enum { red green blue }", "Color.blue"], "blue");
-}
-
-#[test]
-fn bind() {
-	check(["Color :: enum { red green blue }", "c :: Color.green", "c"], "green");
-}
-
-#[test]
-fn reassign() {
+fn fieldless() {
 	check(
 		indoc! {"
+			MyOption :: enum { none some }
+			MyResult :: enum { ok err }
 			Color :: enum { red green blue }
+			Stat :: enum { health mana stamina }
+			User :: struct { s: Stat }
+			fav :: fn() Color { Color.blue }
 			c := Color.red
 			c = Color.blue
-			c
+			d: Color
+			print(MyOption.none, MyResult.ok, Color.red, c, d, Color.{}, fav(), User.{ s = Stat.mana }.s)
+			print(Color.red == Color.red, Color.red == Color.blue, Color.red != Color.blue)
 		"},
-		"blue",
-	);
-}
-
-#[test]
-fn first_variant_is_default() {
-	check(["Color :: enum { red green blue }", "c: Color", "c"], "red");
-}
-
-#[test]
-fn empty_literal_is_default() {
-	check(["Color :: enum { red green blue }", "Color.{}"], "red");
-}
-
-#[test]
-fn empty_literal_rejects_fields() {
-	fail(["Color :: enum { red green blue }", "Color.{ red }"], "only supports");
-}
-
-#[test]
-fn eq_same() {
-	check(["Color :: enum { red green blue }", "Color.red == Color.red"], "true");
-}
-
-#[test]
-fn eq_different() {
-	check(["Color :: enum { red green blue }", "Color.red == Color.blue"], "false");
-}
-
-#[test]
-fn ne() {
-	check(["Color :: enum { red green blue }", "Color.red != Color.blue"], "true");
-}
-
-#[test]
-fn returned_from_fn() {
-	check(
-		[
-			"Color :: enum { red green blue }",
-			"fav :: fn() Color { Color.blue }",
-			"fav()",
-		],
-		"blue",
-	);
-}
-
-#[test]
-fn struct_field() {
-	check(
-		"Stat :: enum { health mana stamina }
-		User :: struct { s: Stat }
-		u :: User.{ s = Stat.mana }
-		u.s",
-		"mana",
+		["none ok red blue red red blue mana", "true false true"],
 	);
 }
 
@@ -107,135 +26,70 @@ fn in_match() {
 		indoc! {r#"
 			Color :: enum { red green blue }
 			c :: Color.green
-			match c {
-				Color.red => "r",
-				Color.green => "g",
-				else => "?",
-			}
-		"#},
-		"g",
-	);
-}
-
-#[test]
-fn unknown_variant() {
-	fail(
-		["Color :: enum { red green blue }", "Color.purple"],
-		"no variant `purple`",
-	);
-}
-
-#[test]
-fn shorthand_in_assignment() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			c := Color.green
-			c = .red
-			c
-		"},
-		"red",
-	);
-}
-
-#[test]
-fn shorthand_in_annotated_binding() {
-	check(["Color :: enum { red green blue }", "c : Color : .blue", "c"], "blue");
-}
-
-#[test]
-fn shorthand_in_comparison() {
-	check(
-		["Color :: enum { red green blue }", "c :: Color.red", "c == .red"],
-		"true",
-	);
-	check(
-		["Color :: enum { red green blue }", "c :: Color.red", "c != .blue"],
-		"true",
-	);
-}
-
-#[test]
-fn shorthand_in_match() {
-	check(
-		indoc! {r#"
-			Color :: enum { red green blue }
-			c :: Color.green
+			print(match c { Color.red => "r", Color.green => "g", else => "?" })
 			match c {
 				.red => "r",
 				.green => "g",
 				else => "?",
 			}
 		"#},
-		"g",
+		["g", "g"],
 	);
 }
 
 #[test]
-fn shorthand_in_struct_field() {
-	check(
-		"Stat :: enum { health mana stamina }
-		User :: struct { s: Stat }
-		u :: User.{ s = .mana }
-		u.s",
-		"mana",
-	);
-	check(
-		"Stat :: enum { health mana stamina }
-		User :: struct { s: Stat }
-		u :: User.{ .stamina }
-		u.s",
-		"stamina",
-	);
-}
-
-#[test]
-fn shorthand_in_field_and_element_assignment() {
+fn shorthand() {
 	check(
 		indoc! {"
 			Color :: enum { red green blue }
+			Stat :: enum { health mana stamina }
+			User :: struct { s: Stat }
 			Pen :: struct { ink: Color }
+			c := Color.green
+			c = .red
+			b : Color : .blue
 			p := Pen.{}
 			p.ink = .blue
-			p.ink
-		"},
-		"blue",
-	);
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
 			cs := [Color.red]
 			cs[0] = .green
-			cs[0]
+			print(c, b, c == .red, c != .blue, User.{ s = .mana }.s, User.{ .stamina }.s, p.ink, cs[0])
 		"},
-		"green",
+		"red blue true true mana stamina blue green",
 	);
 }
 
 #[test]
-fn shorthand_unknown_variant() {
+fn fieldless_rejections() {
+	fail(["Color :: enum { red green blue }", "Color.{ red }"], "only supports");
+	fail(
+		["Color :: enum { red green blue }", "Color.purple"],
+		"no variant `purple`",
+	);
 	fail(
 		["Color :: enum { red green blue }", "c :: Color.red", "c == .purple"],
 		"no variant `purple`",
 	);
-}
-
-#[test]
-fn shorthand_without_context_errors() {
+	fail(
+		["Color :: enum { red green blue }", "c : Color : :purple"],
+		"no variant `purple`",
+	);
 	fail(
 		["Color :: enum { red green blue }", ".red"],
 		"cannot infer the enum type",
 	);
+	fail(
+		["Color :: enum { red green blue }", "Color.red.hex()"],
+		"has no method `hex`",
+	);
 }
 
 #[test]
-fn duplicate_disc_rejected() {
+fn disc_rejections() {
 	fail("E :: enum { a = 2, b, c = 2 }", "discriminant value `2`");
-}
-
-#[test]
-fn auto_increment_from_explicit() {
 	fail("E :: enum { a = 5, b, c = 6 }", "discriminant value `6`");
+	fail("E : bool : enum { a }", "not an enum-able type");
+	fail("E : u8 : enum { a = 300 }", "out of range for its backing type");
+	fail("E : u8 : enum { a some(int) }", "cannot have payload");
 }
 
 #[test]
@@ -251,150 +105,90 @@ fn const_expr_disc() {
 }
 
 #[test]
-fn payload_construct() {
+fn discriminants() {
 	check(
-		[
-			"Shape :: enum { point triangle(f64, f64, f64) }",
-			"Shape.triangle.(3.0, 4.0, 5.0)",
-		],
-		"triangle.(3.0, 4.0, 5.0)",
+		indoc! {"
+			Color :: enum { red green blue }
+			Status :: enum { ok = 200, err = 500 }
+			Backed : u8 : enum { ok = 200, err = 250 }
+			E :: enum { a = 5, b c }
+			Opt :: enum { nope some(int) }
+			x: E
+			print(int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), ord(Opt.some.(1)), Color.blue.str())
+		"},
+		"2 500 200 a 2 1 blue",
 	);
 }
 
 #[test]
-fn payloadless_variant_of_boxed_enum() {
-	check(["Opt :: enum { nope some(int) }", "Opt.nope"], "nope");
-	check(["Opt :: enum { nope some(int) }", "o : Opt : .nope", "o"], "nope");
+fn payload_basics() {
+	check(
+		indoc! {"
+			Shape :: enum { point triangle(f64, f64, f64) }
+			Opt :: enum { nope some(int) }
+			o : Opt : .nope
+			d: Opt
+			print(Shape.triangle.(3.0, 4.0, 5.0), Opt.nope, o, d, Opt.{})
+		"},
+		"triangle.(3.0, 4.0, 5.0) nope nope nope nope",
+	);
 }
 
 #[test]
-fn payload_enum_default_is_first() {
-	check(["Opt :: enum { nope some(int) }", "o: Opt", "o"], "nope");
-}
-
-#[test]
-fn payload_empty_literal_is_default() {
-	check(["Opt :: enum { nope some(int) }", "Opt.{}"], "nope");
-}
-
-#[test]
-fn payload_int_cast_errors() {
+fn payload_rejections() {
 	fail(
 		["Opt :: enum { nope some(int) }", "int.(Opt.some.(1))"],
 		"no backing value",
 	);
-}
-
-#[test]
-fn payload_field_type_mismatch() {
 	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.(3.0)"],
 		"expected int, got float",
 	);
-}
-
-#[test]
-fn payload_wrong_arity() {
 	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.()"],
 		"takes 1 field(s), got 0",
 	);
-}
-
-#[test]
-fn payload_match_binds_fields() {
-	check(
-		indoc! {r#"
-			Opt :: enum { nope some(int) }
-			o :: Opt.some.(7)
-			match o {
-				.some.(n) => n,
-				.nope => -1,
-			}
-		"#},
-		"7",
+	fail(
+		["Opt :: enum { nope some(int) }", "Opt.some.(1) < Opt.some.(2)"],
+		"claim `Ord` for `Opt` to define ordering",
 	);
+	fail("A :: enum { wrap(NoSuchType) }", "unknown type");
 }
 
 #[test]
-fn payload_match_fieldless_arm() {
+fn payload_match() {
 	check(
-		indoc! {r#"
+		indoc! {"
 			Opt :: enum { nope some(int) }
-			o : Opt : .nope
-			match o {
-				.some.(n) => n,
-				.nope => -1,
-			}
-		"#},
-		"-1",
-	);
-}
-
-#[test]
-fn payload_match_multiple_fields() {
-	check(
-		indoc! {r#"
 			Shape :: enum { rect(int, int) tri(int, int, int) }
+			get :: fn(o: Opt) int {
+				match o {
+					.some.(n) => n,
+					.nope => -1,
+				}
+			}
 			s :: Shape.rect.(3, 4)
+			o : Opt : .some.(5)
+			print(get(Opt.some.(7)), get(.nope), get(o))
 			match s {
 				.rect.(w, h) => w * h,
 				.tri.(a, b, c) => a + b + c,
 			}
-		"#},
-		"12",
-	);
-}
-
-#[test]
-fn shorthand_payload_construct() {
-	check(
-		[
-			"Opt :: enum { nope some(int) }",
-			"o : Opt : .some.(5)",
-			"match o { .some.(n) => n, .nope => 0 }",
-		],
-		"5",
+		"},
+		["7 -1 5", "12"],
 	);
 }
 
 #[test]
 fn payload_eq() {
 	check(
-		["Opt :: enum { nope some(int) }", "Opt.some.(1) == Opt.some.(1)"],
-		"true",
-	);
-	check(
-		["Opt :: enum { nope some(int) }", "Opt.some.(1) == Opt.some.(2)"],
-		"false",
-	);
-	check(["Opt :: enum { nope some(int) }", "Opt.nope == Opt.some.(1)"], "false");
-	check(["Opt :: enum { nope some(int) }", "Opt.nope != Opt.some.(1)"], "true");
-}
-
-#[test]
-fn payload_eq_string_field() {
-	check(
 		indoc! {r#"
+			Opt :: enum { nope some(int) }
 			Msg :: enum { quit say(string) }
-			Msg.say.("hi") == Msg.say.("hi")
+			print(Opt.some.(1) == Opt.some.(1), Opt.some.(1) == Opt.some.(2), Opt.nope == Opt.some.(1), Opt.nope != Opt.some.(1))
+			print(Msg.say.("hi") == Msg.say.("hi"), Msg.say.("hi") == Msg.say.("bye"))
 		"#},
-		"true",
-	);
-	check(
-		indoc! {r#"
-			Msg :: enum { quit say(string) }
-			Msg.say.("hi") == Msg.say.("bye")
-		"#},
-		"false",
-	);
-}
-
-#[test]
-fn payload_ordering_rejected() {
-	fail(
-		["Opt :: enum { nope some(int) }", "Opt.some.(1) < Opt.some.(2)"],
-		"claim `Ord` for `Opt` to define ordering",
+		["true false false true", "true false"],
 	);
 }
 
@@ -471,46 +265,25 @@ fn struct_form_shorthand_and_rename() {
 }
 
 #[test]
-fn struct_form_zero_is_first_variant() {
+fn struct_form_defaults() {
 	check(
-		indoc! {r#"
+		indoc! {"
 			Shape :: enum { circle { radius: f64 } rectangle { width: f64, height: f64 } }
-			match Shape.{} { .circle.{ radius } => radius, else => -1.0 }
-		"#},
-		"0.0",
+			S :: enum { rect { w: f64, h: f64 } }
+			a :: match Shape.{} { .circle.{ radius } => radius, else => -1.0 }
+			b :: match S.rect.{ h = 2.0 } { .rect.{ w, h } => w + h }
+			print(a, b, Shape.circle.{ 1.0 })
+		"},
+		"0.0 2.0 circle.{radius = 1.0}",
 	);
 }
 
 #[test]
-fn struct_form_unknown_field() {
+fn struct_form_rejections() {
 	fail(
 		["S :: enum { circle { radius: f64 } }", "S.circle.{ r = 1.0 }"],
 		"no field `r`",
 	);
-}
-
-#[test]
-fn struct_form_omitted_field_zeroes() {
-	check(
-		indoc! {r#"
-			S :: enum { rect { w: f64, h: f64 } }
-			s :: S.rect.{ h = 2.0 }
-			match s { .rect.{ w, h } => w + h }
-		"#},
-		"2.0",
-	);
-}
-
-#[test]
-fn struct_form_takes_positional() {
-	check(
-		["S :: enum { circle { radius: f64 } }", "print(S.circle.{ 1.0 })"],
-		"circle.{radius = 1.0}",
-	);
-}
-
-#[test]
-fn tuple_form_record_rejected() {
 	fail(
 		["S :: enum { tri(f64, f64) }", "S.tri.{ a = 1.0 }"],
 		"takes positional fields",
@@ -534,205 +307,43 @@ fn alias_payload() {
 }
 
 #[test]
-fn payload_unknown_type_rejected() {
-	fail("A :: enum { wrap(NoSuchType) }", "unknown type");
-}
-
-#[test]
-fn explicit_disc_default_is_first() {
-	check(["E :: enum { a = 5, b c }", "x: E", "x"], "a");
-}
-
-#[test]
-fn atom_coerces_in_annotated_binding() {
-	check(["Color :: enum { red green blue }", "c : Color : :blue", "c"], "blue");
-}
-
-#[test]
-fn atom_coerces_in_assignment() {
+fn atom_coerces() {
 	check(
 		indoc! {"
 			Color :: enum { red green blue }
-			c := Color.green
-			c = :red
-			c
-		"},
-		"red",
-	);
-}
-
-#[test]
-fn atom_coerces_in_comparison() {
-	check(
-		["Color :: enum { red green blue }", "c :: Color.red", "c == :red"],
-		"true",
-	);
-	check(["Color :: enum { red green blue }", "Color.blue == :blue"], "true");
-}
-
-#[test]
-fn atom_coerces_in_struct_field() {
-	check(
-		indoc! {"
 			Stat :: enum { health mana stamina }
 			User :: struct { s: Stat }
-			u :: User.{ s = :mana }
-			u.s
+			name :: fn(c: Color) string { c.str() }
+			b : Color : :blue
+			c := Color.green
+			c = :red
+			print(b, c, c == :red, Color.blue == :blue, User.{ s = :mana }.s, name(:blue))
 		"},
-		"mana",
+		"blue red true true mana blue",
 	);
 }
 
 #[test]
-fn atom_unknown_variant() {
-	fail(
-		["Color :: enum { red green blue }", "c : Color : :purple"],
-		"no variant `purple`",
-	);
-}
-
-#[test]
-fn cast_to_int() {
-	check(["Color :: enum { red green blue }", "int.(Color.blue)"], "2");
-}
-
-#[test]
-fn cast_to_int_explicit_disc() {
-	check(["Status :: enum { ok = 200, err = 500 }", "int.(Status.err)"], "500");
-}
-
-#[test]
-fn backed_cast_to_backing() {
-	check(["Status : u8 : enum { ok = 200, err = 250 }", "u8.(Status.ok)"], "200");
-}
-
-#[test]
-fn backing_non_integer_errors() {
-	fail("E : bool : enum { a }", "not an enum-able type");
-}
-
-#[test]
-fn backing_out_of_range_errors() {
-	fail("E : u8 : enum { a = 300 }", "out of range for its backing type");
-}
-
-#[test]
-fn backing_with_payload_errors() {
-	fail("E : u8 : enum { a some(int) }", "cannot have payload");
-}
-
-#[test]
-fn ord_gives_discriminant() {
-	check(["Color :: enum { red green blue }", "ord(Color.blue)"], "2");
-}
-
-#[test]
-fn ord_on_payload_variant() {
-	check(["Opt :: enum { nope some(int) }", "ord(Opt.some.(1))"], "1");
-}
-
-#[test]
-fn str_method() {
-	check(["Color :: enum { red green blue }", "Color.blue.str()"], "blue");
-}
-
-#[test]
-fn no_such_method() {
-	fail(
-		["Color :: enum { red green blue }", "Color.red.hex()"],
-		"has no method `hex`",
-	);
-}
-
-#[test]
-fn from_int_match() {
+fn from() {
 	check(
-		["Color :: enum { red green blue }", "Color.from(1) or { Color.red }"],
-		"green",
-	);
-}
-
-#[test]
-fn from_int_no_match() {
-	check(
-		["Color :: enum { red green blue }", "Color.from(9) or { Color.red }"],
-		"red",
-	);
-}
-
-#[test]
-fn from_int_or_shorthand() {
-	check(["Color :: enum { red green blue }", "Color.from(9) or .red"], "red");
-}
-
-#[test]
-fn from_int_no_match_carries_error() {
-	check(
+		indoc! {r#"
+			Color :: enum { red green blue }
+			Shape :: enum { point triangle(f64, f64, f64) }
+			print(Color.from(1) or { Color.red }, Color.from(9) or .red, Color.from("blue") or { Color.red }, Color.from(:blue) or { Color.red })
+			print(Shape.from(1) or { Shape.point })
+			Color.from(9) or { print($) Color.red }
+			Color.from("purple") or { print($) Color.red }
+			Color.from(:purple) or { print($) Color.red }
+		"#},
 		[
-			"Color :: enum { red green blue }",
-			"Color.from(9) or { print($)",
-			"Color.red }",
+			"green red blue blue",
+			"triangle.(0.0, 0.0, 0.0)",
+			"no matching variant",
+			"no matching variant",
+			"no matching variant",
+			"red",
 		],
-		["no matching variant", "red"],
 	);
-}
-
-#[test]
-fn from_str_match() {
-	check(
-		[
-			"Color :: enum { red green blue }",
-			r#"Color.from("blue") or { Color.red }"#,
-		],
-		"blue",
-	);
-}
-
-#[test]
-fn from_str_no_match() {
-	check(
-		[
-			"Color :: enum { red green blue }",
-			r#"Color.from("purple") or { print($)"#,
-			"Color.red }",
-		],
-		["no matching variant", "red"],
-	);
-}
-
-#[test]
-fn from_atom_match() {
-	check(
-		["Color :: enum { red green blue }", "Color.from(:blue) or { Color.red }"],
-		"blue",
-	);
-}
-
-#[test]
-fn from_atom_no_match() {
-	check(
-		[
-			"Color :: enum { red green blue }",
-			"Color.from(:purple) or { print($)",
-			"Color.red }",
-		],
-		["no matching variant", "red"],
-	);
-}
-
-#[test]
-fn from_payload_zero_fills() {
-	check(
-		[
-			"Shape :: enum { point triangle(f64, f64, f64) }",
-			"Shape.from(1) or { Shape.point }",
-		],
-		"triangle.(0.0, 0.0, 0.0)",
-	);
-}
-
-#[test]
-fn from_wrong_type() {
 	fail(
 		["Color :: enum { red green blue }", "Color.from(true)"],
 		"needs an int, string, or atom",
@@ -740,85 +351,29 @@ fn from_wrong_type() {
 }
 
 #[test]
-fn shorthand_coerces_in_fn_arg() {
+fn shorthand_coerces_through_branches() {
 	check(
 		indoc! {"
 			Color :: enum { red green blue }
 			name :: fn(c: Color) string { c.str() }
-			name(.blue)
-		"},
-		"blue",
-	);
-}
-
-#[test]
-fn atom_coerces_in_fn_arg() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			name :: fn(c: Color) string { c.str() }
-			name(:blue)
-		"},
-		"blue",
-	);
-}
-
-#[test]
-fn shorthand_coerces_in_if_tail_return() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			fav :: fn(pick: bool) Color {
+			tail_if :: fn(pick: bool) Color {
 				if pick { .blue } else { .red }
 			}
-			fav(true)
-		"},
-		"blue",
-	);
-}
-
-#[test]
-fn shorthand_coerces_in_match_tail_return() {
-	check(
-		indoc! {r#"
-			Color :: enum { red green blue }
-			fav :: fn(n: int) Color {
+			tail_match :: fn(n: int) Color {
 				match n {
 					1 => .red,
 					else => .blue,
 				}
 			}
-			fav(9)
-		"#},
-		"blue",
-	);
-}
-
-#[test]
-fn shorthand_coerces_in_if_expr() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			c : Color : if false { .red } else { .blue }
-			c
-		"},
-		"blue",
-	);
-}
-
-#[test]
-fn shorthand_coerces_in_match_expr() {
-	check(
-		indoc! {r#"
-			Color :: enum { red green blue }
 			n :: 9
-			c : Color : match n {
+			a : Color : if false { .red } else { .blue }
+			b : Color : match n {
 				1 => .red,
 				else => .blue,
 			}
-			c
-		"#},
-		"blue",
+			print(name(.blue), tail_if(false), tail_match(9), a, b)
+		"},
+		"blue red blue blue blue",
 	);
 }
 
@@ -904,11 +459,12 @@ fn backed_array_signed_sextends() {
 }
 
 #[test]
-fn method_on_receiver() {
+fn fills() {
 	check(
 		indoc! {r##"
 			Color :: enum { red green blue }
 			Color :< {
+				DEFAULT :: Color.green
 				hex :: fn(self) string {
 					match self {
 						.red => "#f00",
@@ -916,36 +472,12 @@ fn method_on_receiver() {
 						.blue => "#00f",
 					}
 				}
+				is_warm :: fn(self) bool { self == .red }
+				primary :: fn() Color { .red }
 			}
-			c :: Color.green
-			c.hex()
+			print(Color.DEFAULT, Color.green.hex(), Color.red.is_warm(), Color.blue.is_warm(), Color.primary(), Color.green)
 		"##},
-		"#0f0",
-	);
-}
-
-#[test]
-fn const_fill_holds_a_variant() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			Color :< { DEFAULT :: Color.green }
-			print(Color.DEFAULT)
-		"},
-		"green",
-	);
-}
-
-#[test]
-fn method_compares_self() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			Color :< { is_warm :: fn(self) bool { self == .red } }
-			print(Color.red.is_warm())
-			print(Color.blue.is_warm())
-		"},
-		["true", "false"],
+		"green #0f0 true false red green",
 	);
 }
 
@@ -965,19 +497,6 @@ fn method_on_payload_enum() {
 			Shape.triangle.(2.0, 3.0, 4.0).perimeter()
 		"#},
 		"9.0",
-	);
-}
-
-#[test]
-fn static_fill_beside_variants() {
-	check(
-		indoc! {"
-			Color :: enum { red green blue }
-			Color :< { primary :: fn() Color { .red } }
-			print(Color.primary())
-			print(Color.green)
-		"},
-		["red", "green"],
 	);
 }
 

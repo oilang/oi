@@ -1,69 +1,20 @@
 use crate::helpers::*;
 
 #[test]
-fn tail_return() {
+fn atom_sum_basics() {
 	check(
 		indoc! {"
 			Status :: :ok | :err
+			Res :: struct { s: Status }
 			f :: fn() Status { :err }
-			f()
-		"},
-		"err",
-	);
-}
-
-#[test]
-fn bind_and_print() {
-	check(
-		indoc! {"
-			Status :: :ok | :err
 			x : Status : :ok
-			x
+			z: Status
+			e : Status : :err
+			y: :ok | :err : :ok
+			print(f(), x, z, Res.{ s = :err }.s, y)
+			print(x == z, x == e, x != e, ord(x), ord(e))
 		"},
-		"ok",
-	);
-}
-
-#[test]
-fn zero_value_is_first_variant() {
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			x: Status
-			x
-		"},
-		"ok",
-	);
-}
-
-#[test]
-fn eq() {
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			a : Status : :ok
-			b : Status : :ok
-			a == b
-		"},
-		"true",
-	);
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			a : Status : :ok
-			b : Status : :err
-			a == b
-		"},
-		"false",
-	);
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			a : Status : :ok
-			b : Status : :err
-			a != b
-		"},
-		"true",
+		["err ok ok err ok", "true false true 0 1"],
 	);
 }
 
@@ -104,93 +55,42 @@ fn matching() {
 }
 
 #[test]
-fn unknown_atom_errors() {
+fn rejections() {
+	fail(["Status :: :ok | :err", "x : Status : :nope"], "has no atom `:nope`");
 	fail(
-		indoc! {"
-			Status :: :ok | :err
-			x : Status : :nope
-		"},
-		"has no atom `:nope`",
-	);
-}
-
-#[test]
-fn duplicate_atom_in_type_errors() {
-	fail(
-		indoc! {"
-			Status :: :ok | :ok
-			f :: fn() Status { :ok }
-			f()
-		"},
+		["Status :: :ok | :ok", "f :: fn() Status { :ok }", "f()"],
 		"duplicate atom `:ok` in sum type",
 	);
-}
-
-#[test]
-fn ord_gives_tag() {
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			x : Status : :ok
-			ord(x)
-		"},
-		"0",
+	fail(
+		["Bad :: int | int", "x: Bad", "x"],
+		"duplicate member `int` in sum type",
 	);
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			x : Status : :err
-			ord(x)
-		"},
-		"1",
+	fail(
+		["Num :: int | f64", "Bad :: Num | int", "x: Bad", "x"],
+		"duplicate member `int` in sum type",
 	);
-}
-
-#[test]
-fn struct_field_type() {
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			Res :: struct { s: Status }
-			r :: Res.{ s = :err }
-			r.s
-		"},
-		"err",
-	);
-}
-
-#[test]
-fn anonymous_sum_in_bind() {
-	check(
-		indoc! {"
-			x: :ok | :err : :ok
-			x
-		"},
-		"ok",
+	fail(
+		["Id :: int | string", "x : Id : 4", "int.(x)"],
+		"cannot extract a sum member by casting",
 	);
 }
 
 #[test]
 fn anonymous_sum_param_and_return() {
 	check(
-		indoc! {"
+		indoc! {r#"
 			f :: fn(v: int | string) int | string { v }
-			match f(7) {
+			a := match f(7) {
 				n @ int => n + 1,
 				string => 0,
 			}
-		"},
-		"8",
-	);
-	check(
-		indoc! {r#"
-			f :: fn(v: int | string) int | string { v }
-			match f("hi") {
+			b := match f("hi") {
 				int => "no",
 				s @ string => s,
 			}
+			print(a, b)
 		"#},
-		"hi",
+		"8 hi",
 	);
 }
 
@@ -200,311 +100,96 @@ fn tight_prefix_precedence() {
 		indoc! {"
 			V :: :none | []int | :other
 			x : V : :other
-			ord(x)
+			y : V = :none
+			y = [1, 2]
+			print(ord(x), ord(y))
 		"},
-		"2",
-	);
-	check(
-		indoc! {"
-			V :: :none | []int | :other
-			x : V = :none
-			x = [1, 2]
-			ord(x)
-		"},
-		"1",
+		"2 1",
 	);
 }
 
 #[test]
-fn general_bind_print_and_zero() {
-	check(
-		indoc! {"
-			Id :: int | string
-			x : Id : 7
-			x
-		"},
-		"7",
-	);
-	// zero value is the first member's zero
-	check(
-		indoc! {"
-			Id :: int | string
-			x: Id
-			x
-		"},
-		"0",
-	);
-}
-
-#[test]
-fn general_reassign_across_members() {
+fn general_basics() {
 	check(
 		indoc! {r#"
 			Id :: int | string
-			x : Id = 7
-			x = "hi"
-			x
-		"#},
-		"hi",
-	);
-}
-
-#[test]
-fn general_fn_return_and_field() {
-	check(
-		indoc! {"
-			Id :: int | string
-			make :: fn() Id { 42 }
-			make()
-		"},
-		"42",
-	);
-	check(
-		indoc! {r#"
-			Id :: int | string
+			V :: :none | int
 			Box :: struct { id: Id }
-			Box.{ id = "hey" }.id
+			make :: fn() Id { 42 }
+			x : Id : 7
+			z: Id
+			r : Id = 7
+			r = "hi"
+			v : V : :none
+			w : V = :none
+			w = 5
+			print(x, z, r, make(), Box.{ id = "hey" }.id, v, w, ord(r))
 		"#},
-		"hey",
-	);
-}
-
-#[test]
-fn mixed_atom_and_type() {
-	check(
-		indoc! {"
-			V :: :none | int
-			x : V : :none
-			x
-		"},
-		"none",
-	);
-	check(
-		indoc! {"
-			V :: :none | int
-			x : V = :none
-			x = 5
-			x
-		"},
-		"5",
+		"7 0 hi 42 hey none 5 1",
 	);
 }
 
 #[test]
 fn general_eq_is_structural() {
 	check(
-		indoc! {"
-			Id :: int | string
-			a : Id : 7
-			b : Id : 7
-			a == b
-		"},
-		"true",
-	);
-	check(
 		indoc! {r#"
 			Id :: int | string
-			a : Id : 7
-			b : Id : "x"
-			a == b
-		"#},
-		"false",
-	);
-	check(
-		indoc! {"
 			A :: int | string
 			B :: int | string
-			a : A : 1
-			b : B : 1
-			a == b
-		"},
-		"true",
+			a : Id : 7
+			b : Id : 7
+			c : Id : "x"
+			d : A : 1
+			e : B : 1
+			print(a == b, a == c, d == e)
+		"#},
+		"true false true",
 	);
 }
 
 #[test]
 fn set_identity() {
 	check(
-		indoc! {"
+		indoc! {r#"
 			A :: int | string
 			B :: string | int
+			C :: :ok | :err
+			D :: :err | :ok
 			a : A : 7
 			b : B : a
-			match b {
+			c : C : :ok
+			d : D : c
+			z: B
+			n := match b {
 				n @ int => n + 1,
 				string => 0,
 			}
-		"},
-		"8",
-	);
-	check(
-		indoc! {"
-			A :: int | string
-			B :: string | int
-			a : A : 7
-			b : B : a
-			a == b
-		"},
-		"true",
-	);
-	check(
-		indoc! {"
-			A :: int | string
-			a : A : 7
-			ord(a)
-		"},
-		"0",
-	);
-	check(
-		indoc! {"
-			A :: int | string
-			B :: string | int
-			a : A : 7
-			b : B : a
-			ord(b)
-		"},
-		"1",
-	);
-	check(
-		indoc! {r#"
-			B :: string | int
-			x: B
-			x == ""
+			print(n, a == b, ord(a), ord(b), z == "", ord(d), c == d)
 		"#},
-		"true",
+		"8 true 0 1 true 1 true",
 	);
 }
 
 #[test]
-fn general_ord_gives_tag() {
-	check(
-		indoc! {r#"
-			Id :: int | string
-			x : Id : "x"
-			ord(x)
-		"#},
-		"1",
-	);
-}
-
-#[test]
-fn int_cast_on_sum_errors() {
-	fail(
-		["Id :: int | string", "x : Id : 4", "int.(x)"],
-		"cannot extract a sum member by casting",
-	);
-}
-
-#[test]
-fn duplicate_type_member_errors() {
-	fail(
-		indoc! {"
-			Bad :: int | int
-			x: Bad
-			x
-		"},
-		"duplicate member `int` in sum type",
-	);
-}
-
-#[test]
-fn nested_sum_alias_splices() {
+fn sum_alias_splices() {
 	check(
 		indoc! {r#"
 			Num :: int | f64
 			Value :: Num | string
-			x : Value : 7
-			match x {
-				int => 1,
-				f64 => 2,
-				string => 3,
-			}
-		"#},
-		"1",
-	);
-	check(
-		indoc! {r#"
-			Num :: int | f64
-			Value :: Num | string
-			x : Value : "hi"
-			match x {
-				int => 1,
-				f64 => 2,
-				string => 3,
-			}
-		"#},
-		"3",
-	);
-}
-
-#[test]
-fn splice_duplicate_member_errors() {
-	fail(
-		indoc! {"
-			Num :: int | f64
-			Bad :: Num | int
-			x: Bad
-			x
-		"},
-		"duplicate member `int` in sum type",
-	);
-}
-
-#[test]
-fn single_type_stays_transparent_alias() {
-	check(
-		indoc! {"
-			Score :: int
-			x : Score : 5
-			x + 1
-		"},
-		"6",
-	);
-}
-
-#[test]
-fn atom_sums_order() {
-	check(
-		indoc! {"
-			A :: :ok | :err
-			B :: :err | :ok
-			a : A : :ok
-			b : B : a
-			ord(b)
-		"},
-		"1",
-	);
-	check(
-		indoc! {"
-			A :: :ok | :err
-			B :: :err | :ok
-			a : A : :ok
-			b : B : a
-			a == b
-		"},
-		"true",
-	);
-}
-
-#[test]
-fn atom_sum_alias_splices_as_member() {
-	check(
-		indoc! {"
 			Status :: :ok | :err
 			V :: Status | int
-			x : V : :err
-			ord(x)
-		"},
-		"1",
-	);
-	check(
-		indoc! {"
-			Status :: :ok | :err
-			V :: Status | int
-			x : V : 5
-			ord(x)
-		"},
-		"2",
+			kind :: fn(x: Value) int {
+				match x {
+					int => 1,
+					f64 => 2,
+					string => 3,
+				}
+			}
+			e : V : :err
+			n : V : 5
+			print(kind(7), kind("hi"), ord(e), ord(n))
+		"#},
+		"1 3 1 2",
 	);
 }
 

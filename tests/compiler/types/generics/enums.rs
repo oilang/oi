@@ -1,54 +1,23 @@
 use crate::helpers::*;
 
 #[test]
-fn shorthand_round_trip() {
-	let src = indoc! {"
-		Opt[T] :: enum { nope, some(T) }
-		get :: fn() Opt[int] { .some.(5) }
-		match get() {
-			.some.(n) => n,
-			.nope => -1,
-		}
-	"};
-	check(src, "5");
-}
-
-#[test]
-fn nope_arm() {
-	let src = indoc! {"
-		Opt[T] :: enum { nope, some(T) }
-		get :: fn() Opt[int] { .nope }
-		match get() {
-			.some.(n) => n,
-			.nope => -1,
-		}
-	"};
-	check(src, "-1");
-}
-
-#[test]
-fn generic_fn_round_trip() {
-	let src = indoc! {"
-		Opt[T] :: enum { nope, some(T) }
-		wrap[T] :: fn(v: T) Opt[T] { .some.(v) }
-		match wrap(9) {
-			.some.(n) => n,
-			.nope => -1,
-		}
-	"};
-	check(src, "9");
-}
-
-#[test]
-fn two_instances_coexist() {
+fn round_trips() {
 	let src = indoc! {r#"
 		Opt[T] :: enum { nope, some(T) }
-		geti :: fn() Opt[int] { .some.(1) }
+		get :: fn() Opt[int] { .some.(5) }
+		none :: fn() Opt[int] { .nope }
+		wrap[T] :: fn(v: T) Opt[T] { .some.(v) }
 		gets :: fn() Opt[string] { .some.("hi") }
-		match geti() { .some.(n) => print(n), .nope => {} }
+		val :: fn(o: Opt[int]) int {
+			match o {
+				.some.(n) => n,
+				.nope => -1,
+			}
+		}
+		print(val(get()), val(none()), val(wrap(9)))
 		match gets() { .some.(s) => print(s), .nope => {} }
 	"#};
-	check(src, ["1", "hi"]);
+	check(src, ["5 -1 9", "hi"]);
 }
 
 #[test]
@@ -78,26 +47,22 @@ fn infers_params_from_instance() {
 }
 
 #[test]
-fn bare_name_needs_type_arguments() {
+fn rejections() {
 	fail(
-		indoc! {"
-			Opt[T] :: enum { nope, some(T) }
-			f :: fn(o: Opt) int { 0 }
-			0
-		"},
+		["Opt[T] :: enum { nope, some(T) }", "f :: fn(o: Opt) int { 0 }", "0"],
 		"needs type arguments",
 	);
-}
-
-#[test]
-fn wrong_arity() {
 	fail(
-		indoc! {"
-			Opt[T] :: enum { nope, some(T) }
-			f :: fn() Opt[int, string] { .nope }
-			0
-		"},
+		[
+			"Opt[T] :: enum { nope, some(T) }",
+			"f :: fn() Opt[int, string] { .nope }",
+			"0",
+		],
 		"expects 1 type argument(s), got 2",
+	);
+	fail(
+		["Pair[A, B] :: struct { a: A, b: B }", "print(Pair[int, string].a)"],
+		"is a type, not a value",
 	);
 }
 
@@ -129,41 +94,19 @@ fn qualified_variant_path() {
 }
 
 #[test]
-fn bare_path_infers_from_the_payload() {
+fn bare_path_infers() {
 	let src = indoc! {r#"
 		Opt[T] :: enum { nope, yep(T) }
 		print(Opt.yep("hi"))
-		x: ?int = Option.some(9)
-		print(x?)
-	"#};
-	check(src, [r#"yep.("hi")"#, "9"]);
-}
-
-#[test]
-fn bare_path_infers_from_the_expected_type() {
-	let src = indoc! {r#"
-		Opt[T] :: enum { nope, yep(T) }
+		w: ?int = Option.some(9)
+		print(w?)
 		x: ?int = Option.none
 		y: !int = Result.ok(7)
 		z: string!int = Result.err("no")
 		o: Opt[int] = Opt.nope
-		print(x)
-		print(y)
-		print(z)
-		print(o)
+		print(x, y, z, o)
 	"#};
-	check(src, ["none", "ok.(7)", r#"err.("no")"#, "nope"]);
-}
-
-#[test]
-fn a_generic_struct_head_is_not_a_variant_path() {
-	fail(
-		indoc! {"
-			Pair[A, B] :: struct { a: A, b: B }
-			print(Pair[int, string].a)
-		"},
-		"is a type, not a value",
-	);
+	check(src, [r#"yep.("hi")"#, "9", r#"none ok.(7) err.("no") nope"#]);
 }
 
 #[test]

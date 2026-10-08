@@ -5,7 +5,6 @@ mod atoms;
 mod booleans;
 mod enums;
 mod generics;
-mod literals;
 mod maps;
 mod numbers;
 mod options;

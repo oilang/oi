@@ -1,128 +1,40 @@
 use crate::helpers::*;
 
 #[test]
-fn zero_value_positional_access() {
+fn zero_values() {
 	check(
 		indoc! {"
 			Money :: struct (int)
-			m: Money
-			m.0
-		"},
-		"0",
-	);
-}
-
-#[test]
-fn named_and_positional_agree() {
-	check(
-		indoc! {"
 			Point :: struct (x: float, y: float)
-			p: Point
-			p.x
-		"},
-		"0.0",
-	);
-}
-
-#[test]
-fn partial_naming() {
-	check(
-		indoc! {"
 			Foo :: struct (int, y: bool)
-			f: Foo
-			f.y
-		"},
-		"false",
-	);
-}
-
-#[test]
-fn print_unnamed() {
-	check(
-		indoc! {"
-			Money :: struct (int)
+			UserId :: struct (int | string)
 			m: Money
-			m
-		"},
-		"Money(0)",
-	);
-}
-
-#[test]
-fn print_named() {
-	check(
-		indoc! {"
-			Point :: struct (x: float, y: float)
 			p: Point
-			p
+			f: Foo
+			u: UserId
+			print(m.0, p.x, f.y, u.0)
+			print(m, p)
 		"},
-		"Point(x = 0.0, y = 0.0)",
-	);
-}
-
-#[test]
-fn index_out_of_range() {
-	fail(
-		indoc! {"
-			Money :: struct (int)
-			m: Money
-			m.1
-		"},
-		"",
+		["0 0.0 false 0", "Money(0) Point(x = 0.0, y = 0.0)"],
 	);
 }
 
 #[test]
 fn no_such_field() {
-	fail(
-		indoc! {"
-			Point :: struct (x: float, y: float)
-			p: Point
-			p.z
-		"},
-		"",
-	);
+	fail(["Money :: struct (int)", "m: Money", "m.1"], "");
+	fail(["Point :: struct (x: float, y: float)", "p: Point", "p.z"], "");
 }
 
 #[test]
-fn wraps_anonymous_sum() {
-	check(
-		indoc! {"
-			UserId :: struct (int | string)
-			u: UserId
-			u.0
-		"},
-		"0",
-	);
-}
-
-#[test]
-fn construct_positional() {
+fn construct() {
 	check(
 		indoc! {"
 			Money :: struct (int)
-			Money(500).0
-		"},
-		"500",
-	);
-	check(
-		indoc! {"
-			Point :: struct (x: float, y: float)
-			Point(1.0, 2.0).y
-		"},
-		"2.0",
-	);
-}
-
-#[test]
-fn construct_named() {
-	check(
-		indoc! {"
 			Point :: struct (x: float, y: float)
 			p :: Point(x = 1.0, y = 2.0)
-			p.0 == p.x
+			print(Money(500).0, Point(1.0, 2.0).y, p.0 == p.x)
 		"},
-		"true",
+		"500 2.0 true",
 	);
 }
 
@@ -245,46 +157,19 @@ fn dot_tuple_construct() {
 	check(
 		indoc! {"
 			Money :: struct (int)
-			m: Money = .(500)
-			m.0
-		"},
-		"500",
-	);
-	check(
-		indoc! {"
 			Point :: struct (x: float, y: float)
-			p: Point = .(1.0, 2.0)
-			p.x
-		"},
-		"1.0",
-	);
-}
-
-#[test]
-fn dot_tuple_as_call_arg() {
-	check(
-		indoc! {"
-			Money :: struct (int)
 			pay :: fn(m: Money) int { m.0 }
-			pay(.(500))
+			m: Money = .(500)
+			p: Point = .(1.0, 2.0)
+			print(m.0, p.x, pay(.(7)))
 		"},
-		"500",
+		"500 1.0 7",
 	);
 }
 
 #[test]
-fn dot_tuple_wrong_arity() {
-	fail(
-		indoc! {"
-			Money :: struct (int)
-			m: Money = .(1, 2)
-		"},
-		"takes 1 field(s)",
-	);
-}
-
-#[test]
-fn dot_tuple_no_context() {
+fn dot_tuple_rejections() {
+	fail(["Money :: struct (int)", "m: Money = .(1, 2)"], "takes 1 field(s)");
 	fail("m := .(1)", "cannot infer");
 }
 

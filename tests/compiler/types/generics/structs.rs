@@ -2,100 +2,63 @@ use crate::helpers::*;
 use indoc::indoc;
 
 #[test]
-fn infer_from_literal() {
+fn inference() {
 	let src = indoc! {"
 		Pair[T] :: struct { a: T, b: T }
-		p :: Pair.{ a = 3, b = 4 }
-		p.a + p.b
-	"};
-	check(src, "7");
-}
-
-#[test]
-fn nested_instantiation() {
-	let src = indoc! {"
 		Box[T] :: struct { v: T }
-		Box.{ v = Box.{ v = 5 } }.v.v
-	"};
-	check(src, "5");
-}
-
-#[test]
-fn type_position_param() {
-	let src = indoc! {"
-		Pair[T] :: struct { a: T, b: T }
 		sum :: fn(p: Pair[int]) int { p.a + p.b }
-		sum(Pair.{ a = 3, b = 4 })
+		wrap[T] :: fn(v: T) Box[T] { Box.{ v = v } }
+		p :: Pair.{ a = 3, b = 4 }
+		print(p.a + p.b, Box.{ v = Box.{ v = 5 } }.v.v, sum(Pair.{ a = 3, b = 4 }), wrap(9).v)
 	"};
-	check(src, "7");
+	check(src, "7 5 7 9");
 }
 
 #[test]
-fn conflicting_field_types_error() {
-	fail(
-		indoc! {r#"
-			Pair[T] :: struct { a: T, b: T }
-			Pair.{ a = 3, b = "x" }
-		"#},
-		"bound to both",
-	);
-}
-
-#[test]
-fn cannot_infer_error() {
-	fail(
-		indoc! {"
-			Pair[T] :: struct { a: T, b: T }
-			Pair.{}
-		"},
-		"cannot infer",
-	);
-}
-
-#[test]
-fn empty_lit_infers_from_annotation() {
+fn annotation_and_head() {
 	check(
 		indoc! {"
 			Box[T] :: struct { v: T }
-			b : Box[int] : Box.{}
-			b.v
-		"},
-		"0",
-	);
-}
-
-#[test]
-fn partial_lit_infers_from_annotation() {
-	check(
-		indoc! {r#"
 			Pair[A, B] :: struct { a: A, b: B }
+			b : Box[int] : Box.{}
 			p : Pair[int, string] : Pair.{ a = 7 }
-			p.a
-		"#},
-		"7",
+			h :: Box[int].{ v = 7 }
+			print(b.v, p.a, h.v)
+		"},
+		"0 7 7",
 	);
 }
 
 #[test]
-fn bare_name_needs_type_arguments() {
+fn rejections() {
 	fail(
-		indoc! {"
-			Pair[T] :: struct { a: T, b: T }
-			f :: fn(p: Pair) int { p.a }
-			0
-		"},
+		["Pair[T] :: struct { a: T, b: T }", r#"Pair.{ a = 3, b = "x" }"#],
+		"bound to both",
+	);
+	fail(["Pair[T] :: struct { a: T, b: T }", "Pair.{}"], "cannot infer");
+	fail(
+		["Pair[T] :: struct { a: T, b: T }", "f :: fn(p: Pair) int { p.a }", "0"],
 		"needs type arguments",
 	);
-}
-
-#[test]
-fn generic_fn_round_trip() {
-	let src = indoc! {"
-		Box[T] :: struct { v: T }
-		wrap[T] :: fn(v: T) Box[T] { Box.{ v = v } }
-		wrap(9).v
-	"};
-	check(src, "9");
+	fail(
+		[
+			"Tagged[T] :: struct { v: T, id: int }",
+			r#"Tagged.{ v = 1.5, id = "x" }"#,
+		],
+		"expected int",
+	);
+	fail(
+		[
+			"Point :: struct { x: int, y: int }",
+			"f :: fn(p: Point[int]) int { p.x }",
+			"0",
+		],
+		"is not generic",
+	);
+	fail(
+		["Box[T] :: struct { v: T }", "Box[string].{ v = 7 }"],
+		"expected string, got int",
+	);
 }
 
 #[test]
@@ -109,48 +72,6 @@ fn tuple_args_make_distinct_instances() {
 		print("{unwrap(b)}")
 	"#};
 	check(src, [r#"(1, "a")"#, "(true, false)"]);
-}
-
-#[test]
-fn concrete_field_type_still_checked() {
-	fail(
-		indoc! {r#"
-			Tagged[T] :: struct { v: T, id: int }
-			Tagged.{ v = 1.5, id = "x" }
-		"#},
-		"expected int",
-	);
-}
-
-#[test]
-fn type_args_on_non_generic_struct_error() {
-	fail(
-		indoc! {"
-			Point :: struct { x: int, y: int }
-			f :: fn(p: Point[int]) int { p.x }
-			0
-		"},
-		"is not generic",
-	);
-}
-
-#[test]
-fn explicit_instance_head() {
-	check(
-		indoc! {"
-			Box[T] :: struct { v: T }
-			b :: Box[int].{ v = 7 }
-			b.v
-		"},
-		"7",
-	);
-	fail(
-		indoc! {"
-			Box[T] :: struct { v: T }
-			Box[string].{ v = 7 }
-		"},
-		"expected string, got int",
-	);
 }
 
 #[test]

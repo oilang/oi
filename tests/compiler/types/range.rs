@@ -82,3 +82,22 @@ fn spread_rejections() {
 	fail_rt("[..(3..)]", "open range");
 	fail_rt(["xs :: [1, 2, 3, 4]", "r := 0..2..4", "print(xs[r])"], "strided");
 }
+
+#[test]
+fn range_values() {
+	let src = indoc! {"
+		make :: fn(lo: int, hi: int) Range { lo..hi }
+		r :: 0..4
+		sum := 0
+		loop i in r {
+			sum = sum + i
+		}
+		print(-4..4, 1 + 1..2 + 3, make(3, 7), sum)
+	"};
+	check(src, "-4..4 2..5 3..7 6");
+}
+
+#[test]
+fn range_bound_must_be_int() {
+	fail("0..true", "must be Int");
+}

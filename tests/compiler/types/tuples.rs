@@ -1,133 +1,50 @@
 use crate::helpers::*;
 
 #[test]
-fn tuple_literal() {
-	check("(1, 2, 3)", "(1, 2, 3)");
-}
-
-#[test]
-fn tuple_mixed_types() {
-	check(r#"(true, 2, "lol")"#, r#"(true, 2, "lol")"#);
-}
-
-#[test]
-fn tuple_named() {
-	check("(a = 1, b = 2)", "(a = 1, b = 2)");
-}
-
-#[test]
-fn tuple_partially_named() {
-	check("(1, b = 2)", "(1, b = 2)");
-}
-
-#[test]
-fn tuple_trailing_comma() {
-	check("(1, 2,)", "(1, 2)");
-}
-
-#[test]
-fn one_tuple_needs_comma() {
-	check("(1)", "1");
-	check("(1,)", "(1)");
-}
-
-#[test]
-fn no_comma_ints() {
-	check("(2 3 4)", "(2, 3, 4)");
-}
-
-#[test]
-fn no_comma_mixed_literals() {
+fn tuple_literals() {
 	check(
-		r#"("lisp, innit?" true [2, 4, 5])"#,
-		r#"("lisp, innit?", true, [2, 4, 5])"#,
+		indoc! {r#"
+			print((1, 2, 3), (true, 2, "lol"), (a = 1, b = 2), (1, b = 2), (1, 2,))
+			print((1), (1,), (2 3 4), (1, (2, 3)))
+			print(("lisp, innit?" true [2, 4, 5]), ("lisp, innit?" true [2 4 5]))
+		"#},
+		[
+			r#"(1, 2, 3) (true, 2, "lol") (a = 1, b = 2) (1, b = 2) (1, 2)"#,
+			"1 (1) (2, 3, 4) (1, (2, 3))",
+			r#"("lisp, innit?", true, [2, 4, 5]) ("lisp, innit?", true, [2, 4, 5])"#,
+		],
 	);
 }
 
 #[test]
-fn no_comma_nested_array_no_comma() {
+fn field_access() {
 	check(
-		r#"("lisp, innit?" true [2 4 5])"#,
-		r#"("lisp, innit?", true, [2, 4, 5])"#,
+		[
+			"t :: (a = 1, b = 2)",
+			"f :: (1.5, 2.5)",
+			"p :: (3, 4)",
+			"print(t.b, t.a == t.0, f.0, p.0 * p.1)",
+		],
+		"2 true 1.5 12",
 	);
 }
 
 #[test]
-fn nested_tuple() {
-	check("(1, (2, 3))", "(1, (2, 3))");
-}
-
-#[test]
-fn field_by_index() {
-	check(["t :: (10, 20)", "t.1"], "20");
-}
-
-#[test]
-fn field_by_name() {
-	check(["t :: (a = 1, b = 2)", "t.b"], "2");
-}
-
-#[test]
-fn named_and_positional_agree() {
-	check("t :: (a = 1, b = 2); t.a == t.0", "true");
-}
-
-#[test]
-fn field_float_load() {
-	check(["t :: (1.5, 2.5)", "t.0"], "1.5");
-}
-
-#[test]
-fn field_arithmetic() {
-	check(["t :: (3, 4)", "t.0 * t.1"], "12");
-}
-
-#[test]
-fn tuple_in_var_prints() {
-	check(r#"t :: (1, "two", 3.0); t"#, r#"(1, "two", 3.0)"#);
-}
-
-#[test]
-fn index_out_of_range() {
+fn field_rejections() {
 	fail(["t :: (1, 2)", "t.5"], "out of range");
-}
-
-#[test]
-fn unknown_named_field() {
 	fail(["t :: (a = 1,)", "t.z"], "no field `z`");
-}
-
-#[test]
-fn field_of_non_tuple() {
 	fail(["x :: 5", "x.0"], "cannot access a field");
 }
 
 #[test]
 fn fn_returns_tuple() {
 	let src = indoc! {"
-		pair :: fn() (int, int) { (1, 2) }
-		pair()
-	"};
-	check(src, "(1, 2)");
-}
-
-#[test]
-fn fn_returns_tuple_field() {
-	let src = indoc! {"
-		pair :: fn() (int, int) { (10, 20) }
-		t :: pair()
-		t.1
-	"};
-	check(src, "20");
-}
-
-#[test]
-fn fn_return_type_annotation_tuple_no_comma() {
-	let src = indoc! {"
 		pair :: fn() (int int) { (3, 4) }
-		pair()
+		swap :: fn(x: int, y: int) (int, int) { (y, x) }
+		t :: swap(1, 2)
+		print(pair(), t.0)
 	"};
-	check(src, "(3, 4)");
+	check(src, "(3, 4) 2");
 }
 
 #[test]
@@ -137,16 +54,6 @@ fn fn_return_type_mismatch_tuple() {
 		bad()
 	"};
 	fail(src, "wrong return type");
-}
-
-#[test]
-fn fn_tuple_return_composing() {
-	let src = indoc! {"
-		swap :: fn(x: int, y: int) (int, int) { (y, x) }
-		t :: swap(1, 2)
-		t.0
-	"};
-	check(src, "2");
 }
 
 #[test]
