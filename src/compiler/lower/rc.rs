@@ -9,7 +9,7 @@ use super::*;
 pub(crate) struct Defer {
 	pub(crate) body: Spanned<Expr>,
 	pub(crate) vars: HashMap<String, Local>,
-	pub(crate) on_err: bool,
+	pub(crate) when: When,
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -338,24 +338,26 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn run_defer(&mut self, d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
 		let mut dollar = ret.cloned();
 		let mut join = None;
-		if d.on_err {
+		if d.when != When::Always {
 			let Some((val, typ)) = ret else { return Ok(()) };
-			let Some((_, err)) = self.fallible_split(typ) else {
-				return fail(
-					"`defer or` needs a fn returning `?T`/`!T`",
-					d.body.1,
-					"this fn cannot fail",
-				);
+			let Some((inner, err)) = self.fallible_split(typ) else {
+				let kw = if d.when == When::Ok { "and" } else { "or" };
+				let msg = format!("`defer {kw}` needs a fn returning `?T`/`!T`");
+				return fail(msg, d.body.1, "this fn cannot fail");
 			};
 			let tag = self.enum_tag(typ, *val);
 			let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
-			let (sad, after) = (self.b.create_block(), self.b.create_block());
-			self.b.ins().brif(is_happy, after, &[], sad, &[]);
-			self.b.seal_block(sad);
-			self.b.switch_to_block(sad);
-			dollar = Some(match err {
-				Some(e) => (self.ld_typ(*val, 8, &e), e),
-				None => self.unit_value(),
+			let (run, after) = (self.b.create_block(), self.b.create_block());
+			match d.when {
+				When::Ok => self.b.ins().brif(is_happy, run, &[], after, &[]),
+				_ => self.b.ins().brif(is_happy, after, &[], run, &[]),
+			};
+			self.b.seal_block(run);
+			self.b.switch_to_block(run);
+			dollar = Some(match (d.when, err) {
+				(When::Ok, _) => (self.opt_payload(*val, typ, &inner, 8), inner),
+				(_, Some(e)) => (self.ld_typ(*val, 8, &e), e),
+				_ => self.unit_value(),
 			});
 			join = Some(after);
 		}

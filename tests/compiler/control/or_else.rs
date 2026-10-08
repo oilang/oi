@@ -73,3 +73,23 @@ fn type_errors() {
 	);
 	fail("42 or { 0 }", "needs a `?T`/`!T` value");
 }
+
+#[test]
+fn and_maps_the_happy_path() {
+	let src = indoc! {r#"
+		half :: fn(n: int) ?int { if n % 2 == 0 { return n / 2 } none }
+		print(?int.(4) and $ * 10 or -1)
+		print(?int.(4) and half($) and half($) or -1)
+		print(?int.(6) and half($) and half($) or -1)
+		print(!int.(error("boom")) and "{$}" or { $.message() })
+	"#};
+	check(src, ["40", "1", "-1", "boom"]);
+	let src = indoc! {"
+		NetError :: enum { timeout refused }
+		fetch :: fn() Result[int, NetError] { 1 }
+		load :: fn() !int { fetch() and !int.($) }
+		load()
+	"};
+	fail(src, "does not claim Error");
+	fail("?int.(1) and !int.($)", "cannot mix `?T` and `!T`");
+}

@@ -83,10 +83,10 @@ pub enum Expr {
 
 	Return(Option<Box<Spanned<Expr>>>),
 
-	// `defer [or] expr`
+	// `defer [and|or] expr`
 	Defer {
 		body: Box<Spanned<Expr>>,
-		on_err: bool,
+		when: When,
 	},
 
 	// `Target.(args)`
@@ -211,6 +211,12 @@ pub enum Expr {
 
 	// `value or { body }`
 	OrElse {
+		value: Box<Spanned<Expr>>,
+		body: Vec<Spanned<Expr>>,
+	},
+
+	// `value and { body }`
+	AndThen {
 		value: Box<Spanned<Expr>>,
 		body: Vec<Spanned<Expr>>,
 	},
@@ -466,7 +472,7 @@ impl Expr {
 				f(List(body));
 			}
 			Expr::Break(value) => value.iter_mut().for_each(|v| f(One(v))),
-			Expr::For { iter: v, body, .. } | Expr::OrElse { value: v, body } => {
+			Expr::For { iter: v, body, .. } | Expr::OrElse { value: v, body } | Expr::AndThen { value: v, body } => {
 				f(One(v));
 				f(List(body));
 			}
@@ -566,6 +572,14 @@ impl Expr {
 			_ => false,
 		}
 	}
+}
+
+// Which returns a defer runs on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum When {
+	Always,
+	Ok,
+	Err,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

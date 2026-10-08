@@ -1630,6 +1630,18 @@ main :: fn() {
 		panic!($.message())
 	}
 
+	# `and` is the dual of `or`
+	# it runs on some/ok with `$` as the unwrapped value
+	# a none/error passes through untouched
+	name := repo.find_user(7) and $.name # !string
+
+	# a bare value is wrapped, a `?U`/`!U` is flattened
+	# a different error type passes through by the same rules as `?`
+	manager := repo.find_user(7) and repo.find_user($.manager_id) # !User
+
+	# `and` binds tighter than `or`, and a none from the body falls through to it too
+	greeting := repo.find_user_if_exists(id) and "hi {$.name}" or "who?"
+
 	# postfix `?` propagates up to the caller: error out of a !T fn, none out of a ?T fn
 	load_config :: fn(path: string) !Config {
 		raw := fs.read(path)?
@@ -2107,6 +2119,9 @@ main :: fn() {
 	defer or {
 		log.error($)
 	}
+
+	# `defer and` only runs if the fn returned some/ok, with `$` as the value
+	defer and log.info("loaded {$.name}")
 
 	# defers in loops run at the end of each iteration
 	loop {

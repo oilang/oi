@@ -37,13 +37,14 @@ fn dollar_is_the_returned_value_or_its_error() {
 		f :: fn(bad: bool) !int {
 			defer print($ or -1)
 			defer or print($)
+			defer and print("ok {$}")
 			if bad { return error("boom") }
 			1
 		}
 		print(f(false) or -2)
 		print(f(true) or -2)
 	"#};
-	check(src, ["1", "1", "boom", "-1", "-2"]);
+	check(src, ["ok 1", "1", "1", "boom", "-1", "-2"]);
 }
 
 #[test]
@@ -62,5 +63,12 @@ fn body_cannot_leave_the_scope() {
 #[test]
 fn is_a_unit_value() {
 	check("print({ print(0); defer print(1) })", ["0", "1", "()"]);
-	check(["m! :: fn() Ast { `defer print(1)` }", "f :: fn() { print(m!()); print(2) }", "f()"], ["()", "2", "1"]);
+	check(
+		[
+			"m! :: fn() Ast { `defer print(1)` }",
+			"f :: fn() { print(m!()); print(2) }",
+			"f()",
+		],
+		["()", "2", "1"],
+	);
 }

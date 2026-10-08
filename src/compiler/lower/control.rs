@@ -466,6 +466,105 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
 	}
 
+	// Check that error `from` can flow into `to`, returning the `From` conversion it needs, if any.
+	fn err_into(&self, from: &Typ, to: &Typ, msg: String, span: Span) -> Result<Option<FnSig>, Diagnostic> {
+		let in_sum = self.through_sum(Some(to), |t| t == from).as_ref() == Some(from);
+		if to == from || in_sum || (*to == Typ::Error && self.open_error(from)) {
+			return Ok(None);
+		}
+		let sig = self
+			.claims(to, "core::From")
+			.then(|| self.find_fill(&format!("{to}.from"), 0, from));
+		let diag = Diagnostic::new(msg, span.into_range());
+		sig.flatten().map(Some).ok_or_else(|| match *to == Typ::Error {
+			true => diag.with_label(format!("`{from}` does not claim Error")),
+			false => diag
+				.with_label("mismatched error type")
+				.with_note(format!("claim `{to} : From[{from}]`")),
+		})
+	}
+
+	// Rewrap a value's none/error as a `target`.
+	fn pass_sad(
+		&mut self,
+		val: Value,
+		typ: &Typ,
+		target: &Typ,
+		from: Option<&FnSig>,
+		span: Span,
+	) -> Result<Value, Diagnostic> {
+		let Some(((_, err), (_, target_err))) = self.types.result_parts(typ).zip(self.types.result_parts(target))
+		else {
+			return Ok(self.make_option(target, None));
+		};
+		let e = self.ld_word(val, 8);
+		let e = match from {
+			Some(sig) => self.emit_call(sig, &[e]).0,
+			None => self.coerce(e, &err, &target_err, span)?.0,
+		};
+		let variants = self.variants_of(target);
+		Ok(self.make_enum(&variants, 1, &[e]))
+	}
+
+	// `and` blocks.
+	// The happy branch yields the body, and the sad branch passes through.
+	pub(super) fn and_then(
+		&mut self,
+		value: &Spanned<Expr>,
+		body: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let (val, typ) = self.expr(value)?;
+		let Some((inner, err)) = self.fallible_split(&typ) else {
+			let msg = format!("`and` needs a `?T`/`!T` value, got {typ}");
+			return fail(msg, value.1, "not an Option or Result");
+		};
+
+		let tag = self.enum_tag(&typ, val);
+		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+		let (happy_block, sad_block) = self.fork(is_happy);
+		let merge = self.b.create_block();
+		let mut join = Join::new("and", span, None);
+
+		self.b.switch_to_block(happy_block);
+		let payload = self.opt_payload(val, &typ, &inner, 8);
+		let saved_dollar = self.dollar.replace((payload, inner));
+		let flow = self.scoped(|s| s.block_tail(body, None));
+		self.dollar = saved_dollar;
+		let target = match flow? {
+			Some((v, t)) => {
+				let (v, t) = match (&err, self.fallible_split(&t)) {
+					(Some(_), Some((_, Some(_)))) | (None, Some((_, None))) => (v, t),
+					(_, Some(_)) => {
+						return fail("`and` cannot mix `?T` and `!T`", span, format!("the body yields {t}"));
+					}
+					(Some(e), _) => {
+						let r = self.types.core_enum(role::RESULT, &[t, e.clone()]);
+						(self.make_enum(&self.variants_of(&r), 0, &[v]), r)
+					}
+					(None, _) => {
+						let o = self.types.core_enum(role::OPTION, &[t]);
+						(self.make_option(&o, Some(v)), o)
+					}
+				};
+				self.contribute((v, t.clone()), &mut join, merge)?;
+				t
+			}
+			None => typ.clone(),
+		};
+		let from = match (&err, self.types.result_parts(&target)) {
+			(Some(e), Some((_, to))) => {
+				self.err_into(e, &to, format!("cannot pass `{e}` through `and` into {target}"), span)?
+			}
+			_ => None,
+		};
+
+		self.b.switch_to_block(sad_block);
+		let sad = self.pass_sad(val, &typ, &target, from.as_ref(), span)?;
+		self.contribute((sad, target), &mut join, merge)?;
+		Ok(self.finish_merge(merge, join.result).expect("`and` always yields"))
+	}
+
 	// Unwraps `?T`/`!T`.
 	// Returns `none`/error from the enclosing fn on the sad path.
 	// Panics when called in `main`.
@@ -483,22 +582,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		let declared = self.ret.as_ref().map(|(t, _)| t.clone());
 		let target = match &declared {
 			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
-				let in_sum = self.through_sum(Some(&e), |t| *t == err_typ).as_ref() == Some(&err_typ);
-				if e != err_typ && !in_sum && !(e == Typ::Error && self.open_error(&err_typ)) {
-					if self.claims(&e, "core::From") {
-						from = self.find_fill(&format!("{e}.from"), 0, &err_typ);
-					}
-					if from.is_none() {
-						let msg = format!("cannot propagate `{err_typ}` into a fn returning {d}");
-						let diag = Diagnostic::new(msg, span.into_range());
-						return Err(match e == Typ::Error {
-							true => diag.with_label(format!("`{err_typ}` does not claim Error")),
-							false => diag
-								.with_label("mismatched error type")
-								.with_note(format!("claim `{e} : From[{err_typ}]`")),
-						});
-					}
-				}
+				from = self.err_into(
+					&err_typ,
+					&e,
+					format!("cannot propagate `{err_typ}` into a fn returning {d}"),
+					span,
+				)?;
 				target_err = e;
 				t
 			}
@@ -529,17 +618,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			self.ctx_panic("panic", msg, span)?;
 		} else {
-			let sad_val = if is_result {
-				let e = self.ld_word(val, 8);
-				let e = match &from {
-					Some(sig) => self.emit_call(sig, &[e]).0,
-					None => self.coerce(e, &err_typ, &target_err, span)?.0,
-				};
-				let variants = self.variants_of(&target_typ);
-				self.make_enum(&variants, 1, &[e])
-			} else {
-				self.make_option(&target_typ, None)
-			};
+			let sad_val = self.pass_sad(val, &typ, &target_typ, from.as_ref(), span)?;
 			self.emit_return(sad_val, target_typ, span)?;
 		}
 

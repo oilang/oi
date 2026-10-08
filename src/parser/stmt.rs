@@ -1,5 +1,5 @@
 use super::{P, Parsers, Rec, binder, brace, bracket, ident, loose_list, paren, spanned};
-use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
+use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr, When};
 use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
@@ -259,13 +259,13 @@ pub(super) fn stmt<'token, I>(
 	);
 
 	let defer_stmt = just(Token::Defer)
-		.ignore_then(just(Token::Or).or_not())
+		.ignore_then(just(Token::And).to(When::Ok).or(just(Token::Or).to(When::Err)).or_not())
 		.then(place.clone().or(p.juxt_expr.clone()))
-		.map_with(|(or, body), ex| {
+		.map_with(|(when, body), ex| {
 			(
 				Expr::Defer {
 					body: Box::new(body),
-					on_err: or.is_some(),
+					when: when.unwrap_or(When::Always),
 				},
 				ex.span(),
 			)

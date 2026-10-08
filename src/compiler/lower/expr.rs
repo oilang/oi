@@ -802,6 +802,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Pipe { value, step } => self.pipe(value, step, expr.1),
 
 			Expr::OrElse { value, body } => self.or_else(value, body, expr.1),
+			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
 			Expr::For { pat, iter, body } => self.looped(|s| s.for_loop(pat, iter, body)),
@@ -977,11 +978,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				"this diverges",
 			),
 
-			Expr::Defer { body, on_err } => {
+			Expr::Defer { body, when } => {
 				self.defers.last_mut().expect("scope").push(rc::Defer {
 					body: (**body).clone(),
 					vars: self.vars.clone(),
-					on_err: *on_err,
+					when: *when,
 				});
 				Ok(self.unit_value())
 			}

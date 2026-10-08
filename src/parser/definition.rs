@@ -710,8 +710,10 @@ where
 		.map(|(l, t)| (Some(l), t))
 		.boxed();
 
-	// or blocks
-	let or_tail = just(Token::Or).ignore_then(p.block.clone().or(core.clone().map(|e| vec![pipe_step(e)])));
+	// and/or blocks
+	let tail_body = p.block.clone().or(core.clone().map(|e| vec![pipe_step(e)]));
+	let and_tail = just(Token::And).ignore_then(tail_body.clone());
+	let or_tail = just(Token::Or).ignore_then(tail_body);
 	let level = |juxt: Option<P<'token, I, Juxt>>| {
 		let inner = match juxt {
 			None => core.clone().boxed(),
@@ -768,6 +770,10 @@ where
 				.boxed(),
 		};
 		inner
+			.foldl_with(and_tail.clone().repeated(), |value, body, ex| {
+				let value = Box::new(value);
+				(Expr::AndThen { value, body }, ex.span())
+			})
 			.then(or_tail.clone().or_not())
 			.map_with(|pair, ex| or_else(pair, ex.span()))
 			.boxed()

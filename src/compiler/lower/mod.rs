@@ -14,7 +14,7 @@ use super::{
 	enum_boxed, enum_slots, has_ann, is_c_struct, is_range, mentions, oi_symbol, param_cl, role, sugar, sum_remap,
 	trait_fns, type_expr, typeid,
 };
-use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, place};
+use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, When, place};
 use crate::diagnostics::{Diagnostic, arity_err, fail, unknown_member};
 use crate::loader::{Scope, module_of};
 use crate::runtime;
