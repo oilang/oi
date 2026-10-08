@@ -2057,7 +2057,7 @@ impl<M: Module> Compiler<M> {
 		let trans = Translator {
 			int,
 			b,
-			vars: HashMap::new(),
+			vars: Default::default(),
 			params: vec![],
 			dollar: None,
 			module: &mut self.module,

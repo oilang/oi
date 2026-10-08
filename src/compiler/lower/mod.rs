@@ -44,7 +44,7 @@ use self::helpers::*;
 pub(super) struct Translator<'a, M: Module> {
 	pub int: types::Type,
 	pub b: FunctionBuilder<'a>,
-	pub vars: HashMap<String, Local>,
+	pub vars: Vars,
 	pub params: Vec<Local>,
 	pub dollar: Option<TypedVal>,
 	pub module: &'a mut M,
@@ -90,6 +90,69 @@ pub(super) struct Translator<'a, M: Module> {
 	pub addressed: HashSet<String>,
 	pub aliases: Vec<Variable>,
 	pub withs: Vec<String>,
+}
+
+// Bindings in scope, with an undo log so `scoped` restores what a child scope changed.
+#[derive(Default)]
+pub(super) struct Vars {
+	map: HashMap<String, Local>,
+	log: Vec<(String, Option<Local>)>,
+	marks: Vec<usize>,
+}
+
+impl std::ops::Deref for Vars {
+	type Target = HashMap<String, Local>;
+	fn deref(&self) -> &Self::Target {
+		&self.map
+	}
+}
+
+impl From<HashMap<String, Local>> for Vars {
+	fn from(map: HashMap<String, Local>) -> Self {
+		Vars {
+			map,
+			..Default::default()
+		}
+	}
+}
+
+impl Vars {
+	fn mark(&mut self) {
+		self.marks.push(self.log.len());
+	}
+
+	fn undo(&mut self) {
+		let mark = self.marks.pop().expect("an open mark");
+		for (name, old) in self.log.drain(mark..).rev() {
+			match old {
+				Some(local) => self.map.insert(name, local),
+				None => self.map.remove(&name),
+			};
+		}
+	}
+
+	pub(super) fn insert(&mut self, name: String, local: Local) -> Option<Local> {
+		let old = self.map.insert(name.clone(), local);
+		self.log(name, &old);
+		old
+	}
+
+	fn remove(&mut self, name: &str) -> Option<Local> {
+		let old = self.map.remove(name);
+		self.log(name.to_string(), &old);
+		old
+	}
+
+	fn retain(&mut self, keep: impl Fn(&String, &Local) -> bool) {
+		let gone: Vec<_> = self.map.iter().filter(|&(n, l)| !keep(n, l)).map(|(n, _)| n.clone()).collect();
+		gone.iter().for_each(|n| _ = self.remove(n));
+	}
+
+	fn log(&mut self, name: String, old: &Option<Local>) {
+		if !self.marks.is_empty() {
+			self.log.push((name, old.clone()));
+		}
+	}
 }
 
 // A statement that writes through an existing, mutable binding.

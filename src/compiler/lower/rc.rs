@@ -350,7 +350,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let dollar = dollar.or_else(|| self.dollar.clone());
 		let saved = (
-			std::mem::replace(&mut self.vars, d.vars),
+			std::mem::replace(&mut self.vars, d.vars.into()),
 			std::mem::take(&mut self.loops), // `break` must not reach an enclosing loop
 			std::mem::replace(&mut self.deferring, true),
 			std::mem::replace(&mut self.dollar, dollar),

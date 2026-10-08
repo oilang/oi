@@ -160,12 +160,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		&mut self,
 		f: impl FnOnce(&mut Self) -> Result<Option<TypedVal>, Diagnostic>,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		let saved = self.vars.clone();
+		self.vars.mark();
 		let withs = self.withs.len();
 		self.scopes.push(vec![]);
 		self.defers.push(vec![]);
 		let flow = f(self);
-		self.vars = saved;
+		self.vars.undo();
 		self.withs.truncate(withs);
 		let out = match flow? {
 			Some((v, t)) => {
