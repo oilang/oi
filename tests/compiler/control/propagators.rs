@@ -1,7 +1,7 @@
 use crate::helpers::*;
 
 #[test]
-fn question_unwraps_some() {
+fn question_on_option() {
 	let src = indoc! {"
 		find :: fn(id: int) ?int {
 			if id == 7 { return 42 }
@@ -11,29 +11,14 @@ fn question_unwraps_some() {
 			v :: find(id)?
 			v + 1
 		}
-		display(7) or { -1 }
+		print(display(7) or { -1 })
+		print(display(1) or { -1 })
 	"};
-	check(src, "43");
+	check(src, ["43", "-1"]);
 }
 
 #[test]
-fn question_propagates_none() {
-	let src = indoc! {"
-		find :: fn(id: int) ?int {
-			if id == 7 { return 42 }
-			return none
-		}
-		display :: fn(id: int) ?int {
-			v :: find(id)?
-			v + 1
-		}
-		display(1) or { -1 }
-	"};
-	check(src, "-1");
-}
-
-#[test]
-fn bang_unwraps_ok() {
+fn question_on_result() {
 	let src = indoc! {r#"
 		load :: fn(path: string) !int {
 			if path == "ok" { return 42 }
@@ -43,28 +28,13 @@ fn bang_unwraps_ok() {
 			v :: load(path)?
 			v * 2
 		}
-		double("ok") or { -1 }
-	"#};
-	check(src, "84");
-}
-
-#[test]
-fn bang_propagates_error() {
-	let src = indoc! {r#"
-		load :: fn(path: string) !int {
-			if path == "ok" { return 42 }
-			return error("missing")
-		}
-		double :: fn(path: string) !int {
-			v :: load(path)?
-			v * 2
-		}
+		print(double("ok") or { -1 })
 		double("nope") or {
 			print($)
 			0
 		}
 	"#};
-	check(src, ["missing", "0"]);
+	check(src, ["84", "missing", "0"]);
 }
 
 #[test]
@@ -73,27 +43,12 @@ fn requires_option_or_result() {
 }
 
 #[test]
-fn option_panics_in_main() {
-	let src = indoc! {"
-		find :: fn(id: int) ?int {
-			if id == 7 { return 42 }
-			return none
-		}
-		find(1)?
-	"};
-	fail_rt(src, "panic: unwrapped `none`");
-}
-
-#[test]
-fn result_panics_in_main() {
-	let src = indoc! {r#"
-		load :: fn(path: string) !int {
-			if path == "ok" { return 42 }
-			return error("missing")
-		}
-		load("nope")?
-	"#};
-	fail_rt(src, "panic: missing");
+fn panics_in_main() {
+	fail_rt(["find :: fn() ?int { none }", "find()?"], "panic: unwrapped `none`");
+	fail_rt(
+		[r#"load :: fn() !int { error("missing") }"#, "load()?"],
+		"panic: missing",
+	);
 }
 
 #[test]
@@ -115,32 +70,22 @@ fn bang_main() {
 
 #[test]
 fn requires_matching_enclosing_return() {
-	let src = indoc! {"
-		find :: fn(id: int) ?int {
-			if id == 7 { return 42 }
-			return none
-		}
-		display :: fn(id: int) int {
-			find(id)?
-		}
-		display(7)
-	"};
-	fail(src, "needs an enclosing fn returning `?T`");
-}
-
-#[test]
-fn requires_matching_enclosing_return_result() {
-	let src = indoc! {r#"
-		load :: fn(path: string) !int {
-			if path == "ok" { return 42 }
-			return error("missing")
-		}
-		display :: fn(path: string) ?int {
-			load(path)?
-		}
-		display("ok")
-	"#};
-	fail(src, "needs an enclosing fn returning `!T`");
+	fail(
+		[
+			"find :: fn() ?int { 42 }",
+			"display :: fn() int { find()? }",
+			"display()",
+		],
+		"needs an enclosing fn returning `?T`",
+	);
+	fail(
+		[
+			"load :: fn() !int { 42 }",
+			"display :: fn() ?int { load()? }",
+			"display()",
+		],
+		"needs an enclosing fn returning `!T`",
+	);
 }
 
 #[test]

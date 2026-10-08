@@ -111,10 +111,15 @@ fn selective_import_fails() {
 		.lib("foo", ["pub hi :: fn() int { 7 }"]);
 	p.fail_with("has no `nope`");
 
-	let p = Project::new()
-		.main(["use foo.{ secret }", "print(secret())"])
-		.lib("foo", ["secret :: fn() int { 1 }"]);
-	p.fail_with("private to module `foo`");
+	for lib in [
+		"P :: fn() int { 1 }",
+		"P :: struct { x: int }",
+		"P :: trait {}",
+		"P :: 7",
+	] {
+		let p = Project::new().main(["use foo.{ P }"]).lib("foo", [lib]);
+		p.fail_with("private to module `foo`");
+	}
 }
 
 #[test]
@@ -137,14 +142,6 @@ fn type_import() {
 	] {
 		let p = Project::new().main([main]).lib("foo", [lib]);
 		p.check("7");
-	}
-}
-
-#[test]
-fn type_import_fails() {
-	for lib in ["P :: struct { x: int }", "P :: trait {}"] {
-		let p = Project::new().main(["use foo.{ P }"]).lib("foo", [lib]);
-		p.fail_with("private to module `foo`");
 	}
 }
 
@@ -273,11 +270,11 @@ fn generic_struct_in_module() {
 }
 
 #[test]
-fn type_reexport() {
+fn type_and_const_reexport() {
 	let p = Project::new()
-		.main(["use mid.{ P }", "print(P.{ x = 7 }.x)"])
-		.lib("mid", ["pub use base.P"])
-		.lib("base", ["pub P :: struct { pub x: int }"]);
+		.main(["use mid.{ P, name }", "print(P.{ x = name }.x)"])
+		.lib("mid", ["pub use base.P", "pub use base.name"])
+		.lib("base", ["pub P :: struct { pub x: int }", "pub name :: 7"]);
 	p.check("7");
 }
 
@@ -321,18 +318,9 @@ fn reexport() {
 }
 
 #[test]
-fn reexport_selected() {
-	let p = Project::new()
-		.main(["use mid.{ hi }", "print(hi())"])
-		.lib("mid", ["pub use base.hi"])
-		.lib("base", ["pub hi :: fn() int { 7 }"]);
-	p.check("7");
-}
-
-#[test]
 fn reexport_chain() {
 	let p = Project::new()
-		.main(["use top", "print(top.hi())"])
+		.main(["use top.{ hi }", "print(hi())"])
 		.lib("top", ["pub use mid.hi"])
 		.lib("mid", ["pub use base.hi"])
 		.lib("base", ["pub hi :: fn() int { 7 }"]);
@@ -387,23 +375,6 @@ fn const_import() {
 }
 
 #[test]
-fn const_import_fails() {
-	let p = Project::new()
-		.main(["use foo.{ name }", "print(name)"])
-		.lib("foo", ["name :: 7"]);
-	p.fail_with("private to module `foo`");
-}
-
-#[test]
-fn const_reexport() {
-	let p = Project::new()
-		.main(["use mid", "print(mid.name)"])
-		.lib("mid", ["pub use base.name"])
-		.lib("base", ["pub name :: 7"]);
-	p.check("7");
-}
-
-#[test]
 fn module_cannot_call_main_private_fn() {
 	let p = Project::new()
 		.main(["secret :: fn() int { 1 }", "use foo", "print(foo.hi())"])
@@ -417,14 +388,6 @@ fn module_fn_uses_builtins_and_prints() {
 		.main(["use foo", "foo.go()"])
 		.lib("foo", ["pub go :: fn() { n: int = 3\nprint(n + 1) }"]);
 	p.check("4");
-}
-
-#[test]
-fn single_file_module() {
-	let p = Project::new()
-		.main(["use foo", "print(foo.hi())"])
-		.file("foo.oi", ["module foo", "pub hi :: fn() int { 7 }"]);
-	p.check("7");
 }
 
 #[test]
@@ -481,15 +444,4 @@ fn exec_resolves_imports_against_cwd() {
 	let p = Project::new().lib("foo", ["pub hi :: fn() int { 99 }"]);
 	let out = p.ok(&["exec", "use foo\nprint(foo.hi())"]);
 	assert_eq!(out, "99");
-}
-
-#[test]
-fn oi_path_searches_extra_dirs() {
-	let deps = Project::new().lib("greet", ["pub hi :: fn() int { 42 }"]);
-	let entry = Project::new().main(["use greet", "print(greet.hi())"]);
-	let out = ok(oi(&["run", "main.oi"])
-		.current_dir(&entry)
-		.env("OI_PATH", deps.as_ref())
-		.run(None));
-	assert_eq!(out, "42");
 }

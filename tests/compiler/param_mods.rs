@@ -1,100 +1,37 @@
 use crate::helpers::*;
 
 #[test]
-fn array_inout() {
-	check(
-		indoc! {"
-			push9 :: fn(mut xs: []int) { xs << 9 }
-			a := [1]
-			push9(mut a)
-			a
-		"},
-		"[1, 9]",
-	);
-}
-
-#[test]
-fn array_reassign_inout() {
-	check(
-		indoc! {"
-			swap :: fn(mut xs: []int) { xs = [7, 8] }
-			a := [1]
-			swap(mut a)
-			a
-		"},
-		"[7, 8]",
-	);
-}
-
-#[test]
-fn map_inout() {
+fn inout() {
 	check(
 		indoc! {r#"
-			setk :: fn(mut m: [string]int) { m["k"] = 1 }
-			m := ["a" = 0]
-			setk(mut m)
-			m["k"]
-		"#},
-		"1",
-	);
-}
-
-#[test]
-fn struct_inout() {
-	check(
-		indoc! {"
 			C :: struct { n: int }
+			C :< {
+				take :: fn(self, mut xs: []int) { xs << self.n }
+				bump :: fn(mut self) { self.n = self.n + 1 }
+			}
+			push9 :: fn(mut xs: []int) { xs << 9 }
+			swap :: fn(mut xs: []int) { xs = [7, 8] }
+			setk :: fn(mut m: [string]int) { m["k"] = 1 }
 			bump :: fn(mut c: C) { c.n = c.n + 1 }
-			c := C.{n = 1}
-			bump(mut c)
-			c.n
-		"},
-		"2",
-	);
-}
-
-#[test]
-fn generic_inout() {
-	check(
-		indoc! {"
 			push[T] :: fn(mut xs: []T, v: T) []T {
 				xs << v
 				xs
 			}
 			a := [1]
-			push(mut a, 9)
-			a
-		"},
-		"[1, 9]",
-	);
-}
-
-#[test]
-fn method_mut_arg() {
-	check(
-		indoc! {"
-			C :: struct { n: int }
-			C :< { take :: fn(self, mut xs: []int) { xs << self.n } }
-			a := [1]
-			c :: C.{n = 7}
-			c.take(mut a)
-			a
-		"},
-		"[1, 7]",
-	);
-}
-
-#[test]
-fn mut_self_on_mut_binding() {
-	check(
-		indoc! {"
-			C :: struct { n: int }
-			C :< { bump :: fn(mut self) { self.n = self.n + 1 } }
+			b := [1]
+			g := [1]
+			m := ["a" = 0]
 			c := C.{n = 1}
+			push9(mut a)
+			swap(mut b)
+			setk(mut m)
+			bump(mut c)
 			c.bump()
-			c.n
-		"},
-		"2",
+			push(mut g, 9)
+			C.{n = 7}.take(mut g)
+			print(a, b, m["k"], c.n, g)
+		"#},
+		"[1, 9] [7, 8] 1 3 [1, 9, 7]",
 	);
 }
 
@@ -151,12 +88,9 @@ fn mut_on_non_mut_param() {
 
 #[test]
 fn immutable_binding_lent() {
+	fail(["f :: fn(mut xs: []int) {}", "a :: [1]", "f(mut a)"], "immutably bound");
 	fail(
-		indoc! {"
-			f :: fn(mut xs: []int) {}
-			a :: [1]
-			f(mut a)
-		"},
+		["f :: fn(mut a: []int) {}", "xs :: [1, 2, 3]", "f(mut xs[1..3])"],
 		"immutably bound",
 	);
 }
@@ -167,36 +101,32 @@ fn non_place_lent() {
 }
 
 #[test]
-fn exclusivity_same_name() {
-	fail(
+fn exclusivity() {
+	for src in [
 		indoc! {"
 			f :: fn(mut xs: []int, ys: []int) {}
 			a := [1]
 			f(mut a, a)
 		"},
-		"while it is lent `mut`",
-	);
-}
-
-#[test]
-fn exclusivity_in_subexpression() {
-	fail(
-		["f :: fn(mut xs: []int, n: int) {}", "a := [1]", "f(mut a, a[0])"],
-		"while it is lent `mut`",
-	);
-}
-
-#[test]
-fn exclusivity_covers_receiver() {
-	fail(
+		indoc! {"
+			f :: fn(mut xs: []int, n: int) {}
+			a := [1]
+			f(mut a, a[0])
+		"},
+		indoc! {"
+			f :: fn(mut a: []int, b: int) {}
+			xs := [1, 2, 3]
+			f(mut xs[1..3], xs[0])
+		"},
 		indoc! {"
 			C :: struct { xs: []int }
 			C :< { take :: fn(self, mut xs: []int) {} }
 			c := C.{xs = [1]}
 			c.take(mut c)
 		"},
-		"while it is lent `mut`",
-	);
+	] {
+		fail(src, "while it is lent `mut`");
+	}
 }
 
 #[test]
@@ -221,30 +151,6 @@ fn slice_projection_length_change_panics() {
 			grow(mut xs[1..3])
 		"},
 		"projection changed length",
-	);
-}
-
-#[test]
-fn slice_projection_exclusivity() {
-	fail(
-		indoc! {"
-			f :: fn(mut a: []int, b: int) {}
-			xs := [1, 2, 3]
-			f(mut xs[1..3], xs[0])
-		"},
-		"while it is lent `mut`",
-	);
-}
-
-#[test]
-fn slice_projection_immutable_base_rejected() {
-	fail(
-		indoc! {"
-			f :: fn(mut a: []int) {}
-			xs :: [1, 2, 3]
-			f(mut xs[1..3])
-		"},
-		"immutably bound",
 	);
 }
 
@@ -276,21 +182,6 @@ fn unlendable_mut_param_rejected() {
 #[test]
 fn callee_cannot_mutate_plain_param() {
 	fail(["f :: fn(xs: []int) { xs << 1 }", "f([1])"], "immutable");
-}
-
-#[test]
-fn mut_param_through_fn_value() {
-	check(
-		indoc! {"
-			f :: fn(mut xs: []int) int { xs[0] = 9
-				0
-			}
-			a := [1, 2]
-			f(mut a)
-			a
-		"},
-		"[9, 2]",
-	);
 }
 
 #[test]

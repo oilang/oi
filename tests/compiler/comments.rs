@@ -1,34 +1,23 @@
 use crate::helpers::*;
 
 #[test]
-fn comment_line() {
+fn comments() {
 	let src = indoc! {"
-		# this is a comment
-		2
+		# line comment
+		## a note
+		#{
+			this is a
+			block comment
+		}#
+		#{ a } b }# #{ outer #{ inner }# still outer }#
+		print(1 + #{ skip this }# 1) # trailing
+		2 + 3 #{ skipped }#
 	"};
-	check(src, "2");
+	check(src, ["2", "5"]);
 }
 
 #[test]
-fn comment_inline() {
-	let src = indoc! {"
-		2 # this is a comment
-	"};
-	check(src, "2");
-}
-
-#[test]
-fn doc_before_fn() {
-	let src = indoc! {"
-		## Adds two numbers.
-		add :: fn(a: int, b: int) int { a + b }
-		add(3, 4)
-	"};
-	check(src, "7");
-}
-
-#[test]
-fn doc_markdown() {
+fn doc_comments() {
 	let src = indoc! {"
 		## Doc comments.
 		##
@@ -37,32 +26,12 @@ fn doc_markdown() {
 		## [ 2, 4, 6 ]
 		## ```
 		## - item
-		## - item
 		## 1. one
-		## 1. two
-		## 1. three
-		greet :: fn() int { 1 }
-		greet()
-	"};
-	check(src, "1");
-}
-
-#[test]
-fn doc_inside_fn() {
-	let src = indoc! {"
-		compute :: fn() int {
+		add :: fn(a: int, b: int) int {
 			## intermediate step
-			x :: 6
-			x * 7
+			x :: a * 6
+			x + b
 		}
-		compute()
-	"};
-	check(src, "42");
-}
-
-#[test]
-fn doc_on_members() {
-	let src = indoc! {"
 		E :: enum {
 			## the red one
 			red,
@@ -82,50 +51,7 @@ fn doc_on_members() {
 		}
 		e := E.red
 		p := P.{ 1 }
-		p.x
+		add(7, p.x)
 	"};
-	check(src, "1");
-}
-
-#[test]
-fn doc_top_level() {
-	check("## a note\n1 + 1", "2");
-}
-
-#[test]
-fn block_comment_before_expr() {
-	check("#{ skipped }# 2 + 3", "5");
-}
-
-#[test]
-fn block_comment_after_expr() {
-	check("2 + 3 #{ skipped }#", "5");
-}
-
-#[test]
-fn block_comment_multiline() {
-	let src = indoc! {"
-		#{
-			this is a
-			block comment
-		}#
-		2 + 3
-	"};
-	check(src, "5");
-}
-
-#[test]
-fn block_comment_brace_inside() {
-	// `}` not followed by `#` is fine inside the comment
-	check("#{ a } b }# 1 + 1", "2");
-}
-
-#[test]
-fn block_comment_inline() {
-	check("1 + #{ skip this }# 1", "2");
-}
-
-#[test]
-fn block_comment_nested() {
-	check("#{ outer #{ inner }# still outer }# 1 + 1", "2");
+	check(src, "43");
 }

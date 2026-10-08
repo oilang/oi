@@ -1,43 +1,15 @@
 use crate::helpers::*;
 
 #[test]
-fn int_add() {
-	check("2 + 3", "5");
-}
-
-#[test]
-fn int_sub() {
-	check("10 - 4", "6");
-}
-
-#[test]
-fn int_mul() {
-	check("3 * 4", "12");
-}
-
-#[test]
-fn int_div() {
-	check("10 / 3", "3");
-}
-
-#[test]
-fn int_mod() {
-	check("10 % 7", "3");
-}
-
-#[test]
-fn mod_negative_dividend() {
-	check("-10 % 7", "-3");
-}
-
-#[test]
-fn mod_negative_divisor() {
-	check("10 % -7", "3");
-}
-
-#[test]
-fn mod_binds_like_mul() {
-	check("1 + 10 % 7", "4");
+fn int_ops() {
+	check(
+		indoc! {"
+			print(2 + 3, 10 - 4, 3 * 4, 10 / 3, 10 % 7)
+			print(-10 % 7, 10 % -7, 1 + 10 % 7)
+			print(1.5 + 2.0, -5)
+		"},
+		["5 6 12 3 3", "-3 3 4", "3.5 -5"],
+	);
 }
 
 #[test]
@@ -46,28 +18,21 @@ fn mod_float_unsupported() {
 }
 
 #[test]
-fn float_add() {
-	check("1.5 + 2.0", "3.5");
-}
-
-#[test]
-fn negation() {
-	check("-5", "-5");
-}
-
-#[test]
 fn pow() {
-	check("2 ** 10", "1024");
-	check("2 ** 3 ** 2", "512");
-	check("-2 ** 2", "-4");
-	check("2.0 ** -1.0", "0.5");
+	check("print(2 ** 10, 2 ** 3 ** 2, -2 ** 2, 2.0 ** -1.0)", "1024 512 -4 0.5");
 	fail_rt("2 ** -1", "negative exponent");
 }
 
 #[test]
 fn const_folding() {
-	check(["A :: int.min", "A"], "-9223372036854775808");
-	check(["A :: u8.max", "A"], "255");
-	check([r#"A :: "a" + "b""#, "A"], "ab");
-	check(["A := 2 ** 63", "A"], "-9223372036854775808");
+	check(
+		indoc! {r#"
+			A :: int.min
+			B :: u8.max
+			C :: "a" + "b"
+			D := 2 ** 63
+			print(A, B, C, D)
+		"#},
+		"-9223372036854775808 255 ab -9223372036854775808",
+	);
 }

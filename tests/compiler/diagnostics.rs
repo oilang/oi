@@ -1,12 +1,8 @@
 use crate::helpers::*;
 
 #[test]
-fn undefined_variable() {
+fn undefined() {
 	fail("foo", "undefined variable");
-}
-
-#[test]
-fn undefined_function() {
 	fail("bar()", "undefined function");
 }
 
@@ -35,6 +31,7 @@ fn wrong_return_type() {
 		bad()
 	"#};
 	fail(src, "expected int return value");
+	fail("bad :: fn() int { return 2.0 } bad()", "expected int return value");
 }
 
 #[test]
@@ -47,15 +44,6 @@ fn unknown_return_type() {
 }
 
 #[test]
-fn return_keyword_wrong_type() {
-	let src = indoc! {"
-		bad :: fn() int { return 2.0 }
-		bad()
-	"};
-	fail(src, "expected int return value");
-}
-
-#[test]
 fn type_mismatch() {
 	fail(r#"1 + "x""#, "cannot apply `+`");
 }
@@ -63,25 +51,13 @@ fn type_mismatch() {
 #[test]
 fn unexpected_token() {
 	fail("2 +", "expected");
-}
-
-#[test]
-fn invalid_token() {
 	fail(r"\", r"unexpected character `\`");
 }
 
 #[test]
-fn assign_to_immutable() {
+fn bad_assign() {
 	fail(["x :: 1", "x = 2"], "cannot assign to immutable");
-}
-
-#[test]
-fn assign_to_undefined() {
 	fail("x = 5", "cannot assign to undefined variable");
-}
-
-#[test]
-fn assign_wrong_type() {
 	fail(["x := 1", "x = 2.0"], "cannot assign float");
 }
 

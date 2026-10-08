@@ -46,15 +46,17 @@ fn callee_cannot_steal_a_borrowed_arg() {
 }
 
 #[test]
-fn returned_resource_drops_once() {
+fn returned_tuple_and_unbound_resources_drop_once() {
 	check(
 		[
 			FILE,
 			"open :: fn(n: int) File { File.{fd = n} }",
 			"f :: open(3)",
-			r#"print("before")"#,
+			"t :: (File.{fd = 1}, 2)",
+			"File.{fd = 5}",
+			r#"print("end")"#,
 		],
-		["before", "drop 3"],
+		["end", "drop 5", "drop 1", "drop 3"],
 	);
 }
 
@@ -128,11 +130,6 @@ fn index_and_field_stores_move_and_drop_the_old_value() {
 		],
 		["drop 1", "drop 2", "set", "drop 4", "drop 3"],
 	);
-}
-
-#[test]
-fn an_unbound_resource_drops_at_scope_exit() {
-	check([FILE, "File.{fd = 1}", r#"print("end")"#], ["end", "drop 1"]);
 }
 
 #[test]
@@ -231,14 +228,6 @@ fn boxed_payloads_drop_with_their_box() {
 	fail(
 		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held.(f)", "print(f)"],
 		"undefined variable",
-	);
-}
-
-#[test]
-fn tuple_payloads_drop_with_their_tuple() {
-	check(
-		[FILE, "t :: (File.{fd = 1}, 2)", r#"print("built")"#],
-		["built", "drop 1"],
 	);
 }
 

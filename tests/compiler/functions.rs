@@ -1,84 +1,39 @@
 use crate::helpers::*;
 
 #[test]
-fn fn_call() {
+fn fn_calls() {
 	let src = indoc! {"
-		double :: fn() int { 21 * 2 }
-		double()
-	"};
-	check(src, "42");
-}
-
-#[test]
-fn fn_vars() {
-	let src = indoc! {"
+		a :: fn() int { b() + 1 }
+		b :: fn() int { 41 }
 		area :: fn() int {
 			width :: 12
 			height :: 5
 			width * height
 		}
-
-		area()
+		add :: fn(x: int, y: int,) int { x + y }
+		add3 :: fn(a: int, b: int, c: int) int { add(add(a, b), c) }
+		scale :: fn(x: f64) f64 { x * 2.0 }
+		fact :: fn(n: int) int { if n <= 1 { 1 } else { n * fact(n - 1) } }
+		double :: fn(x: int) int do x * 2
+		print(a(), area(), add(40, 2,), add3(1, 2, 3), scale(2.5), fact(5), double(3))
 	"};
-	check(src, "60");
+	check(src, "42 60 42 6 5.0 120 6");
 }
 
 #[test]
-fn fn_args() {
+fn fn_return() {
 	let src = indoc! {"
 		add :: fn(x: int, y: int) int {
-			x + y
+			return x + y
 		}
-		add(3, 4)
+		five :: fn() int {
+			return 5
+			10
+		}
+		z :: fn() int { return }
+		print(add(3, 4), five(), z())
 	"};
-	check(src, "7");
-}
-
-#[test]
-fn fn_args_nested() {
-	let src = indoc! {"
-		add :: fn(x: int, y: int) int { x + y }
-		add3 :: fn(a: int, b: int, c: int) int { add(add(a, b), c) }
-		add3(1, 2, 3)
-	"};
-	check(src, "6");
-}
-
-#[test]
-fn fn_arg_float() {
-	let src = indoc! {"
-		scale :: fn(x: f64) f64 { x * 2.0 }
-		scale(2.5)
-	"};
-	check(src, "5.0");
-}
-
-#[test]
-fn fn_arg_trailing_comma() {
-	let src = indoc! {"
-		add :: fn(x: int, y: int,) int { x + y }
-		add(40, 2,)
-	"};
-	check(src, "42");
-}
-
-#[test]
-fn self_recursion() {
-	let src = indoc! {"
-		fact :: fn(n: int) int { if n <= 1 { 1 } else { n * fact(n - 1) } }
-		fact(5)
-	"};
-	check(src, "120");
-}
-
-#[test]
-fn forward_reference() {
-	let src = indoc! {"
-		a :: fn() int { b() + 1 }
-		b :: fn() int { 41 }
-		a()
-	"};
-	check(src, "42");
+	check(src, "7 5 0");
 }
 
 #[test]
@@ -88,29 +43,6 @@ fn fn_arg_wrong_type() {
 		i(2.4)
 	"};
 	fail(src, "wrong argument type");
-}
-
-#[test]
-fn fn_return_keyword() {
-	let src = indoc! {"
-		add :: fn(x: int, y: int) int {
-			return x + y
-		}
-		add(3, 4)
-	"};
-	check(src, "7");
-}
-
-#[test]
-fn fn_return_short_circuits() {
-	let src = indoc! {"
-		five :: fn() int {
-			return 5
-			10
-		}
-		five()
-	"};
-	check(src, "5");
 }
 
 #[test]
@@ -124,15 +56,6 @@ fn fn_return_ends_the_line() {
 		print(9)
 	"};
 	check(src, "9");
-}
-
-#[test]
-fn fn_return_bare() {
-	let src = indoc! {"
-		z :: fn() int { return }
-		z()
-	"};
-	check(src, "0");
 }
 
 #[test]
@@ -155,11 +78,17 @@ fn named_result() {
 			r += 1
 			return
 		}
+		divmod :: fn(a: int, b: int) out: (int, int) {
+			out.0 = a / b
+			out.1 = a % b
+			return
+		}
 		print(first([7, 8]))
 		print(three())
+		print(divmod(10, 3))
 		rename("me").name
 	"#};
-	check(src, ["7", "3", "me"]);
+	check(src, ["7", "3", "(3, 1)", "me"]);
 }
 
 #[test]
@@ -293,29 +222,6 @@ fn unreached_fn_is_never_compiled() {
 		live()
 	"#};
 	check(src, "alive");
-}
-
-#[test]
-fn do_body() {
-	let src = indoc! {"
-		double :: fn(x: int) int do x * 2
-		square :: fn(x: int) int do x * x
-		double(square(3))
-	"};
-	check(src, "18");
-}
-
-#[test]
-fn named_tuple_result() {
-	let src = indoc! {"
-		divmod :: fn(a: int, b: int) out: (int, int) {
-			out.0 = a / b
-			out.1 = a % b
-			return
-		}
-		divmod(10, 3)
-	"};
-	check(src, "(3, 1)");
 }
 
 #[test]

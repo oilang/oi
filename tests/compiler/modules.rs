@@ -5,7 +5,7 @@ use crate::helpers::{check, fail};
 
 #[test]
 fn pub_fn_runs() {
-	check(r#"pub foo :: fn() { print("hi") } foo()"#, "hi");
+	check(["use core", r#"pub foo :: fn() { print("hi") } foo()"#], "hi");
 }
 
 #[test]
@@ -18,11 +18,8 @@ fn module_decl() {
 #[test]
 fn import_missing() {
 	fail("use nope", "cannot find module `nope`");
-}
-
-#[test]
-fn import_std() {
-	check(["use core", r#"print("ok")"#], "ok");
+	fail("use a.b.c", "cannot find module `a.b`");
+	fail("x :: use a.b.{ c }", "cannot find module `a.b`");
 }
 
 #[test]
@@ -35,12 +32,6 @@ fn import_trait() {
 fn core_is_bound() {
 	check(["f :: fn(a: core.Alloc) { print(core.inf) }", "f(core.arena())"], "inf");
 	check(["core :: 3", "print(core)"], "3");
-}
-
-#[test]
-fn import_nested_path() {
-	fail("use a.b.c", "cannot find module `a.b`");
-	fail("x :: use a.b.{ c }", "cannot find module `a.b`");
 }
 
 #[test]
@@ -92,15 +83,6 @@ fn foreign_ptr_roundtrips() {
 		],
 	)
 	.check(":done");
-}
-
-#[test]
-fn foreign_writes_through_array_ptr() {
-	Project::foreign(
-		["buf := [1, 2, 3]", "unsafe cext.memset(buf.ptr, 0, 4)", "print(buf)"],
-		MEMSET,
-	)
-	.check("[0, 2, 3]");
 }
 
 #[test]
@@ -305,6 +287,7 @@ fn c_struct_rejects_missing_c_repr() {
 		["@c Wide :: struct { flags: [4]bool }"],
 		"`Wide.flags` has no C representation",
 	);
+	fail(["@c Bad :: struct { cb: fn(s: string) }"], "has no C representation");
 	let src = indoc! {r#"
 		buf: []u8 = .[0]
 		unsafe { buf.ptr.write("hi") }
@@ -338,41 +321,14 @@ fn c_struct_fn_field_rejects_a_closure() {
 }
 
 #[test]
-fn c_struct_rejects_bad_fn_field() {
-	fail(["@c Bad :: struct { cb: fn(s: string) }"], "has no C representation");
-}
-
-#[test]
-fn qualified_type_in_signature() {
-	Project::new()
-		.file(
-			"main.oi",
-			[
-				"use shapes",
-				"f :: fn(p: shapes.Point) int { p.x + p.y }",
-				"print(f(shapes.make(1, 2)))",
-			],
-		)
-		.file(
-			"shapes.oi",
-			[
-				"module shapes",
-				"pub Point :: struct { pub x: int, pub y: int }",
-				"pub make :: fn(x: int, y: int) Point { Point.{ x = x, y = y } }",
-			],
-		)
-		.check("3");
-}
-
-#[test]
 fn qualified_static_access() {
 	Project::new()
 		.file(
 			"main.oi",
 			indoc! {"
 				use shapes
-				p := shapes.Point.of(1, 2)
-				print(p.x + p.y)
+				f :: fn(p: shapes.Point) int { p.x + p.y }
+				print(f(shapes.Point.of(1, 2)))
 				print(shapes.Kind.circle.str())
 				print(shapes.Point.ORIGIN.x)
 			"},

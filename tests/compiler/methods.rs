@@ -6,33 +6,13 @@ fn instance_method() {
 		Point :: struct { x: int, y: int }
 		Point :< {
 			sum :: fn(self) int { self.x + self.y }
-		}
-		p :: Point.{3, 4}
-		p.sum()
-	"};
-	check(src, "7");
-}
-
-#[test]
-fn method_with_args() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< {
 			scaled :: fn(self, k: int) int { (self.x + self.y) * k }
 		}
-		Point.{3, 4}.scaled(10)
+		p :: Point.{3, 4}
+		f :: p.scaled
+		print(p.sum(), Point.{3, 4}.sum(), Point.{3, 4}.scaled(10), f(10))
 	"};
-	check(src, "70");
-}
-
-#[test]
-fn method_on_literal() {
-	let src = indoc! {"
-		P :: struct { x: int, y: int }
-		P :< { sum :: fn(self) int { self.x + self.y } }
-		P.{3, 4}.sum()
-	"};
-	check(src, "7");
+	check(src, "7 7 70 70");
 }
 
 #[test]
@@ -41,46 +21,16 @@ fn static_method() {
 		Point :: struct { x: int, y: int }
 		Point :< {
 			origin :: fn() Point { Point.{0, 0} }
-			sum :: fn(self) int { self.x + self.y }
-		}
-		Point.origin().sum()
-	"};
-	check(src, "0");
-}
-
-#[test]
-fn static_method_with_args() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< { make :: fn(a: int, b: int) Point { Point.{a, b} } }
-		Point.make(3, 4).x
-	"};
-	check(src, "3");
-}
-
-#[test]
-fn self_type_and_literal() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< {
+			make :: fn(a: int, b: int) Point { Point.{a, b} }
 			new :: fn() Self { Self.{} }
-			sum :: fn(self) int { self.x + self.y }
-		}
-		Point.new().sum()
-	"};
-	check(src, "0");
-}
-
-#[test]
-fn self_param_and_fields() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< {
 			add :: fn(self, other: Self) Self { Self.{self.x + other.x, self.y + other.y} }
+			sum :: fn(self) int { self.x + self.y }
+			zero :: Point.{0, 0}
 		}
-		Point.{1, 2}.add(Point.{3, 4}).x
+		print(Point.origin().sum(), Point.make(3, 4).x, Point.new().sum())
+		print(Point.{1, 2}.add(Point.{3, 4}).x, Point.zero.x)
 	"};
-	check(src, "4");
+	check(src, ["0 3 0", "4 0"]);
 }
 
 #[test]
@@ -125,28 +75,9 @@ fn wrong_arg_count() {
 }
 
 #[test]
-fn bound_method_is_a_value() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< {
-			scaled :: fn(self, k: int) int { (self.x + self.y) * k }
-		}
-		p :: Point.{3, 4}
-		f :: p.scaled
-		f(10)
-	"};
-	check(src, "70");
-}
-
-#[test]
 fn builtin_amendment() {
-	check(r#"print("".is_empty())"#, "true");
-	check(r#"print("hi".is_empty())"#, "false");
-}
-
-#[test]
-fn builtin_amendment_primitives() {
 	let src = indoc! {r#"
+		print("".is_empty(), "hi".is_empty())
 		print(int.max)
 		print(int.min)
 		print((0.0).is_nan())
@@ -161,6 +92,7 @@ fn builtin_amendment_primitives() {
 	check(
 		src,
 		[
+			"true false",
 			"9223372036854775807",
 			"-9223372036854775808",
 			"false",
@@ -173,16 +105,6 @@ fn builtin_amendment_primitives() {
 			"-4096",
 		],
 	);
-}
-
-#[test]
-fn associated_const() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point :< { origin :: Point.{0, 0} }
-		print(Point.origin.x)
-	"};
-	check(src, "0");
 }
 
 #[test]

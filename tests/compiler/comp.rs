@@ -2,68 +2,37 @@ use crate::common::Project;
 use crate::helpers::*;
 
 #[test]
-fn comp_folds_const_arithmetic() {
-	check(["PI :: comp 22.0 / 7.0", "print(PI)"], "3.142857142857143");
-}
-
-#[test]
-fn comp_calls_a_user_fn() {
-	let src = indoc! {"
+fn comp_folds() {
+	let src = indoc! {r#"
+		use math
 		f :: fn() int { 40 + 2 }
+		PI :: comp 22.0 / 7.0
 		V :: comp f()
-		print(V)
-	"};
-	check(src, "42");
-}
-
-#[test]
-fn comp_block_with_a_local() {
-	let src = indoc! {"
 		X :: comp {
 			a := 10
 			a * 2
 		}
-		print(X)
-	"};
-	check(src, "20");
+		S :: comp "hi" + " there"
+		A :: comp math.abs(0 - 5)
+		print(PI, V, X, S, A)
+	"#};
+	check(src, "3.142857142857143 42 20 hi there 5");
 }
 
 #[test]
-fn comp_str_result() {
-	check(r#"S :: comp "hi" + " there"; print(S)"#, "hi there");
-}
-
-#[test]
-fn comp_folds_structs() {
+fn comp_folds_aggregates() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, y: int }
 		Config :: struct { name: string, origin: Point }
-		mk :: fn() Config { Config.{ "grid", Point.{ 3, 4 } } }
-		C :: comp mk()
-		print("{C.name} {C.origin.x} {C.origin.y}")
-	"#};
-	check(src, "grid 3 4");
-}
-
-#[test]
-fn comp_folds_arrays() {
-	let src = indoc! {r#"
 		Method :: struct { name: string, argc: int }
+		mk :: fn() Config { Config.{ "grid", Point.{ 3, 4 } } }
 		methods :: fn() []Method { [Method.{ "add", 2 }, Method.{ "neg", 1 }] }
+		C :: comp mk()
 		MS :: comp methods()
+		print("{C.name} {C.origin.x} {C.origin.y}")
 		print("{MS.len} {MS[1].name} {MS[1].argc}")
 	"#};
-	check(src, "2 neg 1");
-}
-
-#[test]
-fn comp_calls_an_imported_fn() {
-	let src = indoc! {"
-		use math
-		V :: comp math.abs(0 - 5)
-		print(V)
-	"};
-	check(src, "5");
+	check(src, ["grid 3 4", "2 neg 1"]);
 }
 
 #[test]

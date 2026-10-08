@@ -13,20 +13,7 @@ fn counts_to_a_return() {
 }
 
 #[test]
-fn break_exits() {
-	let src = indoc! {"
-		i := 0
-		loop {
-			i = i + 1
-			if i == 3 { break }
-		}
-		i
-	"};
-	check(src, "3");
-}
-
-#[test]
-fn continue_skips() {
+fn break_and_continue() {
 	let src = indoc! {"
 		sum := 0
 		i := 0
@@ -34,120 +21,60 @@ fn continue_skips() {
 			i = i + 1
 			if i > 10 { break }
 			if i % 2 == 1 { continue }
-			sum = sum + i
-		}
-		sum
-	"};
-	check(src, "30");
-}
-
-#[test]
-fn break_targets_innermost() {
-	let src = indoc! {"
-		outer := 0
-		loop {
-			outer = outer + 1
 			inner := 0
 			loop {
 				inner = inner + 1
 				if inner == 2 { break }
 			}
-			if outer == 3 { break }
+			sum = sum + i
 		}
-		outer
+		sum + i
 	"};
-	check(src, "3");
-}
-
-#[test]
-fn break_outside_loop() {
+	check(src, "41");
 	fail("break", "outside of a loop");
-}
-
-#[test]
-fn continue_outside_loop() {
 	fail("continue", "outside of a loop");
 }
 
 #[test]
-fn while_counts() {
+fn while_loops() {
 	let src = indoc! {"
 		i := 0
-		loop i < 5 {
-			i = i + 1
-		}
-		i
+		loop i < 5 { i = i + 1 }
+		j := 10
+		loop j < 5 { j = j + 1 }
+		print(i)
+		print(j)
 	"};
-	check(src, "5");
-}
-
-#[test]
-fn while_never_enters() {
-	let src = indoc! {"
-		i := 10
-		loop i < 5 {
-			i = i + 1
-		}
-		i
-	"};
-	check(src, "10");
-}
-
-#[test]
-fn while_condition_must_be_bool() {
-	fail("loop 3 {}", "cannot iterate");
+	check(src, ["5", "10"]);
 }
 
 // loops over ranges
 
 #[test]
-fn for_range_sums() {
-	let src = indoc! {"
-		sum := 0
-		loop i in 0..5 {
-			sum = sum + i
-		}
-		sum
-	"};
-	check(src, "10");
-}
-
-#[test]
-fn for_range_excludes_end() {
+fn for_range() {
 	let src = indoc! {"
 		loop i in 0..3 { print(i) }
-	"};
-	check(src, ["0", "1", "2"]);
-}
-
-#[test]
-fn for_range_empty() {
-	let src = indoc! {"
 		sum := 99
-		loop i in 3..3 {
-			sum = 0
-		}
-		sum
-	"};
-	check(src, "99");
-}
-
-#[test]
-fn for_range_continue_advances() {
-	let src = indoc! {"
-		sum := 0
+		loop i in 3..3 { sum = 0 }
+		print(sum)
+		sum = 0
 		loop i in 0..6 {
 			if i % 2 == 1 { continue }
 			sum = sum + i
 		}
-		sum
+		print(sum)
 	"};
-	check(src, "6");
+	check(src, ["0", "1", "2", "99", "6"]);
 }
 
 #[test]
-fn for_var_is_scoped() {
+fn loop_header_errors() {
+	fail("loop 3 {}", "cannot iterate");
 	fail(["loop i in 0..3 { i }", "i"], "undefined variable");
+	fail("loop x in 5 { x }", "not iterable");
+	fail("loop i in 0..true { i }", "must be Int");
+	fail("loop (x, y) in [1, 2, 3] { x }", "destructure");
+	fail("loop (x, y, z) in [(1, 2)] { x }", "fields");
 }
 
 // loops over iterables
@@ -155,58 +82,13 @@ fn for_var_is_scoped() {
 #[test]
 fn for_each_sums() {
 	let src = indoc! {"
-		sum := 0
-		loop x in [2, 4, 6, 8] {
-			sum = sum + x
-		}
-		sum
-	"};
-	check(src, "20");
-}
-
-#[test]
-fn slice_iterates_its_window() {
-	let src = indoc! {"
 		a :: [0, 2, 4, 6, 8]
 		sum := 0
-		loop x in a[1..4] {
-			sum = sum + x
-		}
+		loop x in a { sum = sum + x }
+		loop x in a[1..4] { sum = sum + x }
 		sum
 	"};
-	check(src, "12");
-}
-
-#[test]
-fn for_each_tuple_destructure() {
-	let src = indoc! {"
-		sum := 0
-		loop (x, y) in [(0, 0), (1, 2), (3, 4)] {
-			sum = sum + x + y
-		}
-		sum
-	"};
-	check(src, "10");
-}
-
-#[test]
-fn for_each_iterable_must_be_array() {
-	fail("loop x in 5 { x }", "not iterable");
-}
-
-#[test]
-fn for_range_bound_must_be_int() {
-	fail("loop i in 0..true { i }", "must be Int");
-}
-
-#[test]
-fn for_tuple_pattern_on_non_tuple() {
-	fail("loop (x, y) in [1, 2, 3] { x }", "destructure");
-}
-
-#[test]
-fn for_tuple_pattern_wrong_field_count() {
-	fail("loop (x, y, z) in [(1, 2)] { x }", "fields");
+	check(src, "32");
 }
 
 #[test]
@@ -224,13 +106,14 @@ fn for_each_bind_is_independent_copy() {
 }
 
 #[test]
-fn for_struct_and_array_patterns() {
+fn for_struct_tuple_and_array_patterns() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		loop Point.{ x } in [Point.{ 1, 2 }, Point.{ 3, 4 }] { print(x) }
 		loop [a b] in [[1 2] [3 4]] { print(a + b) }
+		loop (x, y) in [(0, 0), (1, 2)] { print(x + y) }
 	"};
-	check(src, ["1", "3", "3", "7"]);
+	check(src, ["1", "3", "3", "7", "0", "3"]);
 }
 
 #[test]
@@ -321,13 +204,15 @@ fn loop_match() {
 }
 
 #[test]
-fn header_pattern_bind() {
+fn header_bind() {
 	let src = indoc! {"
 		it := 0..3
 		loop .some.(n) := it.next() { print(n) }
+		it2 := 0..2
+		loop n := it2.next() { print(n) }
 		print(:done)
 	"};
-	check(src, ["0", "1", "2", ":done"]);
+	check(src, ["0", "1", "2", "0", "1", ":done"]);
 }
 
 #[test]
@@ -350,14 +235,4 @@ fn loop_header_iterates_without_binding() {
 		n
 	"};
 	check(src, "23");
-}
-
-#[test]
-fn header_bind_unwraps() {
-	let src = indoc! {"
-		it := 0..3
-		loop n := it.next() { print(n) }
-		print(:done)
-	"};
-	check(src, ["0", "1", "2", ":done"]);
 }

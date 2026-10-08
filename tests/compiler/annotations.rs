@@ -1,57 +1,38 @@
 use crate::helpers::*;
 
 #[test]
-fn annotation_on_fn() {
-	check(
-		indoc! {r#"
-			deprecated :: struct { reason: string }
-			@:awesome
-			@deprecated.{reason = "use speak()"}
-			pub yell :: fn() string { "AAA" }
-			print(yell())
-		"#},
-		"AAA",
-	);
-}
-
-#[test]
-fn field_annotation_trailing_form() {
-	check(
-		indoc! {r#"
-			Player :: struct { name: string @:required }
-			p := Player.{ name = "Todd" }
-			print(p.name)
-		"#},
-		"Todd",
-	);
-}
-
-#[test]
-fn bare_const_marker_from_core() {
-	check(
-		indoc! {r#"
-			User :: struct { name: string @required }
-			u := User.{ name = "Todd" }
-			print(u.name)
-		"#},
-		"Todd",
-	);
-}
-
-#[test]
-fn main_file_const_as_annotation() {
+fn annotation_forms() {
 	check(
 		indoc! {r#"
 			opt :: ()
 			deprecated :: struct { reason: string }
 			warn :: deprecated.{reason = "old"}
+			@:awesome
+			@deprecated.{reason = "use speak()"}
+			pub yell :: fn() string { "AAA" }
 			@warn
 			speak :: fn() string { "hi" }
-			User :: struct { name: string @opt }
-			u := User.{ name = "Todd" }
-			print("{speak()} {u.name}")
+			@deprecated
+			thing :: fn() string { "ok" }
+			User :: struct { name: string @opt, id: string @required, tag: string @:required }
+			u := User.{ name = "Todd", id = "1", tag = "t" }
+			print("{yell()} {speak()} {thing()} {u.name}")
 		"#},
-		"hi Todd",
+		"AAA hi ok Todd",
+	);
+}
+
+#[test]
+fn annotation_fn_call_is_folded() {
+	check(
+		indoc! {r#"
+			deprecated :: struct { reason: string }
+			mark :: fn(who: string) deprecated { deprecated.{ "use " + who } }
+			@mark("speak")
+			yell :: fn() string { "AAA" }
+			print(yell())
+		"#},
+		"AAA",
 	);
 }
 
@@ -117,19 +98,6 @@ fn annotation_only_goes_on_definitions() {
 }
 
 #[test]
-fn bare_struct_name_is_its_zero_value() {
-	check(
-		indoc! {r#"
-			deprecated :: struct { reason: string }
-			@deprecated
-			thing :: fn() string { "ok" }
-			print(thing())
-		"#},
-		"ok",
-	);
-}
-
-#[test]
 fn required_field_omitted() {
 	fail(
 		indoc! {"
@@ -137,6 +105,22 @@ fn required_field_omitted() {
 			f := Foo.{}
 		"},
 		"`Foo.n` is required",
+	);
+	fail(
+		indoc! {"
+			Box[T] :: struct { v: T, n: int @required }
+			b := Box.{v = 1}
+		"},
+		"is required",
+	);
+	fail(
+		indoc! {"
+			@params
+			Settings :: struct { idk: int @required }
+			take :: fn(settings: Settings) { print(settings.idk) }
+			take()
+		"},
+		"is required",
 	);
 }
 
@@ -151,17 +135,6 @@ fn required_field_provided() {
 			print("{a.n} {b.n} {c.n}")
 		"#},
 		"1 2 1",
-	);
-}
-
-#[test]
-fn generic_required_omitted() {
-	fail(
-		indoc! {"
-			Box[T] :: struct { v: T, n: int @required }
-			b := Box.{v = 1}
-		"},
-		"is required",
 	);
 }
 
@@ -194,46 +167,6 @@ fn params_only_on_marked_struct() {
 			take()
 		"},
 		"expects 1 argument",
-	);
-}
-
-#[test]
-fn annotation_fn_call_is_folded() {
-	check(
-		indoc! {r#"
-			deprecated :: struct { reason: string }
-			mark :: fn(who: string) deprecated { deprecated.{ "use " + who } }
-			@mark("speak")
-			yell :: fn() string { "AAA" }
-			print(yell())
-		"#},
-		"AAA",
-	);
-}
-
-#[test]
-fn params_synthesized_literal_checks_required() {
-	fail(
-		indoc! {"
-			@params
-			Settings :: struct { idk: int @required }
-			take :: fn(settings: Settings) { print(settings.idk) }
-			take()
-		"},
-		"is required",
-	);
-}
-
-#[test]
-fn bare_attr_macro_is_identity() {
-	check(
-		indoc! {"
-			keep! :: fn(input: Ast) Ast { `%input` }
-			@keep!
-			f :: fn() int { 42 }
-			print(f())
-		"},
-		"42",
 	);
 }
 
@@ -432,20 +365,6 @@ fn annotated_types_are_checked() {
 }
 
 #[test]
-fn pure_fn_calls_pure_fn() {
-	check(
-		indoc! {"
-			@pure
-			square :: fn(x: int) int { x * x }
-			@pure
-			sum_of_squares :: fn(a: int, b: int) int { square(a) + square(b) }
-			print(sum_of_squares(2, 3))
-		"},
-		"13",
-	);
-}
-
-#[test]
 fn pure_fn_rejects_impure_calls() {
 	fail(
 		["@pure", "f :: fn() { print(1) }", "f()"],
@@ -463,14 +382,16 @@ fn pure_fn_values() {
 		indoc! {"
 			apply :: fn(f: @pure fn(int) int, x: int) int { f(x) }
 			@pure
+			square :: fn(x: int) int { x * x }
+			@pure
 			twice :: fn(x: int) int {
 				step := fn(y: int) int { y + 1 }
-				step(step(x))
+				step(step(square(x)))
 			}
 			print(apply(@pure fn(x: int) int { x * x }, 4))
-			print(twice(1))
+			print(twice(2))
 		"},
-		["16", "3"],
+		["16", "6"],
 	);
 	// the nested literal inherits purity, and a marked one can't capture
 	fail(

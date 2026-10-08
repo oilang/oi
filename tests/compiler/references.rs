@@ -2,16 +2,15 @@ use crate::helpers::*;
 
 #[test]
 fn aliasing_shares_identity() {
-	check(
-		indoc! {r#"
-			Node :: struct { value: int }
-			list := &Node.{ value = 5 }
-			head :: list
-			list.value = 9
-			print("head is {head}")
-		"#},
-		"head is Node.{value = 9}",
-	);
+	let src = indoc! {r#"
+		Node :: struct { value: int }
+		list := &Node.{ value = 5 }
+		head :: list
+		list.value = 9
+		print("head is {head}")
+	"#};
+	check(src, "head is Node.{value = 9}");
+	assert_clean(src);
 }
 
 #[test]
@@ -63,30 +62,19 @@ fn bare_ref_without_value_errors() {
 
 #[test]
 fn optional_ref_zero_value_assign_unwrap() {
-	check(["Node :: struct { value: int }", "o: ?^Node", "o"], "none");
 	check(
 		indoc! {"
 			Node :: struct { value: int }
 			o: ?^Node
+			print(o)
 			o = ?^Node.(&Node.{ value = 7 })
 			match o {
 				.some.(n) => n.value,
 				.none => -1,
 			}
 		"},
-		"7",
+		["none", "7"],
 	);
-}
-
-#[test]
-fn no_leaks_on_share_and_release() {
-	assert_clean(indoc! {"
-		Node :: struct { value: int }
-		list := &Node.{ value = 5 }
-		head :: list
-		list.value = 9
-		print(head.value)
-	"});
 }
 
 #[test]
@@ -115,23 +103,18 @@ fn linked_nodes() {
 }
 
 #[test]
-fn interior_ref_frees_on_release() {
+fn interior_and_shared_refs_free_on_release() {
 	assert_clean(indoc! {"
 		Node :: struct { value: int, next: ?^Node }
 		head :: &Node.{ value = 1, next = ?^Node.(&Node.{ value = 2 }) }
-		print(head.value)
-	"});
-}
-
-#[test]
-fn shared_option_ref_stays_clean() {
-	assert_clean(indoc! {"
-		Node :: struct { value: int, next: ?^Node }
 		t :: &Node.{ value = 2 }
 		o :: ?^Node.(t)
 		a :: &Node.{ value = 1, next = o }
 		b :: &Node.{ value = 3, next = o }
-		print(t.value)
+		r: ?^Node
+		r = ?^Node.(&Node.{ value = 1 })
+		r = ?^Node.(&Node.{ value = 2 })
+		print(head.value, t.value)
 	"});
 }
 
@@ -148,17 +131,6 @@ fn returned_box_keeps_zeroed_field() {
 	"#};
 	check(src, "ok");
 	assert_clean(src);
-}
-
-#[test]
-fn rebind_releases_old_target() {
-	assert_clean(indoc! {r#"
-		Node :: struct { value: int }
-		o: ?^Node
-		o = ?^Node.(&Node.{ value = 1 })
-		o = ?^Node.(&Node.{ value = 2 })
-		print("done")
-	"#});
 }
 
 #[test]
@@ -187,23 +159,15 @@ fn value_recursion_still_errors() {
 }
 
 #[test]
-fn two_node_cycle_reclaimed() {
+fn cycles_reclaimed() {
 	assert_clean(indoc! {r#"
 		Node :: struct { value: int, next: ?^Node }
 		a := &Node.{ value = 1 }
 		b :: &Node.{ value = 2, next = ?^Node.(a) }
 		a.next = ?^Node.(b)
-		print(a.value)
-	"#});
-}
-
-#[test]
-fn self_cycle_reclaimed() {
-	assert_clean(indoc! {r#"
-		Node :: struct { value: int, next: ?^Node }
 		n := &Node.{ value = 1 }
 		n.next = ?^Node.(n)
-		print(n.value)
+		print(a.value, n.value)
 	"#});
 }
 

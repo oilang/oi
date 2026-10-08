@@ -56,7 +56,7 @@ fn ast_fns_stay_out_of_the_binary() {
 		width :: fn(p: (Ast, int)) int { p.0.items.len + p.1 }
 		print(1)
 	"};
-	assert_eq!(build_and_run(src, &[], "main"), "1");
+	assert_eq!(build_and_run(src, &["main.oi", "-o", "hi"], "hi"), "1");
 }
 
 #[test]

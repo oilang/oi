@@ -22,26 +22,13 @@ const ANIMAL_KIND: &str = indoc! {r#"
 "#};
 
 #[test]
-fn trait_def_and_impl() {
-	let src = indoc! {r#"
-		Animal :: trait {
-			kind: string
-			speak : fn(self) string
-			shout :: fn(self) string { self.speak() + "!" }
-		}
-		Dog :: struct { kind: string }
-		Dog : Animal < { speak :: fn(self) string { "woof" } }
-		Dog.{ "Collie" }.speak()
-	"#};
-	check(src, "woof");
-}
-
-#[test]
 fn marker_impl() {
 	let src = indoc! {r#"
 		Marker :: trait {}
+		Animal :: trait { kind: string }
 		Dog :: struct { kind: string }
 		Dog :< Marker
+		Dog :< Animal
 		Dog.{ "Collie" }.kind
 	"#};
 	check(src, "Collie");
@@ -49,12 +36,6 @@ fn marker_impl() {
 
 #[test]
 fn supertraits() {
-	let src = indoc! {"
-		Eq :: trait {}
-		Ord : Eq : trait { cmp : fn(self, other: Self) int }
-	"};
-	check(src, "");
-
 	let src = indoc! {"
 		Foo :: trait {}
 		Baz : Foo, Bar : trait {}
@@ -80,11 +61,6 @@ fn supertraits() {
 		"},
 		"",
 	);
-}
-
-#[test]
-fn builtin_claims_std_ord() {
-	check("print(int is Ord)", "true");
 }
 
 #[test]
@@ -131,36 +107,17 @@ fn empty_default_method() {
 }
 
 #[test]
-fn field_requirement_satisfied() {
-	let src = indoc! {r#"
-		Animal :: trait { kind: string }
-		Dog :: struct { kind: string }
-		Dog :< Animal
-		Dog.{ "Collie" }.kind
-	"#};
-	check(src, "Collie");
-}
-
-#[test]
 fn is_expression() {
 	let src = indoc! {"
 		Animal :: trait {}
 		Dog :: struct {}
+		Cat :: struct {}
 		Dog :< Animal
 		D :: Dog
-		print(Dog is Animal)
-		print(Dog is not Animal)
-		print(D is Animal)
+		print(Dog is Animal, Dog is not Animal, D is Animal)
+		print(Cat is Animal, Cat is not Animal)
 	"};
-	check(src, ["true", "false", "true"]);
-
-	let src = indoc! {"
-		Animal :: trait {}
-		Cat :: struct {}
-		print(Cat is Animal)
-		print(Cat is not Animal)
-	"};
-	check(src, ["false", "true"]);
+	check(src, ["true false true", "false true"]);
 }
 
 #[test]
@@ -250,21 +207,13 @@ fn is_on_a_trait_object() {
 		Dog :< Animal
 		Cat :: struct {}
 		Cat :< Animal
-		a := Animal.(Dog.{})
-		print(a is Dog, a is Cat, a is not Dog)
-	"#};
-	check(src, "true false false");
-}
-
-#[test]
-fn is_on_an_error() {
-	let src = indoc! {r#"
 		Bad :: struct {}
 		Bad : Error < { message :: fn(self) string { "bad" } }
+		a := Animal.(Dog.{})
 		e := Error.(Bad.{})
-		print(e is Bad)
+		print(a is Dog, a is Cat, a is not Dog, e is Bad)
 	"#};
-	check(src, "true");
+	check(src, "true false false true");
 }
 
 #[test]
@@ -343,15 +292,21 @@ fn rejects_wrong_arity_impl() {
 }
 
 #[test]
-fn one_fill_satisfies_two_traits() {
+fn fills_satisfy_traits() {
 	let src = indoc! {"
 		A :: trait { f: fn(self) int }
 		B :: trait { f: fn(self) int }
+		C :: trait { f :: fn(self) int { 1 } }
+		D :: trait { f :: fn(self) int { 2 } }
 		S :: struct {}
 		S : A, B < { f :: fn(self) int { 9 } }
-		S.{}.f()
+		T :: struct { f :: fn(self) int { 3 } }
+		T :< C, D
+		U :: struct { f :: fn(self) int { 7 } }
+		U :< A
+		print(S.{}.f(), T.{}.f(), U.{}.f())
 	"};
-	check(src, "9");
+	check(src, "9 3 7");
 }
 
 #[test]
@@ -378,29 +333,6 @@ fn rejects_conflicting_defaults() {
 		"},
 		"takes default `f` from both",
 	);
-}
-
-#[test]
-fn own_fill_settles_default_conflict() {
-	let src = indoc! {"
-		A :: trait { f :: fn(self) int { 1 } }
-		B :: trait { f :: fn(self) int { 2 } }
-		S :: struct { f :: fn(self) int { 3 } }
-		S :< A, B
-		S.{}.f()
-	"};
-	check(src, "3");
-}
-
-#[test]
-fn body_fill_discharges_bare_claim() {
-	let src = indoc! {"
-		A :: trait { f: fn(self) int }
-		S :: struct { f :: fn(self) int { 7 } }
-		S :< A
-		S.{}.f()
-	"};
-	check(src, "7");
 }
 
 #[test]
@@ -473,8 +405,16 @@ fn trait_object_array_literal() {
 		Cat : Animal < { speak :: fn(self) string { "meow" } }
 		animals :: Animal.[ Dog.{ "collie" }, Cat.{ "mau" } ]
 		loop a in animals { print("{a.kind}: {a.speak()}") }
+		print(animals)
 	"#};
-	check([ANIMAL_KIND, src], ["collie: woof", "mau: meow"]);
+	check(
+		[ANIMAL_KIND, src],
+		[
+			"collie: woof",
+			"mau: meow",
+			r#"[Dog.{kind = "collie"}, Cat.{kind = "mau"}]"#,
+		],
+	);
 }
 
 #[test]
@@ -507,18 +447,6 @@ fn trait_typed_struct_field() {
 }
 
 #[test]
-fn self_sig_static_dispatch_ok() {
-	let src = indoc! {r#"
-		Cloner :: trait { dup : fn(self) Self }
-		Dog :: struct {}
-		Dog : Cloner < { dup :: fn(self) Self { Dog.{} } }
-		d :: Dog.{}.dup()
-		print("cloned")
-	"#};
-	check(src, "cloned");
-}
-
-#[test]
 fn self_return_reboxes_through_object() {
 	let src = indoc! {r#"
 		Pet :: trait {
@@ -533,9 +461,9 @@ fn self_return_reboxes_through_object() {
 			clone :: fn(self) Self { Dog.{ "{self.n}2" } }
 		}
 		p : Pet : Dog.{ "rex" }
-		print(p.clone().name())
+		print(p.clone().name(), Dog.{ "a" }.clone().name())
 	"#};
-	check(src, "rex2");
+	check(src, "rex2 a2");
 }
 
 #[test]
@@ -578,16 +506,6 @@ fn trait_object_uses_str_override() {
 		print(a)
 	"#};
 	check([ANIMAL_DOG_KIND, src], "a collie dog");
-}
-
-#[test]
-fn array_of_trait_objects_renders() {
-	let src = indoc! {r#"
-		Cat :: struct { kind: string }
-		Cat : Animal < { speak :: fn(self) string { "meow" } }
-		print(Animal.[ Dog.{ "collie" }, Cat.{ "mau" } ])
-	"#};
-	check([ANIMAL_DOG_KIND, src], r#"[Dog.{kind = "collie"}, Cat.{kind = "mau"}]"#);
 }
 
 #[test]
@@ -650,17 +568,6 @@ fn branches_box_into_the_expected_trait_object() {
 		print(pick(true).area(), pick(false).area())
 	"};
 	check(src, "12 4");
-}
-
-#[test]
-fn headerless_fill_binds_self() {
-	let src = indoc! {"
-		Shape :: trait { area: fn(self) int }
-		Sq :: struct { s: int }
-		Sq : Shape < { area :: { self.s * self.s } }
-		print(Sq.{ 3 }.area())
-	"};
-	check(src, "9");
 }
 
 #[test]

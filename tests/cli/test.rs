@@ -16,16 +16,6 @@ fn run_strips_tests_before_typecheck() {
 }
 
 #[test]
-fn test_runs_all_in_order() {
-	let dir = project(indoc! {r#"
-		@test first :: fn() { assert!(1 + 1 == 2) }
-		@test second :: fn() { assert!(2 + 2 == 4) }
-	"#});
-	let out = dir.ok(&["test"]);
-	assert!(out.find("first").unwrap() < out.find("second").unwrap() && out.contains("2 passed"));
-}
-
-#[test]
 fn test_macro_runs_under_test_and_drops_under_run() {
 	let dir = project(indoc! {r#"
 		test! "leading literal" { assert! true }
@@ -87,7 +77,7 @@ fn failing_test_is_isolated() {
 	let out = dir.oi(&["test"]);
 	let stdout = String::from_utf8_lossy(&out.stdout);
 	assert!(!out.status.success());
-	assert!(stdout.contains("first ... FAILED") && stdout.contains("second ... ok"));
+	assert!(stdout.find("first ... FAILED").unwrap() < stdout.find("second ... ok").unwrap());
 	assert!(stdout.contains("1 passed; 1 failed"));
 	assert!(stderr(&out).contains("assertion failed"));
 }

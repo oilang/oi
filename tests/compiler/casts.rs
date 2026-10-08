@@ -2,9 +2,7 @@ use crate::helpers::*;
 
 #[test]
 fn float_to_int_truncates_toward_zero() {
-	check("int.(2.9)", "2");
-	check("int.(-2.9)", "-2");
-	check("u8.(f32.(3.7))", "3");
+	check("print(int.(2.9), int.(-2.9), u8.(f32.(3.7)))", "2 -2 3");
 }
 
 #[test]
@@ -75,9 +73,10 @@ fn assertion_casts() {
 
 #[test]
 fn result_casts() {
-	check("!int.(7)", "ok.(7)");
-	check(r#"!int.(error("oops"))"#, r#"err.("oops")"#);
-	check(r#"string!int.("oops")"#, r#"err.("oops")"#);
+	check(
+		r#"print(!int.(7), !int.(error("oops")), string!int.("oops"))"#,
+		r#"ok.(7) err.("oops") err.("oops")"#,
+	);
 	fail("?int(42)", "");
 }
 
@@ -122,12 +121,8 @@ fn string_to_bytes_copies() {
 }
 
 #[test]
-fn only_bytes_cast_to_string() {
-	fail("string.(42)", "`.str()` formats a value");
-}
-
-#[test]
 fn strings_do_not_parse() {
+	fail("string.(42)", "`.str()` formats a value");
 	fail(r#"int.("42")"#, "cannot cast string to int");
 	fail(r#"float.("2.5")"#, "`float.try_from(...)` parses strings");
 }

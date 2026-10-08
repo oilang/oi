@@ -9,8 +9,12 @@ fn ops() {
 			print(0b1100 ~ 0b1010)
 			print(0xFF00 & 0xF0F0)
 			print(!0)
+			print(6 & 4 == 4, 3 & 1 + 1, 2 | 6 & 4)
+			print(1 << 4, -8 >> 1, u8.(0b1000_0000) >> 1, 1 << 3 - 1, 1 << 4 | 3)
+			ALL :: 0b100 | 0b010 | 0b001
+			print(ALL, ALL & 0b100)
 		"#},
-		["8", "14", "6", "61440", "-1"],
+		["8", "14", "6", "61440", "-1", "true 2 6", "16 -4 64 4 19", "7 4"],
 	);
 }
 
@@ -28,51 +32,9 @@ fn narrow_widths() {
 }
 
 #[test]
-fn precedence() {
-	check(
-		indoc! {"
-			print(6 & 4 == 4)
-			print(3 & 1 + 1)
-			print(2 | 6 & 4)
-		"},
-		["true", "2", "6"],
-	);
-}
-
-#[test]
-fn shifts() {
-	check(
-		indoc! {"
-			print(1 << 4)
-			print(-8 >> 1)
-			print(u8.(0b1000_0000) >> 1)
-			print(1 << 3 - 1)
-			print(1 << 4 | 3)
-		"},
-		["16", "-4", "64", "4", "19"],
-	);
-}
-
-#[test]
-fn rejects_floats() {
+fn rejects() {
 	fail("1.5 & 2.0", "bitwise operators need integer operands");
-}
-
-#[test]
-fn rejects_out_of_range_shift() {
 	fail("print(1 << 64)", "shift count 64 is out of range for int (64 bits)");
-}
-
-#[test]
-fn shl_still_appends() {
-	check(
-		indoc! {"
-			a := [1, 2]
-			a << 3
-			print(a)
-		"},
-		"[1, 2, 3]",
-	);
 }
 
 #[test]
@@ -109,19 +71,5 @@ fn overloads() {
 			print((a & bits).bits, (a | bits).bits, (a ~ bits).bits, (a << 2).bits, (a >> 2).bits, (!a).bits)
 		"},
 		["8 14 6 48 3 -13"],
-	);
-}
-
-#[test]
-fn flag_sums() {
-	check(
-		indoc! {"
-			READ :: 0b100
-			WRITE :: 0b010
-			EXEC :: 0b001
-			ALL :: READ | WRITE | EXEC
-			print(ALL, ALL & READ)
-		"},
-		["7 4"],
 	);
 }

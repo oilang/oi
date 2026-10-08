@@ -4,11 +4,6 @@
 use crate::helpers::*;
 
 #[test]
-fn bind_append_drop() {
-	assert_clean(["a := [1, 2, 3]", "a << 4", "print(a)"]);
-}
-
-#[test]
 fn copies_and_cow() {
 	assert_clean(indoc! {"
 		a := [1, 2, 3]
@@ -22,12 +17,13 @@ fn copies_and_cow() {
 
 #[test]
 fn slices() {
-	assert_clean(["a :: [1, 2, 3, 4]", "b :: a[1..3]", "print(b)"]);
-}
-
-#[test]
-fn str_slice_is_leak_free() {
-	assert_clean([r#"s :: "hello""#, "print(s[1..3])"]);
+	assert_clean([
+		"a :: [1, 2, 3, 4]",
+		"b :: a[1..3]",
+		"print(b)",
+		r#"s :: "hello""#,
+		"print(s[1..3])",
+	]);
 }
 
 #[test]
@@ -41,14 +37,18 @@ fn fn_call_and_return() {
 }
 
 #[test]
-fn loop_temp_per_iteration() {
+fn loop_temps_and_binds() {
 	assert_clean(indoc! {"
 		i := 0
 		loop i < 100 {
 			t :: [i, i]
 			i = t[1] + 1
 		}
-		print(i)
+		total := 0
+		loop e in [10, 20, 30] {
+			total = total + e
+		}
+		print(i, total)
 	"});
 }
 
@@ -121,17 +121,6 @@ fn branch_merges() {
 		y :: match 2 { 1 => [9], 2 => [4, 5], else => [0] }
 		print(x)
 		print(y)
-	"});
-}
-
-#[test]
-fn for_loop_element_binds() {
-	assert_clean(indoc! {"
-		total := 0
-		loop e in [10, 20, 30] {
-			total = total + e
-		}
-		print(total)
 	"});
 }
 

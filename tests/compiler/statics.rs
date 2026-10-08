@@ -5,18 +5,23 @@ use crate::helpers::{check, fail};
 
 #[test]
 fn static_is_shared_by_every_fn() {
-	let src = indoc! {"
+	let src = indoc! {r#"
 		counter := 0
+		foo: []int
+		idk := [ "foo" "bar" ]
 
 		bump :: fn() { counter = counter + 1 }
+		peek :: fn() { print(idk) }
 
 		main :: fn() {
 			bump()
 			bump()
-			print(counter)
+			peek()
+			idk << "baz"
+			print(counter, foo.len, idk.len)
 		}
-	"};
-	check(src, "2");
+	"#};
+	check(src, [r#"["foo", "bar"]"#, "2 0 3"]);
 }
 
 #[test]
@@ -46,7 +51,7 @@ fn pub_static_crosses_modules() {
 			"main.oi",
 			[
 				"use mem",
-				"main :: fn() { mem.track(3); mem.track(4); print(mem.used) }",
+				"main :: fn() { mem.track(3); mem.track(4); print(mem.used, mem.RED == mem.E.green) }",
 			],
 		)
 		.file(
@@ -55,9 +60,11 @@ fn pub_static_crosses_modules() {
 				"module mem",
 				"pub used := 0",
 				"pub track :: fn(n: int) { used = used + n }",
+				"pub E :: enum { red green }",
+				"pub RED :: E.green",
 			],
 		)
-		.check("7");
+		.check("7 true");
 }
 
 #[test]
@@ -111,42 +118,6 @@ fn top_level_const_works_alongside_main() {
 		}
 	"#};
 	check(src, ["hi 3 3", "g"]);
-}
-
-#[test]
-fn typed_static_without_init_zeroes() {
-	let src = indoc! {"
-		foo: []int
-		main :: fn() { print(foo.len) }
-	"};
-	check(src, "0");
-}
-
-#[test]
-fn const_enum_variant_crosses_modules() {
-	Project::new()
-		.file("main.oi", ["use mem", "main :: fn() { print(mem.RED == mem.E.green) }"])
-		.file(
-			"mem.oi",
-			["module mem", "pub E :: enum { red green }", "pub RED :: E.green"],
-		)
-		.check("true");
-}
-
-#[test]
-fn array_static_takes_its_element_type_from_its_literal() {
-	let src = indoc! {r#"
-		idk := [ "foo" "bar" ]
-
-		peek :: fn() { print(idk) }
-
-		main :: fn() {
-			peek()
-			idk << "baz"
-			print(idk.len)
-		}
-	"#};
-	check(src, [r#"["foo", "bar"]"#, "3"]);
 }
 
 #[test]

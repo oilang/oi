@@ -1,39 +1,29 @@
 use crate::helpers::*;
 
 #[test]
-fn bind_basic() {
-	check(r#"(foo, bar) :: ("food", "bard"); foo"#, "food");
-	check(r#"(foo, bar) :: ("food", "bard"); bar"#, "bard");
-}
-
-#[test]
-fn bind_from_fn() {
-	let src = indoc! {"
+fn tuple_bind() {
+	let src = indoc! {r#"
 		pair :: fn() (int, int) { (10, 20) }
-		(a, b) :: pair()
-		a + b
-	"};
-	check(src, "30");
-}
-
-#[test]
-fn bind_mut_reassigned() {
-	let src = indoc! {"
+		(foo, bar) :: ("food", "bard")
+		(c, d) :: pair()
 		(a, b) := (1, 2)
 		a = a + b
-		a
-	"};
-	check(src, "3");
+		print(foo, bar, c + d, a)
+		(a, b) = (b, a)
+		print(a)
+		(e, _) :: (1, 2)
+		[_ f] :: [1 2]
+		print(e, f)
+		(a, b)
+	"#};
+	check(src, ["food bard 30 3", "2", "1 2", "(2, 3)"]);
 }
 
 #[test]
-fn swap() {
-	let src = indoc! {"
-		(a, b) := (1, 2)
-		(a, b) = (b, a)
-		a
-	"};
-	check(src, "2");
+fn fail_tuple_bind() {
+	fail("(a, b, c) :: (1, 2)", "fields");
+	fail("(a, b) :: 5", "cannot destructure");
+	fail("(a, b) :: (1, 2)\n(a, b) = (3, 4)", "immutably bound");
 }
 
 #[test]
@@ -50,33 +40,14 @@ fn loose_commas() {
 }
 
 #[test]
-fn bare_tuple_still_expr() {
-	check("(a, b) :: (1, 2)\n(a, b)", "(1, 2)");
-}
-
-#[test]
-fn fail_arity_mismatch() {
-	fail("(a, b, c) :: (1, 2)", "fields");
-}
-
-#[test]
-fn fail_non_tuple() {
-	fail("(a, b) :: 5", "cannot destructure");
-}
-
-#[test]
-fn fail_assign_immutable() {
-	fail("(a, b) :: (1, 2)\n(a, b) = (3, 4)", "immutably bound");
-}
-
-#[test]
 fn struct_bind() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		Point.{ x, y = b } :: Point.{ 1, 2 }
-		x + b
+		Point.{ y = _, x = c } :: Point.{ 1, 2 }
+		x + b + c
 	"};
-	check(src, "3");
+	check(src, "4");
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		Point.{ x } := Point.{ 1, 2 }
@@ -105,16 +76,6 @@ fn array_bind() {
 		x
 	"};
 	check(src, "8");
-}
-
-#[test]
-fn skip_underscore() {
-	check("(a, _) :: (1, 2)\na", "1");
-	check("[_ b] :: [1 2]\nb", "2");
-	check(
-		"Point :: struct { x: int, y: int }\nPoint.{ y = _, x } :: Point.{ 1, 2 }\nx",
-		"1",
-	);
 }
 
 #[test]

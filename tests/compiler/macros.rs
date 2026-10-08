@@ -59,21 +59,6 @@ fn macro_shares_a_name_with_a_value() {
 }
 
 #[test]
-fn module_fn_body_uses_a_sibling_macro() {
-	Project::new()
-		.file("main.oi", ["module main", "use util", "print(util.f())"])
-		.file(
-			"util/lib.oi",
-			[
-				"module util",
-				"pub say! :: fn(n: Ast) Ast { `%n * 2` }",
-				"pub f :: fn() int { say!(21) }",
-			],
-		)
-		.check("42");
-}
-
-#[test]
 fn macro_run_error_is_a_diagnostic() {
 	let src = indoc! {r"
 		grow! :: fn(n: Ast) Ast { `%{n.int() + 1}` }
@@ -88,12 +73,21 @@ fn bare_call_suggests_macro() {
 }
 
 #[test]
-fn template_macro_in_expr_position() {
+fn template_macros() {
 	let src = indoc! {"
 		twice! :: fn(x: Ast) Ast { `%x + %x` }
-		twice!(4)
+		incr! :: fn(n: Ast) Ast { `%n + 1` }
+		setup! :: fn(n: Ast) Ast { `%n := 42` }
+		shape! :: fn() Ast {
+			`Point :: struct { x: int, y: int }`
+		}
+		shape!()
+		setup!(x)
+		p := Point.{ x = 1, y = 2 }
+		print(twice!(4), x, p.x + p.y)
+		incr! 4
 	"};
-	check(src, "8");
+	check(src, ["8 42 3", "5"]);
 }
 
 #[test]
@@ -111,44 +105,12 @@ fn template_macro_is_hygienic() {
 }
 
 #[test]
-fn binder_unquote_deliberately_captures() {
-	let src = indoc! {"
-		setup! :: fn(n: Ast) Ast { `%n := 42` }
-		setup!(x)
-		x
-	"};
-	check(src, "42");
-}
-
-#[test]
-fn template_macro_statement_form() {
-	let src = indoc! {"
-		incr! :: fn(n: Ast) Ast { `%n + 1` }
-		incr! 4
-	"};
-	check(src, "5");
-}
-
-#[test]
 fn template_macro_wrong_arity_fails() {
 	let src = indoc! {"
 		twice! :: fn(x: Ast) Ast { `%x + %x` }
 		twice!(1, 2)
 	"};
 	fail(src, "expects 1 argument(s), got 2");
-}
-
-#[test]
-fn macro_expands_to_an_item() {
-	let src = indoc! {"
-		shape! :: fn() Ast {
-			`Point :: struct { x: int, y: int }`
-		}
-		shape!()
-		p := Point.{ x = 1, y = 2 }
-		p.x + p.y
-	"};
-	check(src, "3");
 }
 
 #[test]
@@ -164,16 +126,6 @@ fn comptime_loop_builds_ast() {
 				}
 				acc
 			}
-			print(unroll!(3, 5))
-		"},
-		"15",
-	);
-}
-
-#[test]
-fn comptime_recursion_through_quotes() {
-	check(
-		indoc! {r"
 			tri! :: fn(n: Ast) Ast {
 				m := n.int()
 				if m <= 1 { `1` } else {
@@ -181,24 +133,14 @@ fn comptime_recursion_through_quotes() {
 					`%n + tri!(%k)`
 				}
 			}
-			print(tri!(4))
-		"},
-		"10",
-	);
-}
-
-#[test]
-fn macros_call_macros_directly() {
-	check(
-		indoc! {r"
 			one! :: fn() Ast { `1` }
 			wrap! :: fn(x: Ast) Ast {
 				y := one!()
 				`%x + %y`
 			}
-			print(wrap!(4))
+			print(unroll!(3, 5), tri!(4), wrap!(4))
 		"},
-		"5",
+		"15 10 5",
 	);
 }
 
@@ -215,11 +157,16 @@ fn macro_ret_must_be_ast() {
 fn quotes_in_comp() {
 	check(
 		indoc! {"
+			use math
 			double :: fn(x: Ast) Ast { `%x * 2` }
 			dub! :: fn(x: Ast) Ast { double(x) }
-			print(dub!(3))
+			five! :: fn() Ast {
+				v := math.abs(0 - 5)
+				`%v`
+			}
+			print(dub!(3), five!())
 		"},
-		"6",
+		"6 5",
 	);
 	check(
 		indoc! {"
@@ -250,58 +197,39 @@ fn unquote_lifts_primitives() {
 					print(%f)
 				}`
 			}
-			mk!()
-		"#},
-		["hi", "2.5"],
-	);
-}
-
-#[test]
-fn unquote_expr_splices_int_result() {
-	check(
-		indoc! {r"
 			xten! :: fn(x: Ast) Ast { `%x + %{x.int() * 10}` }
-			print(xten!(4))
-		"},
-		"44",
-	);
-}
-
-#[test]
-fn unquote_expr_nesting() {
-	check(
-		indoc! {r"
 			dub! :: fn(x: Ast) Ast { `1 + %{`%x * 2`}` }
-			print(dub!(3))
-		"},
-		"7",
+			mk!()
+			print(xten!(4), dub!(3))
+		"#},
+		["hi", "2.5", "44 7"],
 	);
 }
 
 #[test]
-fn splat_spreads_into_call_args() {
+fn splat_positions() {
 	check(
-		indoc! {r"
+		indoc! {r#"
 			add3 :: fn(a: int, b: int, c: int) int { a + b + c }
 			sum! :: fn(xs: Ast) Ast { `add3(%{..xs.items})` }
-			print(sum!([1, 2, 3]))
-		"},
-		"6",
-	);
-}
-
-#[test]
-fn splat_spreads_into_statements() {
-	check(
-		indoc! {r"
 			noisy! :: fn() Ast {
 				xs := [`print(1)`, `print(2)`]
 				`%{..xs}`
 			}
+			def! :: fn(t: Ast) Ast {
+				ps := [`%{ident("a")}: %t`, `%{ident("b")}: %t`]
+				`%{ident("add")} :: fn(%{..ps}) %t { a + b }`
+			}
+			pair! :: fn() Ast {
+				fs := [`x: int`, `y: int`]
+				`P :: struct { %{..fs} }`
+			}
 			noisy!()
-			print(3)
-		"},
-		["1", "2", "3"],
+			def!(int)
+			pair!()
+			print(sum!([1, 2, 3]), add(1, 2), P.{ 1, 2 }.y)
+		"#},
+		["1", "2", "6 3 2"],
 	);
 }
 
@@ -328,44 +256,18 @@ fn splat_spreads_into_a_claim_body() {
 }
 
 #[test]
-fn ident_compares_with_str() {
+fn introspects_names_and_items() {
 	check(
 		indoc! {r#"
 			pick! :: fn(t: Ast) Ast { if t == "Hash" { `1` } else { `2` } }
-			print(pick!(Hash))
-			print(pick!(Debug))
-		"#},
-		["1", "2"],
-	);
-}
-
-#[test]
-fn ident_names_generated_code() {
-	check(
-		indoc! {r#"
-			def! :: fn() Ast {
-				n := ident("seven")
-				`%n :: fn() int { 7 }`
+			shape! :: fn() Ast {
+				s := `Pt :: struct { x: int, y: int, z: int }`
+				fs := s.items
+				if s.name == "Pt" { `%{fs.len}` } else { `0` }
 			}
-			def!()
-			print(seven())
+			print(pick!(Hash), pick!(Debug), shape!())
 		"#},
-		"7",
-	);
-}
-
-#[test]
-fn unquote_expr_names_a_binder() {
-	check(
-		indoc! {r#"
-			def! :: fn() Ast {
-				s := "x"
-				`%{ident("get_" + s)} :: fn() int { 7 }`
-			}
-			def!()
-			print(get_x())
-		"#},
-		"7",
+		"1 2 3",
 	);
 }
 
@@ -382,76 +284,32 @@ fn ast_str_reads_names_and_literals() {
 }
 
 #[test]
-fn name_reads_a_def() {
-	check(
-		indoc! {r#"
-			shape! :: fn() Ast {
-				s := `P :: struct { x: int }`
-				if s.name == "P" { `1` } else { `0` }
-			}
-			print(shape!())
-		"#},
-		"1",
-	);
-}
-
-#[test]
-fn items_list_struct_fields() {
-	check(
-		indoc! {r"
-			shape! :: fn() Ast {
-				s := `Pt :: struct { x: int, y: int, z: int }`
-				fs := s.items
-				`%{fs.len}`
-			}
-			print(shape!())
-		"},
-		"3",
-	);
-}
-
-#[test]
-fn macro_body_calls_an_imported_fn() {
-	check(
-		indoc! {r"
-			use math
-			five! :: fn() Ast {
-				v := math.abs(0 - 5)
-				`%v`
-			}
-			print(five!())
-		"},
-		"5",
-	);
-}
-
-#[test]
-fn qualified_macro_call_resolves_module_locally() {
+fn qualified_macros() {
 	Project::new()
-		.file("main.oi", ["module main", "use util", "print(util.answer!())"])
+		.file(
+			"main.oi",
+			[
+				"module main",
+				"use util",
+				"print(util.answer!(), util.f())",
+				"util.say! 6",
+			],
+		)
 		.file(
 			"util/lib.oi",
 			[
 				"module util",
 				"helper :: fn() int { 40 }",
+				"pub say! :: fn(n: Ast) Ast { `print(%n)` }",
+				"pub twice! :: fn(n: Ast) Ast { `%n * 2` }",
+				"pub f :: fn() int { twice!(21) }",
 				"pub answer! :: fn() Ast {",
 				"v := helper() + 2",
 				"`%v`",
 				"}",
 			],
 		)
-		.check("42");
-}
-
-#[test]
-fn qualified_macro_statement_form() {
-	Project::new()
-		.file("main.oi", ["module main", "use util", "util.say! 6"])
-		.file(
-			"util/lib.oi",
-			["module util", "pub say! :: fn(n: Ast) Ast { `print(%n)` }"],
-		)
-		.check("6");
+		.check(["42 42", "6"]);
 }
 
 #[test]
@@ -477,21 +335,6 @@ fn quote_pattern_matches_and_captures() {
 			print(flip!(42))
 		"},
 		["-6", "42"],
-	);
-}
-
-#[test]
-fn splat_spreads_into_params() {
-	check(
-		indoc! {r#"
-			def! :: fn(t: Ast) Ast {
-				ps := [`%{ident("a")}: %t`, `%{ident("b")}: %t`]
-				`%{ident("add")} :: fn(%{..ps}) %t { a + b }`
-			}
-			def!(int)
-			print(add(1, 2))
-		"#},
-		"3",
 	);
 }
 
@@ -543,22 +386,6 @@ fn splat_updates_param_tuple_for_dollar() {
 			print(sum(1, 2))
 		"},
 		"3",
-	);
-}
-
-#[test]
-fn splat_spreads_into_fields() {
-	check(
-		indoc! {r"
-			pair! :: fn() Ast {
-				fs := [`x: int`, `y: int`]
-				`P :: struct { %{..fs} }`
-			}
-			pair!()
-			p := P.{ 1, 2 }
-			print(p.y)
-		"},
-		"2",
 	);
 }
 

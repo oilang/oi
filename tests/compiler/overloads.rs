@@ -1,21 +1,7 @@
 use crate::helpers::*;
 
 #[test]
-fn struct_op_dispatches() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point : Add < {
-			add :: fn(self, other: Self) Self {
-				Self.{ self.x + other.x, self.y + other.y }
-			}
-		}
-		print(Point.{1, 0} + .{2, 3})
-	"};
-	check(src, "Point.{x = 3, y = 3}");
-}
-
-#[test]
-fn eq_dispatches_to_the_fill() {
+fn struct_ops_dispatch_to_the_fill() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		Point : Add < {
@@ -26,10 +12,14 @@ fn eq_dispatches_to_the_fill() {
 		Point : Eq < {
 			eq :: fn(self, other: Self) bool { self.x == other.x && self.y == other.y }
 		}
+		Point : Neg < {
+			neg :: fn(self) Self { Self.{ -self.x, -self.y } }
+		}
 		assert!(Point.{1, 0} + Point.{2, 3} == Point.{3, 3})
-		print(Point.{1, 0} != .{1, 0})
+		print(Point.{1, 0} + .{2, 3})
+		print(Point.{1, 0} != .{1, 0}, -Point.{1, 2})
 	"};
-	check(src, "false");
+	check(src, ["Point.{x = 3, y = 3}", "false Point.{x = -1, y = -2}"]);
 }
 
 #[test]
@@ -53,34 +43,13 @@ fn eq_is_structural_by_default() {
 		a := Rec.{1, "hi", 1.5, Inner.{2}}
 		b := Rec.{1, "hi", 1.5, Inner.{2}}
 		c := Rec.{1, "hi", 1.5, Inner.{3}}
-		print(a == b)
-		print(a != c)
-	"#};
-	check(src, ["true", "true"]);
-}
-
-#[test]
-fn claimed_eq_beats_the_structural_default() {
-	let src = indoc! {"
 		Frac :: struct { num: int, den: int }
 		Frac : Eq < {
 			eq :: fn(self, other: Self) bool { self.num * other.den == other.num * self.den }
 		}
-		print(Frac.{1, 2} == Frac.{2, 4})
-	"};
-	check(src, "true");
-}
-
-#[test]
-fn neg_dispatches_to_the_fill() {
-	let src = indoc! {"
-		Point :: struct { x: int, y: int }
-		Point : Neg < {
-			neg :: fn(self) Self { Self.{ -self.x, -self.y } }
-		}
-		print(-Point.{1, 2})
-	"};
-	check(src, "Point.{x = -1, y = -2}");
+		print(a == b, a != c, Frac.{1, 2} == Frac.{2, 4})
+	"#};
+	check(src, "true true true");
 }
 
 #[test]
@@ -147,19 +116,12 @@ fn enum_claims_beat_structural_defaults() {
 		Rev :: enum { a, b }
 		Rev : Eq < { eq :: fn(self, other: Self) bool { true } }
 		Rev : Ord < { lt :: fn(self, other: Self) bool { true } }
-		print(Rev.a == Rev.b, Rev.b < Rev.a)
-	"};
-	check(src, "true true");
-}
-
-#[test]
-fn enum_payloads_compare_structurally() {
-	let src = indoc! {"
 		P :: struct { x: int }
 		E :: enum { a(P), b }
+		print(Rev.a == Rev.b, Rev.b < Rev.a)
 		print(E.a.(P.{1}) == E.a.(P.{1}), E.a.(P.{1}) == E.a.(P.{2}))
 	"};
-	check(src, "true false");
+	check(src, ["true true", "true false"]);
 }
 
 #[test]
