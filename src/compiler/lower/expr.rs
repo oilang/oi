@@ -157,7 +157,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let out = match self.own_field(&typ, role::NEG) {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(_) => self.b.ins().fneg(v),
-					t @ (Typ::Struct(..) | Typ::Enum(_)) => match self.fill(t, role::NEG, "neg", 1) {
+					t if t.nominal().is_some() => match self.fill(t, role::NEG, "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
@@ -212,7 +212,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let v = self.b.ins().bnot(v);
 						self.narrow(v, t)
 					}
-					t @ (Typ::Struct(..) | Typ::Enum(_)) => match self.fill(t, role::NOT, "not", 1) {
+					t if t.nominal().is_some() => match self.fill(t, role::NOT, "not", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return Err(

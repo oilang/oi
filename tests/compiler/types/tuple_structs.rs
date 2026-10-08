@@ -313,3 +313,21 @@ fn ops_stay_closed_outside() {
 		"cannot apply `*` to Money",
 	);
 }
+
+#[test]
+fn unary_claims_dispatch() {
+	check(
+		indoc! {"
+			Flag :: struct (bool)
+			Flag : Not < {
+				not :: fn(self) Self { Flag(!self.0) }
+			}
+			Money :: struct (int)
+			Money : Neg < {
+				neg :: fn(self) Self { Money(-self.0) }
+			}
+			print((-Money(5)).0, (!Flag(true)).0)
+		"},
+		"-5 false",
+	);
+}
