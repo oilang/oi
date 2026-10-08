@@ -40,6 +40,35 @@ fn question_step() {
 }
 
 #[test]
+fn or_catches_question_steps() {
+	let src = indoc! {r#"
+		find :: fn(id: int) ?int {
+			if id == 7 { return 42 }
+			return none
+		}
+		load :: fn(id: int) !int {
+			if id > 0 { return id }
+			return error("missing {id}")
+		}
+		show :: fn(id: int) int { find(id)? |> $ * 2 or -1 }
+		both :: fn(id: int) int { id |> load? |> { load($ - 2)? } or { print($); 0 } }
+		inner :: fn(id: int) int { id |> fn (x: int) ?int { find(x)? + 1 } or 0 }
+		print(show(7), show(1), both(3), both(1), inner(7), inner(1))
+	"#};
+	check(src, ["84 -1 1 missing -1", "0 43 0"]);
+}
+
+#[test]
+fn wrapped_head_hints_unwrap() {
+	let src = indoc! {"
+		double :: fn(x: int) int { x * 2 }
+		maybe :: fn() ?int { 1 }
+		maybe() |> double
+	"};
+	fail(src, "add `?` to unwrap the head");
+}
+
+#[test]
 fn or_tail_after_chain() {
 	let src = indoc! {r#"
 		find :: fn(id: int) ?int {

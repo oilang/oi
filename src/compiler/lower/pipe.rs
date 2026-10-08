@@ -28,10 +28,20 @@ impl<M: Module> Translator<'_, M> {
 		}
 		let Some(head_params) = self.head_fn_sig(head)? else {
 			let fed = self.expr(value)?;
+			let wrapped = match &step.0 {
+				Expr::Call { name, .. } if !matches!(value.0, Expr::Pipe { .. }) => {
+					let first = self.callable(name).and_then(|(ps, _)| ps.into_iter().next());
+					first.is_some() && first == self.types.happy(&fed.1)
+				}
+				_ => false,
+			};
 			let saved = self.dollar.replace(fed);
 			let out = self.apply_step(step);
 			self.dollar = saved;
-			return out;
+			return out.map_err(|d| match wrapped {
+				true => d.with_note("add `?` to unwrap the head"),
+				false => d,
+			});
 		};
 		let mut params = Vec::with_capacity(head_params.len());
 		for (i, typ) in head_params.iter().enumerate() {

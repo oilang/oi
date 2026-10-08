@@ -2189,6 +2189,14 @@ main :: fn() {
 	"gtfo" |> process or { panic!("uh oh...") }
 	"err binding" |> raise_err |> or { log.error($) }
 
+	# a pipeline is a try scope, a `?` in any step or the head goes to its `or`
+	# without an `or`, or inside a nested `fn`, `?` returns as usual
+	text := path |> { read($)? } or default()
+
+	# a wrapped head is a plain value, unwrap it first
+	maybe |> double # error: `double` takes `int`, not `?int`
+	maybe? |> double or 0
+
 	# you can specify params
 	# to a name when nesting to avoid ambiguity
 	"foo" |> fn (outer) {

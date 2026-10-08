@@ -2056,6 +2056,7 @@ impl<M: Module> Compiler<M> {
 			vars: Default::default(),
 			params: vec![],
 			dollar: None,
+			catch: None,
 			module: &mut self.module,
 			funcs,
 			types: types.with_consts(Consts {

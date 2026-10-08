@@ -21,6 +21,13 @@ impl Join {
 	}
 }
 
+// An `or` fallback, and its payload once something throws.
+pub(crate) struct Catch {
+	block: Block,
+	depth: usize,
+	err: Option<(Variable, Typ)>,
+}
+
 // A header bind is a test only when its pattern can fail, otherwise it just binds.
 fn infallible(cond: &Expr) -> bool {
 	match cond {
@@ -430,33 +437,52 @@ impl<'a, M: Module> Translator<'a, M> {
 		body: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (val, typ) = self.expr(value)?;
-		let Some((inner, err)) = self.fallible_split(&typ) else {
-			return fail(
-				format!("`or` needs a `?T`/`!T` value, got {typ}"),
-				value.1,
-				"not an Option or Result",
-			);
+		let mut catch = Catch {
+			block: self.b.create_block(),
+			depth: self.scopes.len(),
+			err: None,
 		};
 
-		let tag = self.enum_tag(&typ, val);
-		let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+		// a pipeline is a try scope, with its `?` steps landing here
+		let lowered = if let Expr::Pipe { .. } = value.0 {
+			let outer = self.catch.replace(catch);
+			let lowered = self.expr(value);
+			catch = std::mem::replace(&mut self.catch, outer).expect("set above");
+			lowered
+		} else {
+			self.expr(value)
+		};
 
-		let (happy_block, fallback_block) = self.fork(is_happy);
+		let (val, typ) = lowered?;
+		let (payload, inner) = match self.fallible_split(&typ) {
+			Some((inner, err)) => {
+				let tag = self.enum_tag(&typ, val);
+				let is_happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+				let (happy_block, sad_block) = self.fork(is_happy);
+				self.b.switch_to_block(sad_block);
+				let err = match err {
+					Some(e) => (self.ld_typ(val, 8, &e), e),
+					None => self.unit_value(),
+				};
+				self.throw(&mut catch, err, value.1)?;
+				self.b.switch_to_block(happy_block);
+				(self.opt_payload(val, &typ, &inner, 8), inner)
+			}
+			None if catch.err.is_some() => (val, typ),
+			None => {
+				let msg = format!("`or` needs a `?T`/`!T` value, got {typ}");
+				return fail(msg, value.1, "not an Option or Result");
+			}
+		};
 		let merge = self.b.create_block();
 		let mut join = Join::new("or", span, None);
-
-		self.b.switch_to_block(happy_block);
-		let payload = self.opt_payload(val, &typ, &inner, 8);
 		let payload = self.copy_bind(payload, &inner);
 		self.contribute((payload, inner.clone()), &mut join, merge)?;
 
-		self.b.switch_to_block(fallback_block);
-		let saved_dollar = self.dollar.take();
-		self.dollar = Some(match err {
-			Some(err) => (self.ld_typ(val, 8, &err), err),
-			None => self.unit_value(),
-		});
+		self.b.switch_to_block(catch.block);
+		self.b.seal_block(catch.block);
+		let (var, err) = catch.err.expect("every path here threw");
+		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
 		let flow = self.scoped(|s| s.block_tail(body, Some(&inner)))?;
 		self.dollar = saved_dollar;
 		if let Some(vt) = flow {
@@ -464,6 +490,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
+	}
+
+	// Jump to an `or` fallback, the first throw pins `$`.
+	fn throw(&mut self, catch: &mut Catch, (v, t): TypedVal, span: Span) -> Result<(), Diagnostic> {
+		let (var, want) = catch
+			.err
+			.get_or_insert_with(|| (self.b.declare_var(cl_type(&t, self.int)), t.clone()))
+			.clone();
+		let (v, got) = self.coerce(v, &t, &want, span)?;
+		if got != want {
+			return fail(format!("cannot catch {t} as {want}"), span, "mismatched error type");
+		}
+		self.release_scopes(catch.depth, None)?;
+		self.b.def_var(var, v);
+		self.b.ins().jump(catch.block, &[]);
+		Ok(())
 	}
 
 	// Check that error `from` can flow into `to`, returning the `From` conversion it needs, if any.
@@ -579,7 +621,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let panic_in_main = self.ret.is_none() && self.is_main;
 		let mut target_err = err_typ.clone();
 		let mut from = None;
-		let declared = self.ret.as_ref().map(|(t, _)| t.clone());
+		let declared = self.ret.as_ref().filter(|_| self.catch.is_none()).map(|(t, _)| t.clone());
 		let target = match &declared {
 			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
 				from = self.err_into(
@@ -609,7 +651,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (happy_block, sad_block) = self.fork(is_happy);
 
 		self.b.switch_to_block(sad_block);
-		if panic_in_main {
+		if let Some(mut catch) = self.catch.take() {
+			let err = match is_result {
+				true => (self.ld_word(val, 8), err_typ.clone()),
+				false => self.unit_value(),
+			};
+			self.throw(&mut catch, err, span)?;
+			self.catch = Some(catch);
+		} else if panic_in_main {
 			let msg = if is_result {
 				let e = self.ld_word(val, 8);
 				self.derived_str(e, &err_typ, false)
