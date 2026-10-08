@@ -8,15 +8,15 @@ use cranelift::prelude::*;
 use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleError};
 
 use super::{
-	CTX, FieldDef, FnParam, FnSig, GenericEnumDef, GenericFnDef, GenericStructDef, Generics, Local, LoopFrame, Pending,
-	Typ, TypeCtx, VariantInfo, access_of, access_peel, access_wrap, ann_names, builtin_claim, c_layout, check_ann_typ,
-	check_c_sig, check_reserved, cl_int_for_width, cl_type, display_name, elem_size, embeds, enum_boxed, enum_slots,
-	has_ann, is_c_struct, is_range, mentions, oi_symbol, param_cl, role, sugar, sum_remap, trait_fns, type_expr,
-	typeid,
+	Artifacts, CTX, FieldDef, FnParam, FnSig, GenericEnumDef, GenericFnDef, GenericStructDef, Generics, Local,
+	LoopFrame, Typ, TypeCtx, VariantInfo, World, access_of, access_peel, access_wrap, ann_names, builtin_claim,
+	c_layout, check_ann_typ, check_c_sig, check_reserved, cl_int_for_width, cl_type, display_name, elem_size, embeds,
+	enum_boxed, enum_slots, has_ann, is_c_struct, is_range, mentions, oi_symbol, param_cl, role, sugar, sum_remap,
+	trait_fns, type_expr, typeid,
 };
-use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam, place};
-use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
-use crate::loader::{Publics, Scope, module_of};
+use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, place};
+use crate::diagnostics::{Diagnostic, arity_err, fail, unknown_member};
+use crate::loader::{Scope, module_of};
 use crate::runtime;
 
 mod anon;
@@ -50,28 +50,10 @@ pub(super) struct Translator<'a, M: Module> {
 	pub module: &'a mut M,
 	pub funcs: &'a HashMap<String, FnSig>,
 	pub types: TypeCtx<'a>,
-	pub generic_fns: &'a HashMap<String, GenericFnDef>,
-	pub trait_impls: &'a HashSet<(String, String)>,
-	pub generic_claims: &'a HashMap<(String, String), Vec<TypeParam>>,
-	pub core_traits: &'a HashSet<String>,
-	pub module_scopes: &'a HashMap<String, Scope>,
-	pub map: &'a SourceMap,
-	pub publics: &'a Publics,
-	pub core_origin: &'a HashSet<String>,
-	pub privates: &'a HashMap<String, HashSet<String>>,
-	pub reexports: &'a HashMap<String, String>,
-	pub statics: &'a HashMap<String, (String, Typ)>,
-	pub mono: &'a mut HashMap<String, FnSig>,
-	pub pending: &'a mut Vec<Pending>,
-	pub wanted: &'a mut Vec<FuncId>,
-	pub roots: &'a mut Vec<String>,
+	pub world: &'a World,
+	pub out: &'a mut Artifacts,
 	pub c_callback: bool,
 	pub comptime: bool,
-	pub printers: &'a mut Vec<(String, Typ, bool, runtime::Sink)>,
-	pub any_types: &'a mut Vec<Typ>,
-	pub descs: &'a mut HashMap<String, DataId>,
-	pub string_idx: &'a mut usize,
-	pub atoms: &'a mut HashSet<String>,
 	pub ret: Option<(Typ, Span)>,
 	pub loops: Vec<LoopFrame>,
 	pub unsafely: usize,

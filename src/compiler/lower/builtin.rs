@@ -112,7 +112,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The call site as a `Src`.
 	pub(super) fn src_lit(&mut self, span: Span) -> Result<TypedVal, Diagnostic> {
-		let (file, line, ..) = self.map.locate_span(span.into_range());
+		let (file, line, ..) = self.world.map.locate_span(span.into_range());
 		let field = |n: &str, e| (Some(n.to_string()), (e, span));
 		let fields = [
 			field("file", Expr::String(file.to_string())),
@@ -302,7 +302,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().iconst(self.int, typeid(target))
 		} else {
 			let tn = if let Typ::Trait(tn) = typ { tn } else { role::ERROR };
-			if !self.trait_impls.contains(&(target.key(), tn.to_string())) {
+			if !self.world.trait_impls.contains(&(target.key(), tn.to_string())) {
 				return Ok(Some((none, opt)));
 			}
 			self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())))

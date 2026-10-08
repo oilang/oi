@@ -3,15 +3,10 @@ use std::borrow::Cow;
 use super::*;
 
 impl<'a, M: Module> Translator<'a, M> {
-	// The named types in scope.
-	pub(super) fn types(&self) -> TypeCtx<'a> {
-		self.types
-	}
-
 	// The scope of the file a fn was written in.
 	pub(super) fn home_scope(&self, def: &GenericFnDef) -> &'a Scope {
 		let module = &def.module;
-		self.module_scopes[if module.is_empty() { "main" } else { module }].at(def.span)
+		self.world.module_scopes[if module.is_empty() { "main" } else { module }].at(def.span)
 	}
 
 	// Qualify a bare top-level name against the module's own items.
@@ -59,7 +54,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = rc::base_name(typ);
 		let owner = module_of(def).unwrap_or_default();
-		if owner == self.types.scope.module || !self.privates.get(def).is_some_and(|ms| ms.contains(member)) {
+		if owner == self.types.scope.module || !self.world.privates.get(def).is_some_and(|ms| ms.contains(member)) {
 			return Ok(());
 		}
 		let msg = format!("`{member}` is private to module `{owner}`");
@@ -237,20 +232,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some(Typ::Struct(sn, fs)) => {
 				self.struct_field(&sn, &fs, name, e.1).is_ok()
 					|| self.funcs.contains_key(&format!("{sn}.{name}"))
-					|| self.generic_fns.contains_key(&format!("{}.{name}", rc::base_name(&sn)))
+					|| self.world.generic_fns.contains_key(&format!("{}.{name}", rc::base_name(&sn)))
 			}
 			Some(_) => false,
 			None => match self.import_item(&Expr::Ident(s.to_string()), name, e.1) {
 				Ok(Some((m, t))) => {
 					let key = format!("{m}::{t}");
-					self.publics
-						.is_visible(self.reexports.get(&key).unwrap_or(&key), &self.types.scope.module)
+					self.world
+						.publics
+						.is_visible(self.world.reexports.get(&key).unwrap_or(&key), &self.types.scope.module)
 				}
 				_ => {
 					let key = format!("{}.{name}", self.qualify(s));
 					self.funcs.contains_key(&key)
-						|| self.generic_fns.contains_key(&key)
-						|| matches!(self.types().resolve(&TypeExpr::Name(s.to_string()), e.1),
+						|| self.world.generic_fns.contains_key(&key)
+						|| matches!(self.types.resolve(&TypeExpr::Name(s.to_string()), e.1),
 							Ok(Typ::Enum(n)) if self.enum_variants(&n).iter().any(|v| v.name == *name))
 				}
 			},
@@ -284,6 +280,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A static reads and writes through its cell.
 	pub fn seed_statics(&mut self, inits: &[(String, Span, Option<Spanned<Expr>>)]) -> Result<(), Diagnostic> {
 		let cells: Vec<_> = self
+			.world
 			.statics
 			.iter()
 			.map(|(k, (s, t))| (k.clone(), s.clone(), t.clone()))

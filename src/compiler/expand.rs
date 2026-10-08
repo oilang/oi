@@ -220,7 +220,7 @@ impl Expander {
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
 		compiler.stage0 = true;
-		compiler.roots = self.macros.keys().cloned().collect();
+		compiler.out.roots = self.macros.keys().cloned().collect();
 		compiler.compile(&synthetic)?;
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);

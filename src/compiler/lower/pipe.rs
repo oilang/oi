@@ -107,7 +107,7 @@ impl<M: Module> Translator<'_, M> {
 	fn head_fn_sig(&self, head: &Spanned<Expr>) -> Result<Option<Vec<Typ>>, Diagnostic> {
 		let name = match &head.0 {
 			Expr::AnonFn { params, ret, .. } if ret.is_some() => {
-				let types = self.types();
+				let types = self.types;
 				let params = params.iter().map(|p| types.resolve(&p.typ, p.span));
 				return Ok(Some(params.collect::<Result<_, _>>()?));
 			}
@@ -117,7 +117,7 @@ impl<M: Module> Translator<'_, M> {
 		if let Some((params, _)) = self.callable(name) {
 			return Ok(Some(params));
 		}
-		if self.vars.contains_key(name) || !self.generic_fns.contains_key(self.qualify(name).as_ref()) {
+		if self.vars.contains_key(name) || !self.world.generic_fns.contains_key(self.qualify(name).as_ref()) {
 			return Ok(None);
 		}
 		let msg = format!("cannot compose a generic function `{name}`");

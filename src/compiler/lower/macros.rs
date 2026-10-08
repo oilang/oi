@@ -145,8 +145,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		match name {
 			"dbg" => {
 				let (val, typ) = self.expr(&args[0])?;
-				let (file, line, col, _) = self.map.locate_span(span.into_range());
-				let snippet = self.map.locate_span(args[0].1.into_range()).3;
+				let (file, line, col, _) = self.world.map.locate_span(span.into_range());
+				let snippet = self.world.map.locate_span(args[0].1.into_range()).3;
 				self.write_lit(&format!("[{file}:{line}:{col}] {snippet} = "), runtime::Sink::Err);
 				let recv = format!("$dbg{}", self.vars.len());
 				self.hidden_local(recv.clone(), val, typ.clone());
@@ -167,7 +167,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"assert" => {
 				let cond = self.bool_value(&args[0], "`assert!` condition")?;
 				// the failure message defaults to the condition's source
-				let snippet = self.map.locate_span(args[0].1.into_range()).3;
+				let snippet = self.world.map.locate_span(args[0].1.into_range()).3;
 				let msg = self.msg_arg(name, args.get(1), snippet)?;
 
 				let (ok_block, fail_block) = self.fork(cond);

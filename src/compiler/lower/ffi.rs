@@ -38,7 +38,7 @@ impl<M: Module> Translator<'_, M> {
 		self.require_unsafe(if read { "ptr.read" } else { "ptr.write" }, span)?;
 		match (read, recv, type_args, args) {
 			(true, Some(c), [(te, ts)], []) => {
-				let typ = self.types().resolve(te, *ts)?;
+				let typ = self.types.resolve(te, *ts)?;
 				if self.oi_fields(&typ).is_some() {
 					return Ok((self.copy_in(c, &typ), typ));
 				}
@@ -79,7 +79,7 @@ impl<M: Module> Translator<'_, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		self.require_unsafe(&format!("{} cast", display_name(name)), span)?;
-		let typ = self.types().resolve(&TypeExpr::Name(name.to_string()), span)?;
+		let typ = self.types.resolve(&TypeExpr::Name(name.to_string()), span)?;
 		let (sig, bare) = match &typ {
 			Typ::Annotated(_, inner) => (&**inner, true),
 			t => (t, false),
@@ -94,7 +94,7 @@ impl<M: Module> Translator<'_, M> {
 			let label = format!("`{}` would cross as a cell", p.typ);
 			return fail(msg, span, label);
 		}
-		let want = self.types().resolve(&TypeExpr::Name(role::PTR.into()), span)?;
+		let want = self.types.resolve(&TypeExpr::Name(role::PTR.into()), span)?;
 		let addr = self.check_typed(arg, &want, "not a `ptr`")?;
 		let val = if bare { addr } else { self.fn_cell(addr) };
 		Ok((val, typ))

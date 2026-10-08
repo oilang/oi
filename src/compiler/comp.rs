@@ -219,7 +219,7 @@ fn fold(
 		.map(|(k, v)| (k.clone(), v.clone()))
 		.collect();
 	let mut compiler = stage0.take().unwrap_or_default();
-	compiler.roots = vec![name.clone()];
+	compiler.out.roots = vec![name.clone()];
 	compiler.stage0 = true;
 	let entry = compiler.compile(&synthetic)?;
 	unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };

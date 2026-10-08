@@ -121,7 +121,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			false => args,
 		};
-		self.wanted.push(id);
+		self.out.wanted.push(id);
 		let func = self.module.declare_func_in_func(id, self.b.func);
 		let call = self.b.ins().call(func, args);
 		(!unit).then(|| self.b.inst_results(call)[0])
@@ -135,7 +135,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		type_args: &[Spanned<TypeExpr>],
 		span: Span,
 	) -> Result<(), Diagnostic> {
-		match type_args.is_empty() || self.generic_fns.contains_key(key) {
+		match type_args.is_empty() || self.world.generic_fns.contains_key(key) {
 			true => Ok(()),
 			false => fail(format!("`{name}` is not generic"), span, "unexpected type arguments"),
 		}
@@ -178,9 +178,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let key = format!("{module}::{method}");
-		let key = self.reexports.get(&key).cloned().unwrap_or(key);
-		let known = self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key);
-		if !self.publics.is_visible(&key, &self.types.scope.module) {
+		let key = self.world.reexports.get(&key).cloned().unwrap_or(key);
+		let known = self.funcs.contains_key(&key) || self.world.generic_fns.contains_key(&key);
+		if !self.world.publics.is_visible(&key, &self.types.scope.module) {
 			let (msg, label) = if known {
 				(format!("`{method}` is private to module `{module}`"), "not public")
 			} else {
@@ -190,13 +190,13 @@ impl<'a, M: Module> Translator<'a, M> {
 				)
 			};
 			let d = Diagnostic::new(msg, span.into_range()).with_label(label);
-			return Err(crate::loader::shadow_note(d, module, self.core_origin));
+			return Err(crate::loader::shadow_note(d, module, &self.world.core_origin));
 		}
 		self.check_type_args(method, &key, type_args, span)?;
 		if let Some(sig) = self.funcs.get(&key).cloned() {
 			return self.call_sig(method, sig, None, None, args, span);
 		}
-		if let Some(def) = self.generic_fns.get(&key).cloned() {
+		if let Some(def) = self.world.generic_fns.get(&key).cloned() {
 			return self.call_generic(&key, &def, type_args, args, None, span);
 		}
 		Err(unknown_member(format!("module `{module}`"), "function", method, span))
@@ -668,7 +668,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
-		self.wanted.push(sig.id);
+		self.out.wanted.push(sig.id);
 		let mut vals = vals.to_vec();
 		if let Some(want) = &sig.ctx {
 			self.ctx_used = true;
@@ -871,13 +871,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		for p in params.iter().skip(1) {
 			typs.push(FnParam::of(
 				p,
-				access_wrap(p.access, self.types().resolve(&p.typ, p.span)?),
+				access_wrap(p.access, self.types.resolve(&p.typ, p.span)?),
 			));
 		}
 
 		let ret = match ret {
 			_ if self_ret => Typ::Trait(tn.into()),
-			Some((te, s)) => self.types().resolve(te, *s)?,
+			Some((te, s)) => self.types.resolve(te, *s)?,
 			None => Typ::unit(),
 		};
 		let (vtable, data) = self.unbox(boxv);
@@ -907,7 +907,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "field", field, span));
 		};
-		let ftyp = self.types().resolve(&tfields[idx].typ, tfields[idx].span)?;
+		let ftyp = self.types.resolve(&tfields[idx].typ, tfields[idx].span)?;
 		let (vtable, data) = self.unbox(boxv);
 		let m = trait_fns(tmethods).count();
 		// slot offset lives after the method pointers in the vtable

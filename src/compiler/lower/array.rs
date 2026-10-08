@@ -146,7 +146,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"write `p.array[T](n)`",
 			);
 		};
-		let elem = self.types().resolve(te, *te_span)?;
+		let elem = self.types.resolve(te, *te_span)?;
 		let n = self.int_value(count, "length")?;
 		let n = self.intcast(n, self.int, true);
 		let stride = self.elem_stride(&elem);

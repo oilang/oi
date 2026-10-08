@@ -66,8 +66,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Get a fresh symbol holding a NUL-terminated `s`.
 	fn fresh_cstr(&mut self, s: &str) -> (String, DataId) {
-		let sym = format!("__str_{}", *self.string_idx);
-		*self.string_idx += 1;
+		let sym = format!("__str_{}", self.out.string_idx);
+		self.out.string_idx += 1;
 		let id = define_data(&mut self.module, &sym, [s.as_bytes(), &[0]].concat());
 		(sym, id)
 	}
@@ -83,7 +83,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn atom_const(&mut self, name: &str) -> Value {
 		let sym = format!("__atom_{name}");
 		let hdr_sym = format!("{sym}_hdr");
-		if self.atoms.insert(name.to_string()) {
+		if self.out.atoms.insert(name.to_string()) {
 			let text = format!(":{name}");
 			let len = text.len() as i64;
 			let mut bytes = text.into_bytes();
@@ -96,7 +96,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A capture-free fn's value.
 	pub(crate) fn fn_object(&mut self, id: FuncId) -> Value {
-		self.wanted.push(id);
+		self.out.wanted.push(id);
 		let mut desc = DataDescription::new();
 		desc.set_align(8);
 		desc.define(vec![0; 8].into_boxed_slice());
@@ -166,7 +166,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr | Typ::TypeId => self.b.ins().iconst(self.int, 0),
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
-				let def = self.generic_fns[role::ZERO].clone();
+				let def = self.world.generic_fns[role::ZERO].clone();
 				let subst = HashMap::from([(def.type_params[0].name.clone(), (**ret).clone())]);
 				let Ok(sig) = self.declare_instance(role::ZERO, &def, subst) else {
 					unreachable!("core::zero instance")
@@ -346,7 +346,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn variants_of(&self, typ: &Typ) -> Vec<VariantInfo> {
 		match typ {
 			Typ::Enum(name) => self.enum_variants(name),
-			Typ::Sum(name, _) if !name.is_empty() => self.types().named_sum(name, Span::default()).unwrap_or_default(),
+			Typ::Sum(name, _) if !name.is_empty() => self.types.named_sum(name, Span::default()).unwrap_or_default(),
 			Typ::Sum(_, variants) => variants.clone(),
 			_ => Vec::new(),
 		}
@@ -387,8 +387,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Register a type for `any` dispatch.
 	pub(super) fn typeid_of(&mut self, t: &Typ) -> Value {
-		if !self.any_types.contains(t) {
-			self.any_types.push(t.clone());
+		if !self.out.any_types.contains(t) {
+			self.out.any_types.push(t.clone());
 		}
 		self.b.ins().iconst(self.int, typeid(t))
 	}
@@ -450,7 +450,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 		}
 		if let (Typ::Any, Expr::Ident(v)) = (typ, &pat.0) {
-			let t = self.types().resolve(&TypeExpr::Name(v.clone()), pat.1)?;
+			let t = self.types.resolve(&TypeExpr::Name(v.clone()), pat.1)?;
 			return Ok((typeid(&t), vec![]));
 		}
 
@@ -501,7 +501,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The display name a type pattern refers to.
 	// ex: `string` -> `str`.
 	fn sum_display(&self, te: &TypeExpr, span: Span) -> Result<String, Diagnostic> {
-		match (self.types().resolve(te, span), te) {
+		match (self.types.resolve(te, span), te) {
 			(Ok(t), _) => Ok(t.to_string()),
 			(Err(_), TypeExpr::Name(n)) => Ok(n.clone()),
 			(Err(e), _) => Err(e),
@@ -514,10 +514,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let [pat] = arm.patterns.as_slice() else { return None };
 		let te = TypeExpr::from_expr(&pat.0)?;
 		if *st == Typ::Any {
-			let t = self.types().resolve(&te, pat.1).ok()?;
+			let t = self.types.resolve(&te, pat.1).ok()?;
 			return Some((name.clone(), t, 8));
 		}
-		if let Some(inner) = self.types().happy(st) {
+		if let Some(inner) = self.types.happy(st) {
 			return Some((name.clone(), inner, 8));
 		}
 		let Typ::Sum(..) = st else { return None };
@@ -533,7 +533,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		step: Value,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let typ = self.types().resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
+		let typ = self.types.resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
 		let Typ::Struct(_, fields) = &typ else {
 			unreachable!("core `Range` is a struct")
 		};
@@ -648,7 +648,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Split `Enum.variant` into its enum and variant.
 	pub(super) fn variant_path(&self, path: &str, span: Span) -> Option<(String, String)> {
 		let (head, variant) = path.rsplit_once('.')?;
-		let Ok(Typ::Enum(name)) = self.types().named(head, span) else {
+		let Ok(Typ::Enum(name)) = self.types.named(head, span) else {
 			return None;
 		};
 		self.enum_variants(&name)
@@ -666,7 +666,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.vars.contains_key(name) {
 			return None;
 		}
-		match self.types().resolve(&te, head.1).ok()? {
+		match self.types.resolve(&te, head.1).ok()? {
 			Typ::Enum(instance) => Some(instance),
 			_ => None,
 		}
@@ -688,6 +688,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.get(&k)
 			.is_some_and(|f| f.params.first().is_none_or(|p| p.name.as_deref() != Some("self")))
 			|| self
+				.world
 				.generic_fns
 				.get(&k)
 				.is_some_and(|d| d.params.first().is_none_or(|p| p.name != "self"))
@@ -723,7 +724,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("cannot infer `{name}`'s type arguments from `.{variant}`");
 			return fail(msg, span, format!("write them: `{name}[…]`"));
 		}
-		let typ = self.types().instantiate_enum(name, def, &subst, span)?;
+		let typ = self.types.instantiate_enum(name, def, &subst, span)?;
 		let Typ::Enum(instance) = &typ else {
 			unreachable!("enums instantiate to enums")
 		};
@@ -843,7 +844,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			if let Expr::Ident(n) = &value.0 {
 				let key = self.qualify(n).into_owned();
-				self.roots.push(key);
+				self.out.roots.push(key);
 			}
 			self.c_callback = true;
 			let checked = self.check_expr(value, inner);
@@ -871,7 +872,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::Trait(tn) = to {
 			return self.make_trait_object(val, from, tn, span);
 		}
-		if to.key() == role::ALLOC && self.trait_impls.contains(&(from.key(), role::ALLOCATOR.into())) {
+		if to.key() == role::ALLOC && self.world.trait_impls.contains(&(from.key(), role::ALLOCATOR.into())) {
 			return Ok((self.alloc_record(val, from)?, to.clone()));
 		}
 		if *to == Typ::Error && self.open_error(from) {
@@ -955,12 +956,12 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.
 	fn alloc_record(&mut self, val: Value, typ: &Typ) -> Result<Value, Diagnostic> {
-		let def = self.generic_fns[role::ALLOC_SHIM].clone();
+		let def = self.world.generic_fns[role::ALLOC_SHIM].clone();
 		let subst = HashMap::from([(def.type_params[0].name.clone(), typ.clone())]);
 		let sym = mangle(role::ALLOC_SHIM, &subst, &def.type_params);
 		let sig = self.declare_instance(role::ALLOC_SHIM, &def, subst)?;
-		self.roots.push(sym);
-		self.wanted.push(sig.id);
+		self.out.roots.push(sym);
+		self.out.wanted.push(sig.id);
 		let fref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let proc = self.b.ins().func_addr(self.int, fref);
 		Ok(self.heap_slots(&[proc, val]))
@@ -979,7 +980,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				format!("`{vt}` is not a struct"),
 			);
 		};
-		if !self.trait_impls.contains(&(name.clone(), tn.to_string())) {
+		if !self.world.trait_impls.contains(&(name.clone(), tn.to_string())) {
 			return fail(format!("`{name}` doesn't implement `{tn}`"), span, "no matching impl");
 		}
 		Ok((self.box_trait_object(val, vt, tn), Typ::Trait(tn.to_string())))
@@ -987,7 +988,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether `typ` claims std `Error`, boxing into the open `Error` type.
 	pub(super) fn open_error(&self, typ: &Typ) -> bool {
-		self.trait_impls.contains(&(typ.key(), role::ERROR.to_string()))
+		self.world.trait_impls.contains(&(typ.key(), role::ERROR.to_string()))
 	}
 
 	// Box a claimer of `Error` behind its vtable.
@@ -1178,7 +1179,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut explicit = None;
 		if !type_args.is_empty() {
 			let args = type_args.iter().map(|t| t.0.clone()).collect();
-			if let Typ::Struct(n, fs) = self.types().resolve(&TypeExpr::Generic(name.clone(), args), span)? {
+			if let Typ::Struct(n, fs) = self.types.resolve(&TypeExpr::Generic(name.clone(), args), span)? {
 				(name, explicit) = (n, Some(fs));
 			}
 		}
@@ -1194,7 +1195,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(def) => return self.generic_struct_lit(&name, def, fields, span, target),
 				// aliases, tuple structs, and other types
 				None => {
-					let Ok(typ) = self.types().resolve(&TypeExpr::Name(name.clone()), span) else {
+					let Ok(typ) = self.types.resolve(&TypeExpr::Name(name.clone()), span) else {
 						return fail(format!("unknown struct `{name}`"), span, "not defined");
 					};
 					return self.struct_lit("", &[], fields, span, Some(&typ));
@@ -1380,7 +1381,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (val, vtyp) = match def.type_params.iter().any(|p| mentions(fte, &p.name)) {
 				true => self.expr(value)?,
 				false => {
-					let want = self.types().resolve(fte, value.1)?;
+					let want = self.types.resolve(fte, value.1)?;
 					self.check_expr(value, &want)?
 				}
 			};
@@ -1408,7 +1409,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"not determined by any field",
 			);
 		}
-		let typ = self.types().instantiate(name, &def, &subst, span)?;
+		let typ = self.types.instantiate(name, &def, &subst, span)?;
 		let Typ::Struct(_, struct_fields) = &typ else {
 			unreachable!()
 		};

@@ -56,7 +56,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn call_variant(&mut self, typ: &Typ, val: Value, quote: bool, sink: runtime::Sink) {
 		let sym = oi_symbol(&format!("print_{}_{}_{}", typ.key(), quote as u8, sink as u8));
 		if self.module.declarations().get_name(&sym).is_none() {
-			self.printers.push((sym.clone(), typ.clone(), quote, sink));
+			self.out.printers.push((sym.clone(), typ.clone(), quote, sink));
 		}
 		let callee = self.import_fn(&sym, &[cl_type(typ, self.int)], None);
 		self.b.ins().call(callee, &[val]);
@@ -66,7 +66,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn emit_any(&mut self, val: Value, typ: &Typ, quote: bool, sink: runtime::Sink) {
 		let done = self.b.create_block();
 		let tag = self.enum_tag(typ, val);
-		for t in self.any_types.clone() {
+		for t in self.out.any_types.clone() {
 			self.on_variant(tag, typeid(&t), done, |s| match typ {
 				Typ::Any => {
 					let pv = s.ld_typ(val, 8, &t);

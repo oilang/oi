@@ -109,7 +109,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
-			subst.insert(param.name.clone(), self.types().arg_typ(param, te, *te_span)?);
+			subst.insert(param.name.clone(), self.types.arg_typ(param, te, *te_span)?);
 		}
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
@@ -132,7 +132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.type_defaults(def, &mut subst)?;
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
-			let kind = if self.types().value_param(missing) {
+			let kind = if self.types.value_param(missing) {
 				"value"
 			} else {
 				"type"
@@ -145,7 +145,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		for p in &def.type_params {
 			let Some(bound) = &p.bound else { continue };
-			if self.types().value_param(p) {
+			if self.types.value_param(p) {
 				continue;
 			}
 			if !self.types.traits.contains_key(bound.as_str()) {
@@ -168,7 +168,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Instantiate a generic fill from the receiver type.
 	pub(super) fn recv_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
-		let def = self.generic_fns.get(key).cloned()?;
+		let def = self.world.generic_fns.get(key).cloned()?;
 		let mut subst = HashMap::new();
 		let recv = &def.params.first()?.typ;
 		unify(recv, typ, &def.type_params, &mut subst, self.types.generics).ok()?;
@@ -184,7 +184,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if subst.contains_key(&p.name) {
 				continue;
 			}
-			let typ = self.types().with_scope(self.home_scope(def)).resolve(te, *span)?;
+			let typ = self.types.with_scope(self.home_scope(def)).resolve(te, *span)?;
 			subst.insert(p.name.clone(), typ);
 		}
 		Ok(())
@@ -198,7 +198,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		subst: HashMap<String, Typ>,
 	) -> Result<FnSig, Diagnostic> {
 		let sym = mangle(name, &subst, &def.type_params);
-		if let Some(sig) = self.mono.get(&sym) {
+		if let Some(sig) = self.out.mono.get(&sym) {
 			return Ok(sig.clone());
 		}
 		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
@@ -237,8 +237,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			pure: def.pure || has_ann(self.types.consts.anns, name, role::PURE),
 			default: false,
 		};
-		self.mono.insert(sym.clone(), fn_sig.clone());
-		self.pending.push((sym, def.clone(), subst));
+		self.out.mono.insert(sym.clone(), fn_sig.clone());
+		self.out.pending.push((sym, def.clone(), subst));
 		Ok(fn_sig)
 	}
 }

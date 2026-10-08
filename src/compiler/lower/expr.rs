@@ -121,7 +121,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& let TypeExpr::Name(name) | TypeExpr::Generic(name, _) = &te
 					&& !self.vars.contains_key(name)
 				{
-					let typ = self.types().resolve(&te, subject.1)?;
+					let typ = self.types.resolve(&te, subject.1)?;
 					let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
 					let holds = self.claims(&typ, tn) ^ negated;
 					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
@@ -138,8 +138,8 @@ impl<'a, M: Module> Translator<'a, M> {
 						);
 					}
 				};
-				let typ = self.types().resolve(&TypeExpr::Name(trait_name.clone()), expr.1)?;
-				if !self.trait_impls.contains(&(typ.key(), tn.clone())) {
+				let typ = self.types.resolve(&TypeExpr::Name(trait_name.clone()), expr.1)?;
+				if !self.world.trait_impls.contains(&(typ.key(), tn.clone())) {
 					return Ok((self.b.ins().iconst(self.int, *negated as i64), Typ::Bool));
 				}
 				let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
@@ -235,7 +235,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let qn = self.qualify(name).to_string();
 				if let Some((_, TypeExpr::TupleStruct(..))) = self.types.generics.aliases.get(&qn) {
 					let te = TypeExpr::Generic(qn, type_args.iter().map(|t| t.0.clone()).collect());
-					let typ = self.types().resolve(&te, expr.1)?;
+					let typ = self.types.resolve(&te, expr.1)?;
 					return self.construct_tuple_struct(typ, args, expr.1);
 				}
 				self.check_type_args(name, &qn, type_args, expr.1)?;
@@ -247,10 +247,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					Some(result) => Ok(result),
 					None => match self.funcs.get(&qn).cloned() {
 						Some(sig) => self.call_sig(name, sig, None, None, args, expr.1),
-						None => match self.generic_fns.get(&qn).cloned() {
+						None => match self.world.generic_fns.get(&qn).cloned() {
 							Some(def) => self.call_generic(&qn, &def, type_args, args, None, expr.1),
 							None if matches!(self.types.aliases.get(&qn), Some(TypeExpr::TupleStruct(..))) => {
-								let typ = self.types().resolve(&TypeExpr::Name(qn), expr.1)?;
+								let typ = self.types.resolve(&TypeExpr::Name(qn), expr.1)?;
 								self.construct_tuple_struct(typ, args, expr.1)
 							}
 							None if matches!(
@@ -278,7 +278,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.construct_variant(&name, &variant, args, expr.1);
 				}
-				let typ = self.types().resolve(&target.0, target.1)?;
+				let typ = self.types.resolve(&target.0, target.1)?;
 				self.cast_to(&typ, args, expr.1)
 			}
 
@@ -287,7 +287,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Expr::Index { collection, index } = &callee.0
 					&& let (Expr::Ident(n), Expr::Int(v)) = (&collection.0, &index.0)
 					&& !self.vars.contains_key(n)
-					&& let Some(def) = self.generic_fns.get(self.qualify(n).as_ref()).cloned()
+					&& let Some(def) = self.world.generic_fns.get(self.qualify(n).as_ref()).cloned()
 				{
 					let key = self.qualify(n).to_string();
 					return self.call_generic(&key, &def, &[(TypeExpr::Const(*v), index.1)], args, None, expr.1);
@@ -355,7 +355,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					(instance, None)
 				} else if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
-					&& let Some(typ) = self.types().named(name, recv.1).ok().filter(|t| {
+					&& let Some(typ) = self.types.named(name, recv.1).ok().filter(|t| {
 						matches!(
 							t,
 							Typ::Int(_)
@@ -429,7 +429,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(sig) = self.funcs.get(&key).cloned() {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
-				if let Some(def) = self.generic_fns.get(&gkey).cloned() {
+				if let Some(def) = self.world.generic_fns.get(&gkey).cloned() {
 					return self.call_generic(&gkey, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
 				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args)? {
@@ -455,7 +455,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					} else {
 						role::DEBUG_DERIVED
 					};
-					let def = self.generic_fns[derived].clone();
+					let def = self.world.generic_fns[derived].clone();
 					return self.call_generic(derived, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
 
@@ -515,9 +515,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				// access an imported module's items
 				if let Some((module, target)) = self.import_item(&tuple.0, field, expr.1)? {
 					let key = format!("{module}::{target}");
-					let key = self.reexports.get(&key).cloned().unwrap_or(key);
+					let key = self.world.reexports.get(&key).cloned().unwrap_or(key);
 					if let Some(l) = self.vars.get(&key).cloned().filter(|l| l.stat) {
-						if !self.publics.is_visible(&key, &self.types.scope.module) {
+						if !self.world.publics.is_visible(&key, &self.types.scope.module) {
 							let msg = format!("`{field}` is private to module `{module}`");
 							return fail(msg, expr.1, "not public");
 						}
@@ -526,21 +526,23 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((val, l.typ));
 					}
 					let (msg, label) = match self.types.consts.map.get(&key).cloned() {
-						Some(c) if self.publics.is_visible(&key, &self.types.scope.module) => return self.expr(&c),
+						Some(c) if self.world.publics.is_visible(&key, &self.types.scope.module) => {
+							return self.expr(&c);
+						}
 						Some(_) => (format!("`{field}` is private to module `{module}`"), "not public"),
-						None if self.funcs.contains_key(&key) || self.generic_fns.contains_key(&key) => {
+						None if self.funcs.contains_key(&key) || self.world.generic_fns.contains_key(&key) => {
 							(format!("`{field}` is a function, call it"), "add `()`")
 						}
 						None => (format!("module `{module}` has no const `{field}`"), "no such const"),
 					};
 					let d = Diagnostic::new(msg, expr.1.into_range()).with_label(label);
-					return Err(crate::loader::shadow_note(d, &module, self.core_origin));
+					return Err(crate::loader::shadow_note(d, &module, &self.world.core_origin));
 				}
 
 				// associated consts
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
-					&& let Ok(t) = self.types().named(name, tuple.1)
+					&& let Ok(t) = self.types.named(name, tuple.1)
 				{
 					if let Some(c) = self.types.consts.map.get(&format!("{t}::{field}")).cloned() {
 						return self.check_expr(&c, &t);
@@ -597,7 +599,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 					}
 					if field == "ptr" {
-						let typ = self.types().resolve(&TypeExpr::Name(role::PTR.into()), expr.1)?;
+						let typ = self.types.resolve(&TypeExpr::Name(role::PTR.into()), expr.1)?;
 						return Ok((data, typ));
 					}
 					return match field.parse::<i64>() {
@@ -721,7 +723,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			},
 
 			Expr::DotArray(Some((te, span)), elems) => {
-				let typ = self.types().resolve(te, *span)?;
+				let typ = self.types.resolve(te, *span)?;
 				match &typ {
 					Typ::Array(elem) => self.array_lit(elems, Some(elem), expr.1),
 					Typ::FixedArray(elem, n) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
@@ -966,7 +968,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
 			Expr::TypePat(te) => Err(Diagnostic::new(
-				format!("`{}` is a type, not a value", self.types().resolve(te, expr.1)?),
+				format!("`{}` is a type, not a value", self.types.resolve(te, expr.1)?),
 				expr.1.into_range(),
 			)),
 			Expr::Return(_) | Expr::Break(_) | Expr::Continue => fail(

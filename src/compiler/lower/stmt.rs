@@ -44,14 +44,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					// a bind whose name resolves as a type is an alias
 					if !*mutable
 						&& typ.is_none() && value.as_ref().is_some_and(|v| TypeExpr::from_expr(&v.0).is_some())
-						&& self.types().resolve(&TypeExpr::Name(name.clone()), stmt.1).is_ok()
+						&& self.types.resolve(&TypeExpr::Name(name.clone()), stmt.1).is_ok()
 					{
 						continue;
 					}
 					if *mutable {
 						check_reserved(name, stmt.1)?;
 					}
-					let annot = typ.as_ref().map(|(t, span)| self.types().resolve(t, *span)).transpose()?;
+					let annot = typ.as_ref().map(|(t, span)| self.types.resolve(t, *span)).transpose()?;
 					if !*mutable && matches!(value.as_deref(), Some((Expr::AnonFn { .. }, _))) {
 						self.self_name = Some(name.clone());
 					}

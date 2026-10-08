@@ -189,7 +189,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Define trace descriptor on first use.
 	fn desc_data(&mut self, name: &str, slots: &[Typ]) -> Option<DataId> {
-		if let Some(&id) = self.descs.get(name) {
+		if let Some(&id) = self.out.descs.get(name) {
 			return Some(id);
 		}
 		let mut words = vec![0i64];
@@ -231,7 +231,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.declare_data(&sym, Linkage::Local, false, false)
 			.expect("declare trace");
 		self.module.define_data(id, &desc).expect("define trace");
-		self.descs.insert(name.to_string(), id);
+		self.out.descs.insert(name.to_string(), id);
 		Some(id)
 	}
 

@@ -556,40 +556,50 @@ pub(crate) struct LoopFrame {
 	pub fallthrough: Option<Block>,
 }
 
-pub struct Compiler<M: Module = JITModule> {
-	builder_ctx: FunctionBuilderContext,
-	ctx: codegen::Context,
-	module: M,
-	string_idx: usize,
-	atoms: HashSet<String>,
-	generics: HashMap<String, GenericFnDef>,
-	mono: HashMap<String, FnSig>,
-	pending: Vec<Pending>,
-	wanted: Vec<FuncId>,
-	printers: Vec<(String, Typ, bool, runtime::Sink)>,
-	any_types: Vec<Typ>,
+#[derive(Default)]
+struct World {
+	generic_fns: HashMap<String, GenericFnDef>,
 	trait_impls: HashSet<(String, String)>,
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
 	core_traits: HashSet<String>,
-	descs: HashMap<String, DataId>,
-	defined: HashSet<FuncId>,
+	module_scopes: HashMap<String, Scope>,
+	map: SourceMap,
 	publics: Publics,
 	core_origin: HashSet<String>,
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
-	consts: HashMap<String, Spanned<Expr>>,
 	statics: HashMap<String, (String, Typ)>,
+}
+
+#[derive(Default)]
+struct Artifacts {
+	mono: HashMap<String, FnSig>,
+	pending: Vec<Pending>,
+	wanted: Vec<FuncId>,
+	roots: Vec<String>,
+	printers: Vec<(String, Typ, bool, runtime::Sink)>,
+	any_types: Vec<Typ>,
+	descs: HashMap<String, DataId>,
+	string_idx: usize,
+	atoms: HashSet<String>,
+}
+
+pub struct Compiler<M: Module = JITModule> {
+	builder_ctx: FunctionBuilderContext,
+	ctx: codegen::Context,
+	module: M,
+	world: World,
+	out: Artifacts,
+	defined: HashSet<FuncId>,
+	consts: HashMap<String, Spanned<Expr>>,
 	static_inits: Vec<(String, Span, Option<Spanned<Expr>>)>,
 	annotations: HashMap<String, Vec<Annotation>>,
-	module_scopes: HashMap<String, Scope>,
-	map: SourceMap,
 	hoisted: HashMap<String, FnSig>,
 	lib: bool,
 	aot: bool,
 	pub(crate) emit_clif: bool,
 	pub(crate) include_tests: bool,
 	pub(crate) tests: Vec<(String, String, bool)>,
-	pub(crate) roots: Vec<String>,
 	pub(crate) stage0: bool,
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
@@ -802,36 +812,18 @@ impl<M: Module> Compiler<M> {
 			builder_ctx: FunctionBuilderContext::new(),
 			ctx: module.make_context(),
 			module,
-			string_idx: 0,
-			atoms: HashSet::new(),
-			generics: HashMap::new(),
-			mono: HashMap::new(),
-			pending: Vec::new(),
-			wanted: Vec::new(),
-			printers: Vec::new(),
-			any_types: Vec::new(),
-			trait_impls: HashSet::new(),
-			generic_claims: HashMap::new(),
-			core_traits: HashSet::new(),
-			descs: HashMap::new(),
+			world: World::default(),
+			out: Artifacts::default(),
 			defined: HashSet::new(),
-			publics: Publics::default(),
-			core_origin: HashSet::new(),
-			privates: HashMap::new(),
-			reexports: HashMap::new(),
 			consts: HashMap::new(),
-			statics: HashMap::new(),
 			static_inits: vec![],
 			annotations: HashMap::new(),
-			module_scopes: HashMap::new(),
-			map: SourceMap::default(),
 			hoisted: HashMap::new(),
 			lib: false,
 			aot: false,
 			emit_clif: false,
 			include_tests: false,
 			tests: Vec::new(),
-			roots: Vec::new(),
 			stage0: false,
 			link_libs: Vec::new(),
 			exports: HashMap::new(),
@@ -887,9 +879,9 @@ impl<M: Module> Compiler<M> {
 				.extend(qualify_anns(scope, anns));
 			// visibility
 			if !public && claim.decls.is_empty() && typ.starts_with(&format!("{}::", scope.module)) {
-				self.privates.entry(typ.to_string()).or_default().insert(name.clone());
+				self.world.privates.entry(typ.to_string()).or_default().insert(name.clone());
 			}
-			if others.iter().any(|f| f.key == key) || self.generics.contains_key(&key) {
+			if others.iter().any(|f| f.key == key) || self.world.generic_fns.contains_key(&key) {
 				let msg = format!("duplicate fill `{key}`");
 				return fail(msg, m.1, "one fill per name");
 			}
@@ -930,7 +922,7 @@ impl<M: Module> Compiler<M> {
 			all_params.extend(mtp.clone());
 			qualify_bounds(scope, &mut all_params);
 			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module, m.1);
-			self.generics.insert(key, def);
+			self.world.generic_fns.insert(key, def);
 		}
 		Ok(())
 	}
@@ -938,7 +930,7 @@ impl<M: Module> Compiler<M> {
 	fn note_privates(&mut self, name: &str, fields: &[Param]) {
 		if name.contains("::") {
 			let hidden = fields.iter().filter(|f| !f.public).map(|f| f.name.clone());
-			self.privates.entry(name.to_string()).or_default().extend(hidden);
+			self.world.privates.entry(name.to_string()).or_default().extend(hidden);
 		}
 	}
 
@@ -975,24 +967,24 @@ impl<M: Module> Compiler<M> {
 		let mut static_items = vec![];
 
 		// stage 0 cleanup
-		self.generics.clear();
-		self.trait_impls.clear();
-		self.generic_claims.clear();
+		self.world.generic_fns.clear();
+		self.world.trait_impls.clear();
+		self.world.generic_claims.clear();
 		self.static_inits.clear();
 		self.tests.clear();
-		self.wanted.clear();
-		self.pending.clear();
+		self.out.wanted.clear();
+		self.out.pending.clear();
 		self.module.clear_context(&mut self.ctx);
 		self.builder_ctx = FunctionBuilderContext::new();
 
 		self.cache = cache::Store::open(&program.roots[0]);
-		self.publics = program.publics.clone();
-		self.core_origin = program.core_origin.clone();
-		self.reexports = program.reexports.clone();
+		self.world.publics = program.publics.clone();
+		self.world.core_origin = program.core_origin.clone();
+		self.world.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
-		self.map = program.map.clone();
+		self.world.map = program.map.clone();
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
-		self.module_scopes = scopes.iter().map(|(&k, &v)| (k.to_string(), v.clone())).collect();
+		self.world.module_scopes = scopes.iter().map(|(&k, &v)| (k.to_string(), v.clone())).collect();
 		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
 		let scope_of = |key: &str| {
 			defs.get(key)
@@ -1094,7 +1086,7 @@ impl<M: Module> Compiler<M> {
 				return fail(msg, *span, "already defined");
 			}
 			if scope.module == "core" {
-				self.core_traits.insert(name.clone());
+				self.world.core_traits.insert(name.clone());
 			}
 		}
 		for (scope, item) in items() {
@@ -1201,11 +1193,11 @@ impl<M: Module> Compiler<M> {
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					for (tn, args) in &claimed {
 						if type_params.is_empty() {
-							self.trait_impls.insert((typ.clone(), tn.clone()));
+							self.world.trait_impls.insert((typ.clone(), tn.clone()));
 						} else {
 							let mut bounds = type_params.clone();
 							qualify_bounds(scope, &mut bounds);
-							self.generic_claims.insert((typ.clone(), tn.clone()), bounds);
+							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds);
 							// generic fills
 							if !is_hook_trait(tn) {
 								// unfilled defaults
@@ -1279,7 +1271,7 @@ impl<M: Module> Compiler<M> {
 						&scope.module,
 						item.1,
 					);
-					self.generics.insert(name.clone(), def);
+					self.world.generic_fns.insert(name.clone(), def);
 				}
 				Expr::Fn {
 					name,
@@ -1475,7 +1467,7 @@ impl<M: Module> Compiler<M> {
 
 			for typ in structs.keys() {
 				let pair = (typ.clone(), tn.clone());
-				if self.trait_impls.contains(&pair) {
+				if self.world.trait_impls.contains(&pair) {
 					continue;
 				}
 
@@ -1492,14 +1484,14 @@ impl<M: Module> Compiler<M> {
 				match check_impls(
 					vec![body],
 					&traits,
-					&self.core_traits,
-					&self.trait_impls,
+					&self.world.core_traits,
+					&self.world.trait_impls,
 					base,
 					&mut others,
 					&mut self.consts,
 				) {
 					Ok(()) => {
-						self.trait_impls.insert(pair);
+						self.world.trait_impls.insert(pair);
 					}
 					Err(_) => others.truncate(mark),
 				}
@@ -1508,21 +1500,21 @@ impl<M: Module> Compiler<M> {
 
 		for b in trait_bodies.iter().filter(|b| b.trait_name == "Copy") {
 			let drops = (b.typ.to_string(), "Drop".to_string());
-			if self.trait_impls.contains(&drops) || self.generic_claims.contains_key(&drops) {
+			if self.world.trait_impls.contains(&drops) || self.world.generic_claims.contains_key(&drops) {
 				continue;
 			}
 			let msg = format!("`{}` claims `Copy` without `Drop`, so nothing runs the hook", b.typ);
 			return fail(msg, b.span, "claim `Drop` too");
 		}
 
-		let promoted = promote_embeds(&structs, &mut self.trait_impls, &trait_bodies, scope_of);
+		let promoted = promote_embeds(&structs, &mut self.world.trait_impls, &trait_bodies, scope_of);
 		trait_bodies.extend(promoted);
 
 		check_impls(
 			trait_bodies,
 			&traits,
-			&self.core_traits,
-			&self.trait_impls,
+			&self.world.core_traits,
+			&self.world.trait_impls,
 			base,
 			&mut others,
 			&mut self.consts,
@@ -1575,7 +1567,7 @@ impl<M: Module> Compiler<M> {
 			let (sym, linkage) = self.symbol(&item.key);
 			// context-less fns
 			let foreign = self.exports.contains_key(&item.key)
-				|| is_c_fn || self.roots.contains(&item.key)
+				|| is_c_fn || self.out.roots.contains(&item.key)
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
 			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
 			let ctx = ctx.unwrap_or(Some(CONTEXT.into())).filter(|_| !foreign);
@@ -1663,21 +1655,21 @@ impl<M: Module> Compiler<M> {
 			.filter(|(id, _)| !self.defined.contains(id))
 			.collect();
 		if self.aot {
-			self.wanted.extend(unlowered.keys().copied());
+			self.out.wanted.extend(unlowered.keys().copied());
 		} else {
-			self.wanted.extend(
+			self.out.wanted.extend(
 				self.tests
 					.iter()
 					.map(|(key, ..)| key)
 					.chain(self.exports.keys())
-					.chain(self.roots.iter())
+					.chain(self.out.roots.iter())
 					.filter_map(|key| funcs.get(key).map(|sig| sig.id)),
 			);
 		}
 
 		// a `str` wrapper per struct
 		let mut render = HashMap::new();
-		for (name, _) in self.trait_impls.clone() {
+		for (name, _) in self.world.trait_impls.clone() {
 			if render.contains_key(&name) {
 				continue;
 			}
@@ -1696,7 +1688,7 @@ impl<M: Module> Compiler<M> {
 		}
 
 		// define vtables now that every concrete method has a FuncId
-		for (typ, tn) in self.trait_impls.clone() {
+		for (typ, tn) in self.world.trait_impls.clone() {
 			if is_hook_trait(&tn) {
 				continue;
 			}
@@ -1740,7 +1732,7 @@ impl<M: Module> Compiler<M> {
 			}
 			for (i, name) in methods.iter().enumerate() {
 				let id = funcs[&format!("{typ}.{name}")].id;
-				self.wanted.push(id);
+				self.out.wanted.push(id);
 				let fref = self.module.declare_func_in_data(id, &mut desc);
 				desc.write_function_addr((i * 8) as u32, fref);
 			}
@@ -1770,7 +1762,7 @@ impl<M: Module> Compiler<M> {
 				.declare_data(&sym, Linkage::Local, true, false)
 				.expect("declare static");
 			define_data(&mut self.module, &sym, vec![0; 8]);
-			self.statics.insert(name.clone(), (sym, typ));
+			self.world.statics.insert(name.clone(), (sym, typ));
 			self.static_inits.push((name, span, init));
 		}
 
@@ -1821,7 +1813,7 @@ impl<M: Module> Compiler<M> {
 		let id = self.compile_entry(entry_id, typ, &funcs, types);
 
 		loop {
-			while let Some(id) = self.wanted.pop() {
+			while let Some(id) = self.out.wanted.pop() {
 				let Some(i) = unlowered.remove(&id) else { continue };
 				let item = &others[i];
 				let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
@@ -1844,7 +1836,7 @@ impl<M: Module> Compiler<M> {
 						ctxless: (self.annotations.get(&item.key).into_iter().flatten())
 							.find(|a| ctx_ann(item.scope, a) == Some(None))
 							.map(|a| a.1),
-						root_ctx: self.roots.contains(&item.key),
+						root_ctx: self.out.roots.contains(&item.key),
 						pure: funcs[&item.key].pure,
 						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
 						..FnDef::default()
@@ -1854,8 +1846,9 @@ impl<M: Module> Compiler<M> {
 				)?;
 				self.finish_fn(&self.symbol(&item.key).0);
 			}
-			let Some((sym, def, subst)) = self.pending.pop().or_else(|| self.compile_printers(&funcs, types)) else {
-				if self.wanted.is_empty() {
+			let Some((sym, def, subst)) = self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
+			else {
+				if self.out.wanted.is_empty() {
 					break;
 				}
 				continue;
@@ -1863,8 +1856,8 @@ impl<M: Module> Compiler<M> {
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
-			let ret = ret.or_else(|| Some((self.mono[&sym].ret.clone(), Span::default())));
-			let self_sig = self.mono[&sym].clone();
+			let ret = ret.or_else(|| Some((self.out.mono[&sym].ret.clone(), Span::default())));
+			let self_sig = self.out.mono[&sym].clone();
 			self.translate(
 				FnDef {
 					params: &params,
@@ -1877,7 +1870,7 @@ impl<M: Module> Compiler<M> {
 						.ctx
 						.is_none()
 						.then(|| def.body.first().map_or(Span::default(), |s| s.1)),
-					root_ctx: self.roots.contains(&sym),
+					root_ctx: self.out.roots.contains(&sym),
 					pure: self_sig.pure,
 					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
 					..FnDef::default()
@@ -1909,10 +1902,13 @@ impl<M: Module> Compiler<M> {
 
 	// Queued printer bodies, and whatever they queued in turn.
 	fn compile_printers(&mut self, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Option<Pending> {
-		while let Some(i) = (self.printers.iter().rposition(|p| !matches!(p.1, Typ::Any | Typ::TypeId)))
-			.or(self.printers.len().checked_sub(1))
+		while let Some(i) = (self.out.printers.iter().rposition(|p| !matches!(p.1, Typ::Any | Typ::TypeId))).or(self
+			.out
+			.printers
+			.len()
+			.checked_sub(1))
 		{
-			let (sym, typ, quote, sink) = self.printers.remove(i);
+			let (sym, typ, quote, sink) = self.out.printers.remove(i);
 			let params = [(String::new(), typ.clone(), Access::Read)];
 			let def = FnDef {
 				params: &params,
@@ -1945,7 +1941,7 @@ impl<M: Module> Compiler<M> {
 			self.finish_fn(&sym);
 		}
 
-		self.pending.pop()
+		self.out.pending.pop()
 	}
 
 	// A fn's object symbol.
@@ -2066,28 +2062,10 @@ impl<M: Module> Compiler<M> {
 				map: &self.consts,
 				anns: &self.annotations,
 			}),
-			generic_fns: &self.generics,
-			trait_impls: &self.trait_impls,
-			generic_claims: &self.generic_claims,
-			core_traits: &self.core_traits,
-			module_scopes: &self.module_scopes,
-			map: &self.map,
-			publics: &self.publics,
-			core_origin: &self.core_origin,
-			privates: &self.privates,
-			reexports: &self.reexports,
-			statics: &self.statics,
-			mono: &mut self.mono,
-			pending: &mut self.pending,
-			wanted: &mut self.wanted,
-			roots: &mut self.roots,
+			world: &self.world,
+			out: &mut self.out,
 			c_callback: false,
 			comptime: self.stage0,
-			printers: &mut self.printers,
-			any_types: &mut self.any_types,
-			descs: &mut self.descs,
-			string_idx: &mut self.string_idx,
-			atoms: &mut self.atoms,
 			ret: def.ret.clone(),
 			loops: vec![],
 			unsafely: 0,

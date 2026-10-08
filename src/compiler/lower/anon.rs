@@ -127,9 +127,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			pure: self.pure,
 			ctx,
 		};
-		let sym = format!("anon${}_{}", span.start, self.mono.len());
+		let sym = format!("anon${}_{}", span.start, self.out.mono.len());
 		if self.c_callback {
-			self.roots.push(oi_symbol(&sym));
+			self.out.roots.push(oi_symbol(&sym));
 		}
 		let sig = self.declare_instance(&sym, &def, subst)?;
 		let params = sig.value_params();
@@ -142,7 +142,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.fn_object(sig.id), typ));
 		}
 
-		self.wanted.push(sig.id);
+		self.out.wanted.push(sig.id);
 		let func_ref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let addr = self.b.ins().func_addr(self.int, func_ref);
 		let slots: Vec<_> = std::iter::once(addr).chain(resolved.iter().map(|r| r.3)).collect();

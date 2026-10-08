@@ -106,7 +106,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Payloads without equality compare by identity.
 	pub(crate) fn emit_any_eq(&mut self, a: Value, b: Value) -> Value {
-		let variants: Vec<_> = (self.any_types.clone().into_iter())
+		let variants: Vec<_> = (self.out.any_types.clone().into_iter())
 			.map(|t| VariantInfo::new(t.key(), typeid(&t), vec![if self.has_eq(&t) { t } else { Typ::ISize }]))
 			.collect();
 		self.emit_enum_eq(a, b, &Typ::Any, &variants, Span::default())
@@ -165,12 +165,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Whether `typ` claims `tn`.
 	pub(super) fn claims(&self, typ: &Typ, tn: &str) -> bool {
 		let key = typ.key();
-		let generic = self.generic_claims.get(&(rc::base_name(&key).to_string(), tn.to_string()));
-		self.trait_impls.contains(&(key.clone(), tn.to_string()))
+		let generic = self
+			.world
+			.generic_claims
+			.get(&(rc::base_name(&key).to_string(), tn.to_string()));
+		self.world.trait_impls.contains(&(key.clone(), tn.to_string()))
 			|| generic.is_some_and(|tps| {
 				let args = self.types.generics.instance_args(&key).unwrap_or_default();
 				(tps.iter().zip(&args)).all(|(p, a)| p.bound.as_ref().is_none_or(|b| self.claims(a, b)))
-			}) || (self.core_traits.contains(tn) && builtin_claim(typ, tn))
+			}) || (self.world.core_traits.contains(tn) && builtin_claim(typ, tn))
 	}
 
 	// Compare two heap blocks slot by slot, from byte `base`.
