@@ -54,9 +54,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				matches!(v.0, Expr::Spread(_)) || n.as_deref() == Some(f.name.as_str()) || (n.is_none() && i == j)
 			});
 			if !set {
-				return Err(
-					Diagnostic::new(format!("`{name}.{}` is required", f.name), span.into_range())
-						.with_label("set it in the literal"),
+				return fail(
+					format!("`{name}.{}` is required", f.name),
+					span,
+					"set it in the literal",
 				);
 			}
 		}
@@ -131,7 +132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(name) = self.nozero(typ) {
 			let name = sugar(name).unwrap_or_else(|| display_name(name).to_string());
 			let msg = format!("`{name}` has no zero value");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("must be initialized explicitly"));
+			return fail(msg, span, "must be initialized explicitly");
 		}
 		Ok(self.zero(typ))
 	}
@@ -293,9 +294,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Expr::Atom(name), Typ::Sum(..)) => {
 				let variants = self.variants_of(target);
 				let Some(v) = variants.iter().find(|v| &v.name == name && v.payload.is_empty()) else {
-					return Err(
-						Diagnostic::new(format!("`{target}` has no atom `:{name}`"), value.1.into_range())
-							.with_label("not a member of this sum type"),
+					return fail(
+						format!("`{target}` has no atom `:{name}`"),
+						value.1,
+						"not a member of this sum type",
 					);
 				};
 				self.make_enum(&variants, v.disc, &[])
@@ -324,9 +326,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn pointee(&self, typ: &Typ, span: Span) -> Result<Typ, Diagnostic> {
 		match typ {
 			Typ::Ref(_) => Ok(self.peeled(typ)),
-			_ => Err(
-				Diagnostic::new(format!("cannot deref {typ}, it is not a pointer"), span.into_range())
-					.with_label("not a pointer"),
+			_ => fail(
+				format!("cannot deref {typ}, it is not a pointer"),
+				span,
+				"not a pointer",
 			),
 		}
 	}
@@ -438,7 +441,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A match pattern's discriminant and payload binds.
 	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<(i64, Vec<Bind>), Diagnostic> {
-		let bad = |msg| Err(Diagnostic::new(msg, pat.1.into_range()).with_label("bad pattern"));
+		let bad = |msg| fail(msg, pat.1, "bad pattern");
 		if let (Typ::Sum(..), Some(te)) = (typ, TypeExpr::from_expr(&pat.0)) {
 			let (variants, disp) = (self.variants_of(typ), self.sum_display(&te, pat.1)?);
 			return match variants.iter().find(|x| x.name == disp) {
@@ -633,7 +636,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Value, Diagnostic> {
 		let Typ::Int(_) = st else {
 			let msg = format!("range patterns need an integer subject, got {st}");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("not an integer"));
+			return fail(msg, span, "not an integer");
 		};
 		let zero = (Expr::Int(0), span);
 		let (range, rt) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
@@ -718,7 +721,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if args.len() != payload.len() || def.type_params.iter().any(|p| !subst.contains_key(&p.name)) {
 			let msg = format!("cannot infer `{name}`'s type arguments from `.{variant}`");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label(format!("write them: `{name}[…]`")));
+			return fail(msg, span, format!("write them: `{name}[…]`"));
 		}
 		let typ = self.types().instantiate_enum(name, def, &subst, span)?;
 		let Typ::Enum(instance) = &typ else {
@@ -740,15 +743,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let variants = self.enum_variants(name);
-		let v = variants.iter().find(|v| v.name == variant).ok_or_else(|| {
-			Diagnostic::new(format!("enum `{name}` has no variant `{variant}`"), span.into_range())
-				.with_label("no such variant")
-		})?;
+		let v = variants
+			.iter()
+			.find(|v| v.name == variant)
+			.ok_or_else(|| unknown_member(format!("enum `{name}`"), "variant", variant, span))?;
 		let (disc, payload, names) = (v.disc, v.payload.clone(), v.names.clone());
 		let fields = if let [(Expr::Record(entries), _)] = args {
 			if names.is_empty() {
 				let msg = format!("`{name}.{variant}` takes positional fields");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("use `.( … )`"));
+				return fail(msg, span, "use `.( … )`");
 			}
 			let mut fields: Vec<Value> = payload.iter().map(|t| self.zero(t)).collect();
 			for (k, val) in entries {
@@ -764,7 +767,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					payload.len(),
 					args.len()
 				);
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields"));
+				return fail(msg, span, "wrong number of fields");
 			}
 			let mut fields = Vec::with_capacity(args.len());
 			for (arg, ft) in args.iter().zip(&payload) {
@@ -801,7 +804,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			slots = args.iter().map(Some).collect();
 		} else {
 			let msg = format!("`{name}` takes {} field(s), got {}", fields.len(), args.len());
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields"));
+			return fail(msg, span, "wrong number of fields");
 		}
 		let mut vals = Vec::with_capacity(fields.len());
 		for ((_, ft), slot) in fields.iter().zip(&slots) {
@@ -822,7 +825,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (fv, at) = self.check_expr(arg, ft)?;
 		if at != *ft {
 			let msg = format!("expected {ft}, got {at}");
-			return Err(Diagnostic::new(msg, arg.1.into_range()).with_label(label));
+			return fail(msg, arg.1, label);
 		}
 		Ok(fv)
 	}
@@ -852,7 +855,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			check_ann_typ(self.types, anns, &vt, value.1)?;
 			if ps.iter().any(|p| matches!(p.typ, Typ::Fn(..))) && !self.c_callable(Some(value)) {
 				let msg = "this fn is called from C";
-				return Err(Diagnostic::new(msg, value.1.into_range()).with_label("mark it with `@c`"));
+				return fail(msg, value.1, "mark it with `@c`");
 			}
 			return Ok((self.ld_word(val, 0), target.clone()));
 		}
@@ -970,16 +973,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((val, vt.clone()));
 		}
 		let Typ::Struct(name, _) = vt else {
-			return Err(
-				Diagnostic::new("only structs can be trait objects yet", span.into_range())
-					.with_label(format!("`{vt}` is not a struct")),
+			return fail(
+				"only structs can be trait objects yet",
+				span,
+				format!("`{vt}` is not a struct"),
 			);
 		};
 		if !self.trait_impls.contains(&(name.clone(), tn.to_string())) {
-			return Err(
-				Diagnostic::new(format!("`{name}` doesn't implement `{tn}`"), span.into_range())
-					.with_label("no matching impl"),
-			);
+			return fail(format!("`{name}` doesn't implement `{tn}`"), span, "no matching impl");
 		}
 		Ok((self.box_trait_object(val, vt, tn), Typ::Trait(tn.to_string())))
 	}
@@ -1016,11 +1017,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		match w {
 			32 => Ok(self.b.ins().f32const(x as f32)),
 			64 => Ok(self.b.ins().f64const(x)),
-			_ => Err(Diagnostic::new(
+			_ => fail(
 				format!("f{w} literals aren't supported by the JIT backend yet"),
-				span.into_range(),
-			)
-			.with_label("not yet implemented")),
+				span,
+				"not yet implemented",
+			),
 		}
 	}
 
@@ -1059,8 +1060,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					(kt, None, Some((tag, self.map_bits(kv))))
 				}
 				None => {
-					return Err(Diagnostic::new("cannot infer the type of `[]` here", span.into_range())
-						.with_label("no map type is expected in this position"));
+					return fail(
+						"cannot infer the type of `[]` here",
+						span,
+						"no map type is expected in this position",
+					);
 				}
 			},
 		};
@@ -1108,9 +1112,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if let Some(fname) = fname
 				&& fields[..i].iter().any(|(n, _)| n.as_ref() == Some(fname))
 			{
-				return Err(
-					Diagnostic::new(format!("`{fname}` is repeated"), value.1.into_range()).with_label("repeated")
-				);
+				return fail(format!("`{fname}` is repeated"), value.1, "repeated");
 			}
 		}
 
@@ -1143,9 +1145,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => match &leading_spread {
 					Some((_, Typ::Struct(n, _))) => n.clone(),
 					_ => {
-						return Err(
-							Diagnostic::new("cannot infer the struct type of `.{}` here", span.into_range())
-								.with_label("name the literal: `Name.{ ... }`"),
+						return fail(
+							"cannot infer the struct type of `.{}` here",
+							span,
+							"name the literal: `Name.{ ... }`",
 						);
 					}
 				},
@@ -1161,11 +1164,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if self.types.enums.borrow().contains_key(name.as_str()) {
 			if !fields.is_empty() {
-				return Err(Diagnostic::new(
+				return fail(
 					format!("enum `{name}` only supports `{name}.{{}}` with no fields"),
-					span.into_range(),
-				)
-				.with_label("not a struct"));
+					span,
+					"not a struct",
+				);
 			}
 			let typ = Typ::Enum(name.clone());
 			return Ok((self.zero(&typ), typ));
@@ -1192,8 +1195,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// aliases, tuple structs, and other types
 				None => {
 					let Ok(typ) = self.types().resolve(&TypeExpr::Name(name.clone()), span) else {
-						return Err(Diagnostic::new(format!("unknown struct `{name}`"), span.into_range())
-							.with_label("not defined"));
+						return fail(format!("unknown struct `{name}`"), span, "not defined");
 					};
 					return self.struct_lit("", &[], fields, span, Some(&typ));
 				}
@@ -1226,27 +1228,28 @@ impl<'a, M: Module> Translator<'a, M> {
 			// struct update
 			if let Expr::Spread(src) = &value.0 {
 				if prefix > 0 {
-					return Err(Diagnostic::new("spread requires named fields", span.into_range())
-						.with_label("`..` cannot be mixed with positional values"));
+					return fail(
+						"spread requires named fields",
+						span,
+						"`..` cannot be mixed with positional values",
+					);
 				}
 				let (val, typ) = match leading_spread.take() {
 					Some(tv) => tv,
 					None => self.expr(src)?,
 				};
 				if !matches!(&typ, Typ::Struct(n, _) if *n == name) {
-					return Err(
-						Diagnostic::new(format!("cannot spread {typ} into `{name}`"), src.1.into_range())
-							.with_label("type mismatch"),
-					);
+					return fail(format!("cannot spread {typ} into `{name}`"), src.1, "type mismatch");
 				}
 				self.assign_fields(val, ptr, &struct_fields, i > 0);
 				continue;
 			}
 			let (idx, ftyp, base) = match field_name.as_deref() {
 				None if i != prefix => {
-					return Err(
-						Diagnostic::new("positional fields go before named fields", value.1.into_range())
-							.with_label("positional field after a named one"),
+					return fail(
+						"positional fields go before named fields",
+						value.1,
+						"positional field after a named one",
 					);
 				}
 				None if i >= struct_fields.len() => return Err(arity(fields.len())),
@@ -1257,11 +1260,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				Some(fname) => match self.struct_field(&name, &struct_fields, fname, value.1)? {
 					(path, idx, _) if path.is_empty() && idx < prefix => {
-						return Err(Diagnostic::new(
-							format!("`{fname}` was already set positionally"),
-							value.1.into_range(),
-						)
-						.with_label("set twice"));
+						return fail(format!("`{fname}` was already set positionally"), value.1, "set twice");
 					}
 					(path, idx, ftyp) => (idx, ftyp, self.follow(ptr, &path)),
 				},
@@ -1341,25 +1340,25 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let positional = fields.first().is_some_and(|(n, _)| n.is_none());
 		if positional && fields.len() != def.fields.len() {
-			return Err(Diagnostic::new(
+			return fail(
 				format!(
 					"`{name}` has {} fields but {} values were provided",
 					def.fields.len(),
 					fields.len()
 				),
-				span.into_range(),
-			)
-			.with_label("wrong number of fields"));
+				span,
+				"wrong number of fields",
+			);
 		}
 		let mut subst = HashMap::new();
 		let mut provided = Vec::with_capacity(fields.len());
 		for (i, (field_name, value)) in fields.iter().enumerate() {
 			if matches!(value.0, Expr::Spread(_)) {
-				return Err(Diagnostic::new(
+				return fail(
 					"spread in a generic struct literal isn't supported yet",
-					value.1.into_range(),
-				)
-				.with_label("unsupported"));
+					value.1,
+					"unsupported",
+				);
 			}
 			let idx = match field_name {
 				None if positional => {
@@ -1367,17 +1366,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					i
 				}
 				None => {
-					return Err(
-						Diagnostic::new("cannot mix named and positional fields", value.1.into_range())
-							.with_label("missing field name"),
-					);
+					return fail("cannot mix named and positional fields", value.1, "missing field name");
 				}
 				Some(fname) => {
 					self.check_member(name, fname, value.1)?;
-					def.fields.iter().position(|f| &f.name == fname).ok_or_else(|| {
-						Diagnostic::new(format!("`{name}` has no field `{fname}`"), value.1.into_range())
-							.with_label("no such field")
-					})?
+					def.fields
+						.iter()
+						.position(|f| &f.name == fname)
+						.ok_or_else(|| unknown_member(format!("`{name}`"), "field", fname, value.1))?
 				}
 			};
 			let fte = &def.fields[idx].typ;
@@ -1406,11 +1402,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
-			return Err(Diagnostic::new(
+			return fail(
 				format!("cannot infer type parameter `{}`", missing.name),
-				span.into_range(),
-			)
-			.with_label("not determined by any field"));
+				span,
+				"not determined by any field",
+			);
 		}
 		let typ = self.types().instantiate(name, &def, &subst, span)?;
 		let Typ::Struct(_, struct_fields) = &typ else {
@@ -1421,10 +1417,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		for (idx, val, vtyp, vspan) in provided {
 			let expected = &struct_fields[idx].typ;
 			if &vtyp != expected {
-				return Err(
-					Diagnostic::new(format!("expected {expected}, got {vtyp}"), vspan.into_range())
-						.with_label("type mismatch"),
-				);
+				return fail(format!("expected {expected}, got {vtyp}"), vspan, "type mismatch");
 			}
 			closure_escape(&vtyp, vspan.into_range(), "stored in a field")?;
 			self.st(ptr, (idx * 8) as i32, val);

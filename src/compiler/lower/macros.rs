@@ -6,7 +6,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Lower a quote. Register its template and build the Ast it produces at runtime.
 	pub(super) fn quote(&mut self, stmts: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		if !self.comptime {
-			return Err(Diagnostic::new("quotes only exist at comptime", span.into_range()).with_label("runtime quote"));
+			return fail("quotes only exist at comptime", span, "runtime quote");
 		}
 		let (tpl, slots) = expand::register(stmts, span)?;
 		let mut ptrs = Vec::with_capacity(slots.len());
@@ -14,11 +14,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			let ptr = match slot {
 				expand::Slot::Name(name) => {
 					let Some(local) = self.vars.get(name).cloned() else {
-						return Err(Diagnostic::new(
+						return fail(
 							format!("`%{name}` refers to no binding in scope"),
-							span.into_range(),
-						)
-						.with_label("not found in scope"));
+							span,
+							"not found in scope",
+						);
 					};
 					let val = self.read_local(&local);
 					self.lift_unquote(val, &local.typ, span)?
@@ -30,11 +30,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				expand::Slot::Splat(e) => {
 					let (val, typ) = self.expr(e)?;
 					if !matches!(&typ, Typ::Array(inner) if **inner == Typ::Ast) {
-						return Err(Diagnostic::new(
-							format!("can't spread a `{typ}`, expected `[]Ast`"),
-							e.1.into_range(),
-						)
-						.with_label("not []Ast"));
+						return fail(format!("can't spread a `{typ}`, expected `[]Ast`"), e.1, "not []Ast");
 					}
 					// the header pointer itself: rt_quote reads the elements
 					val
@@ -74,9 +70,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Str => (comp::TAG_STR, val),
 			Typ::Float(_) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			other => {
-				return Err(
-					Diagnostic::new(format!("can't unquote a `{other}` yet"), span.into_range())
-						.with_label("unsupported unquote type"),
+				return fail(
+					format!("can't unquote a `{other}` yet"),
+					span,
+					"unsupported unquote type",
 				);
 			}
 		};
@@ -113,10 +110,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		match self.expr(arg)? {
 			(val, Typ::Str) => Ok(val),
-			(_, typ) => Err(
-				Diagnostic::new(format!("`{name}!` message must be Str, got {typ}"), arg.1.into_range())
-					.with_label("not a Str"),
-			),
+			(_, typ) => fail(format!("`{name}!` message must be Str, got {typ}"), arg.1, "not a Str"),
 		}
 	}
 
@@ -132,9 +126,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"panic" | "unreachable" => (0, 1),
 			"todo" | "src" => (0, 0),
 			_ => {
-				return Err(
-					Diagnostic::new(format!("no macro named `{name}!`"), span.into_range()).with_label("unknown macro")
-				);
+				return fail(format!("no macro named `{name}!`"), span, "unknown macro");
 			}
 		};
 		if !(min..=max).contains(&args.len()) {
@@ -143,9 +135,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				(a, b) if a == b => format!("{a} arguments"),
 				(a, b) => format!("{a} or {b} arguments"),
 			};
-			return Err(
-				Diagnostic::new(format!("`{name}!` takes {want}, got {}", args.len()), span.into_range())
-					.with_label("wrong number of arguments"),
+			return fail(
+				format!("`{name}!` takes {want}, got {}", args.len()),
+				span,
+				"wrong number of arguments",
 			);
 		}
 

@@ -14,7 +14,7 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
-use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail};
+use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
 
@@ -446,7 +446,7 @@ fn check_struct_lit(
 				i
 			}
 			Some(key) => match field_defs.iter().position(|f| &f.name == key) {
-				None => return fail(format!("`{name}` has no field `{key}`"), value.1, "no such field"),
+				None => return Err(unknown_member(format!("`{name}`"), "field", key, value.1)),
 				Some(idx) if idx < prefix => {
 					return fail(format!("`{key}` was already set positionally"), value.1, "set twice");
 				}

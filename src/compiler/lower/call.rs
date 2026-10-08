@@ -29,7 +29,7 @@ pub(super) fn pack_varargs(
 	let k = params[v + 1..].iter().filter(|&(_, has_default)| !has_default).count();
 	if pos.len() < v + k {
 		let msg = format!("`{name}` expects {}.. argument(s), got {}", v + k, pos.len());
-		return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));
+		return fail(msg, span, "wrong number of arguments");
 	}
 	let (fixed, rest) = pos.split_at(v);
 	let (loose, tail) = rest.split_at(rest.len() - k);
@@ -57,14 +57,12 @@ pub(super) fn arg_slots<'e>(
 	}
 	for (key, value) in entries {
 		let Expr::Ident(k) = &key.0 else { unreachable!() };
-		let i = names.iter().position(|n| n == k).ok_or_else(|| {
-			Diagnostic::new(format!("`{name}` has no parameter `{k}`"), key.1.into_range())
-				.with_label("no such parameter")
-		})?;
+		let i = names
+			.iter()
+			.position(|n| n == k)
+			.ok_or_else(|| unknown_member(format!("`{name}`"), "parameter", k, key.1))?;
 		if slots[i].replace(value).is_some() {
-			return Err(
-				Diagnostic::new(format!("`{k}` is already given"), key.1.into_range()).with_label("duplicate argument")
-			);
+			return fail(format!("`{k}` is already given"), key.1, "duplicate argument");
 		}
 	}
 	Ok(Some(slots))
@@ -139,8 +137,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<(), Diagnostic> {
 		match type_args.is_empty() || self.generic_fns.contains_key(key) {
 			true => Ok(()),
-			false => Err(Diagnostic::new(format!("`{name}` is not generic"), span.into_range())
-				.with_label("unexpected type arguments")),
+			false => fail(format!("`{name}` is not generic"), span, "unexpected type arguments"),
 		}
 	}
 
@@ -202,11 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(def) = self.generic_fns.get(&key).cloned() {
 			return self.call_generic(&key, &def, type_args, args, None, span);
 		}
-		Err(Diagnostic::new(
-			format!("module `{module}` has no function `{method}`"),
-			span.into_range(),
-		)
-		.with_label("no such function"))
+		Err(unknown_member(format!("module `{module}`"), "function", method, span))
 	}
 
 	// Emit a call to a resolved fn.
@@ -272,13 +265,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let Some(sig) = self.find_fill(key, skip, &typ) else {
 			let msg = format!("no claim fills `{}` for a `{typ}`", display_name(key));
-			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("no matching claim"));
+			return fail(msg, args[0].1, "no matching claim");
 		};
 		let name = format!("$fill{}", self.vars.len());
 		self.hidden_local(name.clone(), val, typ);
 		let mut args = args.to_vec();
 		args[0] = (Expr::Ident(name), args[0].1);
 		Ok(Some((sig, args)))
+	}
+
+	// A method of `recv`, from its own impl or instantiated from its generic one.
+	pub(super) fn resolve_method(&mut self, recv: &Typ, name: &str) -> Option<FnSig> {
+		let key = recv.key();
+		let own = self.funcs.get(&format!("{key}.{name}")).cloned();
+		own.or_else(|| self.recv_instance(&format!("{}.{name}", rc::base_name(&key)), recv))
 	}
 
 	// Find a fill whose parameter takes the given type.
@@ -328,8 +328,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					out.push(*ident());
 				}
 				_ => {
-					return Err(Diagnostic::new(format!("cannot spread {typ}"), inner.1.into_range())
-						.with_label("not a tuple or array"));
+					return fail(format!("cannot spread {typ}"), inner.1, "not a tuple or array");
 				}
 			}
 			self.hidden_local(name, val, typ);
@@ -363,9 +362,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		)?;
 		let args = packed.as_deref().unwrap_or(args);
 		if let Some(arg) = args.iter().find(|a| matches!(a.0, Expr::Spread(_))) {
-			return Err(
-				Diagnostic::new("a `[]T` spread may only feed the vararg slot", arg.1.into_range())
-					.with_label("this slice has no static length"),
+			return fail(
+				"a `[]T` spread may only feed the vararg slot",
+				arg.1,
+				"this slice has no static length",
 			);
 		}
 		let named = arg_slots(name, &names, args, coerces)?;
@@ -377,8 +377,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if n_defaults > 0 {
 					want = format!("{want}..{}", params.len() - self_n);
 				}
-				let msg = format!("`{name}` expects {want} argument(s), got {}", args.len());
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));
+				return arity_err(&format!("`{name}`"), want, args.len(), "argument", span);
 			}
 		}
 		let slots: Vec<_> = named.unwrap_or_else(|| (0..names.len()).map(|i| args.get(i)).collect());
@@ -423,9 +422,7 @@ impl<'a, M: Module> Translator<'a, M> {
 								"`{name}` is missing argument `{}`",
 								p.name.as_deref().unwrap_or_default()
 							);
-							return Err(
-								Diagnostic::new(msg, span.into_range()).with_label("no value for this parameter")
-							);
+							return fail(msg, span, "no value for this parameter");
 						};
 						(
 							self.check_typed(default, want, "not a valid default for this parameter")?,
@@ -435,9 +432,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				if &typ != want {
 					let at = slots[i - self_n].expect("a default is checked as it is evaluated").1;
-					return Err(
-						Diagnostic::new(format!("expected {want} argument, got {typ}"), at.into_range())
-							.with_label("wrong argument type"),
+					return fail(
+						format!("expected {want} argument, got {typ}"),
+						at,
+						"wrong argument type",
 					);
 				}
 				vals.push(val);
@@ -566,7 +564,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						format!("remove `{given}` here"),
 					),
 				};
-				return Err(Diagnostic::new(msg, arg.1.into_range()).with_label(label));
+				return fail(msg, arg.1, label);
 			}
 			if want != Access::Mut {
 				continue;
@@ -582,7 +580,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			if touched.contains(name) {
 				let msg = format!("cannot use `{name}` while it is lent `mut`");
-				return Err(Diagnostic::new(msg, arg.1.into_range()).with_label("borrowed exclusively for this call"));
+				return fail(msg, arg.1, "borrowed exclusively for this call");
 			}
 		}
 		Ok(())
@@ -601,10 +599,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Require a mutable binding place.
 	fn mut_place<'e>(&self, e: &'e Spanned<Expr>, msg: &str) -> Result<&'e String, Diagnostic> {
 		let Expr::Ident(name) = &e.0 else {
-			return Err(Diagnostic::new(msg, e.1.into_range()).with_label("not a binding"));
+			return fail(msg, e.1, "not a binding");
 		};
 		if !self.local(name, e.1.into_range())?.mutable {
-			return Err(Diagnostic::new(msg, e.1.into_range()).with_label("immutably bound"));
+			return fail(msg, e.1, "immutably bound");
 		}
 		Ok(name)
 	}
@@ -716,8 +714,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (params, ret) = match typ {
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => (params, &**ret),
 			typ => {
-				return Err(Diagnostic::new(format!("`{name}` is not callable"), span.into_range())
-					.with_label(format!("this is {typ}, not a function")));
+				return fail(
+					format!("`{name}` is not callable"),
+					span,
+					format!("this is {typ}, not a function"),
+				);
 			}
 		};
 		if !pure {
@@ -815,10 +816,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		})?;
 		let (val, typ) = self.check_expr(index, key_typ)?;
 		if &typ != key_typ {
-			return Err(
-				Diagnostic::new(format!("expected {key_typ} key, got {typ}"), index.1.into_range())
-					.with_label("wrong key type"),
-			);
+			return fail(format!("expected {key_typ} key, got {typ}"), index.1, "wrong key type");
 		}
 		Ok((tag, self.map_bits(val)))
 	}
@@ -853,12 +851,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let (.., tmethods) = self.types.traits[tn];
 		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
-			let msg = format!("trait `{tn}` has no method `{method}`");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such method"));
+			return Err(unknown_member(format!("trait `{tn}`"), "method", method, span));
 		};
 		if params.first().is_some_and(|p| p.access == Access::Move) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("an object only borrows its data"));
+			return fail(msg, span, "an object only borrows its data");
 		}
 
 		// the concrete type is erased, so only a bare `Self` return survives, re-boxed behind the same vtable
@@ -866,7 +863,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let leaks = !self_ret && matches!(ret, Some((te, _)) if mentions(te, "Self"));
 		if leaks || params.iter().skip(1).any(|p| mentions(&p.typ, "Self")) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("uses `Self` beyond the receiver"));
+			return fail(msg, span, "uses `Self` beyond the receiver");
 		}
 
 		// the receiver slot is the erased data pointer, the rest resolve like any signature
@@ -908,8 +905,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let (_, _, tfields, tmethods) = self.types.traits[tn];
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
-			let msg = format!("trait `{tn}` has no field `{field}`");
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("no such field"));
+			return Err(unknown_member(format!("trait `{tn}`"), "field", field, span));
 		};
 		let ftyp = self.types().resolve(&tfields[idx].typ, tfields[idx].span)?;
 		let (vtable, data) = self.unbox(boxv);

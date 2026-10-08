@@ -21,7 +21,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		if let Some(p) = params.iter().find(|p| p.default.is_some()) {
 			let msg = "default params are only supported on named fns";
-			return Err(Diagnostic::new(msg, p.span.into_range()).with_label("remove the default"));
+			return fail(msg, p.span, "remove the default");
 		}
 		let self_name = self.self_name.take();
 		let inferred;
@@ -39,7 +39,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		if self.pure && !captures.is_empty() {
 			let msg = "a `@pure` fn can't capture";
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("it only sees its params"));
+			return fail(msg, span, "it only sees its params");
 		}
 		let owns = !captures.is_empty() && captures.iter().all(|c| matches!(c, Capture::Move(_)));
 		let mut resolved = Vec::with_capacity(captures.len());
@@ -63,8 +63,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			AnonSig::Inferred(Typ::Fn(ptyps, ret) | Typ::Closure(ptyps, ret, _)) => {
 				let name = |i: usize| format!("${i}");
 				if !params.is_empty() && params.len() != ptyps.len() {
-					let msg = format!("this fn literal expects {} param(s), got {}", ptyps.len(), params.len());
-					return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of params"));
+					return arity_err("this fn literal", ptyps.len(), params.len(), "param", span);
 				}
 				// a fn header keeps its names and fills its omitted types from the type sig
 				let (params, tuple) = match params.is_empty() {

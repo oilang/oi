@@ -70,7 +70,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				if let Some([first, ..]) = els {
 					let msg = "this binding always succeeds, so `else` can never run";
-					return Err(Diagnostic::new(msg, first.1.into_range()).with_label("unreachable"));
+					return fail(msg, first.1, "unreachable");
 				}
 				s.block_tail(then, target)
 			});
@@ -184,8 +184,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn block_expr(&mut self, body: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		match self.scoped(|s| s.block_tail(body, None))? {
 			Some(vt) => Ok(vt),
-			None => Err(Diagnostic::new("this block never produces a value", span.into_range())
-				.with_label("every path returns, but a value is needed here")),
+			None => fail(
+				"this block never produces a value",
+				span,
+				"every path returns, but a value is needed here",
+			),
 		}
 	}
 
@@ -239,9 +242,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !missing.is_empty() {
 					if gap.is_none() {
 						let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
-						return Err(
-							Diagnostic::new(msg, span.into_range()).with_label("cover these variants or add `else`")
-						);
+						return fail(msg, span, "cover these variants or add `else`");
 					}
 					else_body = gap.filter(|g| !g.is_empty());
 				}
@@ -395,11 +396,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// All branches must agree on type. The first one declares the variable.
 	pub(super) fn contribute(&mut self, (v, t): TypedVal, join: &mut Join, merge: Block) -> Result<(), Diagnostic> {
 		match &mut join.result {
-			Some((_, rt)) if rt != &t => Err(Diagnostic::new(
+			Some((_, rt)) if rt != &t => fail(
 				format!("`{}` branches have mismatched types: {rt} and {t}", join.kw),
-				join.span.into_range(),
-			)
-			.with_label("must yield the same type")),
+				join.span,
+				"must yield the same type",
+			),
 			Some((var, _)) => {
 				self.b.def_var(*var, v);
 				self.b.ins().jump(merge, &[]);
@@ -431,9 +432,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
 		let Some((inner, err)) = self.fallible_split(&typ) else {
-			return Err(
-				Diagnostic::new(format!("`or` needs a `?T`/`!T` value, got {typ}"), value.1.into_range())
-					.with_label("not an Option or Result"),
+			return fail(
+				format!("`or` needs a `?T`/`!T` value, got {typ}"),
+				value.1,
+				"not an Option or Result",
 			);
 		};
 
@@ -471,7 +473,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (val, typ) = self.expr(value)?;
 		let Some((inner, err)) = self.fallible_split(&typ) else {
 			let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
-			return Err(Diagnostic::new(msg, value.1.into_range()).with_label("not a `?T` or `!T` value"));
+			return fail(msg, value.1, "not a `?T` or `!T` value");
 		};
 		let (is_result, err_typ) = (err.is_some(), err.unwrap_or(Typ::Error));
 		let shape = if is_result { "!T" } else { "?T" };
@@ -503,7 +505,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some(d) if !is_result && let Some(t) = self.types.option_inner(d) => t,
 			Some(other) => {
 				let msg = format!("`?` needs an enclosing fn returning `{shape}`, found {other}");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label(format!("not a `{shape}` fn")));
+				return fail(msg, span, format!("not a `{shape}` fn"));
 			}
 			None => inner.clone(),
 		};
@@ -569,7 +571,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn enum_from(&mut self, name: &str, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {
 			let msg = format!("`{name}.from` takes 1 argument, got {}", args.len());
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));
+			return fail(msg, span, "wrong number of arguments");
 		}
 		let (av, at) = self.expr(&args[0])?;
 		if !matches!(
@@ -577,7 +579,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Str | Typ::Atom | Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize
 		) {
 			let msg = format!("`{name}.from` needs an int, string, or atom. Got {at}");
-			return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("not an int, string, or atom"));
+			return fail(msg, args[0].1, "not an int, string, or atom");
 		}
 
 		let target = self.types.core_enum(role::RESULT, &[Typ::Enum(name.to_string()), Typ::Error]);
@@ -744,9 +746,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let next = self.find_fill(&format!("{}.next", it_typ.key()), 0, &it_typ);
 		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
 		let (Some(next), Some(item)) = (next, item) else {
-			return Err(
-				Diagnostic::new(format!("cannot iterate over {it_typ}"), span.into_range())
-					.with_label("its `Iterator` claim has no `next(mut self) ?T`"),
+			return fail(
+				format!("cannot iterate over {it_typ}"),
+				span,
+				"its `Iterator` claim has no `next(mut self) ?T`",
 			);
 		};
 		let opt = next.ret.clone();
@@ -808,9 +811,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				(len, (kdata, *k), Some((vdata, *v)))
 			}
 			_ => {
-				return Err(
-					Diagnostic::new(format!("cannot iterate over {typ}"), span.into_range()).with_label("not iterable")
-				);
+				return fail(format!("cannot iterate over {typ}"), span, "not iterable");
 			}
 		};
 		let counter = self.b.declare_var(self.b.func.dfg.value_type(zero));
@@ -837,10 +838,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					s.bind_pat(&te[1].1, vv, vt, Some(false))?;
 				}
 				_ => {
-					return Err(
-						Diagnostic::new("destructure map entries with `(k, v)`", pat.1.into_range())
-							.with_label("expected `(k, v)`"),
-					);
+					return fail("destructure map entries with `(k, v)`", pat.1, "expected `(k, v)`");
 				}
 			}
 			s.block(body)
@@ -887,7 +885,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let local = self.mutable_local(&name, pat.1.into_range(), Mutation::Assign)?;
 				if local.typ != ftyp {
 					let msg = format!("cannot assign {ftyp} to `{name}`, which is {}", local.typ);
-					return Err(Diagnostic::new(msg, pat.1.into_range()).with_label("type mismatch"));
+					return fail(msg, pat.1, "type mismatch");
 				}
 				let old = self.read_local(&local);
 				self.write_local(&local, v);
@@ -910,7 +908,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						elems.len(),
 						fields.len()
 					);
-					return Err(Diagnostic::new(msg, pat.1.into_range()).with_label("wrong number of fields"));
+					return fail(msg, pat.1, "wrong number of fields");
 				}
 				field_binds(elems.iter().zip(fields).map(|((_, e), (_, t))| (e, t)), 0, 8)
 			}
@@ -924,11 +922,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Expr::Array(elems), Typ::Array(elem) | Typ::FixedArray(elem, _)) => {
 				field_binds(elems.iter().map(|e| (e, &**elem)), 0, 1)
 			}
-			_ => Err(Diagnostic::new(
+			_ => fail(
 				format!("cannot destructure {typ} with this pattern"),
-				pat.1.into_range(),
-			)
-			.with_label("wrong shape")),
+				pat.1,
+				"wrong shape",
+			),
 		}
 	}
 

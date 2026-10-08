@@ -37,11 +37,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			"error" => {
 				if args.len() != 1 {
-					return Err(Diagnostic::new(
+					return fail(
 						format!("`error` takes 1 argument, got {}", args.len()),
-						span.into_range(),
-					)
-					.with_label("wrong number of arguments"));
+						span,
+						"wrong number of arguments",
+					);
 				}
 				let ret = self.ret.as_ref().map(|(t, _)| t.clone());
 				let err = ret.as_ref().and_then(|t| self.types.result_parts(t)).map(|(_, e)| e);
@@ -67,7 +67,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					_ if self.open_error(&at) => Ok(Some((self.box_error(av, &at), Typ::Error))),
 					_ => {
 						let msg = format!("`{at}` doesn't claim Error, and no enclosing fn returns Result[_, {at}]");
-						Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("not usable as an error"))
+						fail(msg, args[0].1, "not usable as an error")
 					}
 				}
 			}
@@ -75,9 +75,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			"ord" => {
 				let (val, typ) = self.cast_operand(name, args, span)?;
 				if !typ.is_enumish() {
-					return Err(
-						Diagnostic::new(format!("`ord` expects an Ordinal, got {typ}"), span.into_range())
-							.with_label("not an enum or sum"),
+					return fail(
+						format!("`ord` expects an Ordinal, got {typ}"),
+						span,
+						"not an enum or sum",
 					);
 				}
 				let tag = self.enum_tag(&typ, val);
@@ -86,8 +87,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			"type_info" => {
 				let [(Expr::Ident(name), at)] = args else {
-					return Err(Diagnostic::new("`type_info` takes one type name", span.into_range())
-						.with_label("expected a struct or enum"));
+					return fail("`type_info` takes one type name", span, "expected a struct or enum");
 				};
 				let def = self.type_def(name, *at)?;
 				Ok(Some(self.quote(&[(def, *at)], *at)?))
@@ -153,9 +153,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				fills: vec![],
 			},
 			t => {
-				return Err(
-					Diagnostic::new(format!("`{t}` has no definition to reflect"), span.into_range())
-						.with_label("not a struct or enum"),
+				return fail(
+					format!("`{t}` has no definition to reflect"),
+					span,
+					"not a struct or enum",
 				);
 			}
 		})
@@ -195,7 +196,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Float(32 | 64) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			t if t.is_unit() => (comp::TAG_UNIT, self.b.ins().iconst(self.int, 0)),
 			_ => {
-				return Err(Diagnostic::new(comp::UNREIFIABLE, span.into_range()).with_label("not comptime-reifiable"));
+				return fail(comp::UNREIFIABLE, span, "not comptime-reifiable");
 			}
 		};
 		let tag_v = self.b.ins().iconst(self.int, tag);
@@ -212,9 +213,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				Typ::TupleStruct(..) => self.construct_tuple_struct(target.clone(), args, span),
 				Typ::Struct(name, _) => self.struct_lit(name, &[], &fields, span, Some(target)),
 				Typ::Tuple(_) => self.check_expr(&(Expr::Tuple(fields), span), target),
-				_ => Err(
-					Diagnostic::new(format!("`{target}` casts a single value"), span.into_range())
-						.with_label("wrong number of arguments"),
+				_ => fail(
+					format!("`{target}` casts a single value"),
+					span,
+					"wrong number of arguments",
 				),
 			};
 		};
@@ -246,7 +248,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.require_unsafe(&format!("{target} cast"), span)?;
 			if is_c_struct(self.types.consts.anns, name) {
 				let msg = format!("`{target}` is a `@c` struct, C layout behind a `ptr`");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("copy it with `p.read[T]()`"));
+				return fail(msg, span, "copy it with `p.read[T]()`");
 			}
 			return Ok((val, target.clone()));
 		}
@@ -285,7 +287,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (out, _) = self.emit_call(&sig, &[val]);
 			return Ok((out, target.clone()));
 		}
-		Err(Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label("no conversion"))
+		fail(format!("cannot cast {typ} to {target}"), value.1, "no conversion")
 	}
 
 	// Assertion casts.
@@ -321,11 +323,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Float(w) = target
 			&& !matches!(w, 32 | 64)
 		{
-			return Err(Diagnostic::new(
+			return fail(
 				format!("f{w} casts are not yet supported by the JIT backend"),
-				span.into_range(),
-			)
-			.with_label("not yet implemented"));
+				span,
+				"not yet implemented",
+			);
 		}
 		let (val, typ) = self.expr(value)?;
 		if typ == Typ::Any {
@@ -333,9 +335,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
 		if *target == Str && !matches!(typ, Str | Array(_)) {
-			return Err(
-				Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range())
-					.with_label("`.str()` formats a value"),
+			return fail(
+				format!("cannot cast {typ} to {target}"),
+				value.1,
+				"`.str()` formats a value",
 			);
 		}
 		if typ == *target {
@@ -365,9 +368,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					"not castable".into()
 				};
-				return Err(
-					Diagnostic::new(format!("cannot cast {typ} to {target}"), value.1.into_range()).with_label(label),
-				);
+				return fail(format!("cannot cast {typ} to {target}"), value.1, label);
 			}
 		};
 		Ok(Some((out, target.clone())))
@@ -385,16 +386,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((val, typ));
 		}
 		if matches!(typ, Typ::Sum(..)) {
-			return Err(
-				Diagnostic::new("cannot extract a sum member by casting", span.into_range())
-					.with_label("no member extraction yet"),
+			return fail(
+				"cannot extract a sum member by casting",
+				span,
+				"no member extraction yet",
 			);
 		}
 		let variants = self.variants_of(&typ);
 		if enum_boxed(&variants) {
-			return Err(
-				Diagnostic::new(format!("`{typ}` has no backing value to cast"), span.into_range())
-					.with_label("no backing value"),
+			return fail(
+				format!("`{typ}` has no backing value to cast"),
+				span,
+				"no backing value",
 			);
 		}
 		let bt = variants.first().and_then(|v| v.backing.clone()).unwrap_or(Typ::Int(64));
@@ -420,9 +423,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {
-			return Err(
-				Diagnostic::new(format!("`{name}` cast takes exactly 1 argument"), span.into_range())
-					.with_label("wrong number of arguments"),
+			return fail(
+				format!("`{name}` cast takes exactly 1 argument"),
+				span,
+				"wrong number of arguments",
 			);
 		}
 		self.expr(&args[0])

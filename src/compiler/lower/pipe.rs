@@ -121,7 +121,7 @@ impl<M: Module> Translator<'_, M> {
 			return Ok(None);
 		}
 		let msg = format!("cannot compose a generic function `{name}`");
-		Err(Diagnostic::new(msg, head.1.into_range()).with_label("instantiate it or write the fn out"))
+		fail(msg, head.1, "instantiate it or write the fn out")
 	}
 
 	// A composition returns whatever its last stage does.

@@ -8,13 +8,12 @@ use cranelift_module::Module;
 use super::{FieldDef, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, display_name, is_c_struct};
 use crate::ast::{Expr, Span, Spanned, TypeExpr};
 use crate::compiler::role;
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Diagnostic, fail};
 
 impl<M: Module> Translator<'_, M> {
 	pub(super) fn require_unsafe(&self, what: &str, span: Span) -> Result<(), Diagnostic> {
 		match self.unsafely {
-			0 => Err(Diagnostic::new(format!("`{what}` needs `unsafe`"), span.into_range())
-				.with_label("no `unsafe` in scope")),
+			0 => fail(format!("`{what}` needs `unsafe`"), span, "no `unsafe` in scope"),
 			_ => Ok(()),
 		}
 	}
@@ -63,11 +62,11 @@ impl<M: Module> Translator<'_, M> {
 			}
 			_ => {
 				let usage = if read { "p.read[T]()" } else { "p.write(v)" };
-				Err(Diagnostic::new(
+				fail(
 					"this copies a `@c` struct or C scalar through a `ptr`",
-					span.into_range(),
+					span,
+					format!("write `{usage}`"),
 				)
-				.with_label(format!("write `{usage}`")))
 			}
 		}
 	}
@@ -87,13 +86,13 @@ impl<M: Module> Translator<'_, M> {
 		};
 		let (Typ::Fn(params, ret), [arg]) = (sig, args) else {
 			let msg = format!("`{}` casts a single `ptr`", display_name(name));
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("expected one argument"));
+			return fail(msg, span, "expected one argument");
 		};
 		check_c_sig(self.types, display_name(name), params, ret, span)?;
 		if !bare && let Some(p) = params.iter().find(|p| matches!(p.typ, Typ::Fn(..))) {
 			let msg = format!("`{}` can't take a fn pointer", display_name(name));
 			let label = format!("`{}` would cross as a cell", p.typ);
-			return Err(Diagnostic::new(msg, span.into_range()).with_label(label));
+			return fail(msg, span, label);
 		}
 		let want = self.types().resolve(&TypeExpr::Name(role::PTR.into()), span)?;
 		let addr = self.check_typed(arg, &want, "not a `ptr`")?;
@@ -115,9 +114,7 @@ impl<M: Module> Translator<'_, M> {
 				check_c_sig(self.types, "@c fn", &params, &ret, arg.1)?;
 				Ok(self.ld_word(val, 0))
 			}
-			t => {
-				Err(Diagnostic::new(format!("expected usize, got {t}"), arg.1.into_range()).with_label("type mismatch"))
-			}
+			t => fail(format!("expected usize, got {t}"), arg.1, "type mismatch"),
 		}
 	}
 
@@ -132,8 +129,11 @@ impl<M: Module> Translator<'_, M> {
 		match typ {
 			Typ::Struct(name, fields) if is_c_struct(self.types.consts.anns, name) => Ok(Some(fields.clone())),
 			t if t.is_c_repr(&self.types) && !matches!(t, Typ::Fn(..)) => Ok(None),
-			_ => Err(Diagnostic::new(format!("`{typ}` has no C layout"), span.into_range())
-				.with_label("only a struct or C scalar crosses a `ptr`")),
+			_ => fail(
+				format!("`{typ}` has no C layout"),
+				span,
+				"only a struct or C scalar crosses a `ptr`",
+			),
 		}
 	}
 

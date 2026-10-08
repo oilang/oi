@@ -156,3 +156,8 @@ pub fn arity_err<T>(what: &str, want: impl Display, got: usize, noun: &str, span
 		format!("wrong number of {noun}s"),
 	)
 }
+
+// Report a missing member.
+pub fn unknown_member(owner: impl Display, kind: &str, name: impl Display, span: Span) -> Diagnostic {
+	Diagnostic::new(format!("{owner} has no {kind} `{name}`"), span.into_range()).with_label(format!("no such {kind}"))
+}

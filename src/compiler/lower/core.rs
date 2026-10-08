@@ -52,7 +52,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(());
 		}
 		let msg = format!("cannot assign to `{m}.{field}` outside module `{}`", vis.module);
-		Err(Diagnostic::new(msg, span.into_range()).with_label("read-only here"))
+		fail(msg, span, "read-only here")
 	}
 
 	// Ensure that no private members are accessed from outside their module.
@@ -63,7 +63,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(());
 		}
 		let msg = format!("`{member}` is private to module `{owner}`");
-		Err(Diagnostic::new(msg, span.into_range()).with_label("not public"))
+		fail(msg, span, "not public")
 	}
 
 	// Enforce `@noinit`.
@@ -74,7 +74,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(());
 		}
 		let msg = format!("can't build `{}` outside module `{owner}`", display_name(name));
-		Err(Diagnostic::new(msg, span.into_range()).with_label("use a factory fn"))
+		fail(msg, span, "use a factory fn")
 	}
 
 	// Search embedded structs for `wanted`.
@@ -132,10 +132,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.check_member(sname, field, span)?;
 		match fields.iter().position(|f| f.name == field) {
 			Some(i) => Ok((vec![], i, fields[i].typ.clone())),
-			None => self.promoted(fields, field, span)?.ok_or_else(|| {
-				Diagnostic::new(format!("`{sname}` has no field `{field}`"), span.into_range())
-					.with_label("no such field")
-			}),
+			None => self
+				.promoted(fields, field, span)?
+				.ok_or_else(|| unknown_member(format!("`{sname}`"), "field", field, span)),
 		}
 	}
 
@@ -259,8 +258,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut hits = self.withs.iter().filter(supplies);
 		let s = match (hits.next(), hits.next()) {
 			(Some(a), Some(b)) => {
-				return Err(Diagnostic::new(format!("`{name}` is ambiguous"), e.1.into_range())
-					.with_label(format!("both `{a}` and `{b}` supply it")));
+				return fail(
+					format!("`{name}` is ambiguous"),
+					e.1,
+					format!("both `{a}` and `{b}` supply it"),
+				);
 			}
 			(Some(s), _) => s.clone(),
 			(None, _) => return Ok(None),

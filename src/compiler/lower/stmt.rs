@@ -64,9 +64,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						(None, Some(target)) => {
 							if matches!(target, Typ::Ref(_)) {
 								let msg = "a reference must be initialized (`?^T` for an optional one)";
-								return Err(
-									Diagnostic::new(msg, stmt.1.into_range()).with_label("no zero value for `^T`")
-								);
+								return fail(msg, stmt.1, "no zero value for `^T`");
 							}
 							// a nozero binding starts unassigned, and stays unreadable until assigned
 							if self.nozero(&target).is_some() {
@@ -77,8 +75,11 @@ impl<'a, M: Module> Translator<'a, M> {
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
 					if name == CTX && typ.ctx_path(crate::compiler::CONTEXT).is_none() {
-						return Err(Diagnostic::new(format!("`ctx` can't be {typ}"), stmt.1.into_range())
-							.with_label("needs `Context` or a struct embedding one"));
+						return fail(
+							format!("`ctx` can't be {typ}"),
+							stmt.1,
+							"needs `Context` or a struct embedding one",
+						);
 					}
 					self.self_name = None;
 					if let Some(v) = value {
@@ -117,11 +118,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
-						return Err(Diagnostic::new(
+						return fail(
 							format!("cannot assign {typ} to `{name}`, which is {}", local.typ),
-							value.1.into_range(),
-						)
-						.with_label("type mismatch"));
+							value.1,
+							"type mismatch",
+						);
 					}
 					self.move_resource(value, &typ)?;
 					self.slots.retain(|s| s != name);
@@ -165,11 +166,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = match &typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						Typ::Str => {
-							return Err(Diagnostic::new(
+							return fail(
 								format!("cannot assign into `{name}`, strings are immutable"),
-								stmt.1.into_range(),
-							)
-							.with_label("cannot assign into a string"));
+								stmt.1,
+								"cannot assign into a string",
+							);
 						}
 						t if self.claims(t, role::INDEX_ASSIGN) => {
 							let call = Expr::MethodCall {
@@ -182,9 +183,10 @@ impl<'a, M: Module> Translator<'a, M> {
 							continue;
 						}
 						_ => {
-							return Err(
-								Diagnostic::new(format!("`{name}` is not an array"), stmt.1.into_range())
-									.with_label(format!("implement `{}` to assign into it", role::INDEX_ASSIGN)),
+							return fail(
+								format!("`{name}` is not an array"),
+								stmt.1,
+								format!("implement `{}` to assign into it", role::INDEX_ASSIGN),
 							);
 						}
 					};
@@ -203,8 +205,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::MapDelete { name, key } => {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
 					let Typ::Map(k, _) = local.typ.clone() else {
-						return Err(Diagnostic::new(format!("`{name}` is not a map"), stmt.1.into_range())
-							.with_label("not a map"));
+						return fail(format!("`{name}` is not a map"), stmt.1, "not a map");
 					};
 					let (tag, key_bits) = self.map_key(key, &k)?;
 					let ptr = self.read_local(&local);
@@ -218,10 +219,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = match &typ {
 						Typ::Array(e) => (**e).clone(),
 						_ => {
-							return Err(
-								Diagnostic::new(format!("`{name}` is not an array"), stmt.1.into_range())
-									.with_label("not an array"),
-							);
+							return fail(format!("`{name}` is not an array"), stmt.1, "not an array");
 						}
 					};
 					let (val, vtyp) = self.check_expr(value, &elem)?;
@@ -259,11 +257,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
 						self.rt_call("array_extend", &[ptr, val, size]);
 					} else {
-						return Err(Diagnostic::new(
+						return fail(
 							format!("cannot append {vtyp} to {elem} array"),
-							value.1.into_range(),
-						)
-						.with_label("type mismatch"));
+							value.1,
+							"type mismatch",
+						);
 					}
 				}
 
@@ -317,10 +315,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						// writes fall through embeds
 						Typ::Struct(sname, fields) => self.struct_field(&sname, &fields, field, stmt.1)?,
 						_ => {
-							return Err(
-								Diagnostic::new(format!("`{name}` is not a struct"), stmt.1.into_range())
-									.with_label("not a struct"),
-							);
+							return fail(format!("`{name}` is not a struct"), stmt.1, "not a struct");
 						}
 					};
 					let val = self.stored(value, &ftyp, &format!("field `{field}` of type {ftyp}"), "a field")?;
@@ -343,8 +338,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						..
 					}) = self.loops.last()
 					else {
-						return Err(Diagnostic::new("`break` outside of a loop", stmt.1.into_range())
-							.with_label("not inside a loop"));
+						return fail("`break` outside of a loop", stmt.1, "not inside a loop");
 					};
 					// the first `break` creates the exit block
 					let exit = exit.unwrap_or_else(|| {
@@ -378,8 +372,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (top, depth) = match self.loops.last() {
 						Some(frame) => (frame.top, frame.depth),
 						None => {
-							return Err(Diagnostic::new("`continue` outside of a loop", stmt.1.into_range())
-								.with_label("not inside a loop"));
+							return fail("`continue` outside of a loop", stmt.1, "not inside a loop");
 						}
 					};
 					self.release_scopes(depth, None)?;
@@ -420,10 +413,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn stored(&mut self, value: &Spanned<Expr>, want: &Typ, what: &str, place: &str) -> Result<Value, Diagnostic> {
 		let (val, vtyp) = self.check_expr(value, want)?;
 		if &vtyp != want {
-			return Err(
-				Diagnostic::new(format!("cannot assign {vtyp} to {what}"), value.1.into_range())
-					.with_label("type mismatch"),
-			);
+			return fail(format!("cannot assign {vtyp} to {what}"), value.1, "type mismatch");
 		}
 		closure_escape(want, value.1.into_range(), &format!("stored in {place}"))?;
 		self.move_resource(value, want)?;
@@ -464,8 +454,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The first return fixes the fn's type, and later returns must agree.
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
 		if self.deferring {
-			return Err(Diagnostic::new("cannot return from a defer body", span.into_range())
-				.with_label("every exit path already runs this deferred body"));
+			return fail(
+				"cannot return from a defer body",
+				span,
+				"every exit path already runs this deferred body",
+			);
 		}
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !self.types.fallible(&typ) {
@@ -480,11 +473,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some((declared, _)) = &self.ret
 			&& &typ != declared
 		{
-			return Err(Diagnostic::new(
+			return fail(
 				format!("expected {declared} return value, got {typ}"),
-				span.into_range(),
-			)
-			.with_label("wrong return type"));
+				span,
+				"wrong return type",
+			);
 		}
 		if typ.is_unit() {
 			self.release_scopes(0, Some((val, typ.clone())))?;

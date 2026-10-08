@@ -67,9 +67,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			let (val, typ) = self.collect_spread((val, typ), inner.1)?;
 			let (Typ::Array(t) | Typ::FixedArray(t, _)) = &typ else {
-				return Err(
-					Diagnostic::new(format!("cannot spread {typ}"), inner.1.into_range()).with_label("not an array")
-				);
+				return fail(format!("cannot spread {typ}"), inner.1, "not an array");
 			};
 			unify_elem(&mut elem, t, inner.1)?;
 			parts.push(match &typ {
@@ -142,9 +140,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		self.require_unsafe("ptr.array", span)?;
 		let (Some(ptr), [(te, te_span)], [count]) = (recv, type_args, args) else {
-			return Err(
-				Diagnostic::new("`array` takes one type argument and a length", span.into_range())
-					.with_label("write `p.array[T](n)`"),
+			return fail(
+				"`array` takes one type argument and a length",
+				span,
+				"write `p.array[T](n)`",
 			);
 		};
 		let elem = self.types().resolve(te, *te_span)?;
@@ -169,9 +168,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (vals, elem) = self.collect_elems(elems, want)?;
 		let Some(elem) = elem else {
-			return Err(
-				Diagnostic::new("empty array literals aren't supported yet", span.into_range())
-					.with_label("needs at least one element to infer its type"),
+			return fail(
+				"empty array literals aren't supported yet",
+				span,
+				"needs at least one element to infer its type",
 			);
 		};
 		let (data, len) = self.heap_alloc(vals, &elem);
@@ -190,12 +190,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& elems.len() != n
 		{
 			let msg = format!("expected {n} elements, got {}", elems.len());
-			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of elements"));
+			return fail(msg, span, "wrong number of elements");
 		}
 		let (vals, elem) = self.collect_elems(elems, want.map(|w| w.0))?;
 		let Some(elem) = elem else {
-			return Err(Diagnostic::new("cannot infer the element type here", span.into_range())
-				.with_label("needs at least one element to infer its type"));
+			return fail(
+				"cannot infer the element type here",
+				span,
+				"needs at least one element to infer its type",
+			);
 		};
 		let n = vals.len();
 		let ptr = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
@@ -261,9 +264,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<(Value, Value), Diagnostic> {
 		let (start, end, inclusive) = range.and_then(|r| r.0.bounds()).unwrap_or_default();
 		if start.is_some_and(|e| matches!(e.0, Expr::Range { .. })) {
-			return Err(
-				Diagnostic::new("strided views aren't supported yet", start.unwrap().1.into_range())
-					.with_label("an array slice has no step"),
+			return fail(
+				"strided views aren't supported yet",
+				start.unwrap().1,
+				"an array slice has no step",
 			);
 		}
 		let lo = match start {
@@ -294,15 +298,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		match typ {
 			Typ::Array(_) => {}
 			Typ::FixedArray(..) => {
-				return Err(
-					Diagnostic::new("slicing fixed arrays is not supported yet", span.into_range())
-						.with_label("only dynamic arrays can be sliced for now"),
+				return fail(
+					"slicing fixed arrays is not supported yet",
+					span,
+					"only dynamic arrays can be sliced for now",
 				);
 			}
 			_ => {
-				return Err(
-					Diagnostic::new(format!("cannot slice {typ}"), span.into_range()).with_label("not an array")
-				);
+				return fail(format!("cannot slice {typ}"), span, "not an array");
 			}
 		}
 		let elem = array_elem(&typ).clone();
@@ -319,7 +322,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		if !matches!(typ, Typ::Array(_) | Typ::Str) {
-			return Err(Diagnostic::new(format!("cannot slice {typ}"), span.into_range()).with_label("not an array"));
+			return fail(format!("cannot slice {typ}"), span, "not an array");
 		}
 		let (lo, end, step, open) = self.range_parts(range);
 		let strided = self.b.ins().icmp_imm(IntCC::NotEqual, step, 1);
@@ -350,9 +353,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn int_value(&mut self, e: &Spanned<Expr>, what: &str) -> Result<Value, Diagnostic> {
 		let (v, t) = self.expr(e)?;
 		if !matches!(t, Typ::Int(_)) {
-			return Err(
-				Diagnostic::new(format!("{what} must be Int, got {t}"), e.1.into_range()).with_label("not an Int"),
-			);
+			return fail(format!("{what} must be Int, got {t}"), e.1, "not an Int");
 		}
 		Ok(v)
 	}
@@ -360,9 +361,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn bool_value(&mut self, e: &Spanned<Expr>, what: &str) -> Result<Value, Diagnostic> {
 		let (v, t) = self.expr(e)?;
 		if t != Typ::Bool {
-			return Err(
-				Diagnostic::new(format!("{what} must be Bool, got {t}"), e.1.into_range()).with_label("not a Bool"),
-			);
+			return fail(format!("{what} must be Bool, got {t}"), e.1, "not a Bool");
 		}
 		Ok(v)
 	}
@@ -472,7 +471,7 @@ fn unify_elem(elem: &mut Option<Typ>, found: &Typ, span: Span) -> Result<(), Dia
 	match elem {
 		Some(t) if t != found => {
 			let msg = format!("array elements must share a type: expected {t}, got {found}");
-			Err(Diagnostic::new(msg, span.into_range()).with_label("mismatched element type"))
+			fail(msg, span, "mismatched element type")
 		}
 		_ => {
 			*elem = Some(found.clone());

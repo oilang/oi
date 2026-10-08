@@ -70,17 +70,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			.with_label("no enum type is expected in this position")
 			.with_note(format!("qualify it, e.g. `Color.{variant}`"))),
 
-			Expr::ArgMod(a, _) => Err(Diagnostic::new(
+			Expr::ArgMod(a, _) => fail(
 				format!("`{a}` is only allowed on call arguments"),
-				expr.1.into_range(),
-			)
-			.with_label("not a call argument")),
+				expr.1,
+				"not a call argument",
+			),
 
-			Expr::Foreign => Err(Diagnostic::new(
+			Expr::Foreign => fail(
 				"foreign is only allowed as a module-level binding",
-				expr.1.into_range(),
-			)
-			.with_label("not a module-level binding")),
+				expr.1,
+				"not a module-level binding",
+			),
 
 			Expr::Ident(name) => match self.local(name, expr.1.into_range()) {
 				Ok(local) => {
@@ -131,11 +131,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					Typ::Trait(tn) => tn.clone(),
 					Typ::Error => role::ERROR.to_string(),
 					_ => {
-						return Err(Diagnostic::new(
+						return fail(
 							"`is` takes a type name or a trait object on the left",
-							subject.1.into_range(),
-						)
-						.with_label(format!("this is {vt}")));
+							subject.1,
+							format!("this is {vt}"),
+						);
 					}
 				};
 				let typ = self.types().resolve(&TypeExpr::Name(trait_name.clone()), expr.1)?;
@@ -160,13 +160,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					t if t.nominal().is_some() => match self.fill(t, role::NEG, "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
-							return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
-								.with_label(format!("claim `Neg` for `{t}`")));
+							return fail(format!("cannot negate {typ}"), expr.1, format!("claim `Neg` for `{t}`"));
 						}
 					},
 					_ => {
-						return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
-							.with_label(format!("this is {typ}")));
+						return fail(format!("cannot negate {typ}"), expr.1, format!("this is {typ}"));
 					}
 				};
 				Ok((out, typ))
@@ -215,18 +213,19 @@ impl<'a, M: Module> Translator<'a, M> {
 					t if t.nominal().is_some() => match self.fill(t, role::NOT, "not", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
-							return Err(
-								Diagnostic::new(format!("cannot apply `!` to {typ}"), expr.1.into_range())
-									.with_label(format!("claim `Not` for `{t}`")),
+							return fail(
+								format!("cannot apply `!` to {typ}"),
+								expr.1,
+								format!("claim `Not` for `{t}`"),
 							);
 						}
 					},
 					_ => {
-						return Err(Diagnostic::new(
+						return fail(
 							format!("expected Bool or an integer, got {typ}"),
-							expr.1.into_range(),
-						)
-						.with_label("`!` needs a Bool or integer operand"));
+							expr.1,
+							"`!` needs a Bool or integer operand",
+						);
 					}
 				};
 				Ok((out, typ))
@@ -262,16 +261,11 @@ impl<'a, M: Module> Translator<'a, M> {
 								self.cast_fn_ptr(&qn, args, expr.1)
 							}
 							None if matches!(name.as_str(), "assert" | "panic") => {
-								Err(Diagnostic::new(format!("`{name}` is a macro"), expr.1.into_range())
-									.with_label(format!("write `{name}!(...)`")))
+								fail(format!("`{name}` is a macro"), expr.1, format!("write `{name}!(...)`"))
 							}
 							None => match self.through_with(expr)? {
 								Some(member) => self.lower(&member, hint),
-								None => Err(Diagnostic::new(
-									format!("undefined function `{name}`"),
-									expr.1.into_range(),
-								)
-								.with_label("not defined")),
+								None => fail(format!("undefined function `{name}`"), expr.1, "not defined"),
 							},
 						},
 					},
@@ -331,8 +325,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& self.enum_variants(&name).iter().any(|v| v.name == *method)
 					{
 						let msg = format!("`{name}.{method}` is a variant, not a method");
-						return Err(Diagnostic::new(msg, expr.1.into_range())
-							.with_label(format!("write `{name}.{method}.( … )` or `.{{ … }}`")));
+						return fail(msg, expr.1, format!("write `{name}.{method}.( … )` or `.{{ … }}`"));
 					}
 				}
 
@@ -412,9 +405,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						Typ::Array(_) => ("array".into(), Some((recv_val, recv_typ))),
 						Typ::Map(..) => ("map".into(), Some((recv_val, recv_typ))),
 						_ => {
-							return Err(
-								Diagnostic::new(format!("`{recv_typ}` has no methods"), recv.1.into_range())
-									.with_label("methods are only defined on structs and primitives"),
+							return fail(
+								format!("`{recv_typ}` has no methods"),
+								recv.1,
+								"methods are only defined on structs and primitives",
 							);
 						}
 					}
@@ -485,10 +479,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return self.call_sig(&key, sig, Some(embed), recv_expr, args, expr.1);
 					}
 				}
-				Err(
-					Diagnostic::new(format!("`{sname}` has no method `{method}`"), expr.1.into_range())
-						.with_label("no such method"),
-				)
+				Err(unknown_member(format!("`{sname}`"), "method", method, expr.1))
 			}
 
 			// tuples
@@ -528,7 +519,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(l) = self.vars.get(&key).cloned().filter(|l| l.stat) {
 						if !self.publics.is_visible(&key, &self.types.scope.module) {
 							let msg = format!("`{field}` is private to module `{module}`");
-							return Err(Diagnostic::new(msg, expr.1.into_range()).with_label("not public"));
+							return fail(msg, expr.1, "not public");
 						}
 						self.require_pure(field, expr.1)?;
 						let val = self.read_local(&l);
@@ -687,10 +678,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let fields = match &typ {
 					Typ::Tuple(fields) => fields,
 					_ => {
-						return Err(
-							Diagnostic::new(format!("cannot access a field of {typ}"), tuple.1.into_range())
-								.with_label("not a tuple"),
-						);
+						return fail(format!("cannot access a field of {typ}"), tuple.1, "not a tuple");
 					}
 				};
 				let idx = tuple_index(fields, field, expr.1)?;
@@ -725,9 +713,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::DotTuple(args) => match hint {
 				Some(t) => self.cast_to(t, args, expr.1),
-				None => Err(
-					Diagnostic::new("cannot infer the type of `.()` here", expr.1.into_range())
-						.with_label("annotate the binding, or cast with `T.( ... )`"),
+				None => fail(
+					"cannot infer the type of `.()` here",
+					expr.1,
+					"annotate the binding, or cast with `T.( ... )`",
 				),
 			},
 
@@ -737,11 +726,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					Typ::Array(elem) => self.array_lit(elems, Some(elem), expr.1),
 					Typ::FixedArray(elem, n) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 					Typ::Map(..) if elems.is_empty() => self.map_lit(&[], expr.1, Some(&typ)),
-					_ if elems.is_empty() => Err(Diagnostic::new(
+					_ if elems.is_empty() => fail(
 						"an exact array literal needs elements",
-						expr.1.into_range(),
-					)
-					.with_label(format!("write `[]{typ}.[]` for an empty dynamic array"))),
+						expr.1,
+						format!("write `[]{typ}.[]` for an empty dynamic array"),
+					),
 					_ => self.fixed_lit(elems, Some((&typ, elems.len())), expr.1),
 				}
 			}
@@ -761,11 +750,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							return self.range_slice((ptr, typ), idx, collection.1);
 						}
 						let Typ::Int(_) = ityp else {
-							return Err(Diagnostic::new(
-								format!("index must be Int, got {ityp}"),
-								index.1.into_range(),
-							)
-							.with_label("not an Int"));
+							return fail(format!("index must be Int, got {ityp}"), index.1, "not an Int");
 						};
 						let elem = array_elem(&typ).clone();
 						let idx = self.intcast(idx, self.int, true);
@@ -773,9 +758,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						Ok((self.load_index(data, len, &elem, idx, collection.1), elem))
 					}
 					t if self.claims(t, role::INDEX) => self.index_call((ptr, typ), index, expr.1),
-					_ => Err(
-						Diagnostic::new(format!("cannot index {typ}"), collection.1.into_range())
-							.with_label(format!("implement `{}` for `{typ}` to index it", role::INDEX)),
+					_ => fail(
+						format!("cannot index {typ}"),
+						collection.1,
+						format!("implement `{}` for `{typ}` to index it", role::INDEX),
 					),
 				}
 			}
@@ -807,10 +793,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						Expr::Match { .. } => ("match", "every arm returns, but a value is needed here"),
 						_ => ("loop", "an infinite loop with no `break` yields nothing"),
 					};
-					Err(
-						Diagnostic::new(format!("this `{kw}` never produces a value"), expr.1.into_range())
-							.with_label(why),
-					)
+					fail(format!("this `{kw}` never produces a value"), expr.1, why)
 				}
 			},
 
@@ -883,10 +866,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						.iter()
 						.map(|(k, v)| match &k.0 {
 							Expr::Ident(n) => Ok((Some(n.clone()), v.clone())),
-							_ => Err(
-								Diagnostic::new(format!("`{name}` fields are named by idents"), k.1.into_range())
-									.with_label("not a field name"),
-							),
+							_ => fail(format!("`{name}` fields are named by idents"), k.1, "not a field name"),
 						})
 						.collect::<Result<Vec<_>, _>>()?;
 					self.struct_lit(name, &[], &fields, expr.1, hint)
@@ -903,9 +883,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Spread(inner) => {
 				let (val, typ) = self.expr(inner)?;
 				let Typ::Int(_) = typ else {
-					return Err(
-						Diagnostic::new(format!("cannot spread {typ} here"), expr.1.into_range())
-							.with_label("`..` spreads only inside a literal or a call"),
+					return fail(
+						format!("cannot spread {typ} here"),
+						expr.1,
+						"`..` spreads only inside a literal or a call",
 					);
 				};
 				self.upto(val, expr.1)
@@ -932,11 +913,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					(Some(ret), _) => AnonSig::Explicit(ret),
 					(None, Some(t @ Typ::Fn(..))) => AnonSig::Inferred(t.clone()),
 					(None, _) => {
-						return Err(Diagnostic::new(
+						return fail(
 							"anonymous functions need an explicit return type",
-							expr.1.into_range(),
-						)
-						.with_label("add a return type, e.g. `fn [] () int { ... }`"));
+							expr.1,
+							"add a return type, e.g. `fn [] () int { ... }`",
+						);
 					}
 				};
 				self.declare_anon_fn(captures, params, *params_tuple, sig, body, expr.1)
@@ -988,28 +969,23 @@ impl<'a, M: Module> Translator<'a, M> {
 				format!("`{}` is a type, not a value", self.types().resolve(te, expr.1)?),
 				expr.1.into_range(),
 			)),
-			Expr::Return(_) | Expr::Break(_) | Expr::Continue => Err(Diagnostic::new(
+			Expr::Return(_) | Expr::Break(_) | Expr::Continue => fail(
 				"`return`, `break`, and `continue` never produce a value",
-				expr.1.into_range(),
-			)
-			.with_label("this diverges")),
-			Expr::Defer { .. } => Err(
-				Diagnostic::new("`defer` is only allowed as a statement", expr.1.into_range())
-					.with_label("not a value"),
+				expr.1,
+				"this diverges",
 			),
+			Expr::Defer { .. } => fail("`defer` is only allowed as a statement", expr.1, "not a value"),
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(..) => {
 				unreachable!("not an expression")
 			}
 			Expr::MacroDef { .. } => unreachable!("removed by macro expansion"),
 			Expr::Quote(stmts) => self.quote(stmts, expr.1),
 			Expr::Arm(_) => Err(Diagnostic::new("a match arm only fits in a match", expr.1.into_range())),
-			Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => Err(
-				Diagnostic::new("unquotes only make sense inside a quote", expr.1.into_range())
-					.with_label("stray unquote"),
-			),
+			Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {
+				fail("unquotes only make sense inside a quote", expr.1, "stray unquote")
+			}
 
-			Expr::Comp(_) => Err(Diagnostic::new("`comp` isn't supported here", expr.1.into_range())
-				.with_label("can't run at compile time")),
+			Expr::Comp(_) => fail("`comp` isn't supported here", expr.1, "can't run at compile time"),
 
 			Expr::With(subjects) => self.open_with(subjects),
 
@@ -1055,9 +1031,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if at == err_typ {
 			1
 		} else {
-			return Err(
-				Diagnostic::new(format!("expected {ok_typ} or {err_typ}, got {at}"), arg.1.into_range())
-					.with_label("type mismatch"),
+			return fail(
+				format!("expected {ok_typ} or {err_typ}, got {at}"),
+				arg.1,
+				"type mismatch",
 			);
 		};
 		let val = self.make_enum(&variants, disc, &[fv]);

@@ -15,7 +15,7 @@ use super::{
 	typeid,
 };
 use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam, place};
-use crate::diagnostics::{Diagnostic, SourceMap};
+use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Publics, Scope, module_of};
 use crate::runtime;
 

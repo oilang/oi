@@ -96,9 +96,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_enum_eq(a, b, t, &self.variants_of(t), span)
 			}
 			t if comparable(t) => Ok(self.emit_eq(a, b, t)),
-			t => Err(
-				Diagnostic::new(format!("cannot compare {owner}: contains {t}"), span.into_range())
-					.with_label(format!("claim `Eq` for `{owner}` to define equality")),
+			t => fail(
+				format!("cannot compare {owner}: contains {t}"),
+				span,
+				format!("claim `Eq` for `{owner}` to define equality"),
 			),
 		}
 	}
@@ -129,12 +130,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The `method` fill of trait `tn` claimed for `name`, if any.
 	pub(super) fn fill(&mut self, typ: &Typ, tn: &str, method: &str, arity: usize) -> Option<FnSig> {
-		let name = typ.key();
-		let found = match self.trait_impls.contains(&(name.clone(), tn.to_string())) {
-			true => self.funcs.get(&format!("{name}.{method}")).cloned(),
-			false if self.claims(typ, tn) => self.recv_instance(&format!("{}.{method}", rc::base_name(&name)), typ),
-			false => None,
-		};
+		let found = self.claims(typ, tn).then(|| self.resolve_method(typ, method)).flatten();
 		found.filter(|s| s.params.len() == arity)
 	}
 
@@ -157,9 +153,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let Some(sig) = self.find_fill(&format!("{}.contains", ct.key()), 1, &vt) else {
-			return Err(
-				Diagnostic::new(format!("cannot search {vt} in {ct}"), span.into_range())
-					.with_label(format!("`{ct}` claims no `Contains[{vt}]`")),
+			return fail(
+				format!("cannot search {vt} in {ct}"),
+				span,
+				format!("`{ct}` claims no `Contains[{vt}]`"),
 			);
 		};
 		Ok(self.emit_call(&sig, &[c, v]))
@@ -430,16 +427,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					true => format!("`{name}` claims no `{tn}[{rt}]`"),
 					false => format!("implement `{tn}` for `{name}` to overload `{op}`"),
 				};
-				return Err(
-					Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range()).with_label(label),
-				);
+				return fail(format!("cannot apply `{op}` to {lt}"), span, label);
 			};
 			if rt != sig.params[1].typ {
-				return Err(Diagnostic::new(
+				return fail(
 					format!("expected {} argument, got {rt}", sig.params[1].typ),
-					r.1.into_range(),
-				)
-				.with_label("wrong argument type"));
+					r.1,
+					"wrong argument type",
+				);
 			}
 			return Ok(self.emit_call(&sig, &[lv, rv]));
 		}
@@ -473,17 +468,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Typ::USize, Typ::USize) => NumKind::UInt,
 			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => NumKind::Float,
 			_ => {
-				return Err(
-					Diagnostic::new(format!("cannot apply `{op}` to {lt} and {rt}"), span.into_range())
-						.with_label("operands have mismatched types"),
+				return fail(
+					format!("cannot apply `{op}` to {lt} and {rt}"),
+					span,
+					"operands have mismatched types",
 				);
 			}
 		};
 		if let (BinOp::Mod, NumKind::Float) = (op, kind) {
 			// TODO: cranelift has no float remainder
-			return Err(
-				Diagnostic::new("`%` is not yet supported on floats".to_string(), span.into_range())
-					.with_label("only integer operands"),
+			return fail(
+				"`%` is not yet supported on floats".to_string(),
+				span,
+				"only integer operands",
 			);
 		}
 		if let NumKind::Float = kind
@@ -491,9 +488,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				op,
 				BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr
 			) {
-			return Err(
-				Diagnostic::new(format!("cannot apply `{op}` to {lt}"), span.into_range())
-					.with_label("bitwise operators need integer operands"),
+			return fail(
+				format!("cannot apply `{op}` to {lt}"),
+				span,
+				"bitwise operators need integer operands",
 			);
 		}
 		if let (BinOp::Shl | BinOp::Shr, Some(n)) = (op, self.const_int(r)) {
@@ -503,11 +501,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			// cranelift apparently masks a runtime shift count by the container width, so reject comptime-known counts outside that range
 			if !(0..width).contains(&n) {
-				return Err(Diagnostic::new(
+				return fail(
 					format!("shift count {n} is out of range for {lt} ({width} bits)"),
-					r.1.into_range(),
-				)
-				.with_label(format!("must be between 0 and {}", width - 1)));
+					r.1,
+					format!("must be between 0 and {}", width - 1),
+				);
 			}
 		}
 		// cranelift apparently has no pow instruction, so `**` widens to 64 bits and calls into the runtime
@@ -571,9 +569,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				IntCC::Equal => self.b.ins().iconst(self.int, 1),
 				IntCC::NotEqual => self.b.ins().iconst(self.int, 0),
 				_ => {
-					return Err(
-						Diagnostic::new("unit type `()` only supports `==` and `!=`", span.into_range())
-							.with_label("unsupported comparison"),
+					return fail(
+						"unit type `()` only supports `==` and `!=`",
+						span,
+						"unsupported comparison",
 					);
 				}
 			};
@@ -618,9 +617,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						true => format!("claim `Ord` for `{lt}` to define ordering"),
 						false => "only `==` and `!=` are supported".into(),
 					};
-					return Err(
-						Diagnostic::new(format!("cannot compare {lt} and {rt}"), span.into_range()).with_label(label),
-					);
+					return fail(format!("cannot compare {lt} and {rt}"), span, label);
 				}
 			}
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
@@ -640,10 +637,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.ins().icmp_imm(ne_cc, eq, 0)
 			}
 			_ => {
-				return Err(
-					Diagnostic::new(format!("cannot compare {lt} and {rt}"), span.into_range())
-						.with_label("not comparable"),
-				);
+				return fail(format!("cannot compare {lt} and {rt}"), span, "not comparable");
 			}
 		};
 		let out = self.b.ins().uextend(self.int, raw);
@@ -658,9 +652,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if rhs_typ == Typ::Str {
 			let (lhs_val, lhs_typ) = self.expr(lhs)?;
 			if lhs_typ != Typ::Str {
-				return Err(
-					Diagnostic::new(format!("cannot search {lhs_typ} in Str"), lhs.1.into_range())
-						.with_label("type mismatch: value must be Str"),
+				return fail(
+					format!("cannot search {lhs_typ} in Str"),
+					lhs.1,
+					"type mismatch: value must be Str",
 				);
 			}
 			let sig = self.funcs.get(role::STR_CONTAINS).cloned().ok_or_else(|| {
@@ -678,18 +673,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		let elem = match rhs_typ {
 			Typ::Array(ref e) => (**e).clone(),
 			_ => {
-				return Err(Diagnostic::new(
+				return fail(
 					format!("right side of `in` must be an array, Str or a `Contains` type, got {rhs_typ}"),
-					rhs.1.into_range(),
-				)
-				.with_label("not an array or string"));
+					rhs.1,
+					"not an array or string",
+				);
 			}
 		};
 		let (val, val_typ) = self.expr(lhs)?;
 		if val_typ != elem {
-			return Err(
-				Diagnostic::new(format!("cannot search {val_typ} in {elem} array"), lhs.1.into_range())
-					.with_label("type mismatch"),
+			return fail(
+				format!("cannot search {val_typ} in {elem} array"),
+				lhs.1,
+				"type mismatch",
 			);
 		}
 
@@ -707,8 +703,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn logical(&mut self, and: bool, l: &Spanned<Expr>, r: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		if lt != Typ::Bool {
-			return Err(Diagnostic::new(format!("expected Bool, got {lt}"), l.1.into_range())
-				.with_label("logical operators need Bool operands"));
+			return fail(
+				format!("expected Bool, got {lt}"),
+				l.1,
+				"logical operators need Bool operands",
+			);
 		}
 
 		// result defaults to the short-circuit value
@@ -726,8 +725,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		// scoped, so a temp the rhs allocates is released here
 		let (rv, rt) = self.block_expr(std::slice::from_ref(r), r.1)?;
 		if rt != Typ::Bool {
-			return Err(Diagnostic::new(format!("expected Bool, got {rt}"), r.1.into_range())
-				.with_label("logical operators need Bool operands"));
+			return fail(
+				format!("expected Bool, got {rt}"),
+				r.1,
+				"logical operators need Bool operands",
+			);
 		}
 		self.b.def_var(result, rv);
 		self.b.ins().jump(merge, &[]);

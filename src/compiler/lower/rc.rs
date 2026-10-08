@@ -75,13 +75,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Run a type's Drop or Copy hook, if they exist.
-	fn run_hook(&mut self, val: Value, typ: &Typ, name: &str, hook: &str) {
-		if let Some(sig) = self
-			.funcs
-			.get(&format!("{name}.{hook}"))
-			.cloned()
-			.or_else(|| self.recv_instance(&format!("{}.{hook}", base_name(name)), typ))
-		{
+	fn run_hook(&mut self, val: Value, typ: &Typ, hook: &str) {
+		if let Some(sig) = self.resolve_method(typ, hook) {
 			self.emit_call(&sig, &[val]);
 		}
 	}
@@ -90,10 +85,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn settle(&mut self, val: Value, dst: Value, typ: &Typ) {
 		if self.handover(val, typ) {
 			self.untemp(val);
-		} else if let Typ::Struct(name, _) = typ
+		} else if let Typ::Struct(..) = typ
 			&& self.is_copy(typ)
 		{
-			self.run_hook(dst, typ, name, "copy");
+			self.run_hook(dst, typ, "copy");
 		}
 	}
 
@@ -106,9 +101,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.move_local(n, &local, e.1.into_range())?;
 			}
 			Expr::Index { .. } | Expr::Slice { .. } | Expr::Field { .. } => {
-				return Err(
-					Diagnostic::new(format!("cannot move {typ} out of its container"), e.1.into_range())
-						.with_label("only an owned binding can be moved, so use it in place"),
+				return fail(
+					format!("cannot move {typ} out of its container"),
+					e.1,
+					"only an owned binding can be moved, so use it in place",
 				);
 			}
 			_ => {}
@@ -141,9 +137,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if let Typ::FixedArray(elem, _) = typ {
 			let elem = (**elem).clone();
 			self.each_elem(val, typ, |s, _, ev| s.release_value(ev, &elem));
-		} else if let Typ::Struct(name, fields) = typ {
+		} else if let Typ::Struct(_, fields) = typ {
 			if self.is_resource(typ) {
-				self.run_hook(val, typ, name, "drop");
+				self.run_hook(val, typ, "drop");
 			}
 			self.release_slots(val, 0, &field_types(fields));
 		} else if let Typ::Tuple(fields) = typ
@@ -334,9 +330,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if d.on_err {
 			let Some((val, typ)) = ret else { return Ok(()) };
 			let Some((_, err)) = self.fallible_split(typ) else {
-				return Err(
-					Diagnostic::new("`defer or` needs a fn returning `?T`/`!T`", d.body.1.into_range())
-						.with_label("this fn cannot fail"),
+				return fail(
+					"`defer or` needs a fn returning `?T`/`!T`",
+					d.body.1,
+					"this fn cannot fail",
 				);
 			};
 			let tag = self.enum_tag(typ, *val);

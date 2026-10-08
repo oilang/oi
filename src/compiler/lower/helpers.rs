@@ -12,7 +12,7 @@ pub(super) fn field_binds<'a>(
 		.filter(|(_, (e, _))| !matches!(&e.0, Expr::Ident(n) if n == "_"))
 		.map(|(i, (e, t))| match &e.0 {
 			Expr::Ident(n) => Ok((n.clone(), t.clone(), base + i as i32 * stride)),
-			_ => Err(Diagnostic::new("patterns must bind names", e.1.into_range()).with_label("not a name")),
+			_ => fail("patterns must bind names", e.1, "not a name"),
 		})
 		.collect()
 }
@@ -27,22 +27,20 @@ pub(super) fn struct_pattern(
 ) -> Result<Vec<Bind>, Diagnostic> {
 	if pname != sname {
 		let msg = format!("pattern is `{pname}` but subject is `{sname}`");
-		return Err(Diagnostic::new(msg, span.into_range()).with_label("type mismatch"));
+		return fail(msg, span, "type mismatch");
 	}
 	entries
 		.iter()
 		.filter(|(_, e)| !matches!(&e.0, Expr::Ident(n) if n == "_"))
 		.map(|(fname, e)| {
 			let Expr::Ident(local) = &e.0 else {
-				return Err(
-					Diagnostic::new("struct patterns must bind names", e.1.into_range()).with_label("not a name")
-				);
+				return fail("struct patterns must bind names", e.1, "not a name");
 			};
 			let field = fname.as_deref().unwrap_or(local);
-			let idx = fdefs.iter().position(|f| f.name == field).ok_or_else(|| {
-				Diagnostic::new(format!("struct `{sname}` has no field `{field}`"), e.1.into_range())
-					.with_label("no such field")
-			})?;
+			let idx = fdefs
+				.iter()
+				.position(|f| f.name == field)
+				.ok_or_else(|| unknown_member(format!("struct `{sname}`"), "field", field, e.1))?;
 			Ok((local.clone(), fdefs[idx].typ.clone(), idx as i32 * 8))
 		})
 		.collect()
@@ -68,11 +66,11 @@ pub(super) fn record_slot<'n>(
 	mut names: impl Iterator<Item = &'n str>,
 ) -> Result<usize, Diagnostic> {
 	let Expr::Ident(key) = &k.0 else {
-		return Err(Diagnostic::new("field names must be idents", k.1.into_range()).with_label("not a field name"));
+		return fail("field names must be idents", k.1, "not a field name");
 	};
-	names.position(|n| n == key).ok_or_else(|| {
-		Diagnostic::new(format!("`{owner}` has no field `{key}`"), k.1.into_range()).with_label("no such field")
-	})
+	names
+		.position(|n| n == key)
+		.ok_or_else(|| unknown_member(format!("`{owner}`"), "field", key, k.1))
 }
 
 // A tuple slot by position or name.
@@ -80,13 +78,15 @@ pub(super) fn tuple_index(fields: &[(Option<String>, Typ)], field: &str, span: S
 	let len = fields.len();
 	match field.parse::<usize>() {
 		Ok(i) if i < len => Ok(i),
-		Ok(i) => Err(
-			Diagnostic::new(format!("tuple index {i} out of range (len {len})"), span.into_range())
-				.with_label("no such field"),
+		Ok(i) => fail(
+			format!("tuple index {i} out of range (len {len})"),
+			span,
+			"no such field",
 		),
-		Err(_) => fields.iter().position(|(n, _)| n.as_deref() == Some(field)).ok_or_else(|| {
-			Diagnostic::new(format!("tuple has no field `{field}`"), span.into_range()).with_label("no such field")
-		}),
+		Err(_) => fields
+			.iter()
+			.position(|(n, _)| n.as_deref() == Some(field))
+			.ok_or_else(|| unknown_member("tuple", "field", field, span)),
 	}
 }
 

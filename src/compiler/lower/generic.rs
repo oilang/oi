@@ -93,26 +93,20 @@ impl<'a, M: Module> Translator<'a, M> {
 			.as_ref()
 			.map_or(args.len() != names.len(), |s| s.iter().any(Option::is_none))
 		{
-			return Err(Diagnostic::new(
-				format!("`{name}` expects {} argument(s), got {}", names.len(), args.len()),
-				span.into_range(),
-			)
-			.with_label("wrong number of arguments"));
+			return arity_err(&format!("`{name}`"), names.len(), args.len(), "argument", span);
 		}
 		let slots: Vec<_> = named.unwrap_or_else(|| args.iter().map(Some).collect());
 		let access: Vec<Access> = def.params.iter().map(|p| p.access).collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
 		let mut subst = HashMap::new();
 		if type_args.len() > def.type_params.len() {
-			return Err(Diagnostic::new(
-				format!(
-					"`{name}` expects {} type argument(s), got {}",
-					def.type_params.len(),
-					type_args.len()
-				),
-				span.into_range(),
-			)
-			.with_label("wrong number of type arguments"));
+			return arity_err(
+				&format!("`{name}`"),
+				def.type_params.len(),
+				type_args.len(),
+				"type argument",
+				span,
+			);
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
 			subst.insert(param.name.clone(), self.types().arg_typ(param, te, *te_span)?);
@@ -143,11 +137,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else {
 				"type"
 			};
-			return Err(Diagnostic::new(
+			return fail(
 				format!("cannot infer {kind} parameter `{}`", missing.name),
-				span.into_range(),
-			)
-			.with_label("not determined by any argument"));
+				span,
+				"not determined by any argument",
+			);
 		}
 		for p in &def.type_params {
 			let Some(bound) = &p.bound else { continue };
@@ -155,15 +149,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				continue;
 			}
 			if !self.types.traits.contains_key(bound.as_str()) {
-				return Err(
-					Diagnostic::new(format!("unknown trait `{bound}`"), span.into_range()).with_label("no such trait")
-				);
+				return fail(format!("unknown trait `{bound}`"), span, "no such trait");
 			}
 			let typ = &subst[&p.name];
 			if !self.claims(typ, bound) {
-				return Err(
-					Diagnostic::new(format!("`{typ}` does not claim `{bound}`"), span.into_range())
-						.with_label(format!("required by `{}: {bound}`", p.name)),
+				return fail(
+					format!("`{typ}` does not claim `{bound}`"),
+					span,
+					format!("required by `{}: {bound}`", p.name),
 				);
 			}
 		}
