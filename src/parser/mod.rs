@@ -292,7 +292,7 @@ where
 	let adjacent = gap_guard(|gap| gap == Some(""), "must immediately follow, with no space");
 	// the next token opens on the same line
 	let same_line = gap_guard(
-		|gap| !gap.is_some_and(|g| g.contains('\n')),
+		|gap| !gap.is_some_and(|g| g.contains(['\n', ';'])),
 		"must continue on the same line",
 	);
 	// a token glued to the next one

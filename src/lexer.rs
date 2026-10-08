@@ -599,7 +599,11 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 			}
 		}
 		match tok {
-			Token::Return if raw.get(i + 1).is_some_and(|(_, n)| text(span.end, n.start).contains('\n')) => {
+			Token::Return
+				if raw
+					.get(i + 1)
+					.is_some_and(|(_, n)| text(span.end, n.start).contains(['\n', ';'])) =>
+			{
 				out.push((Token::BareReturn, *span))
 			}
 			Token::Dot if i > 0 => {
