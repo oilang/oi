@@ -58,3 +58,9 @@ fn body_cannot_leave_the_scope() {
 		"`defer or` needs a fn returning",
 	);
 }
+
+#[test]
+fn is_a_unit_value() {
+	check("print({ print(0); defer print(1) })", ["0", "1", "()"]);
+	check(["m! :: fn() Ast { `defer print(1)` }", "f :: fn() { print(m!()); print(2) }", "f()"], ["()", "2", "1"]);
+}

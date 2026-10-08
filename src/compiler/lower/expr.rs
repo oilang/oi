@@ -976,10 +976,20 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1,
 				"this diverges",
 			),
-			Expr::Defer { .. } => fail("`defer` is only allowed as a statement", expr.1, "not a value"),
+
+			Expr::Defer { body, on_err } => {
+				self.defers.last_mut().expect("scope").push(rc::Defer {
+					body: (**body).clone(),
+					vars: self.vars.clone(),
+					on_err: *on_err,
+				});
+				Ok(self.unit_value())
+			}
+
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(..) => {
 				unreachable!("not an expression")
 			}
+
 			Expr::MacroDef { .. } => unreachable!("removed by macro expansion"),
 			Expr::Quote(stmts) => self.quote(stmts, expr.1),
 			Expr::Arm(_) => Err(Diagnostic::new("a match arm only fits in a match", expr.1.into_range())),

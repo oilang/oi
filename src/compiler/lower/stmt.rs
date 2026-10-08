@@ -382,12 +382,6 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				Expr::Doc(_) => {}
 
-				Expr::Defer { body, on_err } => self.defers.last_mut().expect("scope").push(rc::Defer {
-					body: (**body).clone(),
-					vars: self.vars.clone(),
-					on_err: *on_err,
-				}),
-
 				_ => {
 					last = match stmt_target {
 						Some(t) => self.check_expr(stmt, t)?,
