@@ -71,6 +71,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub slots: Vec<String>,
 	pub addressed: HashSet<String>,
 	pub aliases: Vec<Variable>,
+	pub flagged: Vec<Variable>,
 	pub withs: Vec<String>,
 }
 

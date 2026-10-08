@@ -2083,6 +2083,7 @@ impl<M: Module> Compiler<M> {
 			slots: vec![],
 			addressed: HashSet::new(),
 			aliases: vec![],
+			flagged: vec![],
 			withs: types.scope.withs.clone(),
 		};
 

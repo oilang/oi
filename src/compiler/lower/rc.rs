@@ -317,7 +317,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			for i in (0..self.scopes[s].len()).rev() {
 				let (var, t) = self.scopes[s][i].clone();
 				let v = self.b.use_var(var);
+				if !self.flagged.contains(&var) {
+					self.release_value(v, &t);
+					continue;
+				}
+				let (live, done) = (self.b.create_block(), self.b.create_block());
+				self.b.ins().brif(v, live, &[], done, &[]);
+				self.b.seal_block(live);
+				self.b.switch_to_block(live);
 				self.release_value(v, &t);
+				self.b.ins().jump(done, &[]);
+				self.b.seal_block(done);
+				self.b.switch_to_block(done);
 			}
 		}
 		Ok(())
@@ -405,23 +416,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		tail
 	}
 
+	// A binding moved on some paths is nulled there and drops at scope exit.
 	pub(super) fn join_moves(&mut self, owned: Owned, tails: Vec<(Block, Owned)>, merge: Block) {
 		let has = |s: &Owned, var| s.iter().flatten().any(|(v, _)| *v == var);
 		let moved = |var| has(&owned, var) && tails.iter().any(|(_, s)| !has(s, var));
 		for (tail, s) in &tails {
 			self.b.switch_to_block(*tail);
 			self.b.seal_block(*tail);
-			for (var, t) in s.iter().flatten().filter(|(v, _)| moved(*v)) {
-				let v = self.b.use_var(*var);
-				self.release_value(v, t);
+			for (var, _) in owned.iter().flatten().filter(|(v, _)| !has(s, *v)) {
+				let null = self.b.ins().iconst(self.int, 0);
+				self.b.def_var(*var, null);
+				self.flagged.push(*var);
 			}
 			self.b.ins().jump(merge, &[]);
 		}
 		self.vars.retain(|_, l| !moved(l.var));
-		self.scopes = owned
-			.iter()
-			.map(|s| s.iter().filter(|(v, _)| !moved(*v)).cloned().collect())
-			.collect();
+		self.scopes = owned;
 	}
 
 	// A bind takes its own copy.
