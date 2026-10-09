@@ -85,6 +85,7 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 fn name_slot(e: &mut Expr) -> Option<&mut String> {
 	match e {
 		Expr::Field { field, .. } | Expr::IndexAssign { field: Some(field), .. } => Some(field),
+		Expr::MethodCall { method, .. } => Some(method),
 		Expr::Bind { name, .. }
 		| Expr::Fn { name, .. }
 		| Expr::StructDef { name, .. }
@@ -221,7 +222,11 @@ impl Expander {
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
 		compiler.stage0 = true;
 		compiler.out.roots = self.macros.keys().cloned().collect();
-		compiler.compile(&synthetic)?;
+
+		let entry = compiler.compile(&synthetic)?;
+		// seed the statics macro bodies may touch
+		unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
+
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);
 		}

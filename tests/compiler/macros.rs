@@ -585,7 +585,7 @@ fn raw_body_crosses_a_module() {
 				pub words! :: fn(body: Tokens) Ast { `%{body.items.len}` }
 			"},
 		)
-		.file("main.oi", indoc! {"use dsl\nprint(dsl.words! { a b { c } })"})
+		.file("main.oi", "use dsl\nprint(dsl.words! { a b { c } })")
 		.check("5");
 }
 
@@ -615,5 +615,22 @@ fn def_reads_another_types_fields() {
 			print(PointCols.{x = [3], y = [1.5]}.y)
 		"#},
 		"[1.5]",
+	);
+}
+
+#[test]
+fn unquote_in_method_position() {
+	check(
+		indoc! {r"
+			S :: struct { n: int }
+			S :< { get :: fn(self) int { self.n } }
+			call! :: fn(x: Ast, m: Ast) Ast { `%x.%m()` }
+			braced! :: fn(x: Ast, m: Ast) Ast { `%x.%{m}()` }
+			main :: fn() {
+				s := S.{n = 4}
+				print(call!(s, get), braced!(s, get))
+			}
+		"},
+		"4 4",
 	);
 }

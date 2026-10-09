@@ -397,7 +397,9 @@ where
 	// bindings
 	let annot = spanned(type_expr.clone());
 	// macro bindings
-	let hole_ident = sigil(Token::Percent).ignore_then(ident()).map(|n| format!("%{n}"));
+	let hole_ident = sigil(Token::Percent)
+		.ignore_then(ident().or(brace(ident())))
+		.map(|n| format!("%{n}"));
 	let def_name = ident().or(hole_ident.clone()).boxed();
 	let path = ident().separated_by(just(Token::Dot)).at_least(1).collect::<Vec<_>>();
 	let lit_path = path.map(|p| p.join(".")).or(hole_ident.clone()).boxed();

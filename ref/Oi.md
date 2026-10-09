@@ -99,9 +99,7 @@ tags: []
 ## consider
 - `nil`
 - using `#` for annotations despite comment clash
-- [x] allowing quotes/AST outside of macros, for code generators and stuff
 - `let-else` `rust`
-- [x] submodules `use raylib.math`
 - [x] explicit core access `core.print` or `use core.{ print }` or something
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
