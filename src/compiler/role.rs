@@ -57,6 +57,7 @@ pub(crate) const CTX: &str = "core::ctx";
 pub(crate) const NOZERO: &str = "core::nozero";
 pub(crate) const NOINIT: &str = "core::noinit";
 pub(crate) const OPEN: &str = "core::open";
+pub(crate) const UNOWNED: &str = "core::unowned";
 
 // Annotation markers resolve to core even where a local name shadows them.
 pub(crate) fn marker(name: &str) -> Option<&'static str> {

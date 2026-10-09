@@ -1,6 +1,6 @@
 use indoc::indoc;
 
-use crate::helpers::check;
+use crate::helpers::{check, fail};
 
 #[test]
 fn scalars_cross_ptr() {
@@ -37,4 +37,23 @@ fn struct_place_behind_ptr() {
 		print(unsafe buf.ptr.read[S]().n)
 	"};
 	check(src, "2");
+}
+
+#[test]
+fn unowned_ref_does_not_become_owned() {
+	let src = indoc! {"
+		buf: []int = .[7, 0]
+		r := unsafe ^int.(buf.ptr)
+		%
+	"};
+	for (tail, at) in [
+		("f :: fn(p: ^int) int { p^ }\nprint(f(r))", "owned"),
+		("q: ^int = r", "owned"),
+		(
+			"g :: fn(b: []int) ^int { unsafe ^int.(b.ptr) }\nprint(g(buf)^)",
+			"owned",
+		),
+	] {
+		fail(&src.replace('%', tail), at);
+	}
 }

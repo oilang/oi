@@ -241,6 +241,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(out) = self.assert_cast(val, &typ, target, span)? {
 			return Ok(out);
 		}
+		if let (Typ::Ref(_), Typ::TupleStruct(p, _)) = (target, &typ)
+			&& p == role::PTR
+		{
+			self.require_unsafe(&format!("{target} cast"), span)?;
+			return Ok((
+				val,
+				Typ::Annotated(vec![role::UNOWNED.into()], Box::new(target.clone())),
+			));
+		}
 		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
 			&& p == role::PTR
 		{

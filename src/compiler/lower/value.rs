@@ -325,6 +325,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// What a `^T` points at.
 	pub(super) fn pointee(&self, typ: &Typ, span: Span) -> Result<Typ, Diagnostic> {
 		match typ {
+			Typ::Annotated(a, t) if a == &[role::UNOWNED] => self.pointee(t, span),
 			Typ::Ref(_) => Ok(self.peeled(typ)),
 			_ => fail(
 				format!("cannot deref {typ}, it is not a pointer"),
@@ -337,6 +338,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Read through `^T`, loading a non-struct payload from its slot.
 	pub(super) fn deref(&mut self, val: Value, typ: &Typ) -> TypedVal {
 		match (typ, self.peeled(typ)) {
+			(Typ::Annotated(a, t), _) if a == &[role::UNOWNED] => self.deref(val, t),
 			(Typ::Ref(_), t) if !matches!(t, Typ::Struct(..)) => (self.ld_typ(val, 0, &t), t),
 			(_, t) => (val, t),
 		}
@@ -881,6 +883,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		if *to == Typ::Any {
 			let id = self.typeid_of(from);
 			return Ok((self.any_box(id, val, from), Typ::Any));
+		}
+		if let Typ::Annotated(anns, _) = from
+			&& anns == &[role::UNOWNED]
+		{
+			return fail(
+				"an unowned `ptr` cast can't become an owned `^T`",
+				span,
+				"no owner behind it",
+			);
 		}
 		if let Typ::Annotated(anns, inner) = from
 			&& **inner == *to
