@@ -186,6 +186,7 @@ fn cycle_with_acyclic_hangoff_reclaimed() {
 #[test]
 fn ref_boxes_any_type() {
 	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
+	check(["xs := &[1, 2, 3]", "print(xs[0], xs[1..])"], "1 [2, 3]");
 	assert_clean(["xs := &[1, 2]", "print(xs)"]);
 }
 
@@ -206,4 +207,16 @@ fn deref_reads_and_writes() {
 	fail(["p :: &5", "p^ = 6"], "cannot assign through immutable `p`");
 	fail(["n := 5", "n^"], "cannot deref int, it is not a pointer");
 	assert_clean([r#"s := &"a""#, r#"s^ = "b" + "c""#, "print(s^)"]);
+	check(
+		indoc! {"
+			P :: struct { a: ^int = &0 }
+			n := 1
+			s := P.{ a = &n }
+			s.a^ = 5
+			ps := [&n]
+			ps[0]^ += 1
+			print(n)
+		"},
+		"6",
+	);
 }

@@ -760,7 +760,7 @@ pub fn place(name: &str, field: Option<&String>, span: Span) -> Spanned<Expr> {
 // Bind each computed index in a place chain.
 pub fn pin(place: &mut Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	let mut binds = vec![];
-	if let Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } = &mut place.0 {
+	if let Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base) = &mut place.0 {
 		binds = pin(base);
 	}
 	if let Expr::Index { index, .. } = &mut place.0
@@ -803,6 +803,11 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 		Some((name, Some(field))) => return (Expr::FieldAssign { name, field, value }, span),
 		None => {}
 	}
+	if let Expr::Deref(base) = &place.0
+		&& let Some((name, None)) = unplace(&base.0)
+	{
+		return (Expr::DerefAssign { name, value }, span);
+	}
 	if let Expr::Index { collection, index } = &place.0
 		&& let Some((name, field)) = unplace(&collection.0)
 	{
@@ -817,7 +822,8 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 			span,
 		);
 	}
-	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. }) = &mut place.0 else {
+	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base)) = &mut place.0
+	else {
 		unreachable!("not a place")
 	};
 	let t = format!("$t{}_{}", base.1.start, base.1.end);

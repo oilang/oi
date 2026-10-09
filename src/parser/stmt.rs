@@ -190,30 +190,21 @@ pub(super) fn stmt<'token, I>(
 			)
 		});
 
-	// deref assignment
-	let deref_assign =
-		ident()
-			.then_ignore(just(Token::Caret))
-			.then(rhs.clone())
-			.map_with(move |(name, (op, value)), ex| {
-				let lhs = Expr::Deref(Box::new((Expr::Ident(name.clone()), ex.span())));
-				let value = Box::new(fold(op, lhs, value, ex.span()));
-				(Expr::DerefAssign { name, value }, ex.span())
-			});
-
-	// assignment through a field/index chain
+	// assignment through a field/index/deref chain
 	let seg = just(Token::Dot)
 		.ignore_then(p.def_name.clone().or(select! { Token::Int(n) => n.to_string() }))
-		.map(Ok)
-		.or(bracket(p.expr.clone()).map(Err));
+		.map(|f| Some(Ok(f)))
+		.or(bracket(p.expr.clone()).map(|i| Some(Err(i))))
+		.or(just(Token::Caret).to(None));
 	let place_assign = spanned(ident().map(Expr::Ident))
 		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
 			let e = match seg {
-				Ok(field) => Expr::Field {
+				None => Expr::Deref(Box::new(lhs)),
+				Some(Ok(field)) => Expr::Field {
 					tuple: Box::new(lhs),
 					field,
 				},
-				Err(index) => Expr::Index {
+				Some(Err(index)) => Expr::Index {
 					collection: Box::new(lhs),
 					index: Box::new(index),
 				},
@@ -249,14 +240,7 @@ pub(super) fn stmt<'token, I>(
 		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 	// statements that leave a place behind
-	place.define(
-		destructure
-			.or(bind.clone())
-			.or(place_assign)
-			.or(deref_assign)
-			.or(assign.clone())
-			.or(map_delete),
-	);
+	place.define(destructure.or(bind.clone()).or(place_assign).or(assign.clone()).or(map_delete));
 
 	// statements
 	stmt.define(

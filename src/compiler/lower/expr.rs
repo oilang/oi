@@ -739,6 +739,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Index { collection, index } => {
 				let (ptr, typ) = self.expr(collection)?;
+				let (ptr, typ) = self.deref(ptr, &typ);
 				match &typ {
 					Typ::Map(k, v) => {
 						let (k, v) = (*k.clone(), *v.clone());
@@ -770,6 +771,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Slice { collection, range } => {
 				let (ptr, typ) = self.expr(collection)?;
+				let (ptr, typ) = self.deref(ptr, &typ);
 				let range = range.as_deref();
 				if let Some(r) = range
 					&& self.claims(&typ, role::INDEX)
