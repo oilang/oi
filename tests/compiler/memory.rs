@@ -178,7 +178,8 @@ fn tuple_frees_its_struct_elements() {
 		P :: struct { n: int }
 		t :: (File.{fd = 1}, P.{n = 2})
 	"};
-	assert_eq!(leaks(held), leaks("t :: (1, 2)"));
+	assert_clean(held);
+	assert_clean(["t := ([1], 2)", "u := t", "u.0 = [3]", "print(t)"]);
 }
 
 #[test]

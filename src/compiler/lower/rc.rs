@@ -146,9 +146,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.release_slots(val, 0, &field_types(fields));
 		} else if let Typ::Tuple(fields) = typ
-			&& self.is_resource(typ)
+			&& !fields.is_empty()
 		{
 			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
+			self.rt_call("free", &[val]);
 		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
 			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 			for v in self.variants_of(typ) {
@@ -499,6 +500,7 @@ pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 pub(super) fn releasable(typ: &Typ) -> bool {
 	match typ {
 		Typ::Struct(_, fields) => fields.iter().any(|f| owns(&f.typ)),
+		Typ::Tuple(fields) => !fields.is_empty(),
 		_ => handle_fns(typ).is_some(),
 	}
 }

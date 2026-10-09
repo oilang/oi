@@ -237,6 +237,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.is_affine(typ) {
 			return val;
 		}
+		if let Typ::Tuple(fields) = typ
+			&& !fields.is_empty()
+		{
+			let vals: Vec<_> = (fields.iter().enumerate())
+				.map(|(i, (_, t))| {
+					let v = self.ld_typ(val, (i * 8) as i32, t);
+					self.copy_in(v, t)
+				})
+				.collect();
+			return self.heap_slots(&vals);
+		}
 		let Some((share, _)) = rc::handle_fns(typ) else {
 			return val;
 		};
