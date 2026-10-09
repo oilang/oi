@@ -79,6 +79,16 @@ fn explicit_and_default_args() {
 }
 
 #[test]
+fn default_value_args() {
+	let src = indoc! {"
+		g[T] :: fn(x: ?T = none) bool { x == none }
+		h[T] :: fn(a: T, b: T = a) T { b }
+		print(g[int](), g(5), h(4))
+	"};
+	check(src, "true false 4");
+}
+
+#[test]
 fn bounds() {
 	let src = indoc! {"
 		biggest[T: Ord] :: fn(a: T, b: T) T {

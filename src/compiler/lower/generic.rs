@@ -43,6 +43,11 @@ pub(super) fn unify(
 			.iter()
 			.zip(fields)
 			.try_for_each(|((_, e), (_, f))| unify(e, f, params, subst, generics)),
+		(TypeExpr::Generic(n, gargs), c)
+			if n == "Option" && !matches!(c, Typ::Enum(e) if e.starts_with(role::OPTION)) =>
+		{
+			unify(&gargs[0], c, params, subst, generics)
+		}
 		(TypeExpr::Generic(_, gargs), Typ::Struct(name, _) | Typ::Enum(name)) => match generics.instance_args(name) {
 			Some(cargs) => gargs
 				.iter()
@@ -89,13 +94,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		let args = packed.as_deref().unwrap_or(args);
 		let names: Vec<&str> = def.params[self_n..].iter().map(|p| p.name.as_str()).collect();
 		let named = arg_slots(name, &names, args, false)?;
-		if named
-			.as_ref()
-			.map_or(args.len() != names.len(), |s| s.iter().any(Option::is_none))
-		{
+		let n_defaults = def.params.iter().rev().take_while(|p| p.default.is_some()).count();
+		if named.is_none() && (args.len() + n_defaults < names.len() || args.len() > names.len()) {
 			return arity_err(&format!("`{name}`"), names.len(), args.len(), "argument", span);
 		}
-		let slots: Vec<_> = named.unwrap_or_else(|| args.iter().map(Some).collect());
+		let slots: Vec<_> = named.unwrap_or_else(|| (0..names.len()).map(|i| args.get(i)).collect());
 		let access: Vec<Access> = def.params.iter().map(|p| p.access).collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
 		let mut subst = HashMap::new();
@@ -122,13 +125,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			vals.push(*rval);
 		}
-		let mut lent = Vec::new();
-		for (arg, param) in slots.iter().flatten().zip(declared) {
+		let (mut lent, mut given) = (Vec::new(), Vec::new());
+		for (arg, param) in slots.iter().zip(declared) {
+			let Some(arg) = arg else {
+				given.push(None);
+				continue;
+			};
 			let (val, typ, entry) = self.arg_value(param.access, arg, None)?;
 			lent.extend(entry.map(|e| (val, e)));
 			unify(&param.typ, &typ, &def.type_params, &mut subst, self.types.generics)
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
-			vals.push(val);
+			given.push(Some((val, typ)));
 		}
 		self.type_defaults(def, &mut subst)?;
 		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
@@ -161,6 +168,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		let sig = self.declare_instance(name, def, subst)?;
+		let vals = self.fill_args(name, &sig.value_params(), vals, &slots, given, span)?;
 		let out = self.emit_call(&sig, &vals);
 		self.reload_lent(&lent)?;
 		Ok(out)

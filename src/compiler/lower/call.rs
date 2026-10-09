@@ -390,7 +390,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			None => self.check_args(&access[self_n..], None, &slots)?,
 		}
-		let fills = slots.iter().any(Option::is_none);
 		let mut lent = Vec::new();
 		let mut given: Vec<Option<TypedVal>> = Vec::with_capacity(slots.len());
 		for (i, p) in params.iter().enumerate().skip(self_n) {
@@ -406,19 +405,33 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => None,
 			});
 		}
+		let vals = self.fill_args(name, params, recv.into_iter().collect(), &slots, given, span)?;
+		Ok((vals, lent))
+	}
+
+	// Fill the missing args from their defaults, and check each against its param.
+	pub(super) fn fill_args(
+		&mut self,
+		name: &str,
+		params: &[FnParam],
+		mut vals: Vec<Value>,
+		slots: &[Option<&Spanned<Expr>>],
+		mut given: Vec<Option<TypedVal>>,
+		span: Span,
+	) -> Result<Vec<Value>, Diagnostic> {
+		let self_n = vals.len();
+		let fills = given.iter().any(Option::is_none);
 		let saved: Vec<_> = match fills {
 			true => (params.iter().filter_map(|p| p.name.as_ref()))
 				.map(|n| (n.clone(), self.vars.remove(n)))
 				.collect(),
 			false => Vec::new(),
 		};
-		let mut vals = Vec::with_capacity(params.len());
-		vals.extend(recv);
 		for (i, p) in params.iter().enumerate() {
 			let want = access_peel(&p.typ);
 			if i >= self_n {
 				let (val, typ) = match given[i - self_n].take() {
-					Some(arg) => arg,
+					Some((val, typ)) => self.coerce(val, &typ, want, slots[i - self_n].unwrap().1)?,
 					None => {
 						let Some(default) = &p.default else {
 							let msg = format!(
@@ -428,7 +441,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							return fail(msg, span, "no value for this parameter");
 						};
 						let val = self.check_typed(default, want, "not a valid default for this parameter")?;
-						if access[i] == Access::Move {
+						if access_of(&p.typ) == Access::Move {
 							self.untemp(val);
 						}
 						(val, want.clone())
@@ -454,7 +467,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => self.vars.remove(&name),
 			};
 		}
-		Ok((vals, lent))
+		Ok(vals)
 	}
 
 	// Evaluate one argument under its access mod.
