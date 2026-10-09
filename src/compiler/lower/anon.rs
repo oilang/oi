@@ -171,7 +171,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			false => self.b.ins().iconst(self.int, 0),
 			true => {
 				let drop = oi_symbol(&format!("{sym}#drop"));
-				self.out.env_drops.push((drop.clone(), drops));
+				let slots = std::iter::once(Typ::ISize).chain(drops).map(|t| (None, t)).collect();
+				self.out.env_drops.push((drop.clone(), Typ::Tuple(slots)));
 				let f = self.import_fn(&drop, &[self.int], None);
 				self.b.ins().func_addr(self.int, f)
 			}

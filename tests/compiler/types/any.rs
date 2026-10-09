@@ -81,3 +81,28 @@ fn eq_dispatches_on_typeid() {
 fn ref_payload_cycle_is_collected() {
 	assert_clean(["N :: struct { v: any }", "a := &N.{}", "a.v = a", "0"]);
 }
+
+#[test]
+fn every_payload_kind_is_released() {
+	assert_clean(indoc! {r#"
+		P :: struct { s: string }
+		E :: enum { A(string), B }
+		xs: []any = [P.{s = "p"}, (1, "t"), [2]string.["a", "b"], E.A.("e")]
+		print(xs.len)
+	"#});
+}
+
+#[test]
+fn a_resource_moves_into_any_and_drops_once() {
+	check(
+		indoc! {r#"
+			File :: struct { fd: int }
+			File : Drop < { drop :: fn(mut self) { print("drop", self.fd) } }
+			f := File.{fd = 1}
+			x: any = f
+			r := &File.{fd = 2}
+			print("end")
+		"#},
+		["end", "drop 2", "drop 1"],
+	);
+}

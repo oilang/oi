@@ -707,7 +707,7 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 		return;
 	}
 	unsafe {
-		let mut p = desc.add(2);
+		let mut p = desc.add(3);
 		for _ in 0..*desc {
 			let e = *p;
 			p = p.add(1);
@@ -754,7 +754,10 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 		if rc_dec(ptr) {
 			// remove freed boxes to avoid `collect_cycles` walking freed memory
 			ROOTS.with(|r| r.borrow_mut().remove(&(ptr as usize)));
-			trace(ptr, desc(ptr), true, &mut |c| ref_release(c));
+			if !desc(ptr).is_null() {
+				let release: unsafe extern "C" fn(*mut u8) = std::mem::transmute(*desc(ptr).add(2));
+				release(ptr);
+			}
 			free(ptr.sub(16));
 		} else if !desc(ptr).is_null() && *desc(ptr).add(1) != 0 {
 			// still alive and can reach a ref, a possible cycle root
@@ -855,6 +858,7 @@ fn collect_white(s: *mut u8, c: &mut HashMap<usize, Color>) {
 	}
 	c.insert(s as usize, Color::Black);
 	unsafe {
+		// skips Drop, because a release thunk would double-free refs
 		trace(s, desc(s), true, &mut |t| collect_white(t, c));
 		free(s.sub(16));
 	}

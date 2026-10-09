@@ -873,6 +873,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.ld_word(val, 0), target.clone()));
 		}
 		let (val, vt) = self.lower(value, Some(target))?;
+		if *target == Typ::Any {
+			self.move_resource(value, &vt)?;
+		}
 		self.coerce(val, &vt, target, value.1)
 	}
 

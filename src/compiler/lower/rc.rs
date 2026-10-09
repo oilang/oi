@@ -169,11 +169,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			if self.is_resource(typ) {
 				self.run_hook(val, typ, "drop");
 			}
-			self.release_slots(val, 0, &field_types(fields));
+			self.release_slots(val, &field_types(fields));
 		} else if let Typ::Tuple(fields) = typ
 			&& !fields.is_empty()
 		{
-			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
+			self.release_slots(val, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
 			self.rt_call("free", &[val]);
 		} else if self.enum_box(typ) {
 			self.owned_payloads(val, typ, |s, off, t| {
@@ -235,34 +235,57 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Release the owned slots of an aggregate type.
-	pub(crate) fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
+	fn release_slots(&mut self, val: Value, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
 			if self.slot_owns(t) {
-				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
+				let fv = self.ld_typ(val, (i * 8) as i32, t);
 				self.release_field(fv, t);
 			}
 		}
 	}
 
-	// The address of a struct's trace descriptor symbol.
-	fn trace_desc(&mut self, name: &str, slots: &[Typ]) -> Value {
-		if self.desc_data(name, slots).is_none() {
+	// Release what a box owns, as its descriptor's thunk.
+	pub(crate) fn release_box(&mut self, val: Value, layout: &Typ) {
+		let Typ::Tuple(slots) = layout else {
+			return self.release_value(val, layout);
+		};
+		for (i, (_, t)) in slots.iter().enumerate() {
+			let v = self.ld_typ(val, i as i32 * 8, t);
+			self.release_field(v, t);
+			// boxed fixed arrays are heap copies
+			if let Typ::FixedArray(..) = t {
+				self.rt_call("free", &[v]);
+			}
+		}
+	}
+
+	// The address of a box's trace descriptor symbol.
+	fn trace_desc(&mut self, name: &str, typ: &Typ) -> Value {
+		if self.desc_data(name, typ).is_none() {
 			return self.b.ins().iconst(self.int, 0);
 		}
 		self.data_addr(&oi_symbol(&format!("{name}#trace")))
 	}
 
-	// Define trace descriptor on first use.
-	fn desc_data(&mut self, name: &str, slots: &[Typ]) -> Option<DataId> {
+	// Define a descriptor on first use.
+	fn desc_data(&mut self, name: &str, typ: &Typ) -> Option<DataId> {
 		if let Some(&id) = self.out.descs.get(name) {
 			return Some(id);
 		}
-		let mut words = vec![0i64, slots.iter().any(cyclic) as i64];
+		let slots = match typ {
+			Typ::Struct(_, fs) => field_types(fs),
+			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
+			_ => unreachable!("box layout"),
+		};
+		if !self.is_resource(typ) && !slots.iter().any(|t| self.slot_owns(t) || matches!(t, Typ::FixedArray(..))) {
+			return None;
+		}
+		let mut words = vec![0i64, slots.iter().any(cyclic) as i64, 0];
 		let mut relocs = Vec::new();
 		for (i, t) in slots.iter().enumerate() {
 			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
 			let off = ((i * 8) as i64) << 2;
-			// fn envs aren't traced, so one in a box leaks
+			// fn envs aren't traced, so a cycle through one leaks
 			if let Some((_, release)) = handle_fns(t).filter(|(_, r)| *r != "fn_release") {
 				words.push(
 					off | match release {
@@ -271,18 +294,15 @@ impl<'a, M: Module> Translator<'a, M> {
 						_ => 0,
 					},
 				);
-			} else if let Typ::Struct(n, sub) = t
-				&& let Some(child) = self.desc_data(n, &field_types(sub))
+			} else if let Typ::Struct(n, _) = t
+				&& let Some(child) = self.desc_data(n, t)
 			{
 				words.push(off | 1);
 				relocs.push((words.len() * 8, child));
 				words.push(0);
 			}
 		}
-		words[0] = (words.len() - 2 - relocs.len()) as i64;
-		if words[0] == 0 {
-			return None;
-		}
+		words[0] = (words.len() - 3 - relocs.len()) as i64;
 		let mut desc = DataDescription::new();
 		// TODO: get this offset dynamically like rustc does
 		desc.set_align(8);
@@ -291,6 +311,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			let gv = self.module.declare_data_in_data(child, &mut desc);
 			desc.write_data_addr(off as u32, gv, 0);
 		}
+		let thunk = oi_symbol(&format!("{name}#release"));
+		let mut sig = self.module.make_signature();
+		sig.params.push(AbiParam::new(self.int));
+		let id = self.module.declare_function(&thunk, Linkage::Local, &sig).unwrap();
+		let f = self.module.declare_func_in_data(id, &mut desc);
+		desc.write_function_addr(16, f);
+		self.out.env_drops.push((thunk, typ.clone()));
 		let sym = oi_symbol(&format!("{name}#trace"));
 		let id = self
 			.module
@@ -313,13 +340,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Move a value into a fresh rc box, a non-struct T as its slot.
 	pub(super) fn box_value(&mut self, ptr: Value, typ: &Typ) -> Value {
-		let (key, slots) = match typ {
-			Typ::Struct(name, fields) => (name.clone(), field_types(fields)),
-			t => (t.key(), vec![t.clone()]),
+		let (key, layout, n) = match typ {
+			Typ::Struct(name, fields) => (name.clone(), typ.clone(), fields.len()),
+			t => (t.key(), Typ::Tuple(vec![(None, t.clone())]), 1),
 		};
-		let descv = self.trace_desc(&key, &slots);
-		let boxp = self.rc_alloc((slots.len() * 8) as i64, &[descv]);
-		for i in 0..slots.len() as i32 {
+		let descv = self.trace_desc(&key, &layout);
+		let boxp = self.rc_alloc((n * 8) as i64, &[descv]);
+		for i in 0..n as i32 {
 			let v = match typ {
 				Typ::Struct(..) => self.ld_word(ptr, i * 8),
 				_ => ptr,
@@ -331,7 +358,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// An rc'd `any`, with typeid and payload.
 	pub(super) fn any_box(&mut self, id: Value, val: Value, typ: &Typ) -> Value {
-		let desc = self.trace_desc(&format!("any {}", typ.key()), &[Typ::ISize, typ.clone()]);
+		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
+		let desc = self.trace_desc(&format!("any {}", typ.key()), &slots);
 		let boxp = self.rc_alloc(16, &[desc]);
 		let val = self.copy_in(val, typ);
 		self.store_slots(boxp, &[id, val]);
