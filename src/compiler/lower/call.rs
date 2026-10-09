@@ -492,6 +492,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (cell, typ, entry) = self.lend_mut(arg)?;
 			return Ok((cell, typ, Some(entry)));
 		}
+		// a read-only `any` or `..any` varargs borrows the caller's values from the frame
+		match (access, want, &arg.0) {
+			(Access::Read, Some(Typ::Any), _) => return Ok((self.lent_any(arg)?, Typ::Any, None)),
+			(Access::Read, Some(t @ Typ::Array(e)), Expr::Array(es))
+				if **e == Typ::Any && !es.iter().any(|e| matches!(e.0, Expr::Spread(_))) =>
+			{
+				let boxes = es.iter().map(|e| self.lent_any(e)).collect::<Result<Vec<_>, _>>()?;
+				let data = self.lent_block(&[], &boxes);
+				let n = self.b.ins().iconst(self.int, es.len() as i64);
+				let header = self.stack_slot(24);
+				self.store_slots(header, &[data, n, n]);
+				return Ok((header, t.clone(), None));
+			}
+			_ => {}
+		}
 		let (val, typ) = match want {
 			Some(want) => self.check_expr(arg, want)?,
 			None => self.expr(arg)?,

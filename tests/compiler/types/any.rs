@@ -106,3 +106,34 @@ fn a_resource_moves_into_any_and_drops_once() {
 		["end", "drop 2", "drop 1"],
 	);
 }
+
+#[test]
+fn a_kept_lent_any_outlives_the_caller() {
+	let src = indoc! {r#"
+		P :: struct { s: string }
+		keep :: fn(x: any) []any { [x] }
+		pack :: fn(xs: ..any) []any { xs }
+		make :: fn() []any {
+			p := P.{ s = "p" + "!" }
+			[..keep(p), ..pack(p)]
+		}
+		main :: fn() { print(make()) }
+	"#};
+	check(src, r#"[P.{s = "p!"}, P.{s = "p!"}]"#);
+	assert_clean(src);
+}
+
+#[test]
+fn a_resource_lent_as_any_drops_once() {
+	check(
+		indoc! {r#"
+			File :: struct { fd: int }
+			File : Drop < { drop :: fn(mut self) { print("drop", self.fd) } }
+			show :: fn(xs: ..any) { print(xs) }
+			f := File.{fd = 1}
+			show(f, 2)
+			print("end")
+		"#},
+		["[File.{fd = 1}, 2]", "end", "drop 1"],
+	);
+}

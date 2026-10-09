@@ -1961,7 +1961,7 @@ impl<M: Module> Compiler<M> {
 			};
 			let (mut trans, block) = self.translator(&def, funcs, types);
 			let env = trans.b.block_params(block)[0];
-			trans.release_box(env, &typ);
+			trans.release_box(env, &typ, sym.ends_with("#copy"));
 			trans.b.ins().return_(&[]);
 			trans.b.finalize();
 			self.finish_fn(&sym);

@@ -250,15 +250,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Release what a box owns, as its descriptor's thunk.
-	pub(crate) fn release_box(&mut self, val: Value, layout: &Typ) {
+	// Release (or retain in place) what a box owns, as its descriptor's thunk.
+	pub(crate) fn release_box(&mut self, val: Value, layout: &Typ, retain: bool) {
 		let Typ::Tuple(slots) = layout else {
 			return self.release_value(val, layout);
 		};
 		for (i, (_, t)) in slots.iter().enumerate() {
 			if self.slot_owns(t) {
 				let v = self.ld_typ(val, i as i32 * 8, t);
-				self.release_field(v, t);
+				if retain {
+					let v = self.copy_in(v, t);
+					self.st(val, i as i32 * 8, v);
+				} else {
+					self.release_field(v, t);
+				}
 			}
 		}
 	}
@@ -276,15 +281,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(&id) = self.out.descs.get(name) {
 			return Some(id);
 		}
+
 		let slots = match typ {
 			Typ::Struct(_, fs) => field_types(fs),
 			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
 			_ => unreachable!("box layout"),
 		};
+
 		if !self.is_resource(typ) && !slots.iter().any(|t| self.slot_owns(t)) {
 			return None;
 		}
-		let mut words = vec![0i64, slots.iter().any(cyclic) as i64, 0];
+
+		let mut words = vec![0i64, slots.iter().any(cyclic) as i64, 0, 0];
 		let mut relocs = Vec::new();
 		for (i, t) in slots.iter().enumerate() {
 			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
@@ -306,22 +314,30 @@ impl<'a, M: Module> Translator<'a, M> {
 				words.push(0);
 			}
 		}
-		words[0] = (words.len() - 3 - relocs.len()) as i64;
+
+		words[0] = (words.len() - 4 - relocs.len()) as i64;
 		let mut desc = DataDescription::new();
 		// TODO: get this offset dynamically like rustc does
 		desc.set_align(8);
 		desc.define(words.iter().flat_map(|w| w.to_le_bytes()).collect());
+
 		for (off, child) in relocs {
 			let gv = self.module.declare_data_in_data(child, &mut desc);
 			desc.write_data_addr(off as u32, gv, 0);
 		}
-		let thunk = oi_symbol(&format!("{name}#release"));
-		let mut sig = self.module.make_signature();
-		sig.params.push(AbiParam::new(self.int));
-		let id = self.module.declare_function(&thunk, Linkage::Local, &sig).unwrap();
-		let f = self.module.declare_func_in_data(id, &mut desc);
-		desc.write_function_addr(16, f);
-		self.out.env_drops.push((thunk, typ.clone()));
+
+		// only `any` boxes are lent, so only they clone
+		let hooks = 1 + name.starts_with("any ") as usize;
+		for (off, hook) in [(16, "release"), (24, "copy")].into_iter().take(hooks) {
+			let thunk = oi_symbol(&format!("{name}#{hook}"));
+			let mut sig = self.module.make_signature();
+			sig.params.push(AbiParam::new(self.int));
+			let id = self.module.declare_function(&thunk, Linkage::Local, &sig).unwrap();
+			let f = self.module.declare_func_in_data(id, &mut desc);
+			desc.write_function_addr(off, f);
+			self.out.env_drops.push((thunk, typ.clone()));
+		}
+
 		let sym = oi_symbol(&format!("{name}#trace"));
 		let id = self
 			.module
@@ -362,13 +378,38 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// An rc'd `any`, with typeid and payload.
 	pub(super) fn any_box(&mut self, id: Value, val: Value, typ: &Typ) -> Value {
-		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
-		let desc = self.trace_desc(&format!("any {}", typ.key()), &slots);
+		let desc = self.any_desc(typ);
 		let boxp = self.rc_alloc(16, &[desc]);
 		let val = self.copy_in(val, typ);
 		self.store_slots(boxp, &[id, val]);
 		self.temp(boxp, &Typ::Any);
 		boxp
+	}
+
+	// An `any` lent to a read-only param, built in the frame around the caller's value.
+	pub(super) fn lent_any(&mut self, arg: &Spanned<Expr>) -> Result<Value, Diagnostic> {
+		let (val, typ) = self.lower(arg, Some(&Typ::Any))?;
+		// a move-only payload can't clone, so it still moves into a heap box
+		if typ == Typ::Any || self.is_affine(&typ) {
+			self.move_resource(arg, &typ)?;
+			return Ok(self.coerce(val, &typ, &Typ::Any, arg.1)?.0);
+		}
+		let (desc, id) = (self.any_desc(&typ), self.typeid_of(&typ));
+		Ok(self.lent_block(&[desc], &[id, val]))
+	}
+
+	fn any_desc(&mut self, typ: &Typ) -> Value {
+		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
+		self.trace_desc(&format!("any {}", typ.key()), &slots)
+	}
+
+	// A frame block laid out like an rc'd one, with an immortal count.
+	pub(super) fn lent_block(&mut self, head: &[Value], vals: &[Value]) -> Value {
+		let words = head.len() as i64 + 1;
+		let base = self.stack_slot(((words as usize + vals.len()) * 8) as u32);
+		let rc = self.b.ins().iconst(self.int, runtime::IMMORTAL);
+		self.store_slots(base, &[head, &[rc], vals].concat());
+		self.b.ins().iadd_imm(base, words * 8)
 	}
 
 	// A fresh rc'd block of `bytes`.

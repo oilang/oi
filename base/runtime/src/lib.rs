@@ -455,6 +455,9 @@ unsafe fn rc(p: *const u8) -> *mut i64 {
 	unsafe { p.sub(8) as *mut i64 }
 }
 
+// The refcount of a box or buffer lent from the caller's frame.
+pub const IMMORTAL: i64 = i64::MIN;
+
 // Drop one ref, true at zero.
 unsafe fn rc_dec(p: *const u8) -> bool {
 	unsafe {
@@ -499,6 +502,11 @@ unsafe fn new_header(a: *const Allocator, h: Header) -> *const Header {
 #[unsafe(export_name = "oi_array_share")]
 pub unsafe extern "C" fn array_share(header: *const Header) -> *const Header {
 	let h = unsafe { *header };
+	// a kept lent vararg clones its boxes
+	if h.data != 0 && unsafe { *rc(h.data as *const u8) } == IMMORTAL {
+		let boxes: Vec<_> = unsafe { array_elems(header).iter().map(|&b| ref_share(b as _) as i64).collect() };
+		return array_of(&boxes, 8);
+	}
 	if h.data != 0 {
 		unsafe { *rc(h.data as *const u8) += 1 };
 	}
@@ -696,7 +704,22 @@ pub unsafe extern "C" fn ref_share(ptr: *mut u8) -> *mut u8 {
 	if ptr.is_null() {
 		return ptr;
 	}
-	unsafe { *rc(ptr) += 1 };
+
+	unsafe {
+		// a kept lent `any` clones out of the caller's frame
+		if *rc(ptr) == IMMORTAL {
+			let out = alloc(system_allocator(), 32).add(16);
+			std::ptr::copy_nonoverlapping(ptr.sub(16), out.sub(16), 32);
+			*rc(out) = 1;
+			if !desc(ptr).is_null() {
+				let copy: unsafe extern "C" fn(*mut u8) = std::mem::transmute(*desc(ptr).add(3));
+				copy(out);
+			}
+			return out;
+		}
+		*rc(ptr) += 1;
+	}
+
 	ptr
 }
 
@@ -706,8 +729,9 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 	if desc.is_null() {
 		return;
 	}
+
 	unsafe {
-		let mut p = desc.add(3);
+		let mut p = desc.add(4);
 		for _ in 0..*desc {
 			let e = *p;
 			p = p.add(1);
@@ -747,7 +771,7 @@ unsafe fn desc(s: *mut u8) -> *const i64 {
 /// `ptr` must be null or point to a valid boxed struct's field slots.
 #[unsafe(export_name = "oi_ref_release")]
 pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
-	if ptr.is_null() {
+	if ptr.is_null() || unsafe { *rc(ptr) } == IMMORTAL {
 		return;
 	}
 	unsafe {
