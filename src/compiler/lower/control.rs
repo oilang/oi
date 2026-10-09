@@ -228,7 +228,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		target: Option<&Typ>,
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		// patterns see through a ref, like `.` does
 		let (sv, st) = self.expr(subject)?;
+		let (sv, st) = self.deref(sv, &st);
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
 		self.b.def_var(sv_var, sv);
 

@@ -331,6 +331,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let cur = self.read_local(local);
 		let cell = self.heap_slots(&[cur]);
+		if self.aliases.contains(&local.var) {
+			return Ok(cell);
+		}
 		let var = self.b.declare_var(self.int);
 		self.b.def_var(var, cell);
 		self.vars.insert(

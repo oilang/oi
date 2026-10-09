@@ -8,7 +8,7 @@ fn comparable(t: &Typ) -> bool {
 	t.is_enumish() && *t != Any
 		|| matches!(
 			t,
-			Int(_) | UInt(_) | ISize | USize | Bool | Rune | Atom | Float(_) | Str | Error
+			Int(_) | UInt(_) | ISize | USize | Bool | Rune | Atom | Float(_) | Str | Error | Ref(_)
 		)
 }
 
@@ -596,6 +596,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			| (Typ::Rune, Typ::Rune)
 			| (Typ::Atom, Typ::Atom)
 			| (Typ::TypeId, Typ::TypeId) => self.b.ins().icmp(icc, lv, rv),
+			(Typ::Ref(_), _) if lt == rt && matches!(icc, IntCC::Equal | IntCC::NotEqual) => {
+				self.b.ins().icmp(icc, lv, rv)
+			}
 			(l, _) if lt == rt && eq_dispatchable(l) => {
 				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedLessThanOrEqual);
 				let negated = matches!(

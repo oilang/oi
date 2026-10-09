@@ -86,6 +86,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if matches!(typ, Typ::Any | Typ::TypeId) {
 			return self.emit_any(val, typ, quote, sink);
 		}
+		if let Typ::Ref(_) = typ {
+			let (val, inner) = self.deref(val, typ);
+			return self.emit_print(val, &inner, quote, sink);
+		}
 		let named = !matches!(typ, Typ::Sum(..));
 		let done = self.b.create_block();
 		let variants = self.variants_of(typ);
@@ -203,10 +207,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Typ::Annotated(_, t) => self.emit_print(val, &t.clone(), quote, sink),
 
-			Typ::Ref(_) => {
-				let (val, inner) = self.deref(val, typ);
-				self.emit_print(val, &inner, quote, sink)
-			}
+			Typ::Ref(_) => self.call_variant(typ, val, quote, sink),
 
 			Typ::Trait(tn) => {
 				let (_, _, tfields, tmethods) = self.types.traits[tn.as_str()];

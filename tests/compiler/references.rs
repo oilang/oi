@@ -151,6 +151,19 @@ fn user_enum_with_ref_payload_stays_boxed() {
 }
 
 #[test]
+fn self_ref_array_field_prints() {
+	check(
+		indoc! {"
+			Node :: struct { value: int, kids: []^Node }
+			a := &Node.{ value = 1 }
+			a.kids << &Node.{ value = 2 }
+			print(a)
+		"},
+		"Node.{value = 1, kids = [Node.{value = 2, kids = []}]}",
+	);
+}
+
+#[test]
 fn value_recursion_still_errors() {
 	fail(
 		["A :: struct { b: B }", "B :: struct { a: A }"],
@@ -188,6 +201,34 @@ fn ref_boxes_any_type() {
 	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
 	check(["xs := &[1, 2, 3]", "print(xs[0], xs[1..])"], "1 [2, 3]");
 	assert_clean(["xs := &[1, 2]", "print(xs)"]);
+}
+
+#[test]
+fn eq_is_identity() {
+	let src = indoc! {"
+		Node :: struct { value: int }
+		a := &Node.{ value = 1 }
+		b := &Node.{ value = 1 }
+		c := a
+		print(a == b, a == c, a != b, a^ == b^, ?^Node.(a) == ?^Node.(c))
+	"};
+	check(src, "false true true true true");
+	assert_clean(src);
+}
+
+#[test]
+fn match_sees_through_ref() {
+	check(
+		indoc! {r#"
+			P :: struct { x: int, y: int }
+			p := &P.{ x = 1, y = 2 }
+			print(match p { P.{ x, y } => x + y, })
+			n := 5
+			q := &n
+			match q { 5 => print("five"), _ => print("other") }
+		"#},
+		["3", "five"],
+	);
 }
 
 #[test]
