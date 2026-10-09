@@ -159,7 +159,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let slots: Vec<_> = std::iter::once(addr).chain(resolved.iter().map(|r| r.3)).collect();
 
 		let drops: Vec<_> = (captures.iter().zip(&resolved))
-			.map(|(c, r)| if let Capture::Move(_) = c { r.1.clone() } else { Typ::ISize })
+			.map(|(c, r)| {
+				if let Capture::Move(_) = c {
+					r.1.clone()
+				} else {
+					Typ::ISize
+				}
+			})
 			.collect();
 		let thunk = match drops.iter().any(|t| self.slot_owns(t)) {
 			false => self.b.ins().iconst(self.int, 0),

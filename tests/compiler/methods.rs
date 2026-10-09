@@ -34,6 +34,25 @@ fn static_method() {
 }
 
 #[test]
+fn qualified_mut_self() {
+	let src = indoc! {"
+		S :: struct { n: int }
+		S :< { bump :: fn(mut self) { self.n = self.n + 1 } }
+		B[T] :: struct { v: T }
+		B[T] :< { set :: fn(mut self, v: T) { self.v = v } }
+		f[T] :: fn(mut x: T) { T.bump(mut x) }
+		s := S.{n = 4}
+		S.bump(mut s)
+		f(mut s)
+		b := B.{v = 1}
+		B.set(mut b, 7)
+		r := 0..3
+		print(s.n, b.v, Range.next(mut r), r.next())
+	"};
+	check(src, "6 7 some.(0) some.(1)");
+}
+
+#[test]
 fn self_outside_impl() {
 	fail("Self.{}", "no enclosing impl");
 }

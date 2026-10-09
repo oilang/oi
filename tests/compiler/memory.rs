@@ -196,5 +196,10 @@ fn omitted_handle_field_has_one_owner() {
 
 #[test]
 fn closure_env_releases_moved_captures() {
-	assert_clean(["ys :: [4]", "g :: fn [move ys] () int { ys[0] }", "h :: g", "print(h())"]);
+	assert_clean([
+		"ys :: [4]",
+		"g :: fn [move ys] () int { ys[0] }",
+		"h :: g",
+		"print(h())",
+	]);
 }

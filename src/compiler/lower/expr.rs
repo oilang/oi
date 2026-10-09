@@ -413,6 +413,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 					}
 				};
+
 				if sname == role::PTR {
 					let recv = bound.as_ref().map(|(v, _)| *v);
 					match method.as_str() {
@@ -421,11 +422,31 @@ impl<'a, M: Module> Translator<'a, M> {
 						_ => {}
 					}
 				}
+
+				// treat `T.m(mut x)` like calling a struct method
+				if bound.is_none()
+					&& let Some((Expr::ArgMod(Access::Mut, x), _)) = args.first()
+					&& !self.has_fill(&sname, method)
+				{
+					let (recv, args) = (x.clone(), args[1..].to_vec());
+					let (method, type_args) = (method.clone(), type_args.clone());
+					return self.expr(&(
+						Expr::MethodCall {
+							recv,
+							method,
+							type_args,
+							args,
+						},
+						expr.1,
+					));
+				}
+
 				let recv_expr = bound.is_some().then_some(recv);
 				self.check_member(&sname, method, expr.1)?;
 				let key = format!("{sname}.{method}");
 				let gkey = format!("{}.{method}", rc::base_name(&sname));
 				self.check_type_args(method, &gkey, type_args, expr.1)?;
+
 				if let Some(sig) = self.funcs.get(&key).cloned() {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
