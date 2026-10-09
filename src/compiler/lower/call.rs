@@ -397,6 +397,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			given.push(match slots[i - self_n] {
 				Some(arg) => {
 					let (val, typ, entry) = self.arg_value(access[i], arg, Some(access_peel(&p.typ)))?;
+					if p.escapes {
+						closure_escape(&typ, arg.1.into_range(), &format!("passed to `{name}`, which keeps it"))?;
+					}
 					lent.extend(entry.map(|e| (val, e)));
 					Some((val, typ))
 				}

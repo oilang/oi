@@ -20,17 +20,17 @@ fn calls_and_captures() {
 #[test]
 fn bad_calls() {
 	fail(
-		"add :: fn [] (x: int, y: int) int { x + y }\nadd(1)",
+		["add :: fn [] (x: int, y: int) int { x + y }", "add(1)"],
 		"expects 2 argument",
 	);
 	fail(
-		"add :: fn [] (x: int, y: int) int { x + y }\nadd(1, 2.0)",
+		["add :: fn [] (x: int, y: int) int { x + y }", "add(1, 2.0)"],
 		"wrong argument type",
 	);
-	fail("x :: 5\nx()", "not callable");
-	fail("f :: fn [missing] () int { 0 }\nf()", "undefined variable");
+	fail(["x :: 5", "x()"], "not callable");
+	fail(["f :: fn [missing] () int { 0 }", "f()"], "undefined variable");
 	fail(
-		"x :: 3\nf :: fn [mut x] () int { x }\nf()",
+		["x :: 3", "f :: fn [mut x] () int { x }", "f()"],
 		"cannot capture `x` as `mut`",
 	);
 }
@@ -69,6 +69,7 @@ fn closure_cannot_escape() {
 		["n :: 10", "arr :: [fn [n] () int { n }]"],
 		"borrows its captures, so it can't be stored in an array",
 	);
+
 	let src = indoc! {"
 		smuggle[T] :: fn(x: T) []T {
 			a: []T
@@ -91,6 +92,28 @@ fn closure_cannot_escape() {
 		],
 		"borrows its captures, so it can't be stored in a field",
 	);
+
+	let src = indoc! {"
+		Box :: struct { f: fn() int }
+		keep :: fn(f: fn() int) Box { Box.{ f = f } }
+		apply :: fn(f: fn() int) int { f() }
+		n :: 10
+		print(apply(fn [n] () int { n }))
+		keep(fn [n] () int { n })
+	"};
+	fail(
+		src,
+		"borrows its captures, so it can't be passed to `keep`, which keeps it",
+	);
+
+	let src = indoc! {"
+		pair :: fn() (fn() int, int) {
+			n :: 10
+			return (fn [n] () int { n }, 1)
+		}
+		pair()
+	"};
+	fail(src, "borrows its captures, so it can't be returned");
 }
 
 #[test]

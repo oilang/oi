@@ -56,6 +56,9 @@ pub(super) fn closure_escape(typ: &Typ, span: Range<usize>, action: &str) -> Res
 		.with_label("borrows its captures")
 		.with_note("use `[move ...]` in the capture list to give the closure ownership"));
 	}
+	if let Typ::Tuple(fs) = typ {
+		return fs.iter().try_for_each(|(_, t)| closure_escape(t, span.clone(), action));
+	}
 	Ok(())
 }
 

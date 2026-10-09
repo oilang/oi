@@ -13,7 +13,7 @@ use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, M
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::BinaryFormat;
 
-use crate::ast::{Access, Annotation, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
@@ -276,6 +276,31 @@ fn mentions(te: &TypeExpr, name: &str) -> bool {
 		TypeExpr::Ref(e) => mentions(e, name),
 		TypeExpr::AtomSum(_) | TypeExpr::Unquote(_) | TypeExpr::Const(_) | TypeExpr::Infer(_) => false,
 	}
+}
+
+// Whether a fn body stores or returns `name`.
+pub(crate) fn escapes(name: &str, typ: &Typ, body: &[Spanned<Expr>]) -> bool {
+	if !matches!(access_peel(typ), Typ::Fn(..) | Typ::Closure(..)) {
+		return false;
+	}
+	let is = |e: &Spanned<Expr>| matches!(&e.0, Expr::Ident(n) if n == name);
+	let mut hit = body.last().is_some_and(is);
+	Expr::Block(body.to_vec()).walk(&mut |e| {
+		hit |= match e {
+			Expr::Return(Some(v))
+			| Expr::Assign { value: v, .. }
+			| Expr::FieldAssign { value: v, .. }
+			| Expr::IndexAssign { value: v, .. }
+			| Expr::Append { value: v, .. }
+			| Expr::DerefAssign { value: v, .. } => is(v),
+			Expr::Array(es) | Expr::DotArray(_, es) | Expr::DotTuple(es) => es.iter().any(is),
+			Expr::Tuple(fs) | Expr::StructLit { fields: fs, .. } => fs.iter().any(|(_, v)| is(v)),
+			Expr::Map(es) | Expr::Record(es) => es.iter().any(|(_, v)| is(v)),
+			Expr::AnonFn { captures: Some(cs), .. } => cs.iter().any(|c| matches!(c, Capture::Move(n) if n == name)),
+			_ => false,
+		}
+	});
+	hit
 }
 
 // Qualify each type param's trait bound through its defining scope.
@@ -1532,7 +1557,10 @@ impl<M: Module> Compiler<M> {
 			let types = base.with_aliases(&aliases).with_scope(item.scope);
 			let resolved = types.resolve_params(&item.params)?;
 			let params: Vec<FnParam> = (item.params.iter().zip(&resolved))
-				.map(|(p, (_, t, _))| FnParam::of(p, t.clone()))
+				.map(|(p, (_, t, _))| FnParam {
+					escapes: escapes(&p.name, t, item.body),
+					..FnParam::of(p, t.clone())
+				})
 				.collect();
 			let access: Vec<Access> = item.params.iter().map(|p| p.access).collect();
 			let ret = match &item.ret {

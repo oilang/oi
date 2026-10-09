@@ -228,7 +228,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			id,
 			access: params.iter().map(|(_, _, a)| *a).collect(),
 			params: (params.into_iter().zip(&def.params))
-				.map(|((_, t, _), p)| FnParam::of(p, t))
+				.map(|((_, t, _), p)| FnParam {
+					escapes: escapes(&p.name, &t, &def.body),
+					..FnParam::of(p, t)
+				})
 				.collect(),
 			ret,
 			foreign: false,
