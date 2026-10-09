@@ -61,6 +61,20 @@ fn returned_tuple_and_unbound_resources_drop_once() {
 }
 
 #[test]
+fn block_tail_moves_its_local_out() {
+	check(
+		[
+			FILE,
+			"g :: fn() File { f := File.{fd = 1}; { f } }",
+			"x :: g()",
+			"y :: { f := File.{fd = 2}; f }",
+			"print(x.fd, y.fd)",
+		],
+		["1 2", "drop 2", "drop 1"],
+	);
+}
+
+#[test]
 fn resource_field_makes_its_owner_one() {
 	let owner = "Handle :: struct { file: File }";
 	check(
@@ -102,6 +116,14 @@ fn a_projected_resource_is_a_borrow() {
 		["1", "drop 1"],
 	);
 	fail([FILE, a, "g :: a[0]"], "cannot move File out of its container");
+}
+
+#[test]
+fn a_variant_path_is_a_fresh_value() {
+	check(
+		[FILE, "E :: enum { A(File), B }", "e := E.B", "f := e", r#"print("ok")"#],
+		"ok",
+	);
 }
 
 #[test]

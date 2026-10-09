@@ -2180,9 +2180,6 @@ impl<M: Module> Compiler<M> {
 		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());
 		if let Some((val, typ)) = trans.block_tail(def.body, tail_target.as_ref())? {
 			let span = def.body.last().map(|s| s.1).or(decl_span).unwrap_or_default();
-			if let Some(e) = def.body.last() {
-				trans.move_resource(e, &typ)?;
-			}
 			trans.emit_return(val, typ, span)?;
 		} else if trans.b.func.signature.returns.is_empty()
 			&& let Some((ret, _)) = &trans.ret

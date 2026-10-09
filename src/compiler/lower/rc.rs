@@ -101,6 +101,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				let local = self.local(n, e.1.into_range())?;
 				self.move_local(n, &local, e.1.into_range())?;
 			}
+			// a variant path builds a fresh value
+			Expr::Field { tuple, .. } if self.enum_instance(tuple).is_some() => {}
 			Expr::Index { .. } | Expr::Slice { .. } | Expr::Field { .. } => {
 				return fail(
 					format!("cannot move {typ} out of its container"),

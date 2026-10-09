@@ -401,6 +401,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => self.expr(&read)?,
 			};
 		}
+		// a tail local moves out to whoever takes the block's value
+		if let Some(e) = stmts.last() {
+			self.move_resource(e, &last.1)?;
+		}
 
 		Ok(Some(last))
 	}
