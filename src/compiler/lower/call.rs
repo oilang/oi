@@ -682,7 +682,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if sig.foreign {
 			self.c_norm(self.b.inst_results(call)[0], &sig.ret)
 		} else {
-			self.b.inst_results(call)[0]
+			let v = self.b.inst_results(call)[0];
+			self.unbox_ret(v, &sig.ret)
 		};
 		self.temp(ret_val, &sig.ret);
 		(ret_val, sig.ret.clone())
@@ -755,7 +756,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			self.b.inst_results(call)[0]
 		};
-		let ret_val = if c_abi { self.c_norm(ret_val, ret) } else { ret_val };
+		let ret_val = match c_abi {
+			true => self.c_norm(ret_val, ret),
+			false => self.unbox_ret(ret_val, ret),
+		};
 		self.reload_lent(&lent)?;
 		self.temp(ret_val, ret);
 		Ok((ret_val, ret.clone()))
@@ -763,6 +767,15 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn call_concat(&mut self, a: Value, b: Value) -> Value {
 		self.rt_call("str_concat", &[a, b]).unwrap()
+	}
+
+	// A returned struct box moves into a frame slot.
+	fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
+		let Typ::Struct(_, fields) = typ else { return val };
+		let slot = self.stack_slot((fields.len() * 8) as u32);
+		self.fixed_move(slot, val, &Typ::Int(64), fields.len());
+		self.rt_call("free", &[val]);
+		slot
 	}
 
 	pub(super) fn call_alloc(&mut self, n: usize) -> Value {

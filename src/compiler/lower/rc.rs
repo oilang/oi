@@ -162,6 +162,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().jump(done, &[]);
 			self.b.seal_block(done);
 			self.b.switch_to_block(done);
+			if enum_boxed(&self.variants_of(typ)) && !opt_niche(typ) {
+				self.rt_call("free", &[val]);
+			}
 		}
 	}
 

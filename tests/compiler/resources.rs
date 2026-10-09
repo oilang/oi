@@ -247,6 +247,7 @@ fn boxed_payloads_drop_with_their_box() {
 		],
 		["built", "drop 2", "drop 1"],
 	);
+	assert_clean([FILE, v, "o: ?File = File.{fd = 1}", "h :: V.Held.(File.{fd = 2})"]);
 	fail(
 		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held.(f)", "print(f)"],
 		"undefined variable",

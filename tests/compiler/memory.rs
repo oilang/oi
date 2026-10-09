@@ -153,7 +153,8 @@ fn struct_literal_owns_its_field_handles() {
 	"});
 	let plain = "Bag :: struct { n: int }\nmk :: fn() Bag { Bag.{ n = 1 } }\nprint(mk().n)";
 	let held = "Bag :: struct { items: []int }\nmk :: fn() Bag { Bag.{ items = [ 1 2 ] } }\nprint(mk().items[0])";
-	assert_eq!(leaks(held), leaks(plain));
+	assert_clean(plain);
+	assert_clean(held);
 }
 
 #[test]
