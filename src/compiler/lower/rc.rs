@@ -205,7 +205,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Release the owned slots of an aggregate type.
-	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
+	pub(crate) fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
 			if self.slot_owns(t) {
 				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
@@ -232,7 +232,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		for (i, t) in slots.iter().enumerate() {
 			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
 			let off = ((i * 8) as i64) << 2;
-			if let Some((_, release)) = handle_fns(t) {
+			// fn envs aren't traced, so one in a box leaks
+			if let Some((_, release)) = handle_fns(t).filter(|(_, r)| *r != "fn_release") {
 				words.push(
 					off | match release {
 						"array_release" => 2,
@@ -550,6 +551,7 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 	match typ {
 		Typ::Array(_) => Some(("array_share", "array_release")),
 		Typ::Map(..) => Some(("map_share", "map_release")),
+		Typ::Fn(..) | Typ::Closure(..) => Some(("ref_share", "fn_release")),
 		t if ref_like(t) || *t == Typ::Any => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
 	}

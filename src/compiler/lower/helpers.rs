@@ -221,7 +221,7 @@ impl<M: Module> Translator<'_, M> {
 	}
 
 	// Bind value to a given name as a plain, untracked local.
-	pub(super) fn hidden_local(&mut self, name: String, val: Value, typ: Typ) {
+	pub(crate) fn hidden_local(&mut self, name: String, val: Value, typ: Typ) {
 		let var = self.b.declare_var(self.b.func.dfg.value_type(val));
 		self.b.def_var(var, val);
 		self.vars.insert(name, Local::plain(var, typ, false));

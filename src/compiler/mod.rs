@@ -603,6 +603,7 @@ struct Artifacts {
 	wanted: Vec<FuncId>,
 	roots: Vec<String>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
+	env_drops: Vec<(String, Vec<Typ>)>,
 	any_types: Vec<Typ>,
 	descs: HashMap<String, DataId>,
 	string_idx: usize,
@@ -1949,6 +1950,19 @@ impl<M: Module> Compiler<M> {
 			trans.b.finalize();
 			self.finish_fn(&sym);
 		}
+		while let Some((sym, slots)) = self.out.env_drops.pop() {
+			let params = [(String::new(), Typ::ISize, Access::Read)];
+			let def = FnDef {
+				params: &params,
+				..FnDef::default()
+			};
+			let (mut trans, block) = self.translator(&def, funcs, types);
+			let env = trans.b.block_params(block)[0];
+			trans.release_slots(env, 8, &slots);
+			trans.b.ins().return_(&[]);
+			trans.b.finalize();
+			self.finish_fn(&sym);
+		}
 
 		// once every type coerced into `any` is known
 		let sym = oi_symbol("eq_any");
@@ -2202,7 +2216,7 @@ impl<M: Module> Compiler<M> {
 				true => trans.fn_object(sig.id),
 				false => param_vals[def.params.len() + def.ctx.is_some() as usize],
 			};
-			trans.bind_local(name, val, sig.value_typ(), false);
+			trans.hidden_local(name.into(), val, sig.value_typ());
 		}
 
 		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());

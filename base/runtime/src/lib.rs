@@ -770,6 +770,21 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 	}
 }
 
+/// Drop one ref to a fn value.
+/// # Safety
+/// `ptr` must be null or a live fn value.
+#[unsafe(export_name = "oi_fn_release")]
+pub unsafe extern "C" fn fn_release(ptr: *mut u8) {
+	unsafe {
+		if !ptr.is_null() && rc_dec(ptr) {
+			if let Some(drop) = *(ptr.sub(16) as *const Option<unsafe extern "C" fn(*mut u8)>) {
+				drop(ptr);
+			}
+			free(ptr.sub(16));
+		}
+	}
+}
+
 #[derive(PartialEq)]
 enum Color {
 	Gray,

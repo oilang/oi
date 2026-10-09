@@ -157,9 +157,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		let func_ref = self.module.declare_func_in_func(sig.id, self.b.func);
 		let addr = self.b.ins().func_addr(self.int, func_ref);
 		let slots: Vec<_> = std::iter::once(addr).chain(resolved.iter().map(|r| r.3)).collect();
-		let env = self.heap_slots(&slots);
-		let typ = Typ::Closure(params, Box::new(sig.ret.clone()), owns);
-		Ok((env, sig.ctx_marked(typ)))
+
+		let drops: Vec<_> = (captures.iter().zip(&resolved))
+			.map(|(c, r)| if let Capture::Move(_) = c { r.1.clone() } else { Typ::ISize })
+			.collect();
+		let thunk = match drops.iter().any(|t| self.slot_owns(t)) {
+			false => self.b.ins().iconst(self.int, 0),
+			true => {
+				let drop = oi_symbol(&format!("{sym}#drop"));
+				self.out.env_drops.push((drop.clone(), drops));
+				let f = self.import_fn(&drop, &[self.int], None);
+				self.b.ins().func_addr(self.int, f)
+			}
+		};
+		let env = self.rc_alloc((slots.len() * 8) as i64, &[thunk]);
+		self.store_slots(env, &slots);
+
+		let typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), owns));
+		self.temp(env, &typ);
+		Ok((env, typ))
 	}
 }
 

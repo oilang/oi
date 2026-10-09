@@ -102,7 +102,10 @@ impl<M: Module> Translator<'_, M> {
 
 	// Box a bare fn pointer as an Oi fn value.
 	pub(crate) fn fn_cell(&mut self, addr: Value) -> Value {
-		self.heap_slots(&[addr])
+		let zero = self.b.ins().iconst(self.int, 0);
+		let cell = self.rc_alloc(8, &[zero]);
+		self.st(cell, 0, addr);
+		cell
 	}
 
 	// A fn value's bare address.

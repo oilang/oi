@@ -99,13 +99,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.out.wanted.push(id);
 		let mut desc = DataDescription::new();
 		desc.set_align(8);
-		desc.define(vec![0; 8].into_boxed_slice());
+
+		// pinned rc so no release frees it
+		let head = [0, i64::MAX / 2].iter().flat_map(|w| w.to_le_bytes());
+		desc.define(head.chain([0; 8]).collect());
+
 		let fr = self.module.declare_func_in_data(id, &mut desc);
-		desc.write_function_addr(0, fr);
-		let data = self.module.declare_anonymous_data(false, false).unwrap();
+		desc.write_function_addr(16, fr);
+
+		let data = self.module.declare_anonymous_data(true, false).unwrap();
 		self.module.define_data(data, &desc).unwrap();
+
 		let gv = self.module.declare_data_in_func(data, self.b.func);
-		self.b.ins().symbol_value(self.int, gv)
+		let base = self.b.ins().symbol_value(self.int, gv);
+		self.b.ins().iadd_imm(base, 16)
 	}
 
 	// The address of a data symbol.

@@ -38,6 +38,7 @@ pub oi_map_share : fn(m: ptr) ptr : foreign
 pub oi_map_release : fn(m: ptr) : foreign
 pub oi_ref_share : fn(p: ptr) ptr : foreign
 pub oi_ref_release : fn(p: ptr) : foreign
+pub oi_fn_release : fn(p: ptr) : foreign
 pub oi_epilogue : fn() : foreign
 
 # ast

@@ -193,3 +193,8 @@ fn tuple_frees_its_struct_elements() {
 fn omitted_handle_field_has_one_owner() {
 	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len)"]);
 }
+
+#[test]
+fn closure_env_releases_moved_captures() {
+	assert_clean(["ys :: [4]", "g :: fn [move ys] () int { ys[0] }", "h :: g", "print(h())"]);
+}

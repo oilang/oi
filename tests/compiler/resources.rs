@@ -340,3 +340,20 @@ fn copy_without_drop_is_rejected() {
 		"claims `Copy` without `Drop`",
 	);
 }
+
+#[test]
+fn moved_capture_drops_with_the_last_closure_copy() {
+	check(
+		[
+			FILE,
+			"mk :: fn(n: int) fn() int {",
+			"	f :: File.{fd = n}",
+			"	return fn [move f] () int { f.fd }",
+			"}",
+			"g :: mk(4)",
+			"h :: g",
+			"print(g(), h())",
+		],
+		["4 4", "drop 4"],
+	);
+}
