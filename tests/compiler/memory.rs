@@ -221,3 +221,22 @@ fn boxed_enums_free_their_box() {
 		print(f, o, t, x)
 	"});
 }
+
+#[test]
+fn fixed_arrays_in_slots_are_freed() {
+	assert_clean(indoc! {"
+		S :: struct { a: [3]int }
+		s := S.{ a = .[1, 2, 3] }
+		z: S
+		r := s
+		t: ([3]int, int) = (.[1, 2, 3], 4)
+		E :: enum { A([3]int), B }
+		e: E = E.A.(.[1, 2, 3])
+		V :: struct { x: int }
+		ps: [4]V
+		ps[1] = V.{ x = 1 }
+		f :: fn() [2][]int { .[[1], [2]] }
+		q := f()
+		print(r.a, z.a, t, e, ps[1].x, q)
+	"});
+}

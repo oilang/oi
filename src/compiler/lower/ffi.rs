@@ -182,16 +182,10 @@ impl<M: Module> Translator<'_, M> {
 					self.copy_fields(child, c, off, inner, to_c);
 				}
 				Typ::FixedArray(e, n) => {
-					let at = self.b.ins().iadd_imm(c, off as i64);
+					let (at, buf) = (self.b.ins().iadd_imm(c, off as i64), self.ld_word(oi, slot));
 					match to_c {
-						true => {
-							let buf = self.ld_word(oi, slot);
-							self.fixed_move(at, buf, e, *n);
-						}
-						false => {
-							let buf = self.fixed_copy(at, e, *n);
-							self.st(oi, slot, buf);
-						}
+						true => self.fixed_move(at, buf, e, *n),
+						false => self.fixed_move(buf, at, e, *n),
 					}
 				}
 				typ if to_c => {

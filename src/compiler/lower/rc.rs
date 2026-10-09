@@ -42,7 +42,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether a scope must release a value of this type.
 	pub(super) fn needs_release(&self, typ: &Typ) -> bool {
-		let parts = matches!(typ, Typ::Struct(_, fs) if fs.iter().any(|f| self.slot_owns(&f.typ)));
+		let parts = match typ {
+			Typ::Struct(_, fs) => fs.iter().any(|f| self.slot_owns(&f.typ)),
+			Typ::FixedArray(elem, _) => self.slot_owns(elem),
+			_ => false,
+		};
 		parts || releasable(typ) || self.is_resource(typ) || self.enum_box(typ)
 	}
 
@@ -162,9 +166,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.release_value(vals, &Typ::Array(v.clone()));
 			}
 			self.rt_call(release, &[val]);
-		} else if let Typ::FixedArray(elem, _) = typ {
+		} else if let Typ::FixedArray(elem, _) = typ
+			&& self.slot_owns(elem)
+		{
 			let elem = (**elem).clone();
-			self.each_elem(val, typ, |s, _, ev| s.release_value(ev, &elem));
+			self.each_elem(val, typ, |s, _, ev| s.release_field(ev, &elem));
 		} else if let Typ::Struct(_, fields) = typ {
 			if self.is_resource(typ) {
 				self.run_hook(val, typ, "drop");
@@ -200,17 +206,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(done);
 	}
 
-	// Release an owned struct field.
+	// Release an owned field, freeing a struct or fixed array's own block.
 	pub(super) fn release_field(&mut self, val: Value, typ: &Typ) {
 		self.release_value(val, typ);
-		if let Typ::Struct(..) = typ {
+		if let Typ::Struct(..) | Typ::FixedArray(..) = typ {
 			self.rt_call("free", &[val]);
 		}
 	}
 
 	// Whether a struct/tuple/array slot holds a value it must release.
 	pub(super) fn slot_owns(&self, typ: &Typ) -> bool {
-		matches!(typ, Typ::Struct(..)) || self.needs_release(typ)
+		matches!(typ, Typ::Struct(..) | Typ::FixedArray(..)) || self.needs_release(typ)
 	}
 
 	// Retain (copy in place) or release the owned elements of an array.
@@ -250,11 +256,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.release_value(val, layout);
 		};
 		for (i, (_, t)) in slots.iter().enumerate() {
-			let v = self.ld_typ(val, i as i32 * 8, t);
-			self.release_field(v, t);
-			// boxed fixed arrays are heap copies
-			if let Typ::FixedArray(..) = t {
-				self.rt_call("free", &[v]);
+			if self.slot_owns(t) {
+				let v = self.ld_typ(val, i as i32 * 8, t);
+				self.release_field(v, t);
 			}
 		}
 	}
@@ -277,7 +281,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
 			_ => unreachable!("box layout"),
 		};
-		if !self.is_resource(typ) && !slots.iter().any(|t| self.slot_owns(t) || matches!(t, Typ::FixedArray(..))) {
+		if !self.is_resource(typ) && !slots.iter().any(|t| self.slot_owns(t)) {
 			return None;
 		}
 		let mut words = vec![0i64, slots.iter().any(cyclic) as i64, 0];
@@ -572,6 +576,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Struct(_, fields) => {
 				let dst = self.stack_slot((fields.len() * 8) as u32);
 				self.copy_struct(val, dst, typ, fields)
+			}
+			Typ::FixedArray(elem, n) => {
+				let dst = self.stack_slot((*n as i64 * self.elem_stride(elem)) as u32);
+				self.fixed_copy(val, dst, elem, *n)
 			}
 			_ => self.copy_in(val, typ),
 		}

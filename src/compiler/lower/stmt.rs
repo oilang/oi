@@ -85,10 +85,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(v) = value {
 						self.move_resource(v, &typ)?;
 					}
-					let final_val = match &typ {
-						Typ::FixedArray(elem, n) => self.fixed_copy(val, elem, *n),
-						_ => self.copy_bind(val, &typ),
-					};
+					let final_val = self.copy_bind(val, &typ);
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					self.bind_local(name, final_val, typ, *mutable);
 				}

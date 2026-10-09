@@ -150,6 +150,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		val
 	}
 
+	// A zero value for an owning slot, where a fixed array is its own heap block.
+	fn zero_slot(&mut self, typ: &Typ) -> Value {
+		let z = self.zero(typ);
+		match typ {
+			Typ::FixedArray(..) => self.copy_in(z, typ),
+			_ => z,
+		}
+	}
+
 	fn zero_val(&mut self, typ: &Typ) -> Value {
 		let typ = typ.newtype().unwrap_or(typ);
 		match typ {
@@ -202,7 +211,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::TupleStruct(_, fields) => self.zero(&Typ::Tuple(fields.clone())),
 			Typ::Tuple(fields) => {
-				let zs: Vec<_> = fields.iter().map(|(_, t)| self.zero(t)).collect();
+				let zs: Vec<_> = fields.iter().map(|(_, t)| self.zero_slot(t)).collect();
 				self.heap_slots(&zs)
 			}
 			Typ::Array(_) => {
@@ -1347,7 +1356,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.fixed_move(heap, slot, &Typ::Int(64), inner.len());
 				heap
 			} else {
-				self.zero(&f.typ)
+				self.zero_slot(&f.typ)
 			};
 			self.st(ptr, (i * 8) as i32, init);
 		}
@@ -1471,10 +1480,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	pub(super) fn fixed_copy(&mut self, src: Value, elem: &Typ, n: usize) -> Value {
+	// Copy a fixed array's elements into the given destination, each to its new owner.
+	pub(super) fn fixed_copy(&mut self, src: Value, dst: Value, elem: &Typ, n: usize) -> Value {
 		let stride = self.elem_stride(elem);
-		let dst = self.stack_slot((n as i64 * stride) as u32);
-		self.fixed_move(dst, src, elem, n);
+		for i in 0..n {
+			let off = (i as i64 * stride) as i32;
+			let v = self.load_elem(src, off, elem);
+			let v = self.copy_in(v, elem);
+			self.store_elem(dst, off, elem, v);
+		}
 		dst
 	}
 

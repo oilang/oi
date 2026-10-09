@@ -202,7 +202,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let n = vals.len();
 		let ptr = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
 		self.store_all(ptr, vals, &elem);
-		Ok((ptr, Typ::FixedArray(Box::new(elem), n)))
+		let typ = Typ::FixedArray(Box::new(elem), n);
+		self.temp(ptr, &typ);
+		Ok((ptr, typ))
 	}
 
 	// Autocast a fixed array into a fresh rc'd dynamic buffer.
@@ -226,8 +228,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::FixedArray(elem, n) = typ {
 			let (elem, n) = ((**elem).clone(), *n);
 			let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
-			self.fixed_move(heap, val, &elem, n);
-			return heap;
+			return self.fixed_copy(val, heap, &elem, n);
 		}
 		// move resource to new owner
 		if self.handover(val, typ) {
@@ -437,13 +438,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn store_index(&mut self, data: Value, len: Value, typ: &Typ, idx: Value, val: Value, span: Span) {
 		let elem = array_elem(typ);
 		let addr = self.elem_addr(data, len, elem, idx, span);
-		// a fixed array may hold zeroed stack structs
-		if matches!(typ, Typ::Array(_)) && self.slot_owns(elem) {
+		if self.slot_owns(elem) {
 			let old = self.load_elem(addr, 0, elem);
 			self.release_field(old, elem);
-		} else if self.needs_release(elem) {
-			let old = self.load_elem(addr, 0, elem);
-			self.release_value(old, elem);
 		}
 		self.store_elem(addr, 0, elem, val);
 	}

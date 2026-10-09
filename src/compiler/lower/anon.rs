@@ -61,6 +61,11 @@ impl<'a, M: Module> Translator<'a, M> {
 							self.fixed_move(heap, val, &Typ::ISize, fields.len());
 							heap
 						}
+						Typ::FixedArray(e, n) => {
+							let heap = self.call_alloc_bytes(*n as i64 * self.elem_stride(e));
+							self.fixed_move(heap, val, e, *n);
+							heap
+						}
 						_ => val,
 					}
 				}
