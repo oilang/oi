@@ -99,7 +99,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			return arity_err(&format!("`{name}`"), names.len(), args.len(), "argument", span);
 		}
 		let slots: Vec<_> = named.unwrap_or_else(|| (0..names.len()).map(|i| args.get(i)).collect());
-		let access: Vec<Access> = def.params.iter().map(|p| p.access).collect();
+		// an `=` param's ownership waits on `T`, so trust the arg until then
+		let access: Vec<Access> = (def.params.iter().enumerate())
+			.map(|(i, p)| match i.checked_sub(self_n).and_then(|i| slots[i]) {
+				Some((Expr::ArgMod(a, _), _)) if p.mutable => *a,
+				Some(_) if p.mutable => Access::Read,
+				_ => p.access,
+			})
+			.collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
 		let mut subst = HashMap::new();
 		if type_args.len() > def.type_params.len() {
@@ -126,12 +133,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			vals.push(*rval);
 		}
 		let (mut lent, mut given) = (Vec::new(), Vec::new());
-		for (arg, param) in slots.iter().zip(declared) {
+		for ((arg, param), &access) in slots.iter().zip(declared).zip(&access[self_n..]) {
 			let Some(arg) = arg else {
 				given.push(None);
 				continue;
 			};
-			let (val, typ, entry) = self.arg_value(param.access, arg, None)?;
+			let (val, typ, entry) = self.arg_value(access, arg, None)?;
 			lent.extend(entry.map(|e| (val, e)));
 			unify(&param.typ, &typ, &def.type_params, &mut subst, self.types.generics)
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
@@ -168,7 +175,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		let sig = self.declare_instance(name, def, subst)?;
-		let vals = self.fill_args(name, &sig.value_params(), vals, &slots, given, span)?;
+		let params = sig.value_params();
+		let access: Vec<Access> = params[self_n..].iter().map(|p| self.param_access(p)).collect();
+		self.check_args(&access, None, &slots)?;
+		let vals = self.fill_args(name, &params, vals, &slots, given, span)?;
 		let out = self.emit_call(&sig, &vals);
 		self.reload_lent(&lent)?;
 		Ok(out)

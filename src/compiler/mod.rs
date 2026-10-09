@@ -214,6 +214,7 @@ pub(crate) type Pending = (String, GenericFnDef, HashMap<String, Typ>);
 #[derive(Default)]
 struct FnDef<'a> {
 	params: &'a [(String, Typ, Access)],
+	decls: &'a [Param],
 	params_tuple: bool,
 	ret: Option<(Typ, Span)>,
 	body: &'a [Spanned<Expr>],
@@ -1856,6 +1857,7 @@ impl<M: Module> Compiler<M> {
 				self.translate(
 					FnDef {
 						params: &params,
+						decls: &item.params,
 						params_tuple: item.params_tuple,
 						ret,
 						body: item.body,
@@ -1890,6 +1892,7 @@ impl<M: Module> Compiler<M> {
 			self.translate(
 				FnDef {
 					params: &params,
+					decls: &def.params,
 					params_tuple: def.params_tuple,
 					ret,
 					body: &def.body,
@@ -2143,7 +2146,7 @@ impl<M: Module> Compiler<M> {
 
 		trans.seed_statics(&inits)?;
 		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
-		for ((name, typ, access), &val) in def.params.iter().zip(param_vals.iter()) {
+		for (i, ((name, typ, access), &val)) in def.params.iter().zip(param_vals.iter()).enumerate() {
 			let val = match typ {
 				_ if !def.foreign => val,
 				Typ::Fn(..) => trans.fn_cell(val),
@@ -2152,7 +2155,7 @@ impl<M: Module> Compiler<M> {
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);
-			if *access == Access::Move {
+			if *access == Access::Move || (def.decls.get(i).is_some_and(|p| p.mutable) && trans.is_affine(typ)) {
 				trans.own_local(var, typ);
 			}
 			let mutable = *access == Access::Mut;

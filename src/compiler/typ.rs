@@ -55,6 +55,7 @@ pub(crate) struct FnParam {
 	pub default: Option<Spanned<Expr>>,
 	pub variadic: bool,
 	pub escapes: bool,
+	pub copy: bool,
 }
 
 impl FnParam {
@@ -65,6 +66,7 @@ impl FnParam {
 			default: None,
 			variadic: false,
 			escapes: false,
+			copy: false,
 		}
 	}
 
@@ -75,6 +77,7 @@ impl FnParam {
 			default: p.default.clone(),
 			variadic: matches!(p.typ, TypeExpr::Variadic(_)),
 			escapes: false,
+			copy: p.mutable,
 		}
 	}
 }

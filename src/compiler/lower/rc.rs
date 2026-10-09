@@ -81,7 +81,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Whether a resource is move-only.
-	pub(super) fn is_affine(&self, typ: &Typ) -> bool {
+	pub(crate) fn is_affine(&self, typ: &Typ) -> bool {
 		self.is_resource(typ) && !self.is_copy(typ)
 	}
 

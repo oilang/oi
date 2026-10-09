@@ -349,7 +349,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let self_n = recv.is_some() as usize;
 		let expanded = self.expand_spreads(args)?;
 		let args = expanded.as_deref().unwrap_or(args);
-		let access: Vec<Access> = params.iter().map(|p| access_of(&p.typ)).collect();
+		let access: Vec<Access> = params.iter().map(|p| self.param_access(p)).collect();
 		let names: Vec<&str> = (params.iter().skip(self_n))
 			.map(|p| p.name.as_deref().unwrap_or_default())
 			.collect();
@@ -440,13 +440,15 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 							return fail(msg, span, "no value for this parameter");
 						};
-						let val = self.check_typed(default, want, "not a valid default for this parameter")?;
-						if access_of(&p.typ) == Access::Move {
-							self.untemp(val);
-						}
-						(val, want.clone())
+						(
+							self.check_typed(default, want, "not a valid default for this parameter")?,
+							want.clone(),
+						)
 					}
 				};
+				if self.param_access(p) == Access::Move {
+					self.untemp(val);
+				}
 				if &typ != want {
 					let at = slots[i - self_n].expect("a default is checked as it is evaluated").1;
 					return fail(
@@ -468,6 +470,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 		}
 		Ok(vals)
+	}
+
+	// An `=` copy of a move-only type is a move.
+	pub(super) fn param_access(&self, p: &FnParam) -> Access {
+		match p.copy && self.is_affine(access_peel(&p.typ)) {
+			true => Access::Move,
+			false => access_of(&p.typ),
+		}
 	}
 
 	// Evaluate one argument under its access mod.

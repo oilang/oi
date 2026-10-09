@@ -143,6 +143,7 @@ pub(package) baz :: fn() {}
 
 # a plain param is a read-only borrow
 # `mut` is an exclusive borrow
+# `x = v`/`x := v` is a private mutable copy, but a Drop type is owned, handed over with `move`
 pub baz :: fn(mut i: int) {
 	i += 2
 }

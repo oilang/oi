@@ -186,6 +186,22 @@ fn a_move_arg_transfers_ownership() {
 }
 
 #[test]
+fn a_mutable_copy_of_a_resource_is_owned() {
+	let f = "f :: fn(x: ?File = none) int { x = File.{fd = 9}  1 }";
+	let g = "g :: File.{fd = 1}";
+	check(
+		[FILE, f, g, "print(f())", "print(f(move g))"],
+		["drop 9", "1", "drop 1", "drop 9", "1"],
+	);
+	fail([FILE, f, g, "f(g)"], "missing `move` at the callsite");
+	let t = "t[T] :: fn(x: ?T = none) int { 1 }";
+	check(
+		[FILE, t, g, "print(t[File]())", "print(t(move g))", "print(t(3))"],
+		["1", "drop 1", "1", "1"],
+	);
+}
+
+#[test]
 fn a_branch_move_drops_at_scope_exit() {
 	let go = indoc! {r#"
 		eat :: fn(move f: File) { print("ate", f.fd) }
