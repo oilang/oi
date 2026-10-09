@@ -203,3 +203,21 @@ fn closure_env_releases_moved_captures() {
 		"print(h())",
 	]);
 }
+
+#[test]
+fn boxed_enums_free_their_box() {
+	assert_clean(indoc! {"
+		E :: enum { a, b([]int) }
+		e := E.b.([1 2])
+		f := e
+		o: ?int = 3
+		S :: struct { o: ?int }
+		s := S.{ o = 4 }
+		t := s
+		r :: fn() !int { 4 }
+		x := r()
+		P :: struct { n: int }
+		p: ?P = P.{ n = 1 }
+		print(f, o, t, x)
+	"});
+}

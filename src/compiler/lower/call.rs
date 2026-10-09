@@ -427,10 +427,11 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 							return fail(msg, span, "no value for this parameter");
 						};
-						(
-							self.check_typed(default, want, "not a valid default for this parameter")?,
-							want.clone(),
-						)
+						let val = self.check_typed(default, want, "not a valid default for this parameter")?;
+						if access[i] == Access::Move {
+							self.untemp(val);
+						}
+						(val, want.clone())
 					}
 				};
 				if &typ != want {

@@ -42,7 +42,30 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether a scope must release a value of this type.
 	pub(super) fn needs_release(&self, typ: &Typ) -> bool {
-		releasable(typ) || self.is_resource(typ)
+		let parts = matches!(typ, Typ::Struct(_, fs) if fs.iter().any(|f| self.slot_owns(&f.typ)));
+		parts || releasable(typ) || self.is_resource(typ) || self.enum_box(typ)
+	}
+
+	// Whether a value is a heap-boxed enum, freed and copied inline.
+	pub(super) fn enum_box(&self, typ: &Typ) -> bool {
+		let Typ::Enum(n) = typ else { return false };
+		enum_boxed(&self.variants_of(typ)) && !opt_niche(typ) && !self.reaches(typ, n, &mut Vec::new())
+	}
+
+	// Whether a type's parts reach back to enum `name`.
+	fn reaches(&self, typ: &Typ, name: &str, seen: &mut Vec<String>) -> bool {
+		let parts = match typ {
+			Typ::Enum(n) if n == name && !seen.is_empty() => return true,
+			Typ::Enum(n) if !seen.contains(n) => {
+				seen.push(n.clone());
+				self.variants_of(typ).into_iter().flat_map(|v| v.payload).collect()
+			}
+			Typ::Array(t) | Typ::FixedArray(t, _) | Typ::Map(_, t) => vec![(**t).clone()],
+			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
+			Typ::Struct(_, fs) => field_types(fs),
+			_ => vec![],
+		};
+		parts.iter().any(|t| self.reaches(t, name, seen))
 	}
 
 	// Check whether a resource copies through its hook instead of moving.
@@ -152,22 +175,29 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			self.release_slots(val, 0, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
 			self.rt_call("free", &[val]);
-		} else if matches!(typ, Typ::Enum(_)) && self.is_resource(typ) {
-			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
-			for v in self.variants_of(typ) {
-				if !v.payload.iter().any(|t| self.needs_release(t)) {
-					continue;
-				}
-				// release payloads under their own tag
-				self.on_variant(tag, v.disc, done, |s| s.release_slots(val, 8, &v.payload));
-			}
-			self.b.ins().jump(done, &[]);
-			self.b.seal_block(done);
-			self.b.switch_to_block(done);
-			if enum_boxed(&self.variants_of(typ)) && !opt_niche(typ) {
-				self.rt_call("free", &[val]);
+		} else if self.enum_box(typ) {
+			self.owned_payloads(val, typ, |s, off, t| {
+				let pv = s.ld_typ(val, off, t);
+				s.release_field(pv, t);
+			});
+			self.rt_call("free", &[val]);
+		}
+	}
+
+	// Visit each owned payload slot of an enum box under its live tag.
+	pub(super) fn owned_payloads(&mut self, val: Value, typ: &Typ, mut f: impl FnMut(&mut Self, i32, &Typ)) {
+		let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
+		for v in self.variants_of(typ) {
+			let owned: Vec<_> = (v.payload.iter().enumerate()).filter(|(_, t)| self.slot_owns(t)).collect();
+			if !owned.is_empty() {
+				self.on_variant(tag, v.disc, done, |s| {
+					owned.iter().for_each(|(i, t)| f(s, (*i as i32 + 1) * 8, t))
+				});
 			}
 		}
+		self.b.ins().jump(done, &[]);
+		self.b.seal_block(done);
+		self.b.switch_to_block(done);
 	}
 
 	// Release an owned struct field.
@@ -180,7 +210,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether a struct/tuple/array slot holds a value it must release.
 	pub(super) fn slot_owns(&self, typ: &Typ) -> bool {
-		owns(typ) || self.is_resource(typ)
+		matches!(typ, Typ::Struct(..)) || self.needs_release(typ)
 	}
 
 	// Retain (copy in place) or release the owned elements of an array.
@@ -529,17 +559,8 @@ pub(super) fn base_name(name: &str) -> &str {
 // The bindings owned by each scope.
 pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 
-pub(super) fn releasable(typ: &Typ) -> bool {
-	match typ {
-		Typ::Struct(_, fields) => fields.iter().any(|f| owns(&f.typ)),
-		Typ::Tuple(fields) => !fields.is_empty(),
-		_ => handle_fns(typ).is_some(),
-	}
-}
-
-// Whether a struct field slot owns its value.
-pub(super) fn owns(typ: &Typ) -> bool {
-	matches!(typ, Typ::Struct(..)) || releasable(typ)
+fn releasable(typ: &Typ) -> bool {
+	matches!(typ, Typ::Tuple(fields) if !fields.is_empty()) || handle_fns(typ).is_some()
 }
 
 fn field_types(fields: &[FieldDef]) -> Vec<Typ> {

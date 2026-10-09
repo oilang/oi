@@ -324,7 +324,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let val = self.copy_in(val, &ftyp);
 					let base = self.read_local(&local);
 					let ptr = self.follow(base, &path);
-					if rc::owns(&ftyp) {
+					if self.slot_owns(&ftyp) {
 						let cl = self.b.func.dfg.value_type(val);
 						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
 						self.release_field(old, &ftyp);
@@ -363,6 +363,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						None => self.unit_value(),
 					};
+					self.untemp(v);
 					self.release_scopes(depth, None)?;
 					let mut join = control::Join::new("break", stmt.1, self.loops.last_mut().unwrap().result.take());
 					self.contribute((v, t), &mut join, exit)?;
@@ -441,14 +442,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			true => (val, typ),
 			false => self.coerce(val, &typ, &err, span)?,
 		};
-		let variants = self.variants_of(&ret);
-		Ok(if typ == ok {
-			(self.make_enum(&variants, 0, &[val]), ret)
-		} else if typ == err {
-			(self.make_enum(&variants, 1, &[val]), ret)
-		} else {
-			(val, typ)
-		})
+		let Some(disc) = [ok, err].iter().position(|t| *t == typ) else {
+			return Ok((val, typ));
+		};
+		let val = self.make_enum(&self.variants_of(&ret), disc as i64, &[val]);
+		self.temp(val, &ret);
+		Ok((val, ret))
 	}
 
 	// The first return fixes the fn's type, and later returns must agree.

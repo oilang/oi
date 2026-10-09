@@ -247,6 +247,23 @@ impl<'a, M: Module> Translator<'a, M> {
 				.collect();
 			return self.heap_slots(&vals);
 		}
+		if self.enum_box(typ) {
+			// a fresh box moves
+			if self.temps.contains_key(&val) {
+				self.untemp(val);
+				return val;
+			}
+			let words: Vec<_> = (0..enum_slots(&self.variants_of(typ)) as i32)
+				.map(|i| self.ld_word(val, i * 8))
+				.collect();
+			let dst = self.heap_slots(&words);
+			self.owned_payloads(val, typ, |s, off, t| {
+				let pv = s.ld_typ(val, off, t);
+				let pv = s.copy_in(pv, t);
+				s.st(dst, off, pv);
+			});
+			return dst;
+		}
 		let Some((share, _)) = rc::handle_fns(typ) else {
 			return val;
 		};

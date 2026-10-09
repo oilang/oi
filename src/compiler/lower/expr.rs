@@ -1068,6 +1068,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		};
 		let val = self.make_enum(&variants, disc, &[fv]);
+		self.temp(val, &typ);
 		Ok((val, typ))
 	}
 }

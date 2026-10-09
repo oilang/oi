@@ -408,10 +408,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
 		}
 		let variants = self.variants_of(typ);
-		match some {
+		let val = match some {
 			Some(v) => self.make_enum(&variants, 1, &[v]),
 			None => self.make_enum(&variants, 0, &[]),
-		}
+		};
+		self.temp(val, typ);
+		val
 	}
 
 	// A payload slot of a variant.
@@ -551,6 +553,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let end = end.map(|v| self.intcast(v, types::I64, true));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let end = self.make_option(&opt_typ, end);
+		self.untemp(end);
 		let start = self.intcast(start, types::I64, true);
 		let step = self.intcast(step, types::I64, true);
 		self.store_slots(ptr, &[start, end, step]);
@@ -1287,7 +1290,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
-			if rc::owns(&ftyp) && !(base == ptr && given[idx]) {
+			if self.slot_owns(&ftyp) && !(base == ptr && given[idx]) {
 				// drop the zero/default this slot already owns
 				let old = self.ld_typ(base, (idx * 8) as i32, &ftyp);
 				// a resource nobody saw is freed
@@ -1455,7 +1458,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Copy field slots between structs.
 	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
 		for (i, f) in fields.iter().enumerate() {
-			let old = (release_old && rc::owns(&f.typ)).then(|| self.ld_typ(dst, (i * 8) as i32, &f.typ));
+			let old = (release_old && self.slot_owns(&f.typ)).then(|| self.ld_typ(dst, (i * 8) as i32, &f.typ));
 			let fv = self.ld_typ(src, (i * 8) as i32, &f.typ);
 			let fv = self.copy_in(fv, &f.typ);
 			self.st(dst, (i * 8) as i32, fv);

@@ -412,6 +412,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Write (v, t) into the shared result variable and jump to `merge`.
 	// All branches must agree on type. The first one declares the variable.
 	pub(super) fn contribute(&mut self, (v, t): TypedVal, join: &mut Join, merge: Block) -> Result<(), Diagnostic> {
+		// var owned by the merged value
+		self.untemp(v);
+
 		match &mut join.result {
 			Some((_, rt)) if rt != &t => fail(
 				format!("`{}` branches have mismatched types: {rt} and {t}", join.kw),
@@ -863,6 +866,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					Some(_) => self.make_option(&t.clone(), None),
 					None => self.unit_value().0,
 				};
+				self.untemp(v);
 				self.b.def_var(*var, v);
 			}
 			self.b.ins().jump(exit, &[]);
@@ -870,7 +874,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(exit);
 		self.b.switch_to_block(exit);
 		match frame.result {
-			Some((var, t)) => (self.b.use_var(var), t),
+			Some((var, t)) => {
+				let v = self.b.use_var(var);
+				self.temp(v, &t);
+				(v, t)
+			}
 			None => self.unit_value(),
 		}
 	}
