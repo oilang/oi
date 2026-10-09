@@ -36,6 +36,23 @@ fn inout() {
 }
 
 #[test]
+fn inout_handles() {
+	check(
+		indoc! {r#"
+			Color :: enum { red green }
+			shout :: fn(mut s: string) { s = s + "!" }
+			paint :: fn(mut c: Color) { c = .green }
+			s := "hi"
+			c := Color.red
+			shout(mut s)
+			paint(mut c)
+			print(s, c)
+		"#},
+		"hi! green",
+	);
+}
+
+#[test]
 fn slice_projection_element_write() {
 	check(
 		indoc! {"
@@ -61,14 +78,17 @@ fn slice_projection_is_leak_free() {
 
 #[test]
 fn inout_is_leak_free() {
-	assert_clean(indoc! {"
+	assert_clean(indoc! {r#"
 		push9 :: fn(mut xs: []int) { xs << 9 }
 		swap :: fn(mut xs: []int) { xs = [7, 8] }
+		shout :: fn(mut s: string) { s = s + "!" }
 		a := [1]
+		s := "a" + "b"
 		push9(mut a)
 		swap(mut a)
-		print(a)
-	"});
+		shout(mut s)
+		print(a, s)
+	"#});
 }
 
 // errors
@@ -176,7 +196,7 @@ fn scalar_inout() {
 
 #[test]
 fn unlendable_mut_param_rejected() {
-	fail("f :: fn(mut s: string) {}", "has no address to lend");
+	fail("f :: fn(mut g: fn()) {}", "has no address to lend");
 }
 
 #[test]

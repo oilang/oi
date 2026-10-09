@@ -669,10 +669,13 @@ impl TypeCtx<'_> {
 						| Typ::Array(_) | Typ::FixedArray(..)
 						| Typ::Map(..) | Typ::Struct(..)
 						| Typ::TupleStruct(..)
-				) && typ.newtype().is_none();
+						| Typ::Str | Typ::Enum(_)
+						| Typ::Sum(..) | Typ::Tuple(_)
+						| Typ::Ref(_)
+				);
 				if p.access == Access::Mut && !lendable {
 					return fail(
-						"`mut` parameters must be scalars, arrays, maps, or structs for now",
+						"this type can't be a `mut` parameter",
 						p.span,
 						format!("{typ} has no address to lend"),
 					);
