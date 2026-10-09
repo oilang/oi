@@ -197,6 +197,26 @@ fn cycle_with_acyclic_hangoff_reclaimed() {
 }
 
 #[test]
+fn collector_runs_past_threshold() {
+	let src = indoc! {r#"
+		Node :: struct { value: int, next: ?^Node }
+		keep := &Node.{ value = 7 }
+		keep.next = ?^Node.(keep)
+		i := 0
+		loop i < 12000 {
+			a := &Node.{ value = i }
+			b :: &Node.{ value = i, next = ?^Node.(a) }
+			a.next = ?^Node.(b)
+			k :: keep
+			i = i + k.value - 6
+		}
+		print(keep.value)
+	"#};
+	check(src, "7");
+	assert_clean(src);
+}
+
+#[test]
 fn ref_boxes_any_type() {
 	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
 	check(["xs := &[1, 2, 3]", "print(xs[0], xs[1..])"], "1 [2, 3]");

@@ -1,7 +1,7 @@
 #![feature(f16)]
 //! Backend-agnostic functions a compiled Oi program calls at runtime.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
@@ -695,7 +695,7 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 		return;
 	}
 	unsafe {
-		let mut p = desc.add(1);
+		let mut p = desc.add(2);
 		for _ in 0..*desc {
 			let e = *p;
 			p = p.add(1);
@@ -718,9 +718,11 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 	}
 }
 
-// Boxes whose non-zero release marked them as possible cycle roots.
 thread_local! {
+	// Boxes whose non-zero release marked them as possible cycle roots.
 	static ROOTS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+	// Root count that triggers a collection, doubled when one frees under half.
+	static THRESHOLD: Cell<usize> = const { Cell::new(10_000) };
 }
 
 // The descriptor (box[-16]).
@@ -742,10 +744,16 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 			ROOTS.with(|r| r.borrow_mut().remove(&(ptr as usize)));
 			trace(ptr, desc(ptr), true, &mut |c| ref_release(c));
 			free(ptr.sub(16));
-		} else if !desc(ptr).is_null() {
-			// still alive and holding refs
-			// NOTE: possible cycle root
-			ROOTS.with(|r| r.borrow_mut().insert(ptr as usize));
+		} else if !desc(ptr).is_null() && *desc(ptr).add(1) != 0 {
+			// still alive and can reach a ref, a possible cycle root
+			let n = ROOTS.with(|r| {
+				let mut r = r.borrow_mut();
+				r.insert(ptr as usize);
+				r.len()
+			});
+			if n >= THRESHOLD.get() && collect_cycles() < n / 2 {
+				THRESHOLD.set(n * 2);
+			}
 		}
 	}
 }
@@ -758,7 +766,8 @@ enum Color {
 }
 
 /// Bacon-Rajan synchronous trial deletion over the buffered cyclic roots.
-pub fn collect_cycles() {
+/// Returns how many boxes it freed.
+pub fn collect_cycles() -> usize {
 	let roots: Vec<usize> = ROOTS.with(|r| r.borrow_mut().drain().collect());
 	let mut c = HashMap::new();
 	for &s in &roots {
@@ -767,9 +776,11 @@ pub fn collect_cycles() {
 	for &s in &roots {
 		scan(s as *mut u8, &mut c);
 	}
+	let freed = c.values().filter(|&k| *k == Color::White).count();
 	for &s in &roots {
 		collect_white(s as *mut u8, &mut c);
 	}
+	freed
 }
 
 // Attempt to decrement children, painting the candidate subgraph gray.

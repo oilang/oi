@@ -199,7 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(&id) = self.out.descs.get(name) {
 			return Some(id);
 		}
-		let mut words = vec![0i64];
+		let mut words = vec![0i64, slots.iter().any(cyclic) as i64];
 		let mut relocs = Vec::new();
 		for (i, t) in slots.iter().enumerate() {
 			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
@@ -220,7 +220,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				words.push(0);
 			}
 		}
-		words[0] = (words.len() - 1 - relocs.len()) as i64;
+		words[0] = (words.len() - 2 - relocs.len()) as i64;
 		if words[0] == 0 {
 			return None;
 		}
@@ -524,6 +524,14 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 		Typ::Map(..) => Some(("map_share", "map_release")),
 		t if ref_like(t) || *t == Typ::Any => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
+	}
+}
+
+// Whether a slot can hold a ref back into the box graph.
+fn cyclic(typ: &Typ) -> bool {
+	match typ {
+		Typ::Struct(_, fields) => fields.iter().any(|f| cyclic(&f.typ)),
+		t => handle_fns(t).is_some_and(|(_, release)| release == "ref_release"),
 	}
 }
 
