@@ -52,7 +52,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			let local = self.local(name, span.into_range())?;
 			let val = match c {
 				Capture::Mut(_) => self.box_local(name, &local, span.into_range())?,
-				Capture::Move(_) => self.move_local(name, &local, span.into_range())?,
+				Capture::Move(_) => {
+					let val = self.move_local(name, &local, span.into_range())?;
+					// a moved struct leaves the frame with the env
+					match &local.typ {
+						Typ::Struct(_, fields) => {
+							let heap = self.call_alloc(fields.len());
+							self.fixed_move(heap, val, &Typ::ISize, fields.len());
+							heap
+						}
+						_ => val,
+					}
+				}
 				Capture::ReadOnly(_) => self.read_local(&local),
 			};
 			resolved.push((name.clone(), local.typ, boxed, val));

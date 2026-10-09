@@ -162,6 +162,21 @@ fn move_capture_escapes_via_return() {
 }
 
 #[test]
+fn move_capture_of_struct_escapes_via_return() {
+	let src = indoc! {"
+		P :: struct { x: int }
+		mk :: fn(n: int) fn() int {
+			p := P.{ x = n }
+			return fn [move p] () int { p.x }
+		}
+		g :: mk(7)
+		h :: mk(8)
+		print(g(), h())
+	"};
+	check(src, "7 8");
+}
+
+#[test]
 fn apply_a_fn_value_that_isnt_a_name() {
 	let src = indoc! {"
 		make :: fn() fn() int { fn() int { 7 } }
