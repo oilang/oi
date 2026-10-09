@@ -801,7 +801,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Pipe { value, step } => self.pipe(value, step, expr.1),
 
-			Expr::OrElse { value, body } => self.or_else(value, body, expr.1),
+			Expr::OrElse { value, body } => self.or_else(value, body, expr.1, true),
 			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
@@ -978,14 +978,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"this diverges",
 			),
 
-			Expr::Defer { body, when } => {
-				self.defers.last_mut().expect("scope").push(rc::Defer {
-					body: (**body).clone(),
-					vars: self.vars.clone(),
-					when: *when,
-				});
-				Ok(self.unit_value())
-			}
+			Expr::Defer { body, when } => Ok(self.defer(body, *when, false)),
 
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(..) => {
 				unreachable!("not an expression")

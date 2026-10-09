@@ -102,7 +102,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (outer, mut live) = (self.slots.clone(), vec![]);
 		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 		self.b.switch_to_block(then_block);
-		let then_flow = self.scoped(|s| s.block_tail(then, target))?;
+		let then_flow = self.branch(then, target)?;
 		self.rejoin(&outer, &mut live, then_flow.is_none());
 		let tail = self.branch_tail(&owned, &mut tails, then_flow.is_some());
 		if let Some(vt) = then_flow {
@@ -159,7 +159,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some((v, t.clone())))
 			});
 		};
-		self.scoped(|s| s.block_tail(els, target))
+		self.branch(els, target)
+	}
+
+	// A branch that is a lone `defer` arms it on the enclosing scope.
+	fn branch(&mut self, body: &[Spanned<Expr>], target: Option<&Typ>) -> Result<Option<TypedVal>, Diagnostic> {
+		match body {
+			[(Expr::Defer { body, when }, _)] => Ok(Some(self.defer(body, *when, true))),
+			_ => self.scoped(|s| s.block_tail(body, target)),
+		}
 	}
 
 	// Evaluate `f` in a child scope.
@@ -436,6 +444,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		value: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 		span: Span,
+		want: bool,
 	) -> Result<TypedVal, Diagnostic> {
 		let mut catch = Catch {
 			block: self.b.create_block(),
@@ -477,18 +486,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		let merge = self.b.create_block();
 		let mut join = Join::new("or", span, None);
 		let payload = self.copy_bind(payload, &inner);
-		self.contribute((payload, inner.clone()), &mut join, merge)?;
+		self.join_branch(want, (payload, inner.clone()), &mut join, merge)?;
 
 		self.b.switch_to_block(catch.block);
 		self.b.seal_block(catch.block);
 		let (var, err) = catch.err.expect("every path here threw");
 		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
-		let flow = self.scoped(|s| s.block_tail(body, Some(&inner)))?;
+		let flow = self.branch(body, want.then_some(&inner))?;
 		self.dollar = saved_dollar;
 		if let Some(vt) = flow {
-			self.contribute(vt, &mut join, merge)?;
+			self.join_branch(want, vt, &mut join, merge)?;
 		}
 
+		if !want {
+			self.b.switch_to_block(merge);
+			self.b.seal_block(merge);
+			return Ok(self.unit_value());
+		}
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
 	}
 
@@ -571,7 +585,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(happy_block);
 		let payload = self.opt_payload(val, &typ, &inner, 8);
 		let saved_dollar = self.dollar.replace((payload, inner));
-		let flow = self.scoped(|s| s.block_tail(body, None));
+		let flow = self.branch(body, None);
 		self.dollar = saved_dollar;
 		let target = match flow? {
 			Some((v, t)) => {

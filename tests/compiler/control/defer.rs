@@ -72,3 +72,20 @@ fn is_a_unit_value() {
 		["()", "2", "1"],
 	);
 }
+
+#[test]
+fn and_or_defer() {
+	let src = indoc! {"
+		f :: fn(o: ?int) {
+			o and defer print(1)
+			o or defer print(2)
+			o or print(3)
+			print(0)
+		}
+		f(5)
+		f(none)
+		i := 0
+		loop { i += 1; if i == 2 do defer print(i); if i > 2 { break } }
+	"};
+	check(src, ["0", "1", "3", "0", "2", "2"]);
+}

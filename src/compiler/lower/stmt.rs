@@ -290,6 +290,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 
+				Expr::OrElse { value, body } if !want => last = self.or_else(value, body, stmt.1, false)?,
+
 				Expr::Block(body) if stmt_target.is_none() => match self.scoped(|s| s.block_tail(body, None))? {
 					Some((v, t)) => last = (v, t),
 					None => return Ok(None),

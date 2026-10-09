@@ -2,7 +2,7 @@ use super::{
 	P, Parsers, Rec, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned, stmt,
 	trailing_list, trailing_list1, types,
 };
-use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, record_args};
+use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -357,6 +357,13 @@ where
 		just(Token::BareReturn).to(None),
 	))
 	.map_with(|v, ex| (Expr::Return(v.map(Box::new)), ex.span()));
+	let defer_expr = just(Token::Defer)
+		.ignore_then(just(Token::And).to(When::Ok).or(just(Token::Or).to(When::Err)).or_not())
+		.then(p.place.clone().or(juxt_expr.clone()))
+		.map_with(|(when, body), ex| {
+			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
+			(Expr::Defer { body, when }, ex.span())
+		});
 	let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 	// match expression
@@ -519,7 +526,7 @@ where
 		with_expr,
 		for_expr,
 		loop_expr,
-		break_expr.or(return_expr),
+		break_expr.or(return_expr).or(defer_expr),
 		continue_expr,
 		anon_fn.clone(),
 		bad,

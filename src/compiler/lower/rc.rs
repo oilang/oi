@@ -10,6 +10,7 @@ pub(crate) struct Defer {
 	pub(crate) body: Spanned<Expr>,
 	pub(crate) vars: HashMap<String, Local>,
 	pub(crate) when: When,
+	pub(crate) armed: Option<Variable>,
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -334,8 +335,40 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(())
 	}
 
+	// An armed defer runs only if its flag was set.
+	pub(super) fn defer(&mut self, body: &Spanned<Expr>, when: When, armed: bool) -> TypedVal {
+		let armed = armed.then(|| {
+			let (flag, one) = (self.b.declare_var(self.int), self.b.ins().iconst(self.int, 1));
+			self.b.def_var(flag, one);
+			flag
+		});
+		let (body, vars) = (body.clone(), self.vars.clone());
+		self.defers.last_mut().expect("scope").push(Defer {
+			body,
+			vars,
+			when,
+			armed,
+		});
+		self.unit_value()
+	}
+
 	// `$` is the returned value / error.
-	fn run_defer(&mut self, d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
+	fn run_defer(&mut self, mut d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
+		// unarmed paths never def the flag, so it reads 0. disarm for the next loop iteration
+		if let Some(flag) = d.armed.take() {
+			let (run, after) = (self.b.create_block(), self.b.create_block());
+			let armed = self.b.use_var(flag);
+			self.b.ins().brif(armed, run, &[], after, &[]);
+			self.b.seal_block(run);
+			self.b.switch_to_block(run);
+			let zero = self.b.ins().iconst(self.int, 0);
+			self.b.def_var(flag, zero);
+			self.run_defer(d, ret)?;
+			self.b.ins().jump(after, &[]);
+			self.b.seal_block(after);
+			self.b.switch_to_block(after);
+			return Ok(());
+		}
 		let mut dollar = ret.cloned();
 		let mut join = None;
 		if d.when != When::Always {
