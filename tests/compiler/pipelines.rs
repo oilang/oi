@@ -55,7 +55,7 @@ fn or_catches_question_steps() {
 		inner :: fn(id: int) int { id |> fn (x: int) ?int { find(x)? + 1 } or 0 }
 		print(show(7), show(1), both(3), both(1), inner(7), inner(1))
 	"#};
-	check(src, ["84 -1 1 missing -1", "0 43 0"]);
+	check(src, ["missing -1", "84 -1 1 0 43 0"]);
 }
 
 #[test]

@@ -1934,25 +1934,6 @@ impl<M: Module> Compiler<M> {
 
 	// Queued printer bodies, and whatever they queued in turn.
 	fn compile_printers(&mut self, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Option<Pending> {
-		while let Some(i) = (self.out.printers.iter().rposition(|p| !matches!(p.1, Typ::Any | Typ::TypeId))).or(self
-			.out
-			.printers
-			.len()
-			.checked_sub(1))
-		{
-			let (sym, typ, quote, sink) = self.out.printers.remove(i);
-			let params = [(String::new(), typ.clone(), Access::Read)];
-			let def = FnDef {
-				params: &params,
-				..FnDef::default()
-			};
-			let (mut trans, block) = self.translator(&def, funcs, types);
-			let val = trans.b.block_params(block)[0];
-			trans.emit_variant(&typ, val, quote, sink);
-			trans.b.ins().return_(&[]);
-			trans.b.finalize();
-			self.finish_fn(&sym);
-		}
 		while let Some((sym, typ)) = self.out.env_drops.pop() {
 			let params = [(String::new(), Typ::ISize, Access::Read)];
 			let def = FnDef {
@@ -1967,6 +1948,30 @@ impl<M: Module> Compiler<M> {
 			self.finish_fn(&sym);
 		}
 
+		while let Some(i) = (self.out.printers.iter().rposition(|p| !matches!(p.1, Typ::Any | Typ::TypeId))).or(self
+			.out
+			.printers
+			.len()
+			.checked_sub(1))
+		{
+			// the `any` printer waits for every fn that might coerce a new type
+			if matches!(self.out.printers[i].1, Typ::Any | Typ::TypeId) && !self.out.wanted.is_empty() {
+				return self.out.pending.pop();
+			}
+
+			let (sym, typ, quote, sink) = self.out.printers.remove(i);
+			let params = [(String::new(), typ.clone(), Access::Read)];
+			let def = FnDef {
+				params: &params,
+				..FnDef::default()
+			};
+			let (mut trans, block) = self.translator(&def, funcs, types);
+			let val = trans.b.block_params(block)[0];
+			trans.emit_variant(&typ, val, quote, sink);
+			trans.b.ins().return_(&[]);
+			trans.b.finalize();
+			self.finish_fn(&sym);
+		}
 		// once every type coerced into `any` is known
 		let sym = oi_symbol("eq_any");
 		if let Some(FuncOrDataId::Func(id)) = self.module.declarations().get_name(&sym)

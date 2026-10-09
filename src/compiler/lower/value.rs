@@ -405,7 +405,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Register a type for `any` dispatch.
 	pub(super) fn typeid_of(&mut self, t: &Typ) -> Value {
-		if !self.out.any_types.contains(t) {
+		if !self.out.any_types.iter().any(|a| typeid(a) == typeid(t)) {
 			self.out.any_types.push(t.clone());
 		}
 		self.b.ins().iconst(self.int, typeid(t))

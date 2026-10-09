@@ -64,3 +64,6 @@ pub oi_panic : fn(ctx: ptr, msg: string, at: Src) : foreign
 pub oi_fail : fn(msg: string) : foreign
 pub oi_panic_oob : fn(ctx: ptr, index: isize, len: isize, at: Src) : foreign
 pub oi_assert_fail : fn(ctx: ptr, msg: string, at: Src) : foreign
+
+@link.{name = "oi_write"}
+pub oi_write_str : fn(tag: isize, s: string, width: isize, quote: isize, sink: isize) : foreign

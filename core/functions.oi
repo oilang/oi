@@ -1,4 +1,25 @@
 module core
 
+use rt
+
 ## Get the zeroed value of a type.
 pub zero[T] :: fn() T { z: T; z }
+
+# stdio
+
+pub print :: fn(args: ..any) { put(0, args, "\n") }
+pub eprint :: fn(args: ..any) { put(1, args, "\n") }
+pub write :: fn(args: ..any) { put(0, args, "") }
+pub ewrite :: fn(args: ..any) { put(1, args, "") }
+
+put :: fn(sink: isize, args: []any, end: string) {
+	sep := ""
+	loop a in args {
+		emit(sink, sep)
+		emit(sink, __render(a))
+		sep = " "
+	}
+	emit(sink, end)
+}
+
+emit :: fn(sink: isize, s: string) { unsafe rt.oi_write_str(4, s, 0, 0, sink) }

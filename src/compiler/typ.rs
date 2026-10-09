@@ -560,7 +560,7 @@ pub(crate) fn enum_slots(variants: &[VariantInfo]) -> usize {
 // The tag an `any` box carries for a type.
 pub(crate) fn typeid(t: &Typ) -> i64 {
 	let mut h = DefaultHasher::new();
-	t.key().hash(&mut h);
+	(t.key(), t.to_string()).hash(&mut h);
 	h.finish() as i64
 }
 
