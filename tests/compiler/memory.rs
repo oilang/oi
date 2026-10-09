@@ -125,9 +125,15 @@ fn branch_merges() {
 }
 
 #[test]
-fn nested_elements_still_leak() {
-	// TODO: revisit
-	assert!(leaks("a :: [[1], [2]]\nprint(a[0])") > 0);
+fn buffer_owns_its_elements() {
+	assert_clean(indoc! {"
+		P :: struct { a: int }
+		p :: [P.{a = 1}]
+		a := [[1]]
+		b := a
+		b << [2]
+		print(p[0].a, a, b)
+	"});
 }
 
 #[test]

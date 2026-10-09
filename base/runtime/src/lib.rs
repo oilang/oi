@@ -521,15 +521,26 @@ pub unsafe extern "C" fn array_release(header: *mut Header) {
 	unsafe { free(header as *mut u8) };
 }
 
-/// Give a shared array its own buffer before a write.
+/// The element count the last handle to a buffer owns, 0 while shared.
+/// # Safety
+/// `header` must be null or point to a valid array header.
+#[unsafe(export_name = "oi_array_owned")]
+pub unsafe extern "C" fn array_owned(header: *const Header) -> i64 {
+	match unsafe { header.as_ref() } {
+		Some(&Header { data, len, .. }) if data != 0 && unsafe { *rc(data as *const u8) } == 1 => len,
+		_ => 0,
+	}
+}
+
+/// Give a shared array its own buffer before a write, returning the elements copied.
 /// No-op when the buffer is null or unshared.
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_array_cow")]
-pub unsafe extern "C" fn array_cow(a: *const Allocator, header: *mut Header, elem_size: i64) {
+pub unsafe extern "C" fn array_cow(a: *const Allocator, header: *mut Header, elem_size: i64) -> i64 {
 	let Header { data, len, .. } = unsafe { *header };
 	if data == 0 || unsafe { *rc(data as *const u8) } <= 1 {
-		return;
+		return 0;
 	}
 	let new_data = unsafe { buffer_alloc(a, len * elem_size) };
 	unsafe {
@@ -538,6 +549,7 @@ pub unsafe extern "C" fn array_cow(a: *const Allocator, header: *mut Header, ele
 		(*header).data = new_data as i64;
 		(*header).cap = len;
 	}
+	len
 }
 
 /// A fresh array owning `elems`, each packed into `width` bytes.

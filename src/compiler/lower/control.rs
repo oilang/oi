@@ -948,6 +948,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Map(k, v) => {
 				let (keys, vals) = (self.map_entries(val, true, &k), self.map_entries(val, false, &v));
+				let vals = self.owning(vals, &v);
 				self.temp(keys, &Typ::Array(k.clone()));
 				self.temp(vals, &Typ::Array(v.clone()));
 				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));

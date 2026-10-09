@@ -82,9 +82,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (data, len) = self.heap_alloc(Vec::new(), &elem);
 		let out = self.make_array(data, len, &typ);
-		let size = self.stride_val(&elem);
 		for part in parts {
-			self.rt_call("array_extend", &[out, part, size]);
+			self.extend_array(out, part, &elem);
 		}
 		Ok((out, typ))
 	}
@@ -264,7 +263,23 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Clone the buffer before a write if it's shared.
 	pub(super) fn cow_array(&mut self, header: Value, elem: &Typ) {
 		let size = self.stride_val(elem);
-		self.rt_call("array_cow", &[header, size]);
+		let n = self.rt_call("array_cow", &[header, size]).unwrap();
+		let zero = self.b.ins().iconst(self.int, 0);
+		self.elems_rc(header, zero, n, elem, true);
+	}
+
+	// Append `src` to `dst`, retaining the copied elements.
+	pub(super) fn extend_array(&mut self, dst: Value, src: Value, elem: &Typ) {
+		let (lo, n, size) = (self.array_len(dst), self.array_len(src), self.stride_val(elem));
+		self.rt_call("array_extend", &[dst, src, size]);
+		self.elems_rc(dst, lo, n, elem, true);
+	}
+
+	// Retain every element of a fresh copy.
+	pub(super) fn owning(&mut self, header: Value, elem: &Typ) -> Value {
+		let (zero, n) = (self.b.ins().iconst(self.int, 0), self.array_len(header));
+		self.elems_rc(header, zero, n, elem, true);
+		header
 	}
 
 	// Lower slice bounds, defaulting to `0..len`.
@@ -323,7 +338,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let len = self.array_len(ptr);
 		let (lo, hi) = self.slice_bounds(range, len)?;
 		let size = self.stride_val(&elem);
-		Ok((self.rt_call("slice", &[ptr, lo, hi, size]).unwrap(), lo, elem))
+		let out = self.rt_call("slice", &[ptr, lo, hi, size]).unwrap();
+		Ok((self.owning(out, &elem), lo, elem))
 	}
 
 	pub(super) fn range_slice(
@@ -348,6 +364,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let elem = array_elem(&typ).clone();
 		let size = self.stride_val(&elem);
 		let out = self.rt_call("slice", &[ptr, lo, hi, size]).unwrap();
+		let out = self.owning(out, &elem);
 		let typ = Typ::Array(Box::new(elem));
 		self.temp(out, &typ);
 		Ok((out, typ))
@@ -400,9 +417,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.load_elem(addr, 0, elem)
 	}
 
-	pub(super) fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value, span: Span) {
+	pub(super) fn store_index(&mut self, data: Value, len: Value, typ: &Typ, idx: Value, val: Value, span: Span) {
+		let elem = array_elem(typ);
 		let addr = self.elem_addr(data, len, elem, idx, span);
-		if self.needs_release(elem) {
+		// a fixed array may hold zeroed stack structs
+		if matches!(typ, Typ::Array(_)) && self.slot_owns(elem) {
+			let old = self.load_elem(addr, 0, elem);
+			self.release_field(old, elem);
+		} else if self.needs_release(elem) {
 			let old = self.load_elem(addr, 0, elem);
 			self.release_value(old, elem);
 		}
@@ -444,6 +466,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn each_elem(&mut self, val: Value, typ: &Typ, mut f: impl FnMut(&mut Self, Value, Value)) {
 		let (data, len) = self.array_parts(val, typ);
 		let elem = array_elem(typ);
+		self.repeat(len, |s, iv| {
+			let ev = s.load_nth(data, iv, elem);
+			f(s, iv, ev)
+		});
+	}
+
+	// Call fn with each index below `len`.
+	pub(super) fn repeat(&mut self, len: Value, mut f: impl FnMut(&mut Self, Value)) {
 		let (head, body, exit) = (self.b.create_block(), self.b.create_block(), self.b.create_block());
 		let i = self.b.declare_var(self.int);
 		let zero = self.b.ins().iconst(self.int, 0);
@@ -458,8 +488,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(exit);
 
 		self.b.switch_to_block(body);
-		let ev = self.load_nth(data, iv, elem);
-		f(self, iv, ev);
+		f(self, iv);
 		let next = self.b.ins().iadd_imm(iv, 1);
 		self.b.def_var(i, next);
 		self.b.ins().jump(head, &[]);

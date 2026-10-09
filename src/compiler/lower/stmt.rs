@@ -199,7 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
 					let val = self.copy_in(val, &elem);
 					let (data, len) = self.array_parts(ptr, &typ);
-					self.store_index(data, len, &elem, idx, val, stmt.1);
+					self.store_index(data, len, &typ, idx, val, stmt.1);
 				}
 
 				Expr::MapDelete { name, key } => {
@@ -255,7 +255,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let new_len = self.b.ins().iadd_imm(len, 1);
 						self.st(ptr, 8, new_len);
 					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
-						self.rt_call("array_extend", &[ptr, val, size]);
+						self.extend_array(ptr, val, &elem);
 					} else {
 						return fail(
 							format!("cannot append {vtyp} to {elem} array"),

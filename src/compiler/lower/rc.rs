@@ -126,9 +126,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn release_value(&mut self, val: Value, typ: &Typ) {
 		if let Some((_, release)) = handle_fns(typ) {
 			if let Typ::Array(elem) = typ
-				&& self.is_resource(elem)
+				&& self.slot_owns(elem)
 			{
-				self.each_elem(val, typ, |s, _, ev| s.release_value(ev, elem));
+				let n = self.rt_call("array_owned", &[val]).unwrap();
+				let zero = self.b.ins().iconst(self.int, 0);
+				self.elems_rc(val, zero, n, elem, false);
 			}
 			if let Typ::Map(_, v) = typ
 				&& self.is_resource(v)
@@ -176,10 +178,36 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Whether a struct/tuple/array slot holds a value it must release.
+	pub(super) fn slot_owns(&self, typ: &Typ) -> bool {
+		owns(typ) || self.is_resource(typ)
+	}
+
+	// Retain (copy in place) or release the owned elements of an array.
+	pub(super) fn elems_rc(&mut self, header: Value, lo: Value, n: Value, elem: &Typ, retain: bool) {
+		if !self.slot_owns(elem) {
+			return;
+		}
+		let stride = self.elem_stride(elem);
+		let (data, off) = (self.array_data(header), self.b.ins().imul_imm(lo, stride));
+		let base = self.b.ins().iadd(data, off);
+		self.repeat(n, |s, i| {
+			let off = s.b.ins().imul_imm(i, stride);
+			let addr = s.b.ins().iadd(base, off);
+			let ev = s.load_elem(addr, 0, elem);
+			if retain {
+				let v = s.copy_in(ev, elem);
+				s.store_elem(addr, 0, elem, v);
+			} else {
+				s.release_field(ev, elem);
+			}
+		});
+	}
+
 	// Release the owned slots of an aggregate type.
 	fn release_slots(&mut self, val: Value, base: i32, types: &[Typ]) {
 		for (i, t) in types.iter().enumerate() {
-			if owns(t) || self.is_resource(t) {
+			if self.slot_owns(t) {
 				let fv = self.ld_typ(val, base + (i * 8) as i32, t);
 				self.release_field(fv, t);
 			}

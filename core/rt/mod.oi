@@ -16,7 +16,7 @@ pub oi_alloc : fn(alloc: Alloc, size: isize) ptr : foreign
 pub oi_free : fn(p: ptr) : foreign
 pub oi_ptr_buffer : fn(alloc: Alloc, data: ptr, bytes: isize) ptr : foreign
 pub oi_slice : fn(alloc: Alloc, h: ptr, start: isize, end: isize, elem_size: isize) ptr : foreign
-pub oi_array_cow : fn(alloc: Alloc, h: ptr, elem_size: isize) : foreign
+pub oi_array_cow : fn(alloc: Alloc, h: ptr, elem_size: isize) isize : foreign
 pub oi_array_reserve : fn(alloc: Alloc, h: ptr, min_cap: isize, elem_size: isize) : foreign
 pub oi_array_extend : fn(alloc: Alloc, dst: ptr, src: ptr, elem_size: isize) : foreign
 pub oi_array_write_back : fn(parent: ptr, lo: isize, len: isize, src: ptr, elem_size: isize) : foreign
@@ -33,6 +33,7 @@ pub oi_map_find : fn(m: ptr, tag: isize, bits: isize, out: ptr) isize : foreign
 # rc
 pub oi_array_share : fn(h: ptr) ptr : foreign
 pub oi_array_release : fn(h: ptr) : foreign
+pub oi_array_owned : fn(h: ptr) isize : foreign
 pub oi_map_share : fn(m: ptr) ptr : foreign
 pub oi_map_release : fn(m: ptr) : foreign
 pub oi_ref_share : fn(p: ptr) ptr : foreign
