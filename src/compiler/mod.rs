@@ -575,7 +575,8 @@ impl Local {
 }
 
 pub(crate) struct LoopFrame {
-	pub top: Block,
+	pub label: Option<String>,
+	pub top: Option<Block>,
 	pub exit: Option<Block>,
 	pub depth: usize,
 	pub result: Option<(Variable, Typ)>,

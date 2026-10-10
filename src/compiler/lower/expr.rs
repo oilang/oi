@@ -822,6 +822,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					fail(format!("this `{kw}` never produces a value"), expr.1, why)
 				}
 			},
+			Expr::Labeled { .. } => match self.branching(expr, hint, true)? {
+				Some(vt) => Ok(vt),
+				None => fail("this block never produces a value", expr.1, "every path returns"),
+			},
 
 			Expr::Pipe { value, step } => self.pipe(value, step, expr.1),
 
@@ -829,7 +833,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
-			Expr::For { pat, iter, body } => self.looped(|s| s.for_loop(pat, iter, body)),
+			Expr::For { label, pat, iter, body } => self.looped(|s| s.for_loop(label.as_deref(), pat, iter, body)),
 
 			Expr::Block(body) => match hint {
 				// bare blocks are treated as fn literals when they match an expected/inferred fn type
@@ -996,7 +1000,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				format!("`{}` is a type, not a value", self.types.resolve(te, expr.1)?),
 				expr.1.into_range(),
 			)),
-			Expr::Return(_) | Expr::Break(_) | Expr::Continue => fail(
+			Expr::Return(_) | Expr::Break(..) | Expr::Continue(_) => fail(
 				"`return`, `break`, and `continue` never produce a value",
 				expr.1,
 				"this diverges",

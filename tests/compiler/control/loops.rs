@@ -236,3 +236,30 @@ fn loop_header_iterates_without_binding() {
 	"};
 	check(src, "23");
 }
+
+#[test]
+fn labeled_block_breaks_or_yields_tail() {
+	let src = indoc! {"
+		f :: fn(bad: bool) int {
+			:blk {
+				if bad do break :blk 0
+				42
+			}
+		}
+		print(f(true), f(false))
+	"};
+	check(src, "0 42");
+}
+
+#[test]
+fn continue_outer_label() {
+	let src = indoc! {"
+		loop :outer x in [1 2 3] {
+			loop y in [1 2 3] {
+				if y == x do continue :outer
+				print(x, y)
+			}
+		}
+	"};
+	check(src, ["2 1", "3 1", "3 2"]);
+}

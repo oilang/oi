@@ -1526,6 +1526,18 @@ main :: fn() {
 	# a loop with no valued `break` yields `()`
 	# mixing `break` and `break <value>` in one loop is an error
 
+	# an atom labels a block or loop
+	# it may be referred to by some control flow statements
+	v := :blk {
+		if bad do break :blk 0
+		compute()
+	}
+	loop :outer x in xs {
+		loop y in ys { if y == x do continue :outer }
+	}
+	# plain `break` and `continue` skip labeled blocks
+	# with no enclosing `:name`, `break :name` breaks with the atom
+
 	# Iterator/Iterable traits
 	Countdown :: struct { n: int }
 	Countdown : Iterator[int] < {

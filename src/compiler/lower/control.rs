@@ -52,7 +52,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				arms,
 				else_body,
 			} => self.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
-			Expr::Loop { cond, body } => self.looped(|s| s.loop_expr(cond.as_deref(), body)),
+			Expr::Loop { label, cond, body } => self.looped(|s| s.loop_expr(label.as_deref(), cond.as_deref(), body)),
+			Expr::Labeled { label, body } => self.looped(|s| s.labeled(label, body, expr.1)),
 			_ => unreachable!(),
 		}
 	}
@@ -783,6 +784,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn loop_expr(
 		&mut self,
+		label: Option<&str>,
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
@@ -800,7 +802,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// non-bool headers are iterated
 					self.b.seal_block(top);
 					let wild = (Expr::Ident("_".into()), cond.1);
-					return self.for_value(&wild, (cv, ct), cond.1, body).map(Some);
+					return self.for_value(label, &wild, (cv, ct), cond.1, body).map(Some);
 				}
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
@@ -810,11 +812,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		// a body expression that can fall through ends the loop when it does
-		let (frame, flow) = self.in_loop(top, exit, fallthrough, |s| match (cond, body) {
+		let (frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| match (cond, body) {
 			(Some(c), _) if infallible(&c.0) => {
 				s.expr(c)?;
 				match s.unwrap_arm(c, body) {
-					Some((id, arm)) => s.match_expr(&id, &[arm], None, Some(&[(Expr::Break(None), c.1)]), None, c.1),
+					Some((id, arm)) => {
+						s.match_expr(&id, &[arm], None, Some(&[(Expr::Break(None, None), c.1)]), None, c.1)
+					}
 					None => s.block(body),
 				}
 			}
@@ -824,10 +828,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					body: body.to_vec(),
 					..Default::default()
 				};
-				s.match_expr(value, &[arm], None, Some(&[(Expr::Break(None), *sp)]), None, *sp)
+				s.match_expr(value, &[arm], None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
 			}
 			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
-				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None), *sp)]), None, *sp)
+				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
 			}
 			_ => s.block(body),
 		})?;
@@ -859,16 +863,31 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some((id, arm))
 	}
 
+	// A labeled block.
+	fn labeled(&mut self, label: &str, body: &[Spanned<Expr>], span: Span) -> Result<Option<TypedVal>, Diagnostic> {
+		let exit = self.b.create_block();
+		let (mut frame, flow) = self.in_loop(Some(label), None, Some(exit), None, |s| s.block_tail(body, None))?;
+		if let Some(vt) = flow {
+			let mut join = Join::new("break", span, frame.result.take());
+			self.contribute(vt, &mut join, exit)?;
+			frame.result = join.result;
+		}
+		// nothing reaches `exit` when every path returns
+		Ok(frame.result.is_some().then(|| self.loop_end(frame, exit)))
+	}
+
 	// Push a loop frame, run `body` in a child scope, then pop the frame.
 	fn in_loop(
 		&mut self,
-		top: Block,
+		label: Option<&str>,
+		top: Option<Block>,
 		exit: Option<Block>,
 		fallthrough: Option<Block>,
 		body: impl FnOnce(&mut Self) -> Result<Option<TypedVal>, Diagnostic>,
 	) -> Result<(LoopFrame, Option<TypedVal>), Diagnostic> {
 		let depth = self.scopes.len();
 		self.loops.push(LoopFrame {
+			label: label.map(str::to_owned),
 			top,
 			exit,
 			depth,
@@ -908,6 +927,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Drive an Iterator.
 	fn iter_loop(
 		&mut self,
+		label: Option<&str>,
 		pat: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 		(val, typ): TypedVal,
@@ -937,7 +957,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (body_block, fallthrough) = self.fork(tag);
 
 		self.b.switch_to_block(body_block);
-		let (frame, flow) = self.in_loop(header, Some(exit), Some(fallthrough), |s| {
+		let (frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
 			let v = s.opt_payload(yielded, &opt, &item, 8);
 			s.bind_pat(pat, v, &item, Some(false))?;
 			s.block(body)
@@ -952,23 +972,25 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn for_loop(
 		&mut self,
+		label: Option<&str>,
 		pat: &Spanned<Expr>,
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		let tv = self.expr(iter)?;
-		self.for_value(pat, tv, iter.1, body)
+		self.for_value(label, pat, tv, iter.1, body)
 	}
 
 	fn for_value(
 		&mut self,
+		label: Option<&str>,
 		pat: &Spanned<Expr>,
 		(val, typ): TypedVal,
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
-			return self.iter_loop(pat, body, (val, typ), span);
+			return self.iter_loop(label, pat, body, (val, typ), span);
 		}
 		let zero = self.b.ins().iconst(self.int, 0);
 		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
@@ -1002,7 +1024,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
-		let (frame, flow) = self.in_loop(latch, Some(exit), Some(fallthrough), |s| {
+		let (frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
 			let (data, elem) = &src;
 			let item = s.load_nth(*data, iv, elem);
 			match (&vals, &pat.0) {

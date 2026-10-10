@@ -137,16 +137,23 @@ pub enum Expr {
 		els: Option<Vec<Spanned<Expr>>>,
 	},
 	Loop {
+		label: Option<String>,
 		cond: Option<Box<Spanned<Expr>>>,
 		body: Vec<Spanned<Expr>>,
 	},
 	For {
+		label: Option<String>,
 		pat: Box<Spanned<Expr>>,
 		iter: Box<Spanned<Expr>>,
 		body: Vec<Spanned<Expr>>,
 	},
-	Break(Option<Box<Spanned<Expr>>>),
-	Continue,
+	// `:name { ... }`
+	Labeled {
+		label: String,
+		body: Vec<Spanned<Expr>>,
+	},
+	Break(Option<String>, Option<Box<Spanned<Expr>>>),
+	Continue(Option<String>),
 
 	// structures
 
@@ -448,6 +455,7 @@ impl Expr {
 			| Expr::StructDef { fills: body, .. }
 			| Expr::Claim { fills: body, .. }
 			| Expr::Block(body)
+			| Expr::Labeled { body, .. }
 			| Expr::With(body)
 			| Expr::Quote(body)
 			| Expr::EnumDef { fills: body, .. }
@@ -467,11 +475,11 @@ impl Expr {
 				f(List(then));
 				els.iter_mut().for_each(|e| f(List(e)));
 			}
-			Expr::Loop { cond, body } => {
+			Expr::Loop { cond, body, .. } => {
 				cond.iter_mut().for_each(|c| f(One(c)));
 				f(List(body));
 			}
-			Expr::Break(value) => value.iter_mut().for_each(|v| f(One(v))),
+			Expr::Break(_, value) => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::For { iter: v, body, .. } | Expr::OrElse { value: v, body } | Expr::AndThen { value: v, body } => {
 				f(One(v));
 				f(List(body));
@@ -509,7 +517,7 @@ impl Expr {
 			| Expr::Ident(_)
 			| Expr::Dollar
 			| Expr::Foreign
-			| Expr::Continue
+			| Expr::Continue(_)
 			| Expr::Unquote(_)
 			| Expr::TypeAlias { .. }
 			| Expr::TypePat(_)

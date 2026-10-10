@@ -310,17 +310,20 @@ where
 	.boxed();
 
 	// loops
+	let label = select! { Token::Atom(a) => a };
 	let loop_expr = just(Token::Loop)
-		.ignore_then(
+		.ignore_then(label.or_not())
+		.then(
 			p.block
 				.clone()
 				.map(|body| (None, body))
 				.or(header_cond.clone().map(Some).then(p.block.clone()))
 				.or(header_expr.clone().map(|e| (None, vec![e]))),
 		)
-		.map_with(|(cond, body), ex| {
+		.map_with(|(label, (cond, body)), ex| {
 			(
 				Expr::Loop {
+					label,
 					cond: cond.map(Box::new),
 					body,
 				},
@@ -330,17 +333,19 @@ where
 		.boxed();
 
 	let for_expr = just(Token::Loop)
-		.ignore_then(just(Token::With).or_not())
+		.ignore_then(label.or_not())
+		.then(just(Token::With).or_not())
 		.then(p.pat.clone().or(p.pat_name.clone()))
 		.then_ignore(just(Token::In))
 		.then(header_expr.clone().map(Box::new))
 		.then(p.block.clone())
-		.validate(|(((with, pat), iter), mut body), ex, emitter| {
+		.validate(|((((label, with), pat), iter), mut body), ex, emitter| {
 			if with.is_some() && !open_bound(&pat, &mut body) {
 				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
 			}
 			(
 				Expr::For {
+					label,
 					pat: Box::new(pat),
 					iter,
 					body,
@@ -350,8 +355,9 @@ where
 		})
 		.boxed();
 	let break_expr = just(Token::Break)
-		.ignore_then(p.same_line.clone().ignore_then(p.expr.clone()).or_not())
-		.map_with(|v, ex| (Expr::Break(v.map(Box::new)), ex.span()));
+		.ignore_then(p.same_line.clone().ignore_then(label).or_not())
+		.then(p.same_line.clone().ignore_then(p.expr.clone().map(Box::new)).or_not())
+		.map_with(|(label, v), ex| (Expr::Break(label, v), ex.span()));
 	let return_expr = choice((
 		just(Token::Return).ignore_then(juxt_expr.clone().or_not()),
 		just(Token::BareReturn).to(None),
@@ -364,7 +370,9 @@ where
 			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
 			(Expr::Defer { body, when }, ex.span())
 		});
-	let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
+	let continue_expr = just(Token::Continue)
+		.ignore_then(p.same_line.clone().ignore_then(label).or_not())
+		.map_with(|label, ex| (Expr::Continue(label), ex.span()));
 
 	// match expression
 	let binding = just(Token::With).or_not().then(ident()).then_ignore(just(Token::At)).or_not();
@@ -717,6 +725,13 @@ where
 		.map(|(l, t)| (Some(l), t))
 		.boxed();
 
+	// labeled blocks
+	let labeled = label
+		.then_ignore(p.same_line.clone())
+		.then(p.block.clone())
+		.map_with(|(label, body), ex| ((Expr::Labeled { label, body }, ex.span()), None))
+		.boxed();
+
 	// and/or blocks
 	let tail_body = p.block.clone().or(core.clone().map(|e| vec![pipe_step(e)]));
 	let and_tail = just(Token::And).ignore_then(tail_body.clone());
@@ -724,9 +739,9 @@ where
 	let level = |juxt: Option<P<'token, I, Juxt>>| {
 		let inner = match juxt {
 			None => core.clone().boxed(),
-			Some(juxt) => core
+			Some(juxt) => labeled
 				.clone()
-				.then(juxt.or_not())
+				.or(core.clone().then(juxt.or_not()))
 				.try_map(|((inner, s), jx), span| {
 					let Some((lead, trail)) = jx else { return Ok((inner, s)) };
 					let has_lead = lead.is_some();

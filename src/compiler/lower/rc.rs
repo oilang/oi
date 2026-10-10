@@ -565,7 +565,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					Diagnostic::new(format!("cannot move `{name}`, it is borrowed here"), span.clone())
 						.with_label("only an owned binding can be moved")
 				})?;
-			if let Some(frame) = self.loops.last()
+			if let Some(frame) = self.loops.iter().rfind(|f| f.top.is_some())
 				&& depth < frame.depth
 			{
 				return Err(

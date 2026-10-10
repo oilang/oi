@@ -296,7 +296,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
-				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => {
+				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } | Expr::Labeled { .. } => {
 					match self.branching(stmt, stmt_target, want)? {
 						Some((v, t)) => last = (v, t),
 						None => return Ok(None),
@@ -317,7 +317,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// TODO: revisit after adding the Iterator trait
-				Expr::For { pat, iter, body } => last = self.looped(|s| s.for_loop(pat, iter, body))?,
+				Expr::For { label, pat, iter, body } => {
+					last = self.looped(|s| s.for_loop(label.as_deref(), pat, iter, body))?
+				}
 
 				Expr::FieldAssign { name, field, value } => {
 					self.check_static_write(name, field, stmt.1)?;
@@ -345,20 +347,24 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.st(ptr, (idx * 8) as i32, val);
 				}
 
-				Expr::Break(payload) => {
-					let Some(&LoopFrame {
+				Expr::Break(label, payload) => {
+					// a `break :name` with no enclosing `:name` breaks the innermost loop with the atom
+					let atom = label
+						.as_ref()
+						.filter(|l| payload.is_none() && !self.loops.iter().any(|f| f.label.as_ref() == Some(*l)));
+					let atom = atom.map(|l| (Expr::Atom(l.clone()), stmt.1));
+					let i = self.loop_target(label.as_deref().filter(|_| atom.is_none()), "break", stmt.1)?;
+					let payload = atom.as_ref().or(payload.as_deref());
+					let LoopFrame {
 						depth,
 						exit,
 						fallthrough,
 						..
-					}) = self.loops.last()
-					else {
-						return fail("`break` outside of a loop", stmt.1, "not inside a loop");
-					};
+					} = self.loops[i];
 					// the first `break` creates the exit block
 					let exit = exit.unwrap_or_else(|| {
 						let exit = self.b.create_block();
-						self.loops.last_mut().unwrap().exit = Some(exit);
+						self.loops[i].exit = Some(exit);
 						exit
 					});
 					// a bare `break` yields unit, so mixing it with a break-with-value is a type mismatch
@@ -378,18 +384,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					self.untemp(v);
 					self.release_scopes(depth, None)?;
-					let mut join = control::Join::new("break", stmt.1, self.loops.last_mut().unwrap().result.take());
+					let mut join = control::Join::new("break", stmt.1, self.loops[i].result.take());
 					self.contribute((v, t), &mut join, exit)?;
-					self.loops.last_mut().unwrap().result = join.result;
+					self.loops[i].result = join.result;
 					return Ok(None);
 				}
 
-				Expr::Continue => {
-					let (top, depth) = match self.loops.last() {
-						Some(frame) => (frame.top, frame.depth),
-						None => {
-							return fail("`continue` outside of a loop", stmt.1, "not inside a loop");
-						}
+				Expr::Continue(label) => {
+					let frame = &self.loops[self.loop_target(label.as_deref(), "continue", stmt.1)?];
+					let (Some(top), depth) = (frame.top, frame.depth) else {
+						return fail("`continue` needs a loop", stmt.1, "this label is on a block");
 					};
 					self.release_scopes(depth, None)?;
 					self.b.ins().jump(top, &[]);
@@ -421,6 +425,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		Ok(Some(last))
+	}
+
+	// The frame a `break`/`continue` targets, unlabeled ones skip labeled blocks.
+	fn loop_target(&self, label: Option<&str>, kw: &str, span: Span) -> Result<usize, Diagnostic> {
+		let hit = |f: &LoopFrame| label.map_or(f.top.is_some(), |l| f.label.as_deref() == Some(l));
+		match (self.loops.iter().rposition(hit), label) {
+			(Some(i), _) => Ok(i),
+			(None, Some(l)) => fail(format!("no enclosing `:{l}` to {kw}"), span, "not inside that label"),
+			(None, None) => fail(format!("`{kw}` outside of a loop"), span, "not inside a loop"),
+		}
 	}
 
 	// Lower a value for a store into the desired slot.
