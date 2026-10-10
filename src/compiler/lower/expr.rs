@@ -833,7 +833,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
-			Expr::For { label, pat, iter, body } => self.looped(|s| s.for_loop(label.as_deref(), pat, iter, body)),
+			Expr::For { label, pat, iter, body } => {
+				self.collected(true, hint, |s| s.for_loop(label.as_deref(), pat, iter, body))
+			}
 
 			Expr::Block(body) => match hint {
 				// bare blocks are treated as fn literals when they match an expected/inferred fn type

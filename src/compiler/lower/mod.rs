@@ -57,6 +57,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub comptime: bool,
 	pub ret: Option<(Typ, Span)>,
 	pub loops: Vec<LoopFrame>,
+	pub collect: Option<Value>,
 	pub unsafely: usize,
 	pub scopes: Vec<Vec<(Variable, Typ)>>,
 	pub defers: Vec<Vec<rc::Defer>>,

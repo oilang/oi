@@ -220,37 +220,13 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 					};
 					let (val, vtyp) = self.check_expr(value, &elem)?;
-					let stride = self.elem_stride(&elem);
-					let size = self.b.ins().iconst(self.int, stride);
 					// a shared buffer clones before it grows
 					self.cow_array(ptr, &elem);
 
 					if vtyp == elem {
 						closure_escape(&vtyp, value.1.into_range(), "stored in an array")?;
 						let val = self.copy_in(val, &elem);
-						// grow if full, then write the new element and bump len
-						let len = self.array_len(ptr);
-						let cap = self.array_cap(ptr);
-						let full = self.b.ins().icmp(IntCC::Equal, len, cap);
-						let grow_block = self.b.create_block();
-						let ok_block = self.b.create_block();
-						self.b.ins().brif(full, grow_block, &[], ok_block, &[]);
-						self.b.seal_block(grow_block);
-
-						self.b.switch_to_block(grow_block);
-						let min_cap = self.b.ins().iadd_imm(len, 1);
-						self.rt_call("array_reserve", &[ptr, min_cap, size]);
-						self.b.ins().jump(ok_block, &[]);
-						self.b.seal_block(ok_block);
-
-						self.b.switch_to_block(ok_block);
-						let len = self.array_len(ptr);
-						let data = self.array_data(ptr);
-						let off = self.b.ins().imul_imm(len, stride);
-						let addr = self.b.ins().iadd(data, off);
-						self.store_elem(addr, 0, &elem, val);
-						let new_len = self.b.ins().iadd_imm(len, 1);
-						self.st(ptr, 8, new_len);
+						self.push(ptr, val, &elem);
 					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
 						self.extend_array(ptr, val, &elem);
 					} else {
@@ -318,7 +294,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				// TODO: revisit after adding the Iterator trait
 				Expr::For { label, pat, iter, body } => {
-					last = self.looped(|s| s.for_loop(label.as_deref(), pat, iter, body))?
+					last = self.collected(want, stmt_target, |s| s.for_loop(label.as_deref(), pat, iter, body))?
 				}
 
 				Expr::FieldAssign { name, field, value } => {

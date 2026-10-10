@@ -286,6 +286,29 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.elems_rc(header, zero, n, elem, true);
 	}
 
+	// Append an owned value, growing the buffer when full.
+	pub(super) fn push(&mut self, header: Value, val: Value, elem: &Typ) {
+		let (len, cap, stride) = (self.array_len(header), self.array_cap(header), self.elem_stride(elem));
+		let full = self.b.ins().icmp(IntCC::Equal, len, cap);
+		let (grow, ok) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().brif(full, grow, &[], ok, &[]);
+		self.b.seal_block(grow);
+
+		self.b.switch_to_block(grow);
+		let (min_cap, size) = (self.b.ins().iadd_imm(len, 1), self.b.ins().iconst(self.int, stride));
+		self.rt_call("array_reserve", &[header, min_cap, size]);
+		self.b.ins().jump(ok, &[]);
+		self.b.seal_block(ok);
+
+		self.b.switch_to_block(ok);
+		let (data, len) = (self.array_data(header), self.array_len(header));
+		let off = self.b.ins().imul_imm(len, stride);
+		let addr = self.b.ins().iadd(data, off);
+		self.store_elem(addr, 0, elem, val);
+		let new_len = self.b.ins().iadd_imm(len, 1);
+		self.st(header, 8, new_len);
+	}
+
 	// Append `src` to `dst`, retaining the copied elements.
 	pub(super) fn extend_array(&mut self, dst: Value, src: Value, elem: &Typ) {
 		let (lo, n, size) = (self.array_len(dst), self.array_len(src), self.stride_val(elem));

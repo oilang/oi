@@ -581,6 +581,7 @@ pub(crate) struct LoopFrame {
 	pub depth: usize,
 	pub result: Option<(Variable, Typ)>,
 	pub fallthrough: Option<Block>,
+	pub collect: Option<(Value, Typ)>,
 }
 
 #[derive(Default)]
@@ -2120,6 +2121,7 @@ impl<M: Module> Compiler<M> {
 			comptime: self.stage0,
 			ret: def.ret.clone(),
 			loops: vec![],
+			collect: None,
 			unsafely: 0,
 			scopes: vec![vec![]],
 			defers: vec![vec![]],

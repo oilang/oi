@@ -52,7 +52,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				arms,
 				else_body,
 			} => self.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
-			Expr::Loop { label, cond, body } => self.looped(|s| s.loop_expr(label.as_deref(), cond.as_deref(), body)),
+			Expr::Loop { label, cond, body } => {
+				self.collected(want, hint, |s| s.loop_expr(label.as_deref(), cond.as_deref(), body))
+			}
 			Expr::Labeled { label, body } => self.looped(|s| s.labeled(label, body, expr.1)),
 			_ => unreachable!(),
 		}
@@ -812,7 +814,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		// a body expression that can fall through ends the loop when it does
-		let (frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| match (cond, body) {
+		let (mut frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| match (cond, body) {
 			(Some(c), _) if infallible(&c.0) => {
 				s.expr(c)?;
 				match s.unwrap_arm(c, body) {
@@ -836,9 +838,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => s.block(body),
 		})?;
 
-		if let Some((v, t)) = flow {
-			// a discarded body value is released here, once per iteration
-			self.release_value(v, &t);
+		if let Some(vt) = flow {
+			self.loop_tail(&mut frame, vt);
 			self.b.ins().jump(top, &[]);
 		}
 		self.b.seal_block(top);
@@ -893,9 +894,43 @@ impl<'a, M: Module> Translator<'a, M> {
 			depth,
 			result: None,
 			fallthrough,
+			collect: top.and_then(|_| self.collect.take()).map(|h| (h, Typ::unit())),
 		});
 		let flow = self.scoped(body)?;
 		Ok((self.loops.pop().expect("loop frame"), flow))
+	}
+
+	// Loops collect the tails of their bodies.
+	pub(super) fn collected<T>(
+		&mut self,
+		want: bool,
+		hint: Option<&Typ>,
+		f: impl FnOnce(&mut Self) -> Result<T, Diagnostic>,
+	) -> Result<T, Diagnostic> {
+		let hdr = (want && !hint.is_some_and(Typ::is_unit)).then(|| {
+			let z = self.b.ins().iconst(self.int, 0);
+			self.make_array(z, z, &Typ::Array(Box::new(Typ::unit())))
+		});
+		let outer = std::mem::replace(&mut self.collect, hdr);
+		let out = self.looped(f);
+		self.collect = outer;
+		out
+	}
+
+	// Push a tail onto the loop's array, or release it.
+	fn loop_tail(&mut self, frame: &mut LoopFrame, (v, t): TypedVal) {
+		let valued = frame.result.as_ref().is_some_and(|(_, r)| !r.is_unit());
+		match &mut frame.collect {
+			Some((hdr, elem)) if !t.is_unit() && !valued => {
+				let owned = self.copy_in(v, &t);
+				if owned != v {
+					self.release_value(v, &t);
+				}
+				self.push(*hdr, owned, &t);
+				*elem = t;
+			}
+			_ => self.release_value(v, &t),
+		}
 	}
 
 	// Merge at `exit` and take the loop's value.
@@ -914,6 +949,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.b.seal_block(exit);
 		self.b.switch_to_block(exit);
+		if let Some((hdr, elem)) = frame.collect {
+			self.untemp(hdr);
+			if !elem.is_unit() {
+				let t = Typ::Array(Box::new(elem));
+				self.temp(hdr, &t);
+				return (hdr, t);
+			}
+			self.rt_call("array_release", &[hdr]);
+		}
 		match frame.result {
 			Some((var, t)) => {
 				let v = self.b.use_var(var);
@@ -957,13 +1001,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (body_block, fallthrough) = self.fork(tag);
 
 		self.b.switch_to_block(body_block);
-		let (frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
+		let (mut frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
 			let v = s.opt_payload(yielded, &opt, &item, 8);
 			s.bind_pat(pat, v, &item, Some(false))?;
 			s.block(body)
 		})?;
-		if let Some((v, t)) = flow {
-			self.release_value(v, &t);
+		if let Some(vt) = flow {
+			self.loop_tail(&mut frame, vt);
 			self.b.ins().jump(header, &[]);
 		}
 		self.b.seal_block(header);
@@ -1024,7 +1068,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
-		let (frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
+		let (mut frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
 			let (data, elem) = &src;
 			let item = s.load_nth(*data, iv, elem);
 			match (&vals, &pat.0) {
@@ -1041,8 +1085,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			s.block(body)
 		})?;
 
-		if let Some((v, t)) = flow {
-			self.release_value(v, &t);
+		if let Some(vt) = flow {
+			self.loop_tail(&mut frame, vt);
 			self.b.ins().jump(latch, &[]);
 		}
 		self.b.seal_block(latch);

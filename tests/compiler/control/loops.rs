@@ -160,6 +160,17 @@ fn for_loop_break_value_or_else() {
 }
 
 #[test]
+fn loop_collects_tails() {
+	let src = indoc! {r#"
+		print(loop x in [1 2 3] do x ** 2)
+		print(loop x in [1 2 3 4] { if x == 3 do continue; x ** 2 })
+		loop x in ["a" "b" "c"] { if x == "c" do break; "{x}!" }
+	"#};
+	check(src, ["[1, 4, 9]", "[1, 4, 16]", r#"["a!", "b!"]"#]);
+	assert_clean(src);
+}
+
+#[test]
 fn break_value_errors() {
 	fail("x := break", "never produce a value");
 	fail("loop { x := continue }", "never produce a value");

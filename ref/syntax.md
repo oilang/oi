@@ -1523,8 +1523,12 @@ main :: fn() {
 	assert! no_way == none
 	assert! no_way or -1 == -1
 
-	# a loop with no valued `break` yields `()`
-	# mixing `break` and `break <value>` in one loop is an error
+	# list comprehensions
+	# a loop with no valued `break` collects its body's tail into `[]T`
+	# `continue` skips an element, a bare `break` stops collecting
+	squares :: loop x in [ 1 2 3 ] do x ** 2
+	evens :: loop x in xs { if x % 2 == 1 do continue; x }
+	assert! squares == [ 1 4 9 ]
 
 	# an atom labels a block or loop
 	# it may be referred to by some control flow statements
@@ -2113,8 +2117,7 @@ main :: fn() {
 		f.close()
 	}
 
-	# defer gets the return values as `$` where applicable
-	# a defer body can't `return`, propagate with `?`, or `break`/`continue` an outer loop
+	# the body is a block literal against `fn(Ret)`, so `$` is the return value where applicable
 	do_stuff :: fn() bool {
 		defer {
 			if !$ {
@@ -2124,6 +2127,15 @@ main :: fn() {
 		if os.env("DEBUG") { return false }
 		return true
 	}
+
+	# a bare `return` reads a named result after defers run, so a defer can rewrite it
+	# an explicit return or a tail value ignores the bind
+	count :: fn() n: int {
+		defer { n = 456 }
+		n = 123
+		return
+	}
+	assert! count() == 456
 
 	# `defer or` only runs if the fn returned an error or none
 	# `$` is the error payload
