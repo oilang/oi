@@ -80,14 +80,12 @@ tags: []
 # TODO
 - immediate
 	- [ ] `:h <topic>` `vim revo`
-	- [x] generic trait claims
+	- [ ] `fallthrough` `odin`
 - [ ] `comp assert`
-- [x] AoS, SoA, AoSoA
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
 - [ ] better errors. atom and int code support?
-- [x] settle on good print/fmt/Display/str story
 - [ ] channels
 - [ ] units and unit conversion
 - [ ] `discard` and/or `pass` `nim gdscript`
@@ -98,21 +96,17 @@ tags: []
 - [ ] allow fn math with arithmetic traits
 ## consider
 - `nil`
+- use atoms for more, like I'm doing with `break :atom`
 - using `#` for annotations despite comment clash
 - `let-else` `rust`
-- [x] explicit core access `core.print` or `use core.{ print }` or something
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits
 - opening up trailing fns to trailing anything, or at least anything with `.` + `{[(`
-- [x] `loop <expr>` rather than any special case dispatch
-- [x] I kind of like Rust's `pub(scope)` concept where you specify what it's public for
 - `for/else`, `while/else` `python`
 - `match{}/or` (in addition to the planned `match{else}`)
 	- or at least clean up the usage of one of them
-- [x] `if` unwrapping `v rust`
 - using `not` or `!` in pipelines to achieve things like V's `val !in arr`
 - `noop` macro
 - int/float suffixes `let y: i32 = 13i32; let f: f64 = 1.3f64;` `rust`
-- [x] maybe allow omitting `x in ` in a loop, like `loop 0..4`, because you can always use `$`
 - maybe named tuple args aren't a good thing
 	- just making structs more lightweight to use might be better, idk
 - CLI help docs, like Nushell and Cargo

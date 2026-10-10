@@ -25,7 +25,7 @@ impl Join {
 pub(crate) struct Catch {
 	block: Block,
 	depth: usize,
-	err: Option<(Variable, Typ)>,
+	throws: Vec<(Block, Block, TypedVal, Span)>,
 }
 
 // A header bind is a test only when its pattern can fail, otherwise it just binds.
@@ -454,14 +454,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut catch = Catch {
 			block: self.b.create_block(),
 			depth: self.scopes.len(),
-			err: None,
+			throws: vec![],
 		};
 
 		// a pipeline is a try scope, with its `?` steps landing here
 		let lowered = if let Expr::Pipe { .. } = value.0 {
+			let held = self.scopes.last().cloned().unwrap_or_default();
 			let outer = self.catch.replace(catch);
 			let lowered = self.expr(value);
 			catch = std::mem::replace(&mut self.catch, outer).expect("set above");
+
+			let late = self.scopes.last().into_iter().flatten().filter(|l| !held.contains(l));
+			self.flagged.extend(late.map(|(v, _)| *v));
 			lowered
 		} else {
 			self.expr(value)
@@ -482,7 +486,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.b.switch_to_block(happy_block);
 				(self.opt_payload(val, &typ, &inner, 8), inner)
 			}
-			None if catch.err.is_some() => (val, typ),
+			None if !catch.throws.is_empty() => (val, typ),
 			None => {
 				let msg = format!("`or` needs a `?T`/`!T` value, got {typ}");
 				return fail(msg, value.1, "not an Option or Result");
@@ -493,9 +497,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let payload = self.copy_bind(payload, &inner);
 		self.join_branch(want, (payload, inner.clone()), &mut join, merge)?;
 
+		let (var, err) = self.land(&catch)?;
 		self.b.switch_to_block(catch.block);
 		self.b.seal_block(catch.block);
-		let (var, err) = catch.err.expect("every path here threw");
 		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
 		let flow = self.branch(body, want.then_some(&inner))?;
 		self.dollar = saved_dollar;
@@ -511,20 +515,38 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
 	}
 
-	// Jump to an `or` fallback, the first throw pins `$`.
-	fn throw(&mut self, catch: &mut Catch, (v, t): TypedVal, span: Span) -> Result<(), Diagnostic> {
-		let (var, want) = catch
-			.err
-			.get_or_insert_with(|| (self.b.declare_var(cl_type(&t, self.int)), t.clone()))
-			.clone();
-		let (v, got) = self.coerce(v, &t, &want, span)?;
-		if got != want {
-			return fail(format!("cannot catch {t} as {want}"), span, "mismatched error type");
-		}
+	// Jump to an `or` fallback, via a conversion block filled in once `$` is known.
+	fn throw(&mut self, catch: &mut Catch, err: TypedVal, span: Span) -> Result<(), Diagnostic> {
+		let (conv, rel) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().jump(conv, &[]);
+		self.b.seal_block(conv);
+		self.b.switch_to_block(rel);
 		self.release_scopes(catch.depth, None)?;
-		self.b.def_var(var, v);
 		self.b.ins().jump(catch.block, &[]);
+		catch.throws.push((conv, rel, err, span));
 		Ok(())
+	}
+
+	// `$` is the first caught error type if the rest fit it, otherwise Error.
+	fn land(&mut self, catch: &Catch) -> Result<(Variable, Typ), Diagnostic> {
+		let first = &catch.throws[0].2.1;
+		let fits = (catch.throws.iter()).all(|(.., (_, t), s)| self.err_into(t, first, String::new(), *s).is_ok());
+		let want = if fits { first.clone() } else { Typ::Error };
+		let var = self.b.declare_var(cl_type(&want, self.int));
+		for (conv, rel, (v, t), span) in &catch.throws {
+			self.b.switch_to_block(*conv);
+			if t.is_unit() != want.is_unit() {
+				return fail("cannot catch both `?T` and `!T`", *span, format!("this throws {t}"));
+			}
+			let v = match self.err_into(t, &want, format!("cannot catch {t} as {want}"), *span)? {
+				Some(sig) => self.emit_call(&sig, &[*v]).0,
+				None => self.coerce(*v, t, &want, *span)?.0,
+			};
+			self.b.def_var(var, v);
+			self.b.ins().jump(*rel, &[]);
+			self.b.seal_block(*rel);
+		}
+		Ok((var, want))
 	}
 
 	// Check that error `from` can flow into `to`, returning the `From` conversion it needs, if any.

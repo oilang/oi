@@ -55,7 +55,7 @@ fn diverging_fallback_ends_at_semicolon() {
 		f(?int.(1))
 		f(?int.(none))
 	"};
-	check(src, "1\n1");
+	check(src, ["1", "1"]);
 }
 
 #[test]
@@ -84,6 +84,7 @@ fn and_maps_the_happy_path() {
 		print(!int.(error("boom")) and "{$}" or { $.message() })
 	"#};
 	check(src, ["40", "1", "-1", "boom"]);
+
 	let src = indoc! {"
 		NetError :: enum { timeout refused }
 		fetch :: fn() Result[int, NetError] { 1 }
@@ -92,4 +93,24 @@ fn and_maps_the_happy_path() {
 	"};
 	fail(src, "does not claim Error");
 	fail("?int.(1) and !int.($)", "cannot mix `?T` and `!T`");
+}
+
+#[test]
+fn pipeline_is_a_try_scope() {
+	let src = indoc! {r#"
+		E1 :: enum { a }
+		E1 :< Error
+		f :: fn(x: int) E1!int { if x > 0 do return E1.a; x }
+		h :: fn(x: int) !int { if x > 2 do return error("h"); x }
+		print(5 |> h? |> f? or { print($.message()); 0 })
+		print(1 |> h? |> f? or { print($.message()); 0 })
+	"#};
+	check(src, ["h", "0", "a", "0"]);
+
+	let src = indoc! {"
+		o :: fn(x: int) ?int { x }
+		h :: fn(x: int) !int { x }
+		0 |> o? |> h? or -1
+	"};
+	fail(src, "cannot catch both `?T` and `!T`");
 }
