@@ -263,6 +263,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				Expr::Return(value) => {
+					// a bare `return` reads its named result after defers run, `$` before
+					let held = match value.as_deref() {
+						Some(e @ (Expr::Ident(_), span)) if *span == stmt.1 => {
+							let dollar = self.expr(e)?;
+							let held = std::mem::take(&mut self.defers);
+							self.defers = vec![vec![]; held.len()];
+							for d in held.iter().flatten().rev() {
+								self.run_defer(d.clone(), Some(&dollar))?;
+							}
+							Some(held)
+						}
+						_ => None,
+					};
 					let (val, typ) = match value {
 						Some(e) => match self.ret.clone() {
 							Some((target, _)) => self.check_expr(e, &target)?,
@@ -277,6 +290,9 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.move_resource(e, &typ)?;
 					}
 					self.emit_return(val, typ, stmt.1)?;
+					if let Some(defers) = held {
+						self.defers = defers;
+					}
 					return Ok(None);
 				}
 
@@ -431,20 +447,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				false => (val, typ),
 			});
 		}
-		let Some((ok, err)) = self.types.result_parts(&ret) else {
-			return Ok((val, typ));
-		};
-		let (val, typ) = self.coerce(val, &typ, &ok, span)?;
-		let (val, typ) = match typ == ok {
-			true => (val, typ),
-			false => self.coerce(val, &typ, &err, span)?,
-		};
-		let Some(disc) = [ok, err].iter().position(|t| *t == typ) else {
-			return Ok((val, typ));
-		};
-		let val = self.make_enum(&self.variants_of(&ret), disc as i64, &[val]);
-		self.temp(val, &ret);
-		Ok((val, ret))
+		match self.types.result_parts(&ret) {
+			Some(_) => self.coerce(val, &typ, &ret, span),
+			None => Ok((val, typ)),
+		}
 	}
 
 	// The first return fixes the fn's type, and later returns must agree.

@@ -964,6 +964,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.types.option_inner(to).is_some_and(|i| i == *from) {
 			return Ok((self.make_option(to, Some(val)), to.clone()));
 		}
+		// values and errors widen into results
+		if let Some((ok, err)) = self.types.result_parts(to) {
+			let (val, typ) = self.coerce(val, from, &ok, span)?;
+			let (val, typ) = match typ == ok {
+				true => (val, typ),
+				false => self.coerce(val, &typ, &err, span)?,
+			};
+			let Some(disc) = [ok, err].iter().position(|t| *t == typ) else {
+				return Ok((val, typ));
+			};
+			let val = self.make_enum(&self.variants_of(to), disc as i64, &[val]);
+			self.temp(val, to);
+			return Ok((val, to.clone()));
+		}
 		if let Typ::Sum(..) = to {
 			let variants = self.variants_of(to);
 			if let Some(v) = variants.iter().find(|v| v.payload == [from.clone()]) {

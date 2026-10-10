@@ -97,6 +97,7 @@ tags: []
 ## consider
 - `nil`
 - use atoms for more, like I'm doing with `break :atom`
+	- `defer :atom` + `cancel :atom`
 - using `#` for annotations despite comment clash
 - `let-else` `rust`
 - call `$` an `anaphor` everywhere? after learning about the concept I think it fits

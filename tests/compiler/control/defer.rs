@@ -89,3 +89,16 @@ fn and_or_defer() {
 	"};
 	check(src, ["0", "1", "3", "0", "2", "2"]);
 }
+
+#[test]
+fn bare_return_reads_named_result_after_defers() {
+	let src = indoc! {"
+		f :: fn() n: int {
+			defer { n = 456 }
+			n = 123
+			return
+		}
+		print(f())
+	"};
+	check(src, "456");
+}

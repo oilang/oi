@@ -491,7 +491,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// `$` is the returned value / error.
-	fn run_defer(&mut self, mut d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
+	pub(super) fn run_defer(&mut self, mut d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
 		// unarmed paths never def the flag, so it reads 0. disarm for the next loop iteration
 		if let Some(flag) = d.armed.take() {
 			let (run, after) = (self.b.create_block(), self.b.create_block());
