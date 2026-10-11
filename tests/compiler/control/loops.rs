@@ -129,6 +129,18 @@ fn for_each_string_bytes_and_map_entries() {
 	check(src, ["104", "105", "5"]);
 }
 
+#[test]
+fn map_entries_are_tuples() {
+	let src = indoc! {r#"
+		i := 1
+		m := ["a{i}" = "x{i}"]
+		loop e in m { print(e) }
+		loop (k, _) in m { print(k) }
+	"#};
+	check(src, [r#"("a1", "x1")"#, "a1"]);
+	assert_clean(src);
+}
+
 // breaks with values
 
 #[test]

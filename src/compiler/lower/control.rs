@@ -1104,18 +1104,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		let iv = self.b.use_var(counter);
 		let (mut frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
 			let (data, elem) = &src;
-			let item = s.load_nth(*data, iv, elem);
-			match (&vals, &pat.0) {
-				(None, _) => s.bind_pat(pat, item, elem, Some(false))?,
-				(Some((vdata, vt)), Expr::Tuple(te)) if te.len() == 2 => {
-					let vv = s.load_nth(*vdata, iv, vt);
-					s.bind_pat(&te[0].1, item, elem, Some(false))?;
-					s.bind_pat(&te[1].1, vv, vt, Some(false))?;
+			let (mut item, mut typ) = (s.load_nth(*data, iv, elem), elem.clone());
+			if let Some((vdata, vt)) = &vals {
+				let (vv, tup) = (s.load_nth(*vdata, iv, vt), s.call_alloc(2));
+				for (i, (v, t)) in [(item, elem), (vv, vt)].into_iter().enumerate() {
+					let v = s.copy_in(v, t);
+					s.st(tup, (i * 8) as i32, v);
 				}
-				_ => {
-					return fail("destructure map entries with `(k, v)`", pat.1, "expected `(k, v)`");
-				}
+				(item, typ) = (tup, Typ::Tuple(vec![(None, typ), (None, vt.clone())]));
+				s.temp(item, &typ);
 			}
+			s.bind_pat(pat, item, &typ, Some(false))?;
 			s.block(body)
 		})?;
 

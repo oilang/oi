@@ -1506,6 +1506,7 @@ main :: fn() {
 	loop b in "hi" {
 		print(b)
 	}
+	# map entries are `(K, V)` tuples
 	loop (k, v) in ["one" = 1, "two" = 2] {
 		print("{k}={v}")
 	}
