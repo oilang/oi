@@ -45,19 +45,33 @@ impl<'a, M: Module> Translator<'a, M> {
 		hint: Option<&Typ>,
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		match &expr.0 {
-			Expr::If { cond, then, els } => self.conditional(cond, then, els.as_deref(), hint, expr.1, want),
+		self.header_scoped(|s| match &expr.0 {
+			Expr::If { cond, then, els } => s.conditional(cond, then, els.as_deref(), hint, expr.1, want),
 			Expr::Match {
 				subject,
 				arms,
 				else_body,
-			} => self.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
+			} => s.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
 			Expr::Loop { label, cond, body } => {
-				self.collected(want, hint, |s| s.loop_expr(label.as_deref(), cond.as_deref(), body))
+				s.collected(want, hint, |s| s.loop_expr(label.as_deref(), cond.as_deref(), body))
 			}
-			Expr::Labeled { label, body } => self.looped(|s| s.labeled(label, body, expr.1)),
+			Expr::Labeled { label, body } => s.looped(|s| s.labeled(label, body, expr.1)),
 			_ => unreachable!(),
+		})
+	}
+
+	// Header binds are visible to the construct alone and owned by the enclosing scope.
+	fn header_scoped<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, Diagnostic>) -> Result<T, Diagnostic> {
+		let outer = (*self.vars).clone();
+		let out = f(self);
+		let fresh = self.vars.iter().filter(|(n, l)| outer.get(*n).is_none_or(|o| o.var != l.var));
+		for name in fresh.map(|(n, _)| n.clone()).collect::<Vec<_>>() {
+			match outer.get(&name) {
+				Some(local) => self.vars.insert(name, local.clone()),
+				None => self.vars.remove(&name),
+			};
 		}
+		out
 	}
 
 	// `if`/`else` lowered to branch&merge, yielding value of the chosen branch.
@@ -72,6 +86,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		// block headers share scope with bodies
+		if let Expr::Block(body) = &cond.0
+			&& let [stmts @ .., tail] = &body[..]
+		{
+			if self.block(stmts)?.is_none() {
+				return Ok(None);
+			}
+			return self.conditional(tail, then, els, target, span, want);
+		}
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
 				s.expr(cond)?;
@@ -1021,8 +1044,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		let tv = self.expr(iter)?;
-		self.for_value(label, pat, tv, iter.1, body)
+		self.header_scoped(|s| {
+			let tv = s.expr(iter)?;
+			s.for_value(label, pat, tv, iter.1, body)
+		})
 	}
 
 	fn for_value(

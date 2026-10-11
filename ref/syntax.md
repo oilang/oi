@@ -1404,6 +1404,10 @@ main :: fn() {
 	# binding a `?T` or `!T` unwraps it
 	if v := maybe do print(v)
 
+	# control flow headers share scope with their bodies
+	if (n := count()) > 9 do print(n) else do print(n, "is small")
+	if { n := count(); n > 9 } do print(n)
+
 	# `do` takes a single statement instead of a block, anywhere a block is expected
 	if i == 2 do print("two")
 	if i > 0 do print("positive") else do print("nope")

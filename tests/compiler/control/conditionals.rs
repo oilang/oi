@@ -152,3 +152,10 @@ fn header_bind_unwraps() {
 	"#};
 	check(src, ["3", "none"]);
 }
+
+#[test]
+fn header_binds_stay_in_the_construct() {
+	check("if (x := 5) > 9 { print(0) } else if x > 1 { print(x) }", "5");
+	check("if { x := 5; x > 1 } { print(x) }", "5");
+	fail("if (x := 5) > 0 { print(x) }\nprint(x)", "undefined variable `x`");
+}
