@@ -286,3 +286,12 @@ fn continue_outer_label() {
 	"};
 	check(src, ["2 1", "3 1", "3 2"]);
 }
+
+#[test]
+fn discard_yields_unit() {
+	let src = indoc! {r#"
+		x := discard 5
+		print("{x}")
+	"#};
+	check(src, "()");
+}

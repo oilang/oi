@@ -1010,6 +1010,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Defer { body, when } => Ok(self.defer(body, *when, false)),
 
+			Expr::Discard(e) => {
+				self.expr(e)?;
+				Ok(self.unit_value())
+			}
+
 			Expr::Doc(_) | Expr::Module(_) | Expr::Use { .. } | Expr::Pub(..) => {
 				unreachable!("not an expression")
 			}

@@ -729,8 +729,7 @@ fn embedded_err_promotes_error_claim() {
 			if n == 0 { return Parse.{ line = 4 } }
 			return Io.{ Err = Err.{ msg = "disk on fire" } }
 		}
-		loop n in 0..2 { boom(n) or { print($.message()) 0 } }
-		()
+		discard loop n in 0..2 { boom(n) or { print($.message()); 0 } }
 	"#};
 	check(src, ["parse error at line 4", "disk on fire"]);
 }
@@ -745,8 +744,7 @@ fn embedded_trait_object_promotes_its_claim() {
 			if n == 0 { return Io.{ Error = error("disk on fire") } }
 			return Ctx.{ Error = error("disk on fire"), where = "save" }
 		}
-		loop n in 0..2 { boom(n) or { print($.message()) 0 } }
-		()
+		discard loop n in 0..2 { boom(n) or { print($.message()); 0 } }
 	"#};
 	check(src, ["disk on fire", "save: disk on fire"]);
 }

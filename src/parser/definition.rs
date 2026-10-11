@@ -370,6 +370,9 @@ where
 			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
 			(Expr::Defer { body, when }, ex.span())
 		});
+	let discard_expr = just(Token::Discard)
+		.ignore_then(juxt_expr.clone())
+		.map_with(|e, ex| (Expr::Discard(Box::new(e)), ex.span()));
 	let continue_expr = just(Token::Continue)
 		.ignore_then(p.same_line.clone().ignore_then(label).or_not())
 		.map_with(|label, ex| (Expr::Continue(label), ex.span()));
@@ -534,7 +537,7 @@ where
 		with_expr,
 		for_expr,
 		loop_expr,
-		break_expr.or(return_expr).or(defer_expr),
+		break_expr.or(return_expr).or(defer_expr).or(discard_expr),
 		continue_expr,
 		anon_fn.clone(),
 		bad,

@@ -1535,6 +1535,9 @@ main :: fn() {
 	evens :: loop x in xs { if x % 2 == 1 do continue; x }
 	assert! squares == [ 1 4 9 ]
 
+	# `discard` evaluates, drops the value, and yields `()`
+	discard loop x in xs { f(x) }
+
 	# an atom labels a block or loop
 	# it may be referred to by some control flow statements
 	v := :blk {

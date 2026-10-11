@@ -89,6 +89,9 @@ pub enum Expr {
 		when: When,
 	},
 
+	// `discard expr`
+	Discard(Box<Spanned<Expr>>),
+
 	// `Target.(args)`
 	Cast {
 		target: Spanned<TypeExpr>,
@@ -416,6 +419,7 @@ impl Expr {
 			Expr::Assign { value: v, .. }
 			| Expr::PatBind { value: v, .. }
 			| Expr::ArgMod(_, v)
+			| Expr::Discard(v)
 			| Expr::Spread(v)
 			| Expr::Ref(v)
 			| Expr::Deref(v)
