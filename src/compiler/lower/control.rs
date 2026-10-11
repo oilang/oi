@@ -74,6 +74,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		out
 	}
 
+	// Block headers share scope with their body chains.
+	fn header<'e>(&mut self, h: &'e Spanned<Expr>) -> Result<&'e Spanned<Expr>, Diagnostic> {
+		let Expr::Block(body) = &h.0 else { return Ok(h) };
+		let [stmts @ .., tail] = &body[..] else { return Ok(h) };
+		match self.block(stmts)? {
+			Some(_) => self.header(tail),
+			None => fail(
+				"this block never produces a value",
+				h.1,
+				"every path returns, but a value is needed here",
+			),
+		}
+	}
+
 	// `if`/`else` lowered to branch&merge, yielding value of the chosen branch.
 	// A diverging branch contributes nothing to the merge.
 	// If all branches diverge, returns None.
@@ -86,15 +100,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		// block headers share scope with bodies
-		if let Expr::Block(body) = &cond.0
-			&& let [stmts @ .., tail] = &body[..]
-		{
-			if self.block(stmts)?.is_none() {
-				return Ok(None);
-			}
-			return self.conditional(tail, then, els, target, span, want);
-		}
+		let cond = self.header(cond)?;
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
 				s.expr(cond)?;
@@ -255,6 +261,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		// patterns see through a ref, like `.` does
+		let subject = self.header(subject)?;
 		let (sv, st) = self.expr(subject)?;
 		let (sv, st) = self.deref(sv, &st);
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
@@ -816,6 +823,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
+		let cond = cond.map(|c| self.header(c)).transpose()?;
 
 		// a conditional loop branches, into the body or out through `fallthrough`
 		let (exit, fallthrough) = match cond {
@@ -1045,6 +1053,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		self.header_scoped(|s| {
+			let iter = s.header(iter)?;
 			let tv = s.expr(iter)?;
 			s.for_value(label, pat, tv, iter.1, body)
 		})
