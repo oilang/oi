@@ -449,7 +449,7 @@ where
 		.map_with(|stmts, ex| (Expr::Quote(stmts), ex.span()));
 
 	let comp_expr = just(Token::Comp)
-		.ignore_then(header_expr.clone())
+		.ignore_then(p.stmt.clone())
 		.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 		.boxed();
 

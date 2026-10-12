@@ -749,6 +749,7 @@ impl Default for Compiler<JITModule> {
 		builder.symbol(expand::RT_QUOTE_MATCH, expand::rt_quote_match as *const u8);
 		builder.symbol(comp::RT_COMP_YIELD, comp::rt_comp_yield as *const u8);
 		builder.symbol(comp::RT_COMP_STRUCT, comp::rt_comp_struct as *const u8);
+		builder.symbol(comp::RT_COMP_PANIC, comp::rt_comp_panic as *const u8);
 
 		Self::new(JITModule::new(builder))
 	}

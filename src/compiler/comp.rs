@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, Expr, Span, Spanned};
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Module, Program, module_of};
 use crate::runtime;
 
@@ -13,6 +13,7 @@ use super::{Compiler, role};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
+pub(crate) const RT_COMP_PANIC: &str = "oi_rt_comp_panic";
 pub(crate) const UNREIFIABLE: &str = "can't use this type in `comp` yet";
 
 pub(crate) const TAG_INT: i64 = 0;
@@ -33,6 +34,7 @@ static SITE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
+	static MAP: RefCell<SourceMap> = RefCell::default();
 }
 
 pub(crate) extern "C" fn rt_comp_yield(tag: i64, val: i64) {
@@ -43,6 +45,15 @@ pub(crate) extern "C" fn rt_comp_struct(name: *const runtime::StrHeader, nfields
 	// SAFETY: `name` is a str constant the JIT just built
 	let name = unsafe { runtime::str_string(name) };
 	STACK.with_borrow_mut(|s| s.push(Entry::Struct(name, nfields as usize)));
+}
+
+// Stage 0 report and exit.
+pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHeader, at: i64, end: i64) {
+	let what = if assert != 0 { "assertion failed" } else { "panic" };
+	// SAFETY: `msg` is a str handle the JIT just built
+	let msg = format!("{what}: {}", unsafe { runtime::str_string(msg) });
+	MAP.with_borrow(|map| Diagnostic::new(msg, at as usize..end as usize).report_mapped(map));
+	std::process::exit(1);
 }
 
 // Find the first unevaluated comp site.
@@ -238,6 +249,7 @@ pub(crate) fn eval(
 	program: &Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
+	MAP.set(program.map.clone());
 	// push order is importer-first, so folding in reverse handles dependencies first
 	for m in program.modules.iter().rev() {
 		let mut comps: Vec<String> = consts

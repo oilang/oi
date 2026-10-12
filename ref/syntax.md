@@ -2361,8 +2361,8 @@ main :: fn() {
 		toml.parse(raw)?
 	}
 	comp {
-		# comptime assertions
-		assert!(max_connections > 0 && max_connections <= 65535)
+		# for comptime assertions failure is a compile error
+		assert! max_connections > 0 && max_connections <= 65535
 	}
 
 	# params in `[]` are comptime types/values

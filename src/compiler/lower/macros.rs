@@ -96,9 +96,16 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from, then trap.
 	pub(super) fn ctx_panic(&mut self, rt: &str, msg: Value, span: Span) -> Result<(), Diagnostic> {
-		let (at, _) = self.src_lit(span)?;
-		let ctx = self.ctx_value(crate::compiler::CONTEXT);
-		self.rt_call(rt, &[ctx, msg, at]);
+		if self.comptime {
+			let [assert, at, end] = [(rt == "assert_fail") as usize, span.start, span.end];
+			let [assert, at, end] = [assert, at, end].map(|n| self.b.ins().iconst(self.int, n as i64));
+			let func = self.import_fn(comp::RT_COMP_PANIC, &[self.int; 4], None);
+			self.b.ins().call(func, &[assert, msg, at, end]);
+		} else {
+			let (at, _) = self.src_lit(span)?;
+			let ctx = self.ctx_value(crate::compiler::CONTEXT);
+			self.rt_call(rt, &[ctx, msg, at]);
+		}
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		Ok(())
 	}

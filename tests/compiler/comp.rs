@@ -89,6 +89,11 @@ fn comp_rejects_unreifiable_type() {
 }
 
 #[test]
+fn comp_assert_is_a_compile_error() {
+	fail(["N :: 3", "comp assert! N > 5"], "assertion failed: N > 5");
+}
+
+#[test]
 fn comp_consts_in_a_module() {
 	Project::new()
 		.file("main.oi", ["module main", "use util", "print(util.BEST)"])
