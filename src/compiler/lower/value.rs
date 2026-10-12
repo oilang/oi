@@ -279,6 +279,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			let v = self.coerce_lit(value, &side)?;
 			return Ok(v.map(|v| self.make_enum(&variants, disc as i64, &[v])));
 		}
+		let int;
+		let inner = match inner {
+			Expr::Float(x) if matches!(target, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) => {
+				if *x as i64 as f64 != *x {
+					return fail(
+						format!("{} truncated to {target}", if neg { -x } else { *x }),
+						value.1,
+						"not integral",
+					);
+				}
+				int = Expr::Int(*x as i64);
+				&int
+			}
+			e => e,
+		};
 		let v = match (inner, target) {
 			(Expr::Int(n), Typ::Int(w)) => {
 				let n = if neg { -*n } else { *n };

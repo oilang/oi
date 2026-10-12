@@ -24,8 +24,8 @@ fn bad_calls() {
 		"expects 2 argument",
 	);
 	fail(
-		["add :: fn [] (x: int, y: int) int { x + y }", "add(1, 2.0)"],
-		"wrong argument type",
+		["add :: fn [] (x: int, y: int) int { x + y }", "add(1, 2.5)"],
+		"truncated",
 	);
 	fail(["x :: 5", "x()"], "not callable");
 	fail(["f :: fn [missing] () int { 0 }", "f()"], "undefined variable");

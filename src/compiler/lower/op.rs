@@ -372,7 +372,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let lhs = self.expr(l)?;
 		let hint = rhint(self, &lhs.1);
-		let rhs = self.check_expr(r, &hint)?;
+
+		let float =
+			matches!(&r.0, Expr::Float(_)) || matches!(&r.0, Expr::Negative(n) if matches!(n.0, Expr::Float(_)));
+		let rhs = if float && l.0.anon() {
+			self.expr(r)?
+		} else {
+			self.check_expr(r, &hint)?
+		};
+
 		Ok((lhs, rhs))
 	}
 

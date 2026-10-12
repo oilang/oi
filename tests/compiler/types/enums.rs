@@ -140,10 +140,7 @@ fn payload_rejections() {
 		["Opt :: enum { nope some(int) }", "int.(Opt.some.(1))"],
 		"no backing value",
 	);
-	fail(
-		["Opt :: enum { nope some(int) }", "Opt.some.(3.0)"],
-		"expected int, got float",
-	);
+	fail(["Opt :: enum { nope some(int) }", "Opt.some.(3.5)"], "truncated");
 	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.()"],
 		"takes 1 field(s), got 0",

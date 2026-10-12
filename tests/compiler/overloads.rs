@@ -213,7 +213,8 @@ fn an_operator_claim_must_cover_the_right_operand() {
 	let src = indoc! {"
 		V :: struct { x: int }
 		V : Mul[int] < { mul :: fn(self, other: int) V { V.{ self.x * other } } }
-		print((V.{3} * 2.0).x)
+		f := 2.0
+		print((V.{3} * f).x)
 	"};
 	fail(src, "`V` claims no `core::Mul[float]`");
 }

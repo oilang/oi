@@ -962,6 +962,7 @@ main :: fn() {
 
 	# ints can be automatically promoted to f64 or larger-width ints
 	assert!(2 + 1.0 == 3.0)
+	# an integral float literal also fits an int type, `x: int = 1.0`, but `1.5` is an error
 
 	# supports arbitrary bit-width integers, like Zig
 	# use `i<width>` and `u<width>`, where width in [1, 65535]

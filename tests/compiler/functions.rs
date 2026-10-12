@@ -42,7 +42,7 @@ fn fn_arg_wrong_type() {
 		i :: fn(x: int) int { x }
 		i(2.4)
 	"};
-	fail(src, "wrong argument type");
+	fail(src, "truncated");
 }
 
 #[test]

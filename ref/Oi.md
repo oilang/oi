@@ -79,14 +79,14 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [ ] `discard` and/or `pass` `nim gdscript`
-	- [ ] `if x := 5; x > 0 { print x }` `odin v go`
+	- [x] `discard` `nim`
+	- [x] `if x := 5; x > 0 { print x }` `odin v go`
 		- this works: `if (x := 5) > 0 { print x }`. need to think about whether this is the same thing or has diff scope than expected from the Go form
 		- maybe this fits better? (doesn't work as-is bc the blocks don't share scope): `if { x := 5; x > 0 } { print x }`
-	- [ ] `fallthrough` `odin`
-	- [ ] the subject in `loop k in ["a"=1,"cc"=33] { k }` should work, and have `(k v)` be a pattern match, not the required shape. then `(k,)` would work too or w/e, and it should allow iteration over more complex things yielding different shapes
-	- [ ] `x: int = 1.0` `odin`
-	- [ ] type checking `type(some_char) == rune` `odin`
+	- [x] `fallthrough` `odin`
+	- [x] the subject in `loop k in ["a"=1,"cc"=33] { k }` should work, and have `(k v)` be a pattern match, not the required shape. then `(k,)` would work too or w/e, and it should allow iteration over more complex things yielding different shapes
+	- [x] `x: int = 1.0` `odin`
+	- [x] type checking `type(some_char) == rune` `odin`
 - [ ] `:h <topic>` `vim revo`
 - [ ] `comp assert`
 - [ ] computed values `swift gdscript c# kotlin`

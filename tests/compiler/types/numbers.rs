@@ -115,3 +115,9 @@ fn cast_syntax() {
 	check("int.(u8.(200))", "200");
 	fail("int(3)", "undefined function `int`");
 }
+
+#[test]
+fn integral_float_literal_to_int() {
+	check(["x: i32 = -2.0", "print(x, 1.0 + x, 2 + 1.0)"], "-2 -1 3.0");
+	fail("x: int = 1.5", "1.5 truncated to int");
+}

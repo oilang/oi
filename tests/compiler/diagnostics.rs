@@ -31,7 +31,7 @@ fn wrong_return_type() {
 		bad()
 	"#};
 	fail(src, "expected int return value");
-	fail("bad :: fn() int { return 2.0 } bad()", "expected int return value");
+	fail("bad :: fn() int { return 2.5 } bad()", "truncated");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn unexpected_token() {
 fn bad_assign() {
 	fail(["x :: 1", "x = 2"], "cannot assign to immutable");
 	fail("x = 5", "cannot assign to undefined variable");
-	fail(["x := 1", "x = 2.0"], "cannot assign float");
+	fail(["x := 1", "x = 2.5"], "truncated");
 }
 
 #[test]

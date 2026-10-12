@@ -18,7 +18,7 @@ fn basics() {
 fn rejections() {
 	fail("none", "cannot infer the type");
 	fail("int.(?int.(42))", "no backing value");
-	fail("?int.(3.0)", "cannot cast float to ?int");
+	fail("?int.(3.5)", "truncated");
 	fail("?int.(1) < ?int.(2)", "only `==` and `!=`");
 }
 

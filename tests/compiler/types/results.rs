@@ -21,7 +21,7 @@ fn nozero_leaves_no_zero_value() {
 
 #[test]
 fn field_type_mismatch() {
-	fail("!int.(3.0)", "expected int or Error, got float");
+	fail("!int.(3.5)", "truncated");
 }
 
 #[test]
