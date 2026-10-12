@@ -49,6 +49,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 
+			"type" => {
+				let [x] = args else {
+					return fail("`type` takes 1 argument", span, "wrong number of arguments");
+				};
+				let t = self.type_of(x)?;
+				Ok(Some((self.typeid_of(&t), Typ::TypeId)))
+			}
+
 			"ord" => {
 				let (val, typ) = self.cast_operand(name, args, span)?;
 				if !typ.is_enumish() {
@@ -198,9 +206,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 		};
 		if *target == Typ::TypeId {
-			let (val, typ) = self.expr(value)?;
+			let (val, typ) = self.lower(value, Some(&Typ::TypeId))?;
 			let id = match typ {
-				Typ::Any => self.enum_tag(&typ, val),
+				Typ::Any | Typ::TypeId => self.enum_tag(&typ, val),
 				t => self.typeid_of(&t),
 			};
 			return Ok((id, Typ::TypeId));

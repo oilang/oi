@@ -137,3 +137,18 @@ fn a_resource_lent_as_any_drops_once() {
 		["[File.{fd = 1}, 2]", "end", "drop 1"],
 	);
 }
+
+#[test]
+fn type_of_is_static() {
+	check(
+		indoc! {r#"
+			f :: fn() rune { print("ran"); 'a' }
+			main :: fn() {
+				a: any = 1
+				zs: []type(f()) = ['x']
+				print(type(a) == any, typeid.(a) == int, type(f()) == rune, typeid.(rune), zs)
+			}
+		"#},
+		"true true true rune [x]",
+	);
+}

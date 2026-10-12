@@ -318,6 +318,7 @@ where
 		annotation.clone(),
 		unquote.clone(),
 		anon_fields.clone().boxed(),
+		expr.clone().boxed(),
 	);
 
 	// defaults

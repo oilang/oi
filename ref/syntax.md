@@ -1979,6 +1979,12 @@ main :: fn() {
 	# the zero value holds nothing and only matches `else`
 	nothing: any
 
+	# `type(x)` is the static type of `x`, fixed at comptime
+	# `typeid.(x)` is the runtime type of `x`
+	a: any = 1
+	assert! type(a) == any && typeid.(a) == int
+	b: type(a) = "one"
+
 	## errors
 
 	# built-in Error trait

@@ -31,6 +31,7 @@ pub(super) fn type_expr<'token, I>(
 	annotation: P<'token, I, Spanned<Expr>>,
 	unquote: P<'token, I, Spanned<Expr>>,
 	anon_fields: P<'token, I, Vec<Param>>,
+	expr: P<'token, I, Spanned<Expr>>,
 ) -> P<'token, I, TypeExpr>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -100,6 +101,9 @@ where
 				.map(|(name, args)| TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect()));
 
 			let hole = unquote.clone().map(|u| TypeExpr::Unquote(Box::new(u)));
+			let type_of = (ident().filter(|n: &String| n == "type"))
+				.ignore_then(paren(expr.clone()))
+				.map(|e| TypeExpr::Infer(Box::new(e)));
 
 			choice((
 				hole,
@@ -111,6 +115,7 @@ where
 				result,
 				atom,
 				anon_struct,
+				type_of,
 				generic_instance,
 				name,
 				tuple,

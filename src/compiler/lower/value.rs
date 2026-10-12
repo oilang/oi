@@ -250,6 +250,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Negative(e) => (true, &e.0),
 			v => (false, v),
 		};
+		if *target == Typ::TypeId
+			&& let Some(te) = TypeExpr::from_expr(&value.0)
+			&& !matches!(&value.0, Expr::Ident(n) if self.vars.contains_key(n))
+			&& let Ok(t) = self.types.resolve(&te, value.1)
+		{
+			return Ok(Some(self.typeid_of(&t)));
+		}
 		let oob = |n| {
 			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
 				.with_label(format!("doesn't fit in {target}"))
@@ -412,6 +419,35 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.out.any_types.push(t.clone());
 		}
 		self.b.ins().iconst(self.int, typeid(t))
+	}
+
+	// The static type of `e`, lowered into a dead block so it never runs.
+	pub(super) fn type_of(&mut self, e: &Spanned<Expr>) -> Result<Typ, Diagnostic> {
+		let (dead, cont, scopes) = (self.b.create_block(), self.b.create_block(), self.scopes.clone());
+		self.b.ins().jump(cont, &[]);
+		self.b.seal_block(dead);
+		self.b.switch_to_block(dead);
+		let typed = self.scoped(|s| s.expr(e).map(Some));
+		self.scopes = scopes;
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+		self.b.seal_block(cont);
+		self.b.switch_to_block(cont);
+		Ok(typed?.expect("an expr yields a value").1)
+	}
+
+	// Resolve a local annotation.
+	pub(super) fn resolve_local(&mut self, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
+		let (mut te, mut exprs, mut of) = (te.clone(), vec![], self.types.type_params.clone());
+		te.walk_mut(&mut |t| {
+			if let TypeExpr::Infer(e) = t {
+				exprs.push((**e).clone());
+				*t = TypeExpr::Name(format!("$type{}", exprs.len()));
+			}
+		});
+		for (i, e) in exprs.iter().enumerate() {
+			of.insert(format!("$type{}", i + 1), self.type_of(e)?);
+		}
+		self.types.with_type_params(&of).resolve(&te, span)
 	}
 
 	// Build an Option value.
