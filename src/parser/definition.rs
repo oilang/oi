@@ -242,14 +242,17 @@ where
 		.ignore_then(paren(loose_list(p.expr.clone())))
 		.map_with(|elems, ex| (Expr::DotTuple(elems), ex.span()));
 
-	// inline macro calls
+	// macro calls
+	let bare_args = (p.expr.clone())
+		.then(p.same_line.clone().ignore_then(p.block_ast.clone()).or_not())
+		.map(|(arg, body)| std::iter::once(arg).chain(body).collect())
+		.or(p.block_ast.clone().map(|body| vec![body]));
 	let macro_call = p
 		.dotted_name
 		.clone()
 		.then_ignore(p.adjacent.clone())
 		.then_ignore(just(Token::Not))
-		.then_ignore(p.adjacent.clone())
-		.then(paren(loose_list(p.expr.clone())))
+		.then(p.adjacent.clone().ignore_then(paren(loose_list(p.expr.clone()))).or(bare_args))
 		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 	// map literals

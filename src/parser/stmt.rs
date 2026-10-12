@@ -224,29 +224,9 @@ pub(super) fn stmt<'token, I>(
 		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()))
 		.then_ignore(just(Token::DocBreak).or_not());
 
-	let macro_stmt = p
-		.dotted_name
-		.clone()
-		.then_ignore(p.adjacent.clone())
-		.then_ignore(just(Token::Not))
-		.then_ignore(p.adjacent.clone().not())
-		.then(
-			p.expr
-				.clone()
-				.then(p.same_line.clone().ignore_then(p.block_ast.clone()).or_not())
-				.map(|(arg, body)| std::iter::once(arg).chain(body).collect::<Vec<_>>())
-				.or(p.block_ast.clone().map(|body| vec![body])),
-		)
-		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
-
 	// statements that leave a place behind
 	place.define(destructure.or(bind.clone()).or(place_assign).or(assign.clone()).or(map_delete));
 
 	// statements
-	stmt.define(
-		doc.or(place.clone())
-			.or(p.macro_def.clone())
-			.or(macro_stmt)
-			.or(p.juxt_expr.clone()),
-	);
+	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(p.juxt_expr.clone()));
 }
