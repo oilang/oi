@@ -103,3 +103,9 @@ fn main_file_const_visible_in_fn_body() {
 		"2",
 	);
 }
+
+#[test]
+fn underscore_assign_drops() {
+	check(["_ = 1 + 2", r#"print("ok")"#], "ok");
+	check("_ = 3", "3");
+}

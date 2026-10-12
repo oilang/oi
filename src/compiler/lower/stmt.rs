@@ -99,6 +99,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 
+				Expr::Assign { name, value } if name == "_" => last = self.expr(value)?,
 				Expr::Assign { name, value } | Expr::DerefAssign { name, value } => {
 					let deref = matches!(stmt.0, Expr::DerefAssign { .. });
 					let mutation = if deref { Mutation::DerefAssign } else { Mutation::Assign };
@@ -497,6 +498,7 @@ impl<'a, M: Module> Translator<'a, M> {
 fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	let name = |n: &String| Box::new((Expr::Ident(n.clone()), stmt.1));
 	let read = match &stmt.0 {
+		Expr::Assign { name, .. } if name == "_" => return None,
 		Expr::Bind { name, .. } | Expr::Assign { name, .. } | Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
 		Expr::Append { name, field, .. } => return Some(place(name, field.as_ref(), stmt.1)),
 		Expr::IndexAssign { name, field, index, .. } => Expr::Index {
