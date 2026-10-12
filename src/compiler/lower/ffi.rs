@@ -140,10 +140,10 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// bool is a byte in C but a word in Oi.
+	// bools are a byte in C but a word in Oi.
 	fn c_load(&mut self, typ: &Typ, c: Value, off: i32) -> Value {
 		match typ.newtype().unwrap_or(typ) {
-			Typ::Bool => self.b.ins().uload8(self.int, MemFlags::new(), c, off),
+			t if let Some(n) = t.bool_bytes() => self.load_elem(c, off, &Typ::UInt(n * 8)),
 			t => self.load_elem(c, off, t),
 		}
 	}
@@ -165,7 +165,7 @@ impl<M: Module> Translator<'_, M> {
 
 	fn c_store(&mut self, typ: &Typ, v: Value, c: Value, off: i32) {
 		match typ.newtype().unwrap_or(typ) {
-			Typ::Bool => _ = self.b.ins().istore8(MemFlags::new(), v, c, off),
+			t if let Some(n) = t.bool_bytes() => self.store_elem(c, off, &Typ::UInt(n * 8), v),
 			t => self.store_elem(c, off, t, v),
 		}
 	}

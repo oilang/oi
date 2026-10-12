@@ -556,6 +556,9 @@ impl TypeCtx<'_> {
 		if let Some(typ) = builtin(name) {
 			return Ok(typ);
 		}
+		if let Some("8" | "16" | "32" | "64") = name.strip_prefix('b') {
+			return Ok(Typ::Annotated(vec![name.into()], Box::new(Typ::Bool)));
+		}
 		if let Some(result) = int_width(name, 'i', Typ::Int, "integer", span) {
 			return result;
 		}

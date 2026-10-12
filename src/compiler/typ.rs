@@ -172,6 +172,14 @@ impl Typ {
 		matches!(self, Typ::Tuple(f) if f.is_empty())
 	}
 
+	pub fn bool_bytes(&self) -> Option<u16> {
+		match self {
+			Typ::Bool => Some(1),
+			Typ::Annotated(a, t) if matches!(**t, Typ::Bool) => a[0][1..].parse().ok().map(|w: u16| w / 8),
+			_ => None,
+		}
+	}
+
 	pub fn is_enumish(&self) -> bool {
 		matches!(self, Typ::Enum(_) | Typ::Sum(..) | Typ::Any)
 	}
@@ -222,7 +230,7 @@ impl Typ {
 		match self.newtype().unwrap_or(self) {
 			Typ::Int(w) | Typ::UInt(w) => scalar(cl_int_for_width(*w).bytes()),
 			Typ::Float(w) => scalar((*w as u32) / 8),
-			Typ::Bool => scalar(1),
+			t if let Some(n) = t.bool_bytes() => scalar(n.into()),
 			Typ::ISize | Typ::USize | Typ::CStr => scalar(8),
 			t @ Typ::Fn(..) if t.is_c_repr(types) => scalar(8),
 			Typ::Enum(name) if types.is_c(name) => self.c_enum(types).map_or(scalar(8), |b| b.c_size_align(types)),
@@ -316,6 +324,7 @@ impl fmt::Display for Typ {
 				)
 			}
 			Typ::Error => write!(f, "Error"),
+			Typ::Annotated(anns, t) if matches!(**t, Typ::Bool) => write!(f, "{}", anns[0]),
 			Typ::Annotated(anns, t) => write!(f, "{}{t}", marks(anns)),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				write!(f, "fn(")?;
@@ -351,6 +360,7 @@ impl PartialEq for FieldDef {
 impl PartialEq for Typ {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
+			_ if self.bool_bytes().zip(other.bool_bytes()).is_some() => true,
 			(Typ::Tuple(a), Typ::Tuple(b)) => a.len() == b.len() && a.iter().zip(b).all(|((_, x), (_, y))| x == y),
 			(Typ::TupleStruct(a, _), Typ::TupleStruct(b, _)) => a == b,
 			(Typ::Int(a), Typ::Int(b)) | (Typ::UInt(a), Typ::UInt(b)) | (Typ::Float(a), Typ::Float(b)) => a == b,

@@ -206,7 +206,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
 				let out = match self.own_field(&typ, role::NOT) {
-					Typ::Bool => self.b.ins().bxor_imm(v, 1),
+					t if *t == Typ::Bool => self.b.ins().bxor_imm(v, 1),
 					t @ (Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) => {
 						let v = self.b.ins().bnot(v);
 						self.narrow(v, t)

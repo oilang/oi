@@ -604,6 +604,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			| (Typ::Rune, Typ::Rune)
 			| (Typ::Atom, Typ::Atom)
 			| (Typ::TypeId, Typ::TypeId) => self.b.ins().icmp(icc, lv, rv),
+			(l, _) if lt == rt && *l == Typ::Bool => self.b.ins().icmp(icc, lv, rv),
 			(Typ::Ref(_), _) if lt == rt && matches!(icc, IntCC::Equal | IntCC::NotEqual) => {
 				self.b.ins().icmp(icc, lv, rv)
 			}

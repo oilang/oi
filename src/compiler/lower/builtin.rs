@@ -221,7 +221,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (val, typ) = self.check_expr(value, target)?;
 		if typ == *target {
-			return Ok((val, typ));
+			return Ok((val, target.clone()));
 		}
 		if let Some(out) = self.assert_cast(val, &typ, target, span)? {
 			return Ok(out);

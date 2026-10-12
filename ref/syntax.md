@@ -971,6 +971,10 @@ main :: fn() {
 
 	# supported floating types are: f16 f32 f64 f80 f128
 
+	# sized bools b8 b16 b32 b64 act like `bool` but are stored in that many bits, for C layouts
+	vsync := b32.(true)
+	assert! bool.(vsync) && !!vsync
+
 	# strings
 
 	normal := "NORMAL mode"
