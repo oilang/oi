@@ -116,8 +116,9 @@ pub enum Token {
 	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_radix(lex, 16))]
 	#[regex(r"0[bB][01][01_]*", |lex| parse_radix(lex, 2))]
 	#[regex(r"0[oO][0-7][0-7_]*", |lex| parse_radix(lex, 8))]
-	#[regex(r"'([^'\\]|\\.)*'", lex_rune)]
 	Int(i64),
+	#[regex(r"'([^'\\]|\\.)*'", lex_rune)]
+	Rune(i64),
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
 	Float(String),
@@ -339,7 +340,7 @@ impl fmt::Display for Token {
 			Token::BlockComment | Token::Comment | Token::DocBreak => write!(f, "comment"),
 			Token::Doc(_) => write!(f, "doc"),
 			Token::Bool(b) => write!(f, "{b}"),
-			Token::Int(n) => write!(f, "{n}"),
+			Token::Int(n) | Token::Rune(n) => write!(f, "{n}"),
 			Token::Float(s) => write!(f, "{s}"),
 			Token::String(s) => write!(f, "\"{s}\""),
 			Token::RawString(s) => write!(f, "r\"{s}\""),

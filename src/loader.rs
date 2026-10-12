@@ -180,7 +180,7 @@ pub(crate) fn shadow_note(d: Diagnostic, module: &str, core_origin: &HashSet<Str
 // Ensure const values are literals.
 pub(crate) fn is_literal(e: &Expr) -> bool {
 	match e {
-		Expr::Bool(_) | Expr::Int(_) | Expr::Float(_) | Expr::String(_) | Expr::Atom(_) => true,
+		Expr::Bool(_) | Expr::Int(_) | Expr::Rune(_) | Expr::Float(_) | Expr::String(_) | Expr::Atom(_) => true,
 		Expr::Negative(inner) => is_literal(&inner.0),
 		_ => false,
 	}

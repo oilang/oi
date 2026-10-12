@@ -70,7 +70,8 @@ fn unknown_escape_fails() {
 
 #[test]
 fn runes() {
-	check(r"print('a' + 1, '\n', '\u{2603}')", "98 10 9731");
+	check(r"print('a' + 1, int.('\n'), int.('\u{2603}'))", "b 10 9731");
+	check(["c := 'a'", "d: rune = c", "print(d, int.(c))"], "a 97");
 	check(r#"print("aloha"[0] == 'a')"#, "true");
 	check(["c : rune : 'z'", "print(c)"], "z");
 	fail("r : rune : 1114112", "out of range for rune");

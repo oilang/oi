@@ -58,6 +58,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		match &expr.0 {
 			Expr::Int(n) => Ok((self.b.ins().iconst(types::I64, *n), Typ::Int(64))),
+			Expr::Rune(n) => Ok((self.b.ins().iconst(types::I32, *n), Typ::Rune)),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float(64))),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),

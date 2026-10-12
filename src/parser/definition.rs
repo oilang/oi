@@ -88,6 +88,7 @@ where
 	let literal = select! {
 		Token::Bool(b) => Expr::Bool(b),
 		Token::Int(n) => Expr::Int(n),
+		Token::Rune(n) => Expr::Rune(n),
 		Token::Float(s) => Expr::Float(s.parse().unwrap()),
 		Token::String(s) => Expr::String(s),
 		Token::Atom(name) => Expr::Atom(name),

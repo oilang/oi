@@ -12,6 +12,7 @@ pub enum Expr {
 	// literals
 	Bool(bool),
 	Int(i64),
+	Rune(i64),
 	Float(f64),
 	String(String),
 	Atom(String),
@@ -517,6 +518,7 @@ impl Expr {
 			}
 			Expr::Bool(_)
 			| Expr::Int(_)
+			| Expr::Rune(_)
 			| Expr::Float(_)
 			| Expr::String(_)
 			| Expr::Atom(_)
@@ -575,6 +577,7 @@ impl Expr {
 	pub fn anon(&self) -> bool {
 		match self {
 			Expr::Int(_)
+			| Expr::Rune(_)
 			| Expr::Float(_)
 			| Expr::Atom(_)
 			| Expr::EnumShorthand { .. }

@@ -243,6 +243,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A numeric literal takes the binding's declared type directly.
 	pub(super) fn coerce_lit(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<Option<Value>, Diagnostic> {
+		if let Expr::Rune(n) = value.0 {
+			return self.coerce_lit(&(Expr::Int(n), value.1), target);
+		}
 		let (neg, inner) = match &value.0 {
 			Expr::Negative(e) => (true, &e.0),
 			v => (false, v),

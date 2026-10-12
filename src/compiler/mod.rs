@@ -500,7 +500,7 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 	match e {
 		Expr::Negative(inner) => lit_matches(&inner.0, typ),
 		Expr::Bool(_) => matches!(typ, Typ::Bool),
-		Expr::Int(_) => matches!(
+		Expr::Int(_) | Expr::Rune(_) => matches!(
 			typ,
 			Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Rune
 		),
@@ -641,6 +641,7 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 	match e {
 		Expr::Negative(v) => static_typ(&v.0, types, span),
 		Expr::Int(_) => Ok(Typ::Int(64)),
+		Expr::Rune(_) => Ok(Typ::Rune),
 		Expr::Float(_) => Ok(Typ::Float(64)),
 		Expr::Bool(_) => Ok(Typ::Bool),
 		Expr::String(_) => Ok(Typ::Str),

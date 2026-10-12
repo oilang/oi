@@ -466,7 +466,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let kind = match (&lt, &rt) {
 			(Typ::Int(lw), Typ::Int(rw)) if lw == rw => NumKind::Int,
-			(Typ::ISize, Typ::ISize) => NumKind::Int,
+			(Typ::ISize, Typ::ISize) | (Typ::Rune, Typ::Rune) => NumKind::Int,
 			(Typ::UInt(lw), Typ::UInt(rw)) if lw == rw => NumKind::UInt,
 			(Typ::USize, Typ::USize) => NumKind::UInt,
 			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => NumKind::Float,
