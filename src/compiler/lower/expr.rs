@@ -1008,6 +1008,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				"this diverges",
 			),
 
+			Expr::Fallthrough => fail(
+				"`fallthrough` must be the last statement of a match arm",
+				expr.1,
+				"not at the end of an arm",
+			),
+
 			Expr::Defer { body, when } => Ok(self.defer(body, *when, false)),
 
 			Expr::Discard(e) => {

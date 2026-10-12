@@ -306,12 +306,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// pre-create each arm's entry block so each arm knows where to fall through to on failure
 		let arm_entries: Vec<Block> = arms.iter().map(|_| self.b.create_block()).collect();
+		let bodies: Vec<Block> = arms.iter().map(|_| self.b.create_block()).collect();
 		let else_blk = self.b.create_block();
 		self.b.ins().jump(arm_entries.first().copied().unwrap_or(else_blk), &[]);
 
 		for (i, arm) in arms.iter().enumerate() {
-			let arm_body = self.b.create_block();
-			let fail = arm_entries.get(i + 1).copied().unwrap_or(else_blk);
+			let arm_body = bodies[i];
+			let miss = arm_entries.get(i + 1).copied().unwrap_or(else_blk);
 
 			self.b.switch_to_block(arm_entries[i]);
 			self.b.seal_block(arm_entries[i]);
@@ -393,12 +394,24 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.b.seal_block(next);
 					self.b.switch_to_block(next);
 				} else {
-					self.b.ins().brif(eq, arm_body, &[], fail, &[]);
+					self.b.ins().brif(eq, arm_body, &[], miss, &[]);
 				}
 			}
 
+			if i > 0 && falls(&arms[i - 1]) && (arm.binding.is_some() || !binds.is_empty() || quote_binds.is_some()) {
+				let msg = "`fallthrough` into an arm that binds names";
+				return fail(msg, arm.patterns[0].1, "nothing to bind");
+			}
 			self.b.seal_block(arm_body);
 			self.b.switch_to_block(arm_body);
+			let fell = falls(arm);
+			if fell && i + 1 == arms.len() && else_body.is_none() {
+				return fail(
+					"`fallthrough` in the last arm",
+					arm.body[arm.body.len() - 1].1,
+					"no next arm",
+				);
+			}
 			let flow = self.scoped(|s| {
 				let cap = s.sum_capture(arm, &st);
 				if let Some(name) = &arm.binding
@@ -418,8 +431,19 @@ impl<'a, M: Module> Translator<'a, M> {
 						s.bind_local(name, ptr, Typ::Ast, false);
 					}
 				}
-				s.block_tail(&arm.body, target)
+				match fell {
+					true => s.block_tail(&arm.body[..arm.body.len() - 1], None),
+					false => s.block_tail(&arm.body, target),
+				}
 			})?;
+			let flow = match (fell, flow) {
+				(true, Some((v, t))) => {
+					self.release_value(v, &t);
+					self.b.ins().jump(bodies.get(i + 1).copied().unwrap_or(else_blk), &[]);
+					None
+				}
+				(_, flow) => flow,
+			};
 			self.rejoin(&outer, &mut live, flow.is_none());
 			let tail = self.branch_tail(&owned, &mut tails, flow.is_some());
 			if let Some(vt) = flow {
@@ -1215,4 +1239,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => self.opt_payload(subject, typ, field, off),
 		}
 	}
+}
+
+fn falls(arm: &MatchArm) -> bool {
+	matches!(arm.body.last(), Some((Expr::Fallthrough, _)))
 }

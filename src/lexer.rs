@@ -140,6 +140,8 @@ pub enum Token {
 	#[token("return")]
 	Return,
 	BareReturn,
+	#[token("fallthrough")]
+	Fallthrough,
 	#[token("defer")]
 	Defer,
 	#[token("discard")]
@@ -345,6 +347,7 @@ impl fmt::Display for Token {
 			Token::Struct => write!(f, "struct"),
 			Token::Enum => write!(f, "enum"),
 			Token::Return | Token::BareReturn => write!(f, "return"),
+			Token::Fallthrough => write!(f, "fallthrough"),
 			Token::Defer => write!(f, "defer"),
 			Token::Discard => write!(f, "discard"),
 			Token::Match => write!(f, "match"),

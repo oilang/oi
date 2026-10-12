@@ -158,3 +158,25 @@ fn bare_name_binds_propagator_payloads() {
 	"};
 	check(src, "42");
 }
+
+#[test]
+fn fallthrough() {
+	let src = indoc! {r#"
+		f :: fn(n: int) {
+			match n {
+				1 => { print("one"); fallthrough },
+				2 => print("two"),
+				3 => { print("three"); fallthrough },
+				else => print("other"),
+			}
+		}
+		f(1)
+		f(2)
+		f(3)
+	"#};
+	check(src, ["one", "two", "two", "three", "other"]);
+
+	fail("match 1 { 1 => { fallthrough 2 } _ => 3 }", "last statement");
+	fail("match 1 { 1 => fallthrough }", "last arm");
+	fail("match (1, 2) { _ => fallthrough, (a, b) => a }", "binds names");
+}

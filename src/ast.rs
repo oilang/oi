@@ -89,6 +89,8 @@ pub enum Expr {
 		when: When,
 	},
 
+	Fallthrough,
+
 	// `discard expr`
 	Discard(Box<Spanned<Expr>>),
 
@@ -522,6 +524,7 @@ impl Expr {
 			| Expr::Dollar
 			| Expr::Foreign
 			| Expr::Continue(_)
+			| Expr::Fallthrough
 			| Expr::Unquote(_)
 			| Expr::TypeAlias { .. }
 			| Expr::TypePat(_)

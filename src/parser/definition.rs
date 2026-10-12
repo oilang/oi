@@ -370,6 +370,7 @@ where
 			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
 			(Expr::Defer { body, when }, ex.span())
 		});
+	let fallthrough_expr = just(Token::Fallthrough).map_with(|_, ex| (Expr::Fallthrough, ex.span()));
 	let discard_expr = just(Token::Discard)
 		.ignore_then(juxt_expr.clone())
 		.map_with(|e, ex| (Expr::Discard(Box::new(e)), ex.span()));
@@ -537,7 +538,7 @@ where
 		with_expr,
 		for_expr,
 		loop_expr,
-		break_expr.or(return_expr).or(defer_expr).or(discard_expr),
+		break_expr.or(return_expr).or(defer_expr).or(discard_expr).or(fallthrough_expr),
 		continue_expr,
 		anon_fn.clone(),
 		bad,

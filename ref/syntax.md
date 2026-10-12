@@ -1438,6 +1438,13 @@ main :: fn() {
 		}
 	}
 
+	# a trailing `fallthrough` enters the next arm's body
+	match n {
+		1 => { print("one"); fallthrough },
+		2 => print("two"),
+		else => (),
+	}
+
 	# TODO: not sure whether Oi should support `$` in match or use binding
 	match user {
 		u @ User { age = 0..18 } => "minor: {u.name}",
