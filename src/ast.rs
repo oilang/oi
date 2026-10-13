@@ -351,6 +351,7 @@ pub enum Expr {
 	// arithmetic, comparison, logical, membership
 	Binary(BinOp, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 	Not(Box<Spanned<Expr>>),
+	Recv(Box<Spanned<Expr>>),
 
 	// meta
 	Doc(Vec<String>),
@@ -431,6 +432,7 @@ impl Expr {
 			| Expr::Propagate(v)
 			| Expr::Negative(v)
 			| Expr::Not(v)
+			| Expr::Recv(v)
 			| Expr::Field { tuple: v, .. }
 			| Expr::Append { value: v, .. }
 			| Expr::FieldAssign { value: v, .. }
@@ -622,6 +624,7 @@ pub enum BinOp {
 	And,
 	Or,
 	In,
+	Send,
 }
 
 impl fmt::Display for BinOp {
@@ -647,6 +650,7 @@ impl fmt::Display for BinOp {
 			BinOp::And => "&&",
 			BinOp::Or => "||",
 			BinOp::In => "in",
+			BinOp::Send => "<-",
 		})
 	}
 }

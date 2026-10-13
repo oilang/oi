@@ -579,7 +579,7 @@ where
 	let core = atom
 		.pratt((
 			// field/tuple/method access
-			postfix(13, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
+			postfix(14, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
 				Dot::Fields(parts) => parts.into_iter().fold(lhs, |cur, field| {
 					(
 						Expr::Field {
@@ -600,7 +600,7 @@ where
 				),
 			}),
 			// indexing and slicing
-			postfix(13, subscript, |lhs, sub: Option<Spanned<Expr>>, ex| {
+			postfix(14, subscript, |lhs, sub: Option<Spanned<Expr>>, ex| {
 				let collection = Box::new(lhs);
 				let e = match sub {
 					Some(index) if index.0.bounds().is_none() => Expr::Index {
@@ -615,29 +615,34 @@ where
 				(e, ex.span())
 			}),
 			// applying a fn value
-			postfix(13, p.adjacent.clone().ignore_then(args.clone()), |lhs, args, ex| {
+			postfix(14, p.adjacent.clone().ignore_then(args.clone()), |lhs, args, ex| {
 				let callee = Box::new(lhs);
 				(Expr::Apply { callee, args }, ex.span())
 			}),
 			(
 				// propagator
-				postfix(13, just(Token::Question), |lhs, _, ex| {
+				postfix(14, just(Token::Question), |lhs, _, ex| {
 					(Expr::Propagate(Box::new(lhs)), ex.span())
 				}),
 				// deref
-				postfix(13, p.same_line.clone().ignore_then(just(Token::Caret)), |lhs, _, ex| {
+				postfix(14, p.same_line.clone().ignore_then(just(Token::Caret)), |lhs, _, ex| {
 					(Expr::Deref(Box::new(lhs)), ex.span())
 				}),
 			),
 			// expression annotations
-			prefix(12, p.annotation.clone(), |a, rhs, ex| {
+			prefix(13, p.annotation.clone(), |a, rhs, ex| {
 				(Expr::Annotated(vec![a], Box::new(rhs)), ex.span())
 			}),
 			// unary
-			prefix(12, just(Token::Minus).or(just(Token::SpaceMinus)), |_, rhs, ex| {
-				(Expr::Negative(Box::new(rhs)), ex.span())
-			}),
-			prefix(12, just(Token::Not), |_, rhs, ex| match rhs {
+			(
+				prefix(13, just(Token::Minus).or(just(Token::SpaceMinus)), |_, rhs, ex| {
+					(Expr::Negative(Box::new(rhs)), ex.span())
+				}),
+				prefix(13, just(Token::ArrowL), |_, rhs, ex| {
+					(Expr::Recv(Box::new(rhs)), ex.span())
+				}),
+			),
+			prefix(13, just(Token::Not), |_, rhs, ex| match rhs {
 				(Expr::Cast { target: (t, ts), args }, _) => {
 					let target = (types::result_of(t, None), ts);
 					(Expr::Cast { target, args }, ex.span())
@@ -657,28 +662,28 @@ where
 				_ => (Expr::Not(Box::new(rhs)), ex.span()),
 			}),
 			// arithmetic
-			binop_with(right(12), empty().boxed(), Token::StarStar, BinOp::Pow),
-			binop(11, Token::Asterisk, BinOp::Mul),
-			binop(11, Token::Slash, BinOp::Div),
-			binop_with(left(11), p.same_line.clone(), Token::Percent, BinOp::Mod),
-			binop(10, Token::Plus, BinOp::Add),
-			binop(10, Token::Minus, BinOp::Sub),
+			binop_with(right(13), empty().boxed(), Token::StarStar, BinOp::Pow),
+			binop(12, Token::Asterisk, BinOp::Mul),
+			binop(12, Token::Slash, BinOp::Div),
+			binop_with(left(12), p.same_line.clone(), Token::Percent, BinOp::Mod),
+			binop(11, Token::Plus, BinOp::Add),
+			binop(11, Token::Minus, BinOp::Sub),
 			// bitwise
 			(
-				binop(9, Token::LtLt, BinOp::Shl),
-				binop(9, Token::GtGt, BinOp::Shr),
-				binop(8, Token::Amp, BinOp::BitAnd),
-				binop(7, Token::Tilde, BinOp::BitXor),
-				binop(6, Token::Pipe, BinOp::BitOr),
+				binop(10, Token::LtLt, BinOp::Shl),
+				binop(10, Token::GtGt, BinOp::Shr),
+				binop(9, Token::Amp, BinOp::BitAnd),
+				binop(8, Token::Tilde, BinOp::BitXor),
+				binop(7, Token::Pipe, BinOp::BitOr),
 			),
 			// relational
-			binop(4, Token::Lt, BinOp::Lt),
-			binop(4, Token::Gt, BinOp::Gt),
-			binop(4, Token::Le, BinOp::Le),
-			binop(4, Token::Ge, BinOp::Ge),
+			binop(5, Token::Lt, BinOp::Lt),
+			binop(5, Token::Gt, BinOp::Gt),
+			binop(5, Token::Le, BinOp::Le),
+			binop(5, Token::Ge, BinOp::Ge),
 			// trait check
 			postfix(
-				4,
+				5,
 				just(Token::Is)
 					.ignore_then(just(Token::Ident("not".into())).or_not())
 					.then(ident()),
@@ -694,31 +699,35 @@ where
 				},
 			),
 			// equality | membership
-			binop(3, Token::Eq, BinOp::Eq),
-			binop(3, Token::Ne, BinOp::Ne),
-			binop(3, Token::In, BinOp::In),
+			binop(4, Token::Eq, BinOp::Eq),
+			binop(4, Token::Ne, BinOp::Ne),
+			binop(4, Token::In, BinOp::In),
 			// logical
-			binop(2, Token::AndAnd, BinOp::And),
-			binop(1, Token::OrOr, BinOp::Or),
+			binop(3, Token::AndAnd, BinOp::And),
+			binop(2, Token::OrOr, BinOp::Or),
 			// ranges
 			(
 				postfix(
-					5,
+					6,
 					just(Token::DotDot).then_ignore(just(Token::LBrace).not().then(p.expr.clone()).not()),
 					|l, _, ex| range(l, None, false, ex.span()),
 				),
-				infix(left(5), just(Token::DotDot), |l, _, r, ex| {
+				infix(left(6), just(Token::DotDot), |l, _, r, ex| {
 					range(l, Some(r), false, ex.span())
 				}),
-				infix(left(5), just(Token::DotDotEq), |l, _, r, ex| {
+				infix(left(6), just(Token::DotDotEq), |l, _, r, ex| {
 					range(l, Some(r), true, ex.span())
 				}),
-				prefix(5, just(Token::DotDot), |_, r, ex| {
+				prefix(6, just(Token::DotDot), |_, r, ex| {
 					(Expr::Spread(Box::new(r)), ex.span())
 				}),
 			),
-			// pipelines
-			infix(left(0), just(Token::Pipeline), |l, _, r, ex| pipe(l, r, ex.span())),
+			(
+				// channels
+				binop(1, Token::ArrowL, BinOp::Send),
+				// pipelines
+				infix(left(0), just(Token::Pipeline), |l, _, r, ex| pipe(l, r, ex.span())),
+			),
 		))
 		.boxed();
 

@@ -231,6 +231,21 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				Ok((out, typ))
 			}
+			Expr::Recv(e) => {
+				let (v, typ) = self.expr(e)?;
+				let sig = (typ.nominal()).and_then(|n| {
+					self.fill(&typ, role::RECV, "recv", 1)
+						.or_else(|| self.sole_fill(&format!("{n}.recv")))
+				});
+				match sig {
+					Some(sig) => Ok(self.emit_call(&sig, &[v])),
+					None => fail(
+						format!("cannot receive from {typ}"),
+						expr.1,
+						"claim `Recv` to overload `<-`",
+					),
+				}
+			}
 
 			Expr::Call { name, type_args, args } => {
 				let qn = self.qualify(name).to_string();

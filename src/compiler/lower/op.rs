@@ -416,6 +416,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			BinOp::BitXor => (role::BIT_XOR, "bitxor"),
 			BinOp::Shl => (role::SHL, "shl"),
 			BinOp::Shr => (role::SHR, "shr"),
+			BinOp::Send => (role::SEND, "send"),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
@@ -448,6 +449,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 			return Ok(self.emit_call(&sig, &[lv, rv]));
+		}
+
+		if op == BinOp::Send {
+			return fail(format!("cannot send to {lt}"), span, "claim `Send` to overload `<-`");
 		}
 
 		// commutative operators

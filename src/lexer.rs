@@ -279,6 +279,10 @@ pub enum Token {
 	#[token("|>")]
 	Pipeline,
 
+	// channels
+	#[token("<-")]
+	ArrowL,
+
 	// grouping
 	#[token("(")]
 	LParen,
@@ -415,6 +419,7 @@ impl fmt::Display for Token {
 			Token::Not => write!(f, "!"),
 			Token::Pipe => write!(f, "|"),
 			Token::Pipeline => write!(f, "|>"),
+			Token::ArrowL => write!(f, "<-"),
 			Token::LParen => write!(f, "("),
 			Token::RParen => write!(f, ")"),
 			Token::LBrace => write!(f, "{{"),

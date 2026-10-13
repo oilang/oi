@@ -218,3 +218,23 @@ fn an_operator_claim_must_cover_the_right_operand() {
 	"};
 	fail(src, "`V` claims no `core::Mul[float]`");
 }
+
+#[test]
+fn send_and_recv_drive_arrows() {
+	let src = indoc! {r#"
+		Pipe :: struct { cap: int }
+		Pipe : Send[int] < {
+			send :: fn(self, v: int) !() {
+				if v > self.cap { return error("full") }
+				print("sent {v}")
+			}
+		}
+		Pipe : Recv[int] < { recv :: fn(self) ?int { self.cap } }
+		p :: Pipe.{ 9 }
+		p <- 2 + 3 or print("dropped")
+		p <- 20 or print("dropped")
+		p<-3 or print("dropped")
+		print(<-p or 0)
+	"#};
+	check(src, ["sent 5", "dropped", "sent 3", "9"]);
+}
