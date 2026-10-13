@@ -154,7 +154,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn zero_slot(&mut self, typ: &Typ) -> Value {
 		let z = self.zero(typ);
 		match typ {
-			Typ::FixedArray(..) => self.copy_in(z, typ),
+			t if rc::inline(t) => self.copy_in(z, typ),
 			_ => z,
 		}
 	}
@@ -209,10 +209,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.store_slots(ptr, &zs);
 				ptr
 			}
-			Typ::TupleStruct(_, fields) => self.zero(&Typ::Tuple(fields.clone())),
+			Typ::TupleStruct(_, fields) => self.zero_slot(&Typ::Tuple(fields.clone())),
 			Typ::Tuple(fields) => {
 				let zs: Vec<_> = fields.iter().map(|(_, t)| self.zero_slot(t)).collect();
-				self.heap_slots(&zs)
+				let ptr = self.stack_slot((zs.len() * 8) as u32);
+				self.store_slots(ptr, &zs);
+				ptr
 			}
 			Typ::Array(_) => {
 				let z = self.b.ins().iconst(self.int, 0);
@@ -380,7 +382,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn deref(&mut self, val: Value, typ: &Typ) -> TypedVal {
 		match (typ, self.peeled(typ)) {
 			(Typ::Annotated(a, t), _) if a == &[role::UNOWNED] => self.deref(val, t),
-			(Typ::Ref(_), t) if !matches!(t, Typ::Struct(..)) => (self.ld_typ(val, 0, &t), t),
+			(Typ::Ref(_), t) if t.slots().is_none() => (self.ld_typ(val, 0, &t), t),
 			(_, t) => (val, t),
 		}
 	}
@@ -1537,13 +1539,22 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Copy field slots between structs.
 	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
-		for (i, f) in fields.iter().enumerate() {
-			let old = (release_old && self.slot_owns(&f.typ)).then(|| self.ld_typ(dst, (i * 8) as i32, &f.typ));
-			let fv = self.ld_typ(src, (i * 8) as i32, &f.typ);
-			let fv = self.copy_in(fv, &f.typ);
+		self.assign_slots(
+			src,
+			dst,
+			&fields.iter().map(|f| f.typ.clone()).collect::<Vec<_>>(),
+			release_old,
+		);
+	}
+
+	pub(super) fn assign_slots(&mut self, src: Value, dst: Value, slots: &[Typ], release_old: bool) {
+		for (i, t) in slots.iter().enumerate() {
+			let old = (release_old && self.slot_owns(t)).then(|| self.ld_typ(dst, (i * 8) as i32, t));
+			let fv = self.ld_typ(src, (i * 8) as i32, t);
+			let fv = self.copy_in(fv, t);
 			self.st(dst, (i * 8) as i32, fv);
 			if let Some(old) = old {
-				self.release_field(old, &f.typ);
+				self.release_field(old, t);
 			}
 		}
 	}

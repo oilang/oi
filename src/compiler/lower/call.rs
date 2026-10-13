@@ -813,11 +813,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("str_concat", &[a, b]).unwrap()
 	}
 
-	// A returned struct or fixed array box moves into a frame slot.
+	// A returned inline value's box moves into a frame slot.
 	fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
 		let (elem, n) = match typ {
-			Typ::Struct(_, fields) => (Typ::Int(64), fields.len()),
 			Typ::FixedArray(elem, n) => ((**elem).clone(), *n),
+			t if let Some(slots) = t.slots() => (Typ::Int(64), slots.len()),
 			_ => return val,
 		};
 		let slot = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);

@@ -43,11 +43,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Whether a scope must release a value of this type.
 	pub(super) fn needs_release(&self, typ: &Typ) -> bool {
 		let parts = match typ {
-			Typ::Struct(_, fs) => fs.iter().any(|f| self.slot_owns(&f.typ)),
 			Typ::FixedArray(elem, _) => self.slot_owns(elem),
-			_ => false,
+			t => t.slots().is_some_and(|ts| ts.iter().any(|t| self.slot_owns(t))),
 		};
-		parts || releasable(typ) || self.is_resource(typ) || self.enum_box(typ)
+		parts || handle_fns(typ).is_some() || self.is_resource(typ) || self.enum_box(typ)
 	}
 
 	// Whether a value is a heap-boxed enum, freed and copied inline.
@@ -65,9 +64,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.variants_of(typ).into_iter().flat_map(|v| v.payload).collect()
 			}
 			Typ::Array(t) | Typ::FixedArray(t, _) | Typ::Map(_, t) => vec![(**t).clone()],
-			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
-			Typ::Struct(_, fs) => field_types(fs),
-			_ => vec![],
+			t => t.slots().unwrap_or_default(),
 		};
 		parts.iter().any(|t| self.reaches(t, name, seen))
 	}
@@ -171,16 +168,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			let elem = (**elem).clone();
 			self.each_elem(val, typ, |s, _, ev| s.release_field(ev, &elem));
-		} else if let Typ::Struct(_, fields) = typ {
+		} else if let Some(slots) = typ.slots() {
 			if self.is_resource(typ) {
 				self.run_hook(val, typ, "drop");
 			}
-			self.release_slots(val, &field_types(fields));
-		} else if let Typ::Tuple(fields) = typ
-			&& !fields.is_empty()
-		{
-			self.release_slots(val, &fields.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
-			self.rt_call("free", &[val]);
+			self.release_slots(val, &slots);
 		} else if self.enum_box(typ) {
 			self.owned_payloads(val, typ, |s, off, t| {
 				let pv = s.ld_typ(val, off, t);
@@ -206,17 +198,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(done);
 	}
 
-	// Release an owned field, freeing a struct or fixed array's own block.
+	// Release an owned field, freeing an inline value's own block.
 	pub(super) fn release_field(&mut self, val: Value, typ: &Typ) {
 		self.release_value(val, typ);
-		if let Typ::Struct(..) | Typ::FixedArray(..) = typ {
+		if inline(typ) {
 			self.rt_call("free", &[val]);
 		}
 	}
 
 	// Whether a struct/tuple/array slot holds a value it must release.
 	pub(super) fn slot_owns(&self, typ: &Typ) -> bool {
-		matches!(typ, Typ::Struct(..) | Typ::FixedArray(..)) || self.needs_release(typ)
+		inline(typ) || self.needs_release(typ)
 	}
 
 	// Retain (copy in place) or release the owned elements of an array.
@@ -282,11 +274,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Some(id);
 		}
 
-		let slots = match typ {
-			Typ::Struct(_, fs) => field_types(fs),
-			Typ::Tuple(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
-			_ => unreachable!("box layout"),
-		};
+		let slots = typ.slots().expect("box layout");
 
 		if !self.is_resource(typ) && !slots.iter().any(|t| self.slot_owns(t)) {
 			return None;
@@ -362,14 +350,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn box_value(&mut self, ptr: Value, typ: &Typ) -> Value {
 		let (key, layout, n) = match typ {
 			Typ::Struct(name, fields) => (name.clone(), typ.clone(), fields.len()),
+			Typ::Tuple(fs) if !fs.is_empty() => (typ.key(), typ.clone(), fs.len()),
 			t => (t.key(), Typ::Tuple(vec![(None, t.clone())]), 1),
 		};
 		let descv = self.trace_desc(&key, &layout);
 		let boxp = self.rc_alloc((n * 8) as i64, &[descv]);
 		for i in 0..n as i32 {
-			let v = match typ {
-				Typ::Struct(..) => self.ld_word(ptr, i * 8),
-				_ => ptr,
+			let v = match typ.slots() {
+				Some(_) => self.ld_word(ptr, i * 8),
+				None => ptr,
 			};
 			self.st(boxp, i * 8, v);
 		}
@@ -435,7 +424,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.aliases.push(var);
 		}
 		let mut local = Local::plain(var, typ, mutable);
-		local.boxed = addr && !matches!(local.typ, Typ::Struct(..));
+		local.boxed = addr && local.typ.slots().is_none();
 		self.vars.insert(name.to_string(), local);
 	}
 
@@ -614,13 +603,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			return val;
 		}
 		match typ {
-			Typ::Struct(_, fields) => {
-				let dst = self.stack_slot((fields.len() * 8) as u32);
-				self.copy_struct(val, dst, typ, fields)
-			}
 			Typ::FixedArray(elem, n) => {
 				let dst = self.stack_slot((*n as i64 * self.elem_stride(elem)) as u32);
 				self.fixed_copy(val, dst, elem, *n)
+			}
+			t if let Some(slots) = t.slots() => {
+				let dst = self.stack_slot((slots.len() * 8) as u32);
+				self.copy_struct(val, dst, typ, &slots)
 			}
 			_ => self.copy_in(val, typ),
 		}
@@ -636,12 +625,9 @@ pub(super) fn base_name(name: &str) -> &str {
 // The bindings owned by each scope.
 pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 
-fn releasable(typ: &Typ) -> bool {
-	matches!(typ, Typ::Tuple(fields) if !fields.is_empty()) || handle_fns(typ).is_some()
-}
-
-fn field_types(fields: &[FieldDef]) -> Vec<Typ> {
-	fields.iter().map(|f| f.typ.clone()).collect()
+// Whether a value lives in its owner's frame.
+pub(super) fn inline(typ: &Typ) -> bool {
+	matches!(typ, Typ::FixedArray(..)) || typ.slots().is_some()
 }
 
 // The runtime share/release fns for rc'd types.

@@ -2177,7 +2177,7 @@ impl<M: Module> Compiler<M> {
 			trans.params.push(local);
 		}
 
-		// the params tuple is a heap alloc, so only build it for a body that reads `$`
+		// only build the params tuple for a body that reads `$`
 		let (mut dollar, mut writes) = (false, false);
 		Expr::Block(def.body.to_vec()).walk(&mut |e| match e {
 			Expr::Dollar => dollar = true,

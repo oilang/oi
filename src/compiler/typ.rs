@@ -172,6 +172,15 @@ impl Typ {
 		matches!(self, Typ::Tuple(f) if f.is_empty())
 	}
 
+	// The word slots of a struct or tuple held inline.
+	pub fn slots(&self) -> Option<Vec<Typ>> {
+		match self {
+			Typ::Struct(_, fs) => Some(fs.iter().map(|f| f.typ.clone()).collect()),
+			Typ::Tuple(fs) if !fs.is_empty() => Some(fs.iter().map(|(_, t)| t.clone()).collect()),
+			_ => None,
+		}
+	}
+
 	pub fn bool_bytes(&self) -> Option<u16> {
 		match self {
 			Typ::Bool => Some(1),

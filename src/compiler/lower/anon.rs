@@ -54,11 +54,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				Capture::Mut(_) => self.box_local(name, &local, span.into_range())?,
 				Capture::Move(_) => {
 					let val = self.move_local(name, &local, span.into_range())?;
-					// a moved struct leaves the frame with the env
+					// a moved inline value leaves the frame with the env
 					match &local.typ {
-						Typ::Struct(_, fields) => {
-							let heap = self.call_alloc(fields.len());
-							self.fixed_move(heap, val, &Typ::ISize, fields.len());
+						t if let Some(slots) = t.slots() => {
+							let heap = self.call_alloc(slots.len());
+							self.fixed_move(heap, val, &Typ::ISize, slots.len());
 							heap
 						}
 						Typ::FixedArray(e, n) => {

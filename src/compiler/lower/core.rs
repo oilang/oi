@@ -309,9 +309,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => self.zero_or_err(&local.typ, *span)?,
 			};
 			// the cell outlives the frame that filled it
-			let val = match &local.typ {
-				Typ::Struct(..) => self.copy_in(val, &local.typ),
-				_ => val,
+			let val = match local.typ.slots() {
+				Some(_) => self.copy_in(val, &local.typ),
+				None => val,
 			};
 			self.untemp(val);
 			self.write_local(&local, val);
@@ -388,7 +388,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if locals.is_empty() {
 			self.unit_value()
 		} else {
-			let ptr = self.call_alloc(locals.len());
+			let ptr = self.stack_slot((locals.len() * 8) as u32);
 			let fields = locals
 				.iter()
 				.enumerate()

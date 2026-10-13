@@ -187,6 +187,15 @@ fn tuple_frees_its_struct_elements() {
 	"};
 	assert_clean(held);
 	assert_clean(["t := ([1], 2)", "u := t", "u.0 = [3]", "print(t)"]);
+	assert_clean(indoc! {r#"
+		mk :: fn() (string, []int) { ("a" + "b", [1]) }
+		t := mk()
+		t = mk()
+		xs :: [t]
+		f :: fn[move t]() () { print(t.0) }
+		f()
+		print(xs[0].1)
+	"#});
 }
 
 #[test]

@@ -79,25 +79,16 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [x] `discard` `nim`
-	- [x] `if x := 5; x > 0 { print x }` `odin v go`
-		- this works: `if (x := 5) > 0 { print x }`. need to think about whether this is the same thing or has diff scope than expected from the Go form
-		- maybe this fits better? (doesn't work as-is bc the blocks don't share scope): `if { x := 5; x > 0 } { print x }`
-	- [x] `fallthrough` `odin`
-	- [x] the subject in `loop k in ["a"=1,"cc"=33] { k }` should work, and have `(k v)` be a pattern match, not the required shape. then `(k,)` would work too or w/e, and it should allow iteration over more complex things yielding different shapes
-	- [x] `x: int = 1.0` `odin`
-	- [x] type checking `type(some_char) == rune` `odin`
 - [ ] `:h <topic>` `vim revo`
-- [ ] `comp assert`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
-- [ ] consider writing some blog posts for some of the bigger decisions and changes in the language as I make them
+- [ ] start publishing the blog posts I've been writing for some of the bigger decisions/changes
 - [ ] better errors. atom and int code support?
-- [ ] channels
+- [~] channels
 - [ ] units and unit conversion
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
-- [ ] more types (`any`, paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
+- [ ] more types (paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
 - [ ] swizzle (tried implementing, but I'm going to add core vector types instead) `odin`
 - [ ] allow fn math with arithmetic traits
 ## consider

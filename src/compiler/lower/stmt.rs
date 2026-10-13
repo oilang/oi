@@ -110,7 +110,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let handle = self.read_local(&local);
 						self.b.def_var(var, handle);
 						local = Local {
-							boxed: !matches!(typ, Typ::Struct(..)),
+							boxed: typ.slots().is_none(),
 							..Local::plain(var, typ, true)
 						};
 					}
@@ -124,14 +124,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					self.move_resource(value, &typ)?;
 					self.slots.retain(|s| s != name);
-					if let Typ::Struct(_, ref fields) = typ {
-						let fields = fields.clone();
+					if let Some(slots) = typ.slots() {
 						let dst = self.read_local(&local);
 						let resource = self.is_resource(&typ);
 						if resource {
 							self.release_value(dst, &typ);
 						}
-						self.assign_fields(val, dst, &fields, !resource);
+						self.assign_slots(val, dst, &slots, !resource);
 						self.settle(val, dst, &typ);
 					} else {
 						let val = self.copy_in(val, &typ);

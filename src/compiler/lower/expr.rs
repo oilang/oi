@@ -528,7 +528,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					Some(Typ::Tuple(fs)) if fs.len() == elems.len() => Some(fs),
 					_ => None,
 				};
-				let ptr = self.call_alloc(elems.len());
+				let ptr = self.stack_slot((elems.len() * 8) as u32);
 				let mut fields = Vec::with_capacity(elems.len());
 				for (i, (name, value)) in elems.iter().enumerate() {
 					let (val, typ) = match want {
