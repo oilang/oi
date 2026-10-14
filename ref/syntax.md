@@ -778,7 +778,10 @@ assert!(Money.from(5).cents == Money.from("5").cents)
 ## blanket claims
 
 # claim a trait for every type that already meets a bound
-# TODO: revisit. my original plan doesn't apply anymore
+Greet :: trait { greet: fn(self) string }
+[T: Display] T : Greet < { greet :: fn(self) string { "hi {self}" } }
+assert! 5.greet() == "hi 5"
+# a concrete `Greet` claim on a `Display` type is a compile error, since the blanket already covers it
 
 ## marker traits
 

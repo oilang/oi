@@ -813,6 +813,22 @@ fn associated_types() {
 }
 
 #[test]
+fn blanket_claims() {
+	let src = indoc! {r#"
+		Named :: trait { name: fn(self) string }
+		Greet :: trait { greet: fn(self) string }
+		[T: Named] T : Greet < { greet :: fn(self) string { "hi {self.name()}" } }
+		Dog :: struct {}
+		Dog : Named < { name :: fn(self) string { "rex" } }
+	"#};
+	check(
+		&format!("{src}print(Dog.{{}}.greet(), Dog is Greet, int is Greet)"),
+		"hi rex true false",
+	);
+	fail(&format!("{src}Dog : Greet < {{}}"), "`Dog` claims `Greet` twice");
+}
+
+#[test]
 fn generic_claims() {
 	let src = indoc! {r#"
 		Box[T] :: struct { v: T }

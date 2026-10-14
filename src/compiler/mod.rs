@@ -590,6 +590,7 @@ struct World {
 	generic_fns: HashMap<String, GenericFnDef>,
 	trait_impls: HashSet<(String, String)>,
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
+	blankets: HashMap<String, TypeParam>,
 	core_traits: HashSet<String>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
@@ -948,11 +949,11 @@ impl<M: Module> Compiler<M> {
 			let self_ty = match (typ, type_params) {
 				("array", [t]) => TypeExpr::Array(name(t)),
 				("map", [k, v]) => TypeExpr::Map(name(k), name(v)),
-				_ if type_params.is_empty() => TypeExpr::Name(typ.to_string()),
-				_ => {
+				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
 					let args = type_params.iter().map(|p| TypeExpr::Name(p.name.clone())).collect();
 					TypeExpr::Generic(typ.to_string(), args)
 				}
+				_ => TypeExpr::Name(typ.to_string()),
 			};
 			let by = [("Self".to_string(), self_ty)];
 			let (params, ret) = subst_sig(&params, &ret, &by);
@@ -1008,6 +1009,7 @@ impl<M: Module> Compiler<M> {
 		self.world.generic_fns.clear();
 		self.world.trait_impls.clear();
 		self.world.generic_claims.clear();
+		self.world.blankets.clear();
 		self.world.extensions.clear();
 		self.static_inits.clear();
 		self.tests.clear();
@@ -1234,6 +1236,11 @@ impl<M: Module> Compiler<M> {
 						} else {
 							let mut bounds = type_params.clone();
 							qualify_bounds(scope, &mut bounds);
+							if let Some(p) = bounds.iter().find(|p| p.name == *typ)
+								&& self.world.blankets.insert(tn.clone(), p.clone()).is_some()
+							{
+								return fail(format!("`{tn}` has two blanket claims"), item.1, "one per trait");
+							}
 							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds);
 							// generic fills
 							if !is_hook_trait(tn) {
@@ -1536,6 +1543,14 @@ impl<M: Module> Compiler<M> {
 			}
 		}
 
+		for b in &trait_bodies {
+			if let Some(bound) = self.world.blankets.get(&b.trait_name).and_then(|p| p.bound.as_ref())
+				&& self.world.trait_impls.contains(&(b.typ.to_string(), bound.clone()))
+			{
+				let msg = format!("`{}` claims `{}` twice", b.typ, b.trait_name);
+				return fail(msg, b.span, format!("the blanket over `{bound}` covers it"));
+			}
+		}
 		for b in trait_bodies.iter().filter(|b| b.trait_name == "Copy") {
 			let drops = (b.typ.to_string(), "Drop".to_string());
 			if self.world.trait_impls.contains(&drops) || self.world.generic_claims.contains_key(&drops) {

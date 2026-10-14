@@ -627,8 +627,16 @@ impl Loader {
 						self.consts.insert(name.clone(), c);
 					}
 				}
-				Expr::Claim { typ, fills, .. } => {
-					if !main && !crate::compiler::TypeCtx::builtin_type(typ) {
+				Expr::Claim {
+					typ,
+					type_params,
+					fills,
+					..
+				} => {
+					if !main
+						&& !crate::compiler::TypeCtx::builtin_type(typ)
+						&& type_params.iter().all(|p| p.name != *typ)
+					{
 						*typ = format!("{}::{typ}", m.name);
 					}
 					// pull const fills out as associated consts, keyed `Type::name`
@@ -915,8 +923,9 @@ impl Loader {
 		for m in &mut self.modules {
 			let own = format!("{}::", m.scope.module);
 			for item in &mut m.items {
-				if let Expr::Claim { typ, .. } = &mut item.0
+				if let Expr::Claim { typ, type_params, .. } = &mut item.0
 					&& !crate::compiler::TypeCtx::builtin_type(typ)
+					&& type_params.iter().all(|p| p.name != *typ)
 				{
 					*typ = m.scope.at(item.1).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
 				}

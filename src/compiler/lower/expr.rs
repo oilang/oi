@@ -481,6 +481,13 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
+				if let Some((_, rt)) = &bound
+					&& let Some((k, def)) = (self.world.blankets.iter().filter(|(tn, _)| self.claims(rt, tn)))
+						.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("{}.{method}", p.name)))
+				{
+					let (k, def) = (k.clone(), def.clone());
+					return self.call_generic(&k, &def, type_args, args, bound.zip(recv_expr), expr.1);
+				}
 
 				// Display and Debug defaults
 				if let Some((v, t)) = &bound
