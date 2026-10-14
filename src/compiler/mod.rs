@@ -591,6 +591,7 @@ struct World {
 	trait_impls: HashSet<(String, String)>,
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
 	blankets: HashMap<String, TypeParam>,
+	claim_args: HashMap<(String, String), Vec<Spanned<TypeExpr>>>,
 	core_traits: HashSet<String>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
@@ -925,14 +926,17 @@ impl<M: Module> Compiler<M> {
 				return fail(msg, m.1, "one fill per name");
 			}
 			let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
-				Some(decl) => fill_from_decl(params, *params_tuple, ret, *decl, m.1)?,
+				// trait args name the trait's params, not the fill's
+				Some(&(n, dps, dret)) => {
+					let (dps, dret) = subst_sig(dps, dret, claim.targs);
+					fill_from_decl(params, *params_tuple, ret, (n, &dps, &dret), m.1)?
+				}
 				None if params.is_empty() && !params_tuple => {
 					let msg = format!("no trait method `{name}` supplies a signature");
 					return fail(msg, m.1, "write the `fn` header out");
 				}
 				None => (params.clone(), *params_tuple, ret.clone()),
 			};
-			let (params, ret) = subst_sig(&params, &ret, claim.targs);
 			if type_params.is_empty() && mtp.is_empty() {
 				others.push(FnItem {
 					key,
@@ -947,8 +951,8 @@ impl<M: Module> Compiler<M> {
 			}
 			let name = |p: &TypeParam| Box::new(TypeExpr::Name(p.name.clone()));
 			let self_ty = match (typ, type_params) {
-				("array", [t]) => TypeExpr::Array(name(t)),
-				("map", [k, v]) => TypeExpr::Map(name(k), name(v)),
+				("array", [t, ..]) => TypeExpr::Array(name(t)),
+				("map", [k, v, ..]) => TypeExpr::Map(name(k), name(v)),
 				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
 					let args = type_params.iter().map(|p| TypeExpr::Name(p.name.clone())).collect();
 					TypeExpr::Generic(typ.to_string(), args)
@@ -1010,6 +1014,7 @@ impl<M: Module> Compiler<M> {
 		self.world.trait_impls.clear();
 		self.world.generic_claims.clear();
 		self.world.blankets.clear();
+		self.world.claim_args.clear();
 		self.world.extensions.clear();
 		self.static_inits.clear();
 		self.tests.clear();
@@ -1231,6 +1236,7 @@ impl<M: Module> Compiler<M> {
 					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					for (tn, args) in &claimed {
+						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
 						if type_params.is_empty() {
 							self.world.trait_impls.insert((typ.clone(), tn.clone()));
 						} else {

@@ -204,6 +204,34 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Fill any params inference didn't pin from their declared defaults.
 	fn type_defaults(&self, def: &GenericFnDef, subst: &mut HashMap<String, Typ>) -> Result<(), Diagnostic> {
 		for p in &def.type_params {
+			let (Some(bound), Some(w)) = (&p.bound, subst.get(&p.name)) else {
+				continue;
+			};
+			let key = (rc::base_name(&w.key()).to_string(), bound.clone());
+			let Some(args) = self.world.claim_args.get(&key) else {
+				continue;
+			};
+			let names = self
+				.world
+				.generic_claims
+				.get(&key)
+				.into_iter()
+				.flatten()
+				.map(|p| p.name.clone());
+			let own = names
+				.zip(self.types.generics.instance_args(&w.key()).unwrap_or_default())
+				.collect();
+			for ((te, _), (arg, span)) in p.bound_args.iter().zip(args) {
+				let home =
+					(self.world.module_scopes.values().flat_map(|s| &s.files)).find(|(r, _)| r.contains(&span.start));
+				let types = self.types.with_type_params(&own);
+				let typ = home.map_or(types, |(_, s)| types.with_scope(s)).resolve(arg, *span)?;
+				unify(te, &typ, &def.type_params, subst, self.types.generics)
+					.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
+			}
+		}
+
+		for p in &def.type_params {
 			let Some((te, span)) = &p.default else { continue };
 			if subst.contains_key(&p.name) {
 				continue;

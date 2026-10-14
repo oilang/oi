@@ -309,18 +309,24 @@ where
 		.then(bracket(list(spanned(p.type_expr.clone()))).or_not())
 		.map(|(name, args)| (name, args.unwrap_or_default()));
 	// arrays and maps
-	let bracket_head = bracket(ident().or_not()).then(ident()).map(|(k, v)| {
-		let names: Vec<_> = k
-			.into_iter()
-			.chain([v])
-			.map(|name| TypeParam {
-				name,
-				bound: None,
-				default: None,
-			})
-			.collect();
-		(if names.len() == 1 { "array" } else { "map" }.into(), names)
-	});
+	let kv = bracket(ident().or_not()).then(ident());
+	let bracket_head =
+		(p.type_params.clone().then(kv.clone()))
+			.or(kv.map(|kv| (vec![], kv)))
+			.map(|(mut ps, (k, v))| {
+				let typ = if k.is_some() { "map" } else { "array" };
+				for name in [v].into_iter().chain(k) {
+					let p = match ps.iter().position(|p| p.name == name) {
+						Some(i) => ps.remove(i),
+						None => TypeParam {
+							name,
+							..TypeParam::default()
+						},
+					};
+					ps.insert(0, p);
+				}
+				(typ.into(), ps)
+			});
 	let blanket = (p.type_params.clone().then(ident())).filter(|(ps, t)| ps.iter().any(|p| p.name == *t));
 	let head = (blanket.map(|(ps, t)| (t, ps)))
 		.or(p.lit_path.clone().then(p.type_params.clone()))

@@ -229,8 +229,7 @@ fn fn_def(
 	let (params, params_tuple) = params.unwrap_or_else(|| {
 		type_params.push(TypeParam {
 			name: "$I".into(),
-			bound: None,
-			default: None,
+			..TypeParam::default()
 		});
 		(vec![Param::new("$".into(), TypeExpr::Name("$I".into()), span)], false)
 	});
@@ -387,10 +386,20 @@ where
 	let fn_ret = ident().then(typed.or(bound_ret)).or_not().then(ret.clone()).boxed();
 
 	// generics
+	let bound = ident().then(bracket(list(spanned(type_expr.clone()))).or_not());
 	let type_param = ident()
-		.then(just(Token::Colon).ignore_then(ident()).or_not())
+		.then(just(Token::Colon).ignore_then(bound).or_not())
 		.then(just(Token::Assign).ignore_then(spanned(type_expr.clone())).or_not())
-		.map(|((name, bound), default)| TypeParam { name, bound, default });
+		.map(|((name, bound), default)| {
+			let (bound, args) = bound.unzip();
+			let bound_args = args.flatten().unwrap_or_default();
+			TypeParam {
+				name,
+				bound,
+				bound_args,
+				default,
+			}
+		});
 	let type_params = bracket(list(type_param)).or_not().map(Option::unwrap_or_default).boxed();
 
 	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));

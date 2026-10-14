@@ -38,6 +38,13 @@ Thread[T] : Waitable[T] < {
 	}
 }
 
+## Waits on each in turn.
+[T, W: Waitable[T]] []W : Waitable[[]T] < {
+	wait :: fn(move self) []T {
+		loop w in move self do w.wait()
+	}
+}
+
 ## Run `f` on a new thread.
 pub start[T] :: fn(move f: fn() T) Thread[T] {
 	job: any = fn [move f] () any { f() }

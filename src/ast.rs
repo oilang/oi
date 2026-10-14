@@ -684,7 +684,6 @@ impl TypeExpr {
 
 	// Visit this type and every type nested in it.
 	pub fn walk_mut(&mut self, f: &mut impl FnMut(&mut TypeExpr)) {
-		f(self);
 		match self {
 			TypeExpr::Array(t)
 			| TypeExpr::FixedArray(t, _)
@@ -710,6 +709,7 @@ impl TypeExpr {
 			| TypeExpr::Const(_)
 			| TypeExpr::Infer(_) => {}
 		}
+		f(self);
 	}
 
 	// Every unquote in this type.
@@ -907,10 +907,11 @@ pub enum Capture {
 pub type TraitRef = (String, Vec<Spanned<TypeExpr>>);
 
 // Generic type parameter.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TypeParam {
 	pub name: String,
 	pub bound: Option<String>,
+	pub bound_args: Vec<Spanned<TypeExpr>>,
 	pub default: Option<Spanned<TypeExpr>>,
 }
 

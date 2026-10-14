@@ -829,6 +829,18 @@ fn blanket_claims() {
 }
 
 #[test]
+fn bounds_with_trait_args() {
+	let src = indoc! {r#"
+		Get[T] :: trait { get: fn(self) T }
+		Box[T] :: struct { v: T }
+		Box[T] : Get[T] < { get :: fn(self) T { self.v } }
+		twice[T, W: Get[T]] :: fn(w: W) (T, T) { (w.get(), w.get()) }
+		print(twice(Box.{ v = "a" }))
+	"#};
+	check(src, r#"("a", "a")"#);
+}
+
+#[test]
 fn generic_claims() {
 	let src = indoc! {r#"
 		Box[T] :: struct { v: T }
