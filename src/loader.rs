@@ -125,6 +125,7 @@ pub struct Visible {
 pub struct Publics {
 	pub vis: HashMap<String, Vis>,
 	pub packages: HashMap<String, PathBuf>,
+	pub uses: HashMap<String, Vec<String>>,
 }
 
 // The module a qualified key belongs to.
@@ -482,6 +483,9 @@ impl Loader {
 					};
 					if public.is_some() {
 						self.reexported_modules.insert(format!("{}::{local}", m.name), vis.clone());
+						if !narrows {
+							self.publics.uses.entry(m.name.clone()).or_default().push(module.clone());
+						}
 					}
 					// handle re-importing
 					if let Some(prev) = m.scope.visible.insert(local.clone(), vis)

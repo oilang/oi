@@ -128,13 +128,13 @@ fn builtin_amendment() {
 
 #[test]
 fn builtin_amendment_outside_core() {
-	fail(
+	check(
 		indoc! {r#"
 			string :< {
-				nope :: fn(self) bool { true }
+				yep :: fn(self) bool { true }
 			}
-			print("hi".nope())
+			print("hi".yep())
 		"#},
-		"amended in core",
+		"true",
 	);
 }

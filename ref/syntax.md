@@ -521,6 +521,11 @@ User :< {
 	}
 }
 
+# any module may amend any type
+use shapes
+shapes.P :< { pub dbl :: fn(self) int { self.x * 2 } }
+string :< { pub shout :: fn(self) string { self + "!" } }
+
 # embedded structs
 
 Profile :: struct {

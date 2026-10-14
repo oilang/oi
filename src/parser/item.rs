@@ -321,7 +321,7 @@ where
 			.collect();
 		(if names.len() == 1 { "array" } else { "map" }.into(), names)
 	});
-	let head = name_head.or(bracket_head).boxed();
+	let head = p.lit_path.clone().then(p.type_params.clone()).or(bracket_head).boxed();
 	let claim = head
 		.clone()
 		.then_ignore(just(Token::Colon))

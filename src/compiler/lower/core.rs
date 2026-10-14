@@ -61,6 +61,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		fail(msg, span, "not public")
 	}
 
+	// The key of the extension `base.method` visible here, if any.
+	pub(super) fn extension(&self, base: &str, method: &str, span: Span) -> Result<Option<String>, Diagnostic> {
+		let Some(exts) = self.world.extensions.get(&format!("{base}.{method}")) else {
+			return Ok(None);
+		};
+		// whole-module imports, through `pub use`
+		let scope = &self.types.scope;
+		let mut seen: Vec<&str> = (scope.visible.values().filter(|v| v.only.is_none()))
+			.map(|v| v.module.as_str())
+			.collect();
+		let mut i = 0;
+		while let Some(m) = seen.get(i).copied() {
+			seen.extend(self.world.publics.uses.get(m).into_iter().flatten().map(String::as_str));
+			i += 1;
+		}
+		let mut hits =
+			(exts.iter()).filter(|(m, public, _)| *m == scope.module || *public && seen.contains(&m.as_str()));
+		match (hits.next(), hits.next()) {
+			(Some((m, ..)), None) => Ok(Some(format!("{base}.{method}${}", m.replace('.', "$")))),
+			(Some(_), Some(_)) => fail(format!("`{method}` is ambiguous"), span, "two visible extensions"),
+			_ => Ok(None),
+		}
+	}
+
 	// Enforce `@noinit`.
 	pub(super) fn check_noinit(&self, name: &str, span: Span) -> Result<(), Diagnostic> {
 		let base = rc::base_name(name);

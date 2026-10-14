@@ -56,6 +56,7 @@ struct Fills<'a, 'b> {
 	decls: &'b [TraitFn<'a>],
 	generic: bool,
 	targs: &'b [(String, TypeExpr)],
+	ext: bool,
 }
 
 #[derive(Clone)]
@@ -597,6 +598,7 @@ struct World {
 	privates: HashMap<String, HashSet<String>>,
 	reexports: HashMap<String, String>,
 	statics: HashMap<String, (String, Typ)>,
+	extensions: HashMap<String, Vec<(String, bool, Span)>>,
 }
 
 #[derive(Default)]
@@ -902,6 +904,11 @@ impl<M: Module> Compiler<M> {
 			// key claims by type+name to handle generics
 			let key = match claim.generic {
 				true => format!("{typ}.{name}#{}", others.len()),
+				false if claim.ext => {
+					let entry = (scope.module.clone(), public, m.1);
+					self.world.extensions.entry(format!("{typ}.{name}")).or_default().push(entry);
+					format!("{typ}.{name}${}", scope.module.replace('.', "$"))
+				}
 				false => format!("{typ}.{name}"),
 			};
 			self.annotations
@@ -1001,6 +1008,7 @@ impl<M: Module> Compiler<M> {
 		self.world.generic_fns.clear();
 		self.world.trait_impls.clear();
 		self.world.generic_claims.clear();
+		self.world.extensions.clear();
 		self.static_inits.clear();
 		self.tests.clear();
 		self.out.wanted.clear();
@@ -1217,10 +1225,8 @@ impl<M: Module> Compiler<M> {
 					let claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
 						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
 						.collect();
-					if claimed.is_empty() && TypeCtx::builtin_type(typ) && scope.module != "core" {
-						let msg = format!("`{typ}` is a builtin type and can only be amended in core");
-						return fail(msg, item.1, "not your type");
-					}
+					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
+					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					for (tn, args) in &claimed {
 						if type_params.is_empty() {
@@ -1276,6 +1282,7 @@ impl<M: Module> Compiler<M> {
 						decls: &decls,
 						generic,
 						targs: &targs,
+						ext,
 					};
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
@@ -1552,6 +1559,18 @@ impl<M: Module> Compiler<M> {
 		)?;
 
 		boxed.into_iter().try_for_each(|e| build_enum(&structs, e))?;
+
+		// an extension can't hide the type's own members
+		for (k, exts) in &self.world.extensions {
+			let (t, n) = k.rsplit_once('.').unwrap_or_default();
+			if structs.get(t).is_some_and(|fs| fs.iter().any(|f| f.name == n))
+				|| self.world.generic_fns.contains_key(k)
+				|| others.iter().any(|f| f.key.split('#').next() == Some(k))
+			{
+				let msg = format!("extension `{n}` clashes with `{}`'s own `{n}`", display_name(t));
+				return fail(msg, exts[0].2, "already a member");
+			}
+		}
 
 		// hoist fns
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();

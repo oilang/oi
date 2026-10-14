@@ -445,3 +445,17 @@ fn exec_resolves_imports_against_cwd() {
 	let out = p.ok(&["exec", "use foo\nprint(foo.hi())"]);
 	assert_eq!(out, "99");
 }
+
+#[test]
+fn extensions_ride_whole_module_imports() {
+	let ext = [
+		"use shapes",
+		"shapes.P :< { pub dbl :: fn(self) int { self.x * 2 } }",
+		"pub id :: fn(n: int) int { n }",
+	];
+	let shapes = ["pub P :: struct { pub x: int }"];
+	let p = Project::new().main(["use shapes", "use ext", "print(shapes.P.{ x = 3 }.dbl())"]);
+	p.lib("ext", ext).lib("shapes", shapes).check("6");
+	let p = Project::new().main(["use shapes", "use ext.{ id }", "print(shapes.P.{ x = id(3) }.dbl())"]);
+	p.lib("ext", ext).lib("shapes", shapes).fail_with("has no method `dbl`");
+}
