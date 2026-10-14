@@ -43,6 +43,12 @@ pub(super) fn unify(
 			.iter()
 			.zip(fields)
 			.try_for_each(|((_, e), (_, f))| unify(e, f, params, subst, generics)),
+		(TypeExpr::Fn(ps, r), Typ::Fn(cps, cr)) if ps.len() == cps.len() => {
+			ps.iter()
+				.zip(cps)
+				.try_for_each(|((_, _, p), c)| unify(p, &c.typ, params, subst, generics))?;
+			unify(r, cr, params, subst, generics)
+		}
 		(TypeExpr::Generic(n, gargs), c)
 			if n == "Option" && !matches!(c, Typ::Enum(e) if e.starts_with(role::OPTION)) =>
 		{

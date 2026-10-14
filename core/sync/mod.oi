@@ -1,0 +1,79 @@
+module sync
+
+## Threads and channels.
+
+oi_thread_spawn : fn(move job: any) ptr : foreign
+oi_thread_join : fn(handle: ptr) any : foreign
+oi_chan_new : fn() ptr : foreign
+oi_chan_send : fn(chan: ptr, cap: int, move packet: ^Packet) int : foreign
+oi_chan_recv : fn(chan: ptr) ?^Packet : foreign
+oi_chan_close : fn(chan: ptr) : foreign
+
+Packet :: struct {
+	value: any
+}
+
+## Blocks until it yields a `T`.
+pub Waitable[T] :: trait {
+	wait: fn(move self) T
+}
+
+## A running thread. Dropping it detaches.
+pub Thread[T] :: struct {
+	handle: ptr
+}
+
+Thread[T] : Waitable[T] < {
+	wait :: fn(move self) T {
+		T.(unsafe oi_thread_join(self.handle)) or panic!("sync: bad thread result")
+	}
+}
+
+## Run `f` on a new thread.
+pub start[T] :: fn(move f: fn() T) Thread[T] {
+	job: any = fn [move f] () any { f() }
+	.{ handle = unsafe oi_thread_spawn(move job) }
+}
+
+## Run an expression on a new thread.
+pub spawn! :: fn(expr: Ast) Ast {
+	`{
+		f: fn() type(%expr) = fn { %expr }
+		sync.start(move f)
+	}`
+}
+
+## A channel between threads.
+## Unbounded when `cap` is 0.
+pub Chan[T] :: struct {
+	pub cap: int
+	handle: ptr = unsafe oi_chan_new()
+}
+
+Chan[T] :< {
+	## Fail future sends. Receivers drain, then get none.
+	pub close :: fn(self) {
+		unsafe oi_chan_close(self.handle)
+	}
+}
+
+Chan[T] : Send[T] < {
+	send :: fn(self, value: T) !() {
+		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value }) == 0 {
+			return error("closed")
+		}
+	}
+}
+
+Chan[T] : Recv[T] < {
+	recv :: fn(self) ?T {
+		packet := unsafe oi_chan_recv(self.handle) or return none
+		T.(packet.value)
+	}
+}
+
+Chan[T] : Iterator[T] < {
+	next :: fn(mut self) ?T {
+		self.recv()
+	}
+}

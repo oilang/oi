@@ -2,11 +2,12 @@
 //! Backend-agnostic functions a compiled Oi program calls at runtime.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Condvar, Mutex, OnceLock};
+use std::thread::JoinHandle;
 
 // Flush stdout, then fail without a core dump.
 fn die() -> ! {
@@ -1118,4 +1119,65 @@ pub unsafe extern "C" fn map_entries(map: *mut OiMap, keys: i64, width: i64) -> 
 		_ => map.entries.keys().map(key_bits).collect(),
 	};
 	array_of(&bits, width)
+}
+
+/// Run a boxed fn on a new thread, with that thread's root context.
+/// # Safety
+/// `job` must be an owned `any` holding a fn.
+#[unsafe(export_name = "oi_thread_spawn")]
+pub unsafe extern "C" fn thread_spawn(job: usize) -> Box<JoinHandle<usize>> {
+	Box::new(std::thread::spawn(move || unsafe {
+		let f = *((job + 8) as *const *mut u8);
+		let call: unsafe extern "C" fn(*mut i64, *mut u8) -> usize = std::mem::transmute(*(f as *const usize));
+		let out = call(ctx_root(), f);
+		ref_release(job as *mut u8);
+		out
+	}))
+}
+
+#[unsafe(export_name = "oi_thread_join")]
+pub extern "C" fn thread_join(h: Box<JoinHandle<usize>>) -> usize {
+	h.join().unwrap_or_else(|_| die())
+}
+
+#[derive(Default)]
+pub struct Chan {
+	queue: Mutex<(VecDeque<usize>, bool)>,
+	cv: Condvar,
+}
+
+#[unsafe(export_name = "oi_chan_new")]
+pub extern "C" fn chan_new() -> Box<Chan> {
+	Box::default()
+}
+
+/// Queue a value, blocking while queue is at `cap`.
+/// # Safety
+/// `v` must be an owned box.
+#[unsafe(export_name = "oi_chan_send")]
+pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize) -> i64 {
+	let full = |(queue, closed): &mut (VecDeque<usize>, bool)| !*closed && cap > 0 && queue.len() >= cap as usize;
+	let mut queue = c.cv.wait_while(c.queue.lock().unwrap(), full).unwrap();
+	if queue.1 {
+		unsafe { ref_release(v as *mut u8) };
+		return 0;
+	}
+	queue.0.push_back(v);
+	c.cv.notify_all();
+	1
+}
+
+/// Take the next box, blocking while empty.
+#[unsafe(export_name = "oi_chan_recv")]
+pub extern "C" fn chan_recv(chan: &Chan) -> usize {
+	let empty = |(queue, closed): &mut (VecDeque<usize>, bool)| queue.is_empty() && !*closed;
+	let mut queue = chan.cv.wait_while(chan.queue.lock().unwrap(), empty).unwrap();
+	chan.cv.notify_all();
+	queue.0.pop_front().unwrap_or(0)
+}
+
+#[unsafe(export_name = "oi_chan_close")]
+pub extern "C" fn chan_close(c: &Chan) {
+	c.queue.lock().unwrap().1 = true;
+	c.cv.notify_all();
 }

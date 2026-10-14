@@ -715,7 +715,7 @@ impl TypeExpr {
 	// Every unquote in this type.
 	pub fn holes(&mut self, mut f: impl FnMut(&mut Spanned<Expr>)) {
 		self.walk_mut(&mut |t| match t {
-			TypeExpr::Unquote(e) => f(e),
+			TypeExpr::Unquote(e) | TypeExpr::Infer(e) => f(e),
 			TypeExpr::FixedArray(_, e) if matches!(e.0, Expr::Unquote(_) | Expr::UnquoteExpr(_)) => f(e),
 			_ => {}
 		});

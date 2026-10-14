@@ -1,0 +1,20 @@
+use sync
+
+Job :: struct { id: int }
+
+test! "threads and chans" {
+	ch := sync.Chan[Job].{ cap = 2 }
+	t := sync.spawn! {
+		sum := 0
+		loop j in ch { sum += j.id }
+		sum
+	}
+
+	loop i in 0..5 { ch <- Job.{ id = i } or panic!("closed") }
+	ch.close()
+	assert! t.wait() == 10
+
+	failed := false
+	ch <- Job.{ id = 0 } or { failed = true }
+	assert! failed
+}

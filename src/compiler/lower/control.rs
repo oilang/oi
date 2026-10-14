@@ -1036,7 +1036,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some(sig) if self.claims(&typ, role::ITERABLE) => self.emit_call(&sig, &[val]),
 			_ => (val, typ),
 		};
-		let next = self.find_fill(&format!("{}.next", it_typ.key()), 0, &it_typ);
+		let next = (self.find_fill(&format!("{}.next", it_typ.key()), 0, &it_typ))
+			.or_else(|| self.resolve_method(&it_typ, "next"));
 		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
 		let (Some(next), Some(item)) = (next, item) else {
 			return fail(

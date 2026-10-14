@@ -35,6 +35,11 @@ ci: build fmt-check lint test
 @lint:
 	cargo clippy --all-targets --no-deps -- -D warnings
 
+# run clippy
+[group("cargo")]
+@clippy:
+	cargo clippy --all-targets
+
 # run tests
 [group("cargo")]
 @test *args:

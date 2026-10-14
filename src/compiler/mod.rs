@@ -903,7 +903,7 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			// key claims by type+name to handle generics
-			let key = match claim.generic {
+			let key = match claim.generic && type_params.is_empty() {
 				true => format!("{typ}.{name}#{}", others.len()),
 				false if claim.ext => {
 					let entry = (scope.module.clone(), public, m.1);

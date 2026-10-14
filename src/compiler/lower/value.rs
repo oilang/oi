@@ -1416,8 +1416,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			let init = if given.get(i) == Some(&true) {
 				self.b.ins().iconst(self.int, 0)
 			} else if let Some(default_expr) = &f.default {
-				let val = self.check_typed(default_expr, &f.typ, "not a valid default for this field")?;
-				self.copy_in(val, &f.typ)
+				// resolve defaults in the file that wrote them
+				let types = self.types;
+				let home = (self.world.module_scopes.values().flat_map(|s| &s.files))
+					.find(|(r, _)| r.contains(&default_expr.1.start));
+				self.types = home.map_or(types, |(_, s)| types.with_scope(s));
+				let val = self.check_typed(default_expr, &f.typ, "not a valid default for this field");
+				self.types = types;
+				self.copy_in(val?, &f.typ)
 			} else if let Typ::Struct(_, inner) = &f.typ {
 				// apply field defaults of inner structs
 				let inner = inner.clone();

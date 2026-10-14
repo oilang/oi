@@ -325,6 +325,11 @@ impl TypeCtx<'_> {
 				Box::new(self.resolve(v, span)?),
 			)),
 			TypeExpr::Generic(name, args) => {
+				if let Some((m, t)) = name.split_once('.')
+					&& let Some(vis) = self.scope.visible.get(m)
+				{
+					return self.resolve(&TypeExpr::Generic(format!("{}::{t}", vis.module), args.clone()), span);
+				}
 				let name = self.scope.env.get(name).unwrap_or(name);
 				if let Some(def) = self.generics.structs.get(name) {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
