@@ -1,0 +1,11 @@
+use time
+
+test! "time" {
+	t :: time.now()
+	time.sleep(time.ms(2))
+
+	assert! t.elapsed() >= time.ms(2) && t.elapsed() < time.secs(5)
+	assert! time.ms(1500).str() == "1.5s"
+	assert! (time.secs(1) - time.ms(999)).str() == "1ms"
+	assert! time.now().format("%Y").len == 4
+}

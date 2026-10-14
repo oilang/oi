@@ -1,0 +1,23 @@
+module units
+
+use math.{ pi }
+
+## Degrees to radians.
+pub rad :: fn(d: float) float { d * pi / 180.0 }
+
+## Radians to degrees.
+pub deg :: fn(r: float) float { r * 180.0 / pi }
+
+## Human-readable byte count, `1536` is `1.5 KiB`.
+pub bytes :: fn(n: int) string {
+	names :: [ "B" "KiB" "MiB" "GiB" "TiB" ]
+	x := float.(n)
+	i := 0
+	loop x >= 1024.0 && i < 4 {
+		x /= 1024.0
+		i += 1
+	}
+	r :: float.(int.(x * 10.0 + 0.5)) / 10.0
+	num :: if float.(int.(r)) == r do int.(r).str() else do r.str()
+	"{num} {names[i]}"
+}

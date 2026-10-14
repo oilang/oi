@@ -1,0 +1,80 @@
+module time
+
+malloc : fn(n: usize) ptr : foreign
+free : fn(p: ptr) : foreign
+clock_gettime : fn(clock: i32, spec: ptr) i32 : foreign
+nanosleep : fn(req: ptr, rem: ptr) i32 : foreign
+localtime : fn(t: ptr) ptr : foreign
+strftime : fn(buf: ptr, max: usize, fmt: cstr, tm: ptr) usize : foreign
+
+@c
+Spec :: struct {
+	sec: int
+	nsec: int
+}
+
+## A span of time, in nanoseconds.
+pub Duration :: struct {
+	pub ns: int
+}
+
+pub ns :: fn(n: int) Duration { .{ n } }
+pub us :: fn(n: int) Duration { .{ n * 1000 } }
+pub ms :: fn(n: int) Duration { .{ n * 1000000 } }
+pub secs :: fn(n: int) Duration { .{ n * 1000000000 } }
+
+Duration :< {
+	pub us :: fn(self) int { self.ns / 1000 }
+	pub ms :: fn(self) int { self.ns / 1000000 }
+	pub secs :: fn(self) float { float.(self.ns) / 1e9 }
+
+	pub str :: fn(self) string {
+		match true {
+			self.ns >= 1000000000 => "{self.secs()}s",
+			self.ns >= 1000000 => "{self.ms()}ms",
+			self.ns >= 1000 => "{self.us()}us",
+			else => "{self.ns}ns",
+		}
+	}
+}
+
+Duration : Add < { add :: fn(self, other: Self) Self { .{ self.ns + other.ns } } }
+Duration : Sub < { sub :: fn(self, other: Self) Self { .{ self.ns - other.ns } } }
+Duration : Eq < { eq :: fn(self, other: Self) bool { self.ns == other.ns } }
+Duration : Ord < { lt :: fn(self, other: Self) bool { self.ns < other.ns } }
+
+## An instant, in nanoseconds since the Unix epoch.
+pub Time :: struct {
+	pub ns: int
+}
+
+pub now :: fn() Time {
+	p := unsafe malloc(Spec.size)
+	_ := unsafe clock_gettime(0, p)
+	s :: unsafe p.read[Spec]()
+	unsafe free(p)
+	.{ s.sec * 1000000000 + s.nsec }
+}
+
+Time :< {
+	pub elapsed :: fn(self) Duration {
+		.{ now().ns - self.ns }
+	}
+
+	## Render in local time with `strftime` directives.
+	pub format :: fn(self, fmt: string) string {
+		buf := unsafe malloc(128)
+		unsafe buf.write(self.ns / 1000000000)
+		n :: unsafe strftime(buf, 128, fmt.cstr(), localtime(buf))
+		out :: unsafe buf.string(int.(n))
+		unsafe free(buf)
+		out
+	}
+}
+
+pub sleep :: fn(d: Duration) {
+	p := unsafe malloc(Spec.size)
+	unsafe p.write(Spec.{ d.ns / 1000000000, d.ns % 1000000000 })
+	_ := unsafe nanosleep(p, ptr(0))
+	unsafe free(p)
+}

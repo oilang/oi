@@ -93,6 +93,8 @@ tags: []
 - [ ] allow fn math with arithmetic traits
 ## consider
 - `nil`
+- fns that return things should probably error if no binds or `_` blackhole register or `discard` `nim`
+- `Format`/`fmt` or some other Trait/method pair that lets a string interpolate within the value's scope? `point.fmt("({x}, {y})")`
 - use atoms for more, like I'm doing with `break :atom`
 	- `defer :atom` + `cancel :atom`
 - using `#` for annotations despite comment clash
