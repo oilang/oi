@@ -156,11 +156,11 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 	match (names, typ) {
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => fail("`@c` fns can't capture", span, "C has nowhere to keep an environment"),
-		([n], Typ::Fn(..)) if n == role::PURE || n.starts_with(role::CTX) => Ok(()),
+		([n], Typ::Fn(..)) if n == role::PURE || n == role::ISOLATED || n.starts_with(role::CTX) => Ok(()),
 		_ => fail(
 			format!("`{}{typ}` isn't a type", marks(names)),
 			span,
-			"only `@c`, `@pure`, or `@ctx` on a fn, so far",
+			"only `@c`, `@pure`, `@isolated`, or `@ctx` on a fn, so far",
 		),
 	}
 }
@@ -1143,10 +1143,12 @@ impl<M: Module> Compiler<M> {
 					fields,
 					fills,
 				} if !type_params.is_empty() => {
+					let mut bounds = type_params.clone();
+					qualify_bounds(scope, &mut bounds);
 					generics.structs.insert(
 						name.clone(),
 						GenericStructDef {
-							type_params: type_params.clone(),
+							type_params: bounds,
 							fields: fields.clone(),
 						},
 					);
@@ -2173,6 +2175,7 @@ impl<M: Module> Compiler<M> {
 			is_main: def.is_main,
 			script: def.script,
 			pure: def.pure,
+			isolated: false,
 			ctx_used: false,
 			anon_ctx: None,
 			self_name: None,

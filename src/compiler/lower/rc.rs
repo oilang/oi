@@ -69,6 +69,45 @@ impl<'a, M: Module> Translator<'a, M> {
 		parts.iter().any(|t| self.reaches(t, name, seen))
 	}
 
+	// Give an owned value its own copy of every buffer it reaches.
+	pub(super) fn unshare(&mut self, val: Value, typ: &Typ) -> Value {
+		match typ {
+			Typ::Array(elem) => {
+				self.cow_array(val, elem);
+				if self.slot_owns(elem) {
+					let (data, len, stride) = (self.array_data(val), self.array_len(val), self.elem_stride(elem));
+					self.repeat(len, |s, i| {
+						let off = s.b.ins().imul_imm(i, stride);
+						let addr = s.b.ins().iadd(data, off);
+						let ev = s.load_elem(addr, 0, elem);
+						let ev = s.unshare(ev, elem);
+						s.store_elem(addr, 0, elem, ev);
+					});
+				}
+				val
+			}
+
+			Typ::Map(..) => self.rt_call("map_cow", &[val]).unwrap(),
+			t if self.enum_box(t) => {
+				self.owned_payloads(val, t, |s, off, t| {
+					let pv = s.ld_typ(val, off, t);
+					let pv = s.unshare(pv, t);
+					s.st(val, off, pv);
+				});
+				val
+			}
+
+			t => {
+				for (i, t) in t.slots().unwrap_or_default().iter().enumerate() {
+					let fv = self.ld_typ(val, i as i32 * 8, t);
+					let fv = self.unshare(fv, t);
+					self.st(val, i as i32 * 8, fv);
+				}
+				val
+			}
+		}
+	}
+
 	// Check whether a resource copies through its hook instead of moving.
 	pub(super) fn is_copy(&self, typ: &Typ) -> bool {
 		match typ {
@@ -636,6 +675,7 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 		Typ::Array(_) => Some(("array_share", "array_release")),
 		Typ::Map(..) => Some(("map_share", "map_release")),
 		Typ::Fn(..) | Typ::Closure(..) => Some(("ref_share", "fn_release")),
+		Typ::Annotated(a, t) if helpers::is_isolated(a) => handle_fns(t),
 		t if ref_like(t) || *t == Typ::Any => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
 	}

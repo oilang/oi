@@ -975,8 +975,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& **inner == *to
 			&& ctx_mark(anns).is_none()
 		{
-			let val = if is_pure(anns) { val } else { self.fn_cell(val) };
+			let bare = is_pure(anns) || is_isolated(anns);
+			let val = if bare { val } else { self.fn_cell(val) };
 			return Ok((val, to.clone()));
+		}
+		if let Typ::Annotated(anns, inner) = to
+			&& **inner == *from
+			&& is_isolated(anns)
+		{
+			return match from {
+				Typ::Closure(..) => fail(format!("`{from}` can't cross threads"), span, "it has an environment"),
+				_ => Ok((val, to.clone())),
+			};
 		}
 		if let Typ::Annotated(anns, inner) = to
 			&& **inner == *from

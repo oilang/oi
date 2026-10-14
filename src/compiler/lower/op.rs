@@ -175,6 +175,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				(tps.iter().zip(&args)).all(|(p, a)| p.bound.as_ref().is_none_or(|b| self.claims(a, b)))
 			}) || (self.world.core_traits.contains(tn) && builtin_claim(typ, tn))
 			|| (self.world.blankets.get(tn)).is_some_and(|p| p.bound.as_ref().is_some_and(|b| self.claims(typ, b)))
+			|| (tn == role::ISOLATED_TRAIT && self.types.unisolated(typ, &mut Vec::new()).is_none())
 	}
 
 	// Compare two heap blocks slot by slot, from byte `base`.

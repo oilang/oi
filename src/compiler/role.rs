@@ -28,6 +28,7 @@ pub(crate) const ERROR: &str = "core::Error";
 pub(crate) const ALLOCATOR: &str = "core::Allocator";
 pub(crate) const DISPLAY: &str = "core::Display";
 pub(crate) const DEBUG: &str = "core::Debug";
+pub(crate) const ISOLATED_TRAIT: &str = "core::Isolated";
 
 // types
 pub(crate) const OPTION: &str = "core::Option";
@@ -60,11 +61,12 @@ pub(crate) const NOZERO: &str = "core::nozero";
 pub(crate) const NOINIT: &str = "core::noinit";
 pub(crate) const OPEN: &str = "core::open";
 pub(crate) const UNOWNED: &str = "core::unowned";
+pub(crate) const ISOLATED: &str = "core::isolated";
 
 // Annotation markers resolve to core even where a local name shadows them.
 pub(crate) fn marker(name: &str) -> Option<&'static str> {
 	[
-		PARAMS, REQUIRED, TEST, LINK, EXPORT, C, IMPLICIT, PURE, CTX, NOZERO, NOINIT, OPEN,
+		PARAMS, REQUIRED, TEST, LINK, EXPORT, C, IMPLICIT, PURE, CTX, NOZERO, NOINIT, OPEN, ISOLATED,
 	]
 	.into_iter()
 	.find(|m| m.strip_prefix("core::") == Some(name))

@@ -1041,8 +1041,11 @@ pub unsafe extern "C" fn map_share(map: *mut OiMap) -> *mut OiMap {
 	map
 }
 
-// Give a shared map its own entries before a write.
-unsafe fn map_cow(a: *const Allocator, map: *mut OiMap) -> *mut OiMap {
+/// Give a shared map its own entries before a write.
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer.
+#[unsafe(export_name = "oi_map_cow")]
+pub unsafe extern "C" fn map_cow(a: *const Allocator, map: *mut OiMap) -> *mut OiMap {
 	if unsafe { (*map).rc } <= 1 {
 		return map;
 	}

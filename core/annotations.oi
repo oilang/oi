@@ -34,3 +34,6 @@ pub noinit :: ()
 
 ## Lets other modules add defaulted fields to a struct with `:<`.
 pub open :: ()
+
+## A fn that can run on another thread.
+pub isolated :: ()

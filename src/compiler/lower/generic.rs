@@ -43,6 +43,8 @@ pub(super) fn unify(
 			.iter()
 			.zip(fields)
 			.try_for_each(|((_, e), (_, f))| unify(e, f, params, subst, generics)),
+		(TypeExpr::Annotated(_, e), Typ::Annotated(_, c)) => unify(e, c, params, subst, generics),
+		(TypeExpr::Annotated(_, e), c) => unify(e, c, params, subst, generics),
 		(TypeExpr::Fn(ps, r), Typ::Fn(cps, cr)) if ps.len() == cps.len() => {
 			ps.iter()
 				.zip(cps)

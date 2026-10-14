@@ -427,9 +427,42 @@ impl TypeCtx<'_> {
 		}
 		let mut subst = HashMap::new();
 		for (param, arg) in params.iter().zip(args) {
-			subst.insert(param.name.clone(), self.arg_typ(param, arg, span)?);
+			let typ = self.arg_typ(param, arg, span)?;
+			if param.bound.as_deref() == Some(role::ISOLATED_TRAIT)
+				&& let Some(t) = self.unisolated(&typ, &mut Vec::new())
+			{
+				let msg = format!("`{typ}` does not claim `Isolated`");
+				return fail(msg, span, format!("`{t}` can't cross threads"));
+			}
+			subst.insert(param.name.clone(), typ);
 		}
 		Ok(subst)
+	}
+
+	// The part of a type that can't cross threads.
+	pub fn unisolated(&self, typ: &Typ, seen: &mut Vec<String>) -> Option<Typ> {
+		let parts = match typ {
+			Typ::Ref(_) | Typ::Any | Typ::Closure(..) => return Some(typ.clone()),
+			Typ::Annotated(a, _) if a.iter().any(|a| a == role::ISOLATED) => return None,
+			Typ::Enum(n) if !seen.contains(n) => {
+				seen.push(n.clone());
+				let vs = self.enums.borrow().get(n).cloned().unwrap_or_default();
+				vs.into_iter().flat_map(|v| v.payload).collect()
+			}
+			Typ::Sum(n, vs) => match n.is_empty() {
+				true => vs.iter().flat_map(|v| v.payload.clone()).collect(),
+				false => self
+					.named_sum(n, Span::default())
+					.unwrap_or_default()
+					.into_iter()
+					.flat_map(|v| v.payload)
+					.collect(),
+			},
+			Typ::Array(t) | Typ::FixedArray(t, _) | Typ::Map(_, t) | Typ::Annotated(_, t) => vec![(**t).clone()],
+			Typ::TupleStruct(_, fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
+			t => t.slots().unwrap_or_default(),
+		};
+		parts.iter().find_map(|t| self.unisolated(t, seen))
 	}
 
 	// Move one level deeper into a self-referential type, failing past the limit.

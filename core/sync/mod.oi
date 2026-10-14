@@ -46,7 +46,7 @@ Thread[T] : Waitable[T] < {
 }
 
 ## Run `f` on a new thread.
-pub start[T] :: fn(move f: fn() T) Thread[T] {
+pub start[T] :: fn(move f: @isolated fn() T) Thread[T] {
 	job: any = fn [move f] () any { f() }
 	.{ handle = unsafe oi_thread_spawn(move job) }
 }
@@ -54,14 +54,14 @@ pub start[T] :: fn(move f: fn() T) Thread[T] {
 ## Run an expression on a new thread.
 pub spawn! :: fn(expr: Ast) Ast {
 	`{
-		f: fn() type(%expr) = fn { %expr }
+		f: @isolated fn() type(%expr) = fn { %expr }
 		sync.start(move f)
 	}`
 }
 
 ## A channel between threads.
 ## Unbounded when `cap` is 0.
-pub Chan[T] :: struct {
+pub Chan[T: Isolated] :: struct {
 	pub cap: int
 	handle: ptr = unsafe oi_chan_new()
 }
@@ -84,7 +84,7 @@ Chan[T] :< {
 
 Chan[T] : Send[T] < {
 	send :: fn(self, value: T) !() {
-		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value }) == 0 {
+		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value = __unshare(value) }) == 0 {
 			return error("closed")
 		}
 	}

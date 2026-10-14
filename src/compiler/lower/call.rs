@@ -749,7 +749,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => None,
 		};
 		let (typ, pure) = match typ {
-			Typ::Annotated(anns, inner) if is_pure(anns) || want.is_some() => (&**inner, is_pure(anns)),
+			Typ::Annotated(anns, inner) if is_pure(anns) || is_isolated(anns) || want.is_some() => {
+				(&**inner, is_pure(anns))
+			}
 			typ => (typ, false),
 		};
 		if let Typ::Annotated(_, inner) = typ {

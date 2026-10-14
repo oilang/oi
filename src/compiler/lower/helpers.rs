@@ -151,6 +151,11 @@ pub(super) fn is_pure(anns: &[String]) -> bool {
 	anns.iter().any(|a| a == role::PURE)
 }
 
+// Whether a list of annotations mark an `@isolated` fn.
+pub(super) fn is_isolated(anns: &[String]) -> bool {
+	anns.iter().any(|a| a == role::ISOLATED)
+}
+
 // The type of a `@ctx` annotation.
 pub(super) fn ctx_mark(anns: &[String]) -> Option<&str> {
 	anns.iter()

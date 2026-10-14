@@ -78,6 +78,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some(self.quote(&[(def, *at)], *at)?))
 			}
 
+			// an owned copy with no shared buffers
+			"__unshare" => {
+				let (val, typ) = self.expr(&args[0])?;
+				let val = self.copy_bind(val, &typ);
+				let val = self.unshare(val, &typ);
+				self.temp(val, &typ);
+				Ok(Some((val, typ)))
+			}
+
 			// `fmt` and `debug` defaults
 			"__render" | "__repr" => {
 				let (val, typ) = self.expr(&args[0])?;

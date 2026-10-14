@@ -960,11 +960,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				ret,
 				body,
 			} => {
-				// a `@ctx` hint pins the literal's ctx
 				let hint = match hint {
+					// `@ctx` pins the literal's ctx
 					Some(Typ::Annotated(anns, t)) if let Some(c) = ctx_mark(anns) => {
 						self.anon_ctx.get_or_insert_with(|| c.into());
 						Some(&**t)
+					}
+					// `@isolated` isolates a literal
+					Some(Typ::Annotated(anns, t)) if is_isolated(anns) => {
+						self.isolated = true;
+						return self.lower(expr, Some(t));
 					}
 					h => h,
 				};
@@ -989,6 +994,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					let out = self.expr(inner);
 					self.pure = was;
 					return out;
+				}
+				if matches!(inner.0, Expr::AnonFn { .. }) && is_isolated(&names) {
+					self.isolated = true;
+					return self.lower(inner, hint);
 				}
 				if matches!(inner.0, Expr::AnonFn { .. })
 					&& let Some(t) = ctx_mark(&names)

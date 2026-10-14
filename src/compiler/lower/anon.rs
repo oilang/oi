@@ -41,7 +41,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = "a `@pure` fn can't capture";
 			return fail(msg, span, "it only sees its params");
 		}
-		let owns = !captures.is_empty() && captures.iter().all(|c| matches!(c, Capture::Move(_)));
+
+		let isolated = std::mem::take(&mut self.isolated);
+		let owned = |c: &Capture| matches!(c, Capture::Move(_)) || (isolated && matches!(c, Capture::ReadOnly(_)));
+		let owns = !captures.is_empty() && captures.iter().all(owned);
 		let mut resolved = Vec::with_capacity(captures.len());
 		for c in captures {
 			let (name, boxed) = match c {
@@ -49,7 +52,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				Capture::ReadOnly(name) | Capture::Move(name) => (name, false),
 			};
 			check_reserved(name, span)?;
+
 			let local = self.local(name, span.into_range())?;
+			if isolated && boxed {
+				let msg = format!("`mut {name}` can't cross threads");
+				return fail(msg, span, "it shares the binding");
+			}
+			if isolated && let Some(t) = self.types.unisolated(&local.typ, &mut Vec::new()) {
+				return fail(format!("`{t}` can't cross threads"), span, format!("captures `{name}`"));
+			}
 			let val = match c {
 				Capture::Mut(_) => self.box_local(name, &local, span.into_range())?,
 				Capture::Move(_) => {
@@ -69,8 +80,13 @@ impl<'a, M: Module> Translator<'a, M> {
 						_ => val,
 					}
 				}
+				Capture::ReadOnly(_) if isolated => {
+					let val = self.read_local(&local);
+					self.copy_in(val, &local.typ)
+				}
 				Capture::ReadOnly(_) => self.read_local(&local),
 			};
+			let val = if isolated { self.unshare(val, &local.typ) } else { val };
 			resolved.push((name.clone(), local.typ, boxed, val));
 		}
 
@@ -164,13 +180,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let slots: Vec<_> = std::iter::once(addr).chain(resolved.iter().map(|r| r.3)).collect();
 
 		let drops: Vec<_> = (captures.iter().zip(&resolved))
-			.map(|(c, r)| {
-				if let Capture::Move(_) = c {
-					r.1.clone()
-				} else {
-					Typ::ISize
-				}
-			})
+			.map(|(c, r)| if owned(c) { r.1.clone() } else { Typ::ISize })
 			.collect();
 		let thunk = match drops.iter().any(|t| self.slot_owns(t)) {
 			false => self.b.ins().iconst(self.int, 0),
@@ -185,7 +195,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let env = self.rc_alloc((slots.len() * 8) as i64, &[thunk]);
 		self.store_slots(env, &slots);
 
-		let typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), owns));
+		let mut typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), owns));
+		if isolated {
+			typ = Typ::Annotated(vec![role::ISOLATED.into()], typ.into());
+		}
 		self.temp(env, &typ);
 		Ok((env, typ))
 	}

@@ -375,6 +375,39 @@ fn moved_capture_drops_with_the_last_closure_copy() {
 }
 
 #[test]
+fn refs_and_envs_cant_cross_threads() {
+	fail(
+		indoc! {"
+			use sync
+			ch := sync.Chan[^int].{}
+		"},
+		"`^int` does not claim `Isolated`",
+	);
+	fail(
+		indoc! {"
+			use sync
+			n := 1
+			add := fn (x: int) int { x + n }
+			t := sync.spawn! add(1)
+		"},
+		"`fn(int) int` can't cross threads",
+	);
+	fail(
+		indoc! {"
+			use sync
+			n := 1
+			f := fn () int { n }
+			t := sync.start[int](move f)
+		"},
+		"`fn() int` can't cross threads",
+	);
+	fail(
+		["r := &1", "f := @isolated fn () int { r^ }"],
+		"`^int` can't cross threads",
+	);
+}
+
+#[test]
 fn a_move_loop_owns_each_element() {
 	let close = "File :< { close :: fn(move self) int { self.fd } }";
 	let mk = "fs := loop i in 0..3 do File.{fd = i}";

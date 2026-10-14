@@ -19,9 +19,21 @@ test! "threads and chans" {
 	assert! failed
 }
 
+test! "spawn captures are unshared" {
+	xs := [1 2]
+	ch := sync.Chan[int].{}
+	t := sync.spawn! {
+		_ := <-ch
+		xs[0]
+	}
+	xs[0] = 100
+	ch <- 0 or panic!("closed")
+	assert! t.wait() == 1
+}
+
 test! "wait on many" {
 	ts := loop i in 0..4 do sync.spawn! i * i
-	assert! ts.wait() == [ 0 1 4 9 ]
+	assert! ts.wait() == [0 1 4 9]
 }
 
 test! "chan copies share a queue" {
