@@ -237,6 +237,7 @@ struct FnDef<'a> {
 pub(crate) struct GenericStructDef {
 	pub type_params: Vec<TypeParam>,
 	pub fields: Vec<Param>,
+	pub scope: Scope,
 }
 
 // A generic enum definition.
@@ -244,6 +245,7 @@ pub(crate) struct GenericStructDef {
 pub(crate) struct GenericEnumDef {
 	pub type_params: Vec<TypeParam>,
 	pub variants: Vec<EnumVariant>,
+	pub scope: Scope,
 }
 
 // Generic type definitions.
@@ -1150,6 +1152,7 @@ impl<M: Module> Compiler<M> {
 						GenericStructDef {
 							type_params: bounds,
 							fields: fields.clone(),
+							scope: scope.clone(),
 						},
 					);
 					self.note_privates(name, fields);
@@ -1174,6 +1177,7 @@ impl<M: Module> Compiler<M> {
 						GenericEnumDef {
 							type_params: type_params.clone(),
 							variants: variants.clone(),
+							scope: scope.clone(),
 						},
 					);
 					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;

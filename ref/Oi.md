@@ -121,6 +121,7 @@ tags: []
 - ~~reconsider multiple returns now that Oi has solidified~~
 - lua's `tbl.method(self)` vs `tbl:method()` or things in that kind of space
 - jai-like `() ret {}` fns. I hate typing `->` though
+- adding a `Clock` to `Context`
 # stdlib
 - `os`
 - `fs`

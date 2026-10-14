@@ -345,7 +345,7 @@ fn qualified_static_access() {
 				pub Kind :: enum { circle, square }
 			"},
 		)
-		.check("3\ncircle\n0");
+		.check(["3", "circle", "0"]);
 }
 
 #[test]
@@ -370,4 +370,19 @@ fn imported_alias_body_resolves_in_its_module() {
 			],
 		)
 		.check("true");
+}
+
+#[test]
+fn generic_struct_fields_resolve_in_their_module() {
+	Project::new()
+		.file("main.oi", ["use m", "g := m.G[int].{}", "print(g.t)"])
+		.file(
+			"m.oi",
+			[
+				"module m",
+				"Foo :: struct { v: int }",
+				"pub G[T] :: struct { pub c: Foo, pub t: T }",
+			],
+		)
+		.check("0");
 }

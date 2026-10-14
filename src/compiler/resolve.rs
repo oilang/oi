@@ -499,7 +499,8 @@ impl TypeCtx<'_> {
 	) -> Result<Typ, Diagnostic> {
 		let inner = self
 			.nested(name, span, "would require infinitely nested fields")?
-			.with_type_params(subst);
+			.with_type_params(subst)
+			.with_scope(&def.scope);
 		let fields = def.fields.iter().map(|f| inner.field(f)).collect::<Result<Vec<_>, _>>()?;
 		Ok(Typ::Struct(
 			self.register_instance(name, &def.type_params, subst),
@@ -517,7 +518,8 @@ impl TypeCtx<'_> {
 	) -> Result<Typ, Diagnostic> {
 		let inner = self
 			.nested(name, span, "would require infinitely nested variants")?
-			.with_type_params(subst);
+			.with_type_params(subst)
+			.with_scope(&def.scope);
 		let display = self.register_instance(name, &def.type_params, subst);
 		if self.enums.borrow().contains_key(&display) {
 			return Ok(Typ::Enum(display));
