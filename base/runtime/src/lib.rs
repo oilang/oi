@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 // Flush stdout, then fail without a core dump.
@@ -1125,20 +1125,24 @@ pub unsafe extern "C" fn map_entries(map: *mut OiMap, keys: i64, width: i64) -> 
 /// # Safety
 /// `job` must be an owned `any` holding a fn.
 #[unsafe(export_name = "oi_thread_spawn")]
-pub unsafe extern "C" fn thread_spawn(job: usize) -> Box<JoinHandle<usize>> {
-	Box::new(std::thread::spawn(move || unsafe {
+pub unsafe extern "C" fn thread_spawn(job: usize) -> Box<Option<JoinHandle<usize>>> {
+	Box::new(Some(std::thread::spawn(move || unsafe {
 		let f = *((job + 8) as *const *mut u8);
 		let call: unsafe extern "C" fn(*mut i64, *mut u8) -> usize = std::mem::transmute(*(f as *const usize));
 		let out = call(ctx_root(), f);
 		ref_release(job as *mut u8);
 		out
-	}))
+	})))
 }
 
+/// Leaves the box for `oi_thread_detach`.
 #[unsafe(export_name = "oi_thread_join")]
-pub extern "C" fn thread_join(h: Box<JoinHandle<usize>>) -> usize {
-	h.join().unwrap_or_else(|_| die())
+pub extern "C" fn thread_join(h: &mut Option<JoinHandle<usize>>) -> usize {
+	h.take().map_or(0, |h| h.join().unwrap_or_else(|_| die()))
 }
+
+#[unsafe(export_name = "oi_thread_detach")]
+pub extern "C" fn thread_detach(_: Box<Option<JoinHandle<usize>>>) {}
 
 #[derive(Default)]
 pub struct Chan {
@@ -1146,9 +1150,30 @@ pub struct Chan {
 	cv: Condvar,
 }
 
+impl Drop for Chan {
+	fn drop(&mut self) {
+		let queue = &mut self.queue.get_mut().unwrap().0;
+		queue.drain(..).for_each(|v| unsafe { ref_release(v as *mut u8) });
+	}
+}
+
 #[unsafe(export_name = "oi_chan_new")]
-pub extern "C" fn chan_new() -> Box<Chan> {
-	Box::default()
+pub extern "C" fn chan_new() -> *const Chan {
+	Arc::into_raw(Arc::default())
+}
+
+/// # Safety
+/// `c` must come from `oi_chan_new`.
+#[unsafe(export_name = "oi_chan_retain")]
+pub unsafe extern "C" fn chan_retain(c: *const Chan) {
+	unsafe { Arc::increment_strong_count(c) }
+}
+
+/// # Safety
+/// `c` must come from `oi_chan_new`.
+#[unsafe(export_name = "oi_chan_release")]
+pub unsafe extern "C" fn chan_release(c: *const Chan) {
+	unsafe { Arc::decrement_strong_count(c) }
 }
 
 /// Queue a value, blocking while queue is at `cap`.

@@ -4,7 +4,10 @@ module sync
 
 oi_thread_spawn : fn(move job: any) ptr : foreign
 oi_thread_join : fn(handle: ptr) any : foreign
+oi_thread_detach : fn(handle: ptr) : foreign
 oi_chan_new : fn() ptr : foreign
+oi_chan_retain : fn(chan: ptr) : foreign
+oi_chan_release : fn(chan: ptr) : foreign
 oi_chan_send : fn(chan: ptr, cap: int, move packet: ^Packet) int : foreign
 oi_chan_recv : fn(chan: ptr) ?^Packet : foreign
 oi_chan_close : fn(chan: ptr) : foreign
@@ -21,6 +24,12 @@ pub Waitable[T] :: trait {
 ## A running thread. Dropping it detaches.
 pub Thread[T] :: struct {
 	handle: ptr
+}
+
+Thread[T] : Drop < {
+	drop :: fn(mut self) {
+		unsafe oi_thread_detach(self.handle)
+	}
 }
 
 Thread[T] : Waitable[T] < {
@@ -48,6 +57,15 @@ pub spawn! :: fn(expr: Ast) Ast {
 pub Chan[T] :: struct {
 	pub cap: int
 	handle: ptr = unsafe oi_chan_new()
+}
+
+Chan[T] : Drop, Copy < {
+	drop :: fn(mut self) {
+		unsafe oi_chan_release(self.handle)
+	}
+	copy :: fn(mut self) {
+		unsafe oi_chan_retain(self.handle)
+	}
 }
 
 Chan[T] :< {

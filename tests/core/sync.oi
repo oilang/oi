@@ -18,3 +18,12 @@ test! "threads and chans" {
 	ch <- Job.{ id = 0 } or { failed = true }
 	assert! failed
 }
+
+test! "chan copies share a queue" {
+	ch := sync.Chan[Job].{}
+	{
+		c := ch
+		c <- Job.{ id = 7 } or panic!("closed")
+	}
+	assert! (ch.recv() or panic!("empty")).id == 7
+}
