@@ -341,6 +341,7 @@ impl Expander {
 			Expr::Block(stmts) => stmts,
 			other => vec![(other, span)],
 		};
+		body.iter_mut().for_each(|s| pin(s, e.1));
 		self.expand(List(&mut body), scope, depth + 1)?;
 		Ok(Some(body))
 	}
@@ -799,6 +800,17 @@ pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, l
 	splice(&mut stmts, &tpl.bound, &map, suffix);
 	let span = stmts.first().map_or(Span::default(), |s| s.1);
 	leak(one(stmts, span))
+}
+
+// Move template fn literals to the call site.
+fn pin(e: &mut Spanned<Expr>, call: Span) {
+	if matches!(e.0, Expr::AnonFn { .. }) && (e.1.start < call.start || e.1.end > call.end) {
+		e.1 = call;
+	}
+	e.0.for_children(|c| match c {
+		List(list) => list.iter_mut().for_each(|e| pin(e, call)),
+		One(e) => pin(e, call),
+	});
 }
 
 // Box a value for compiled code to hold.

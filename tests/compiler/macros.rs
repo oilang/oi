@@ -313,6 +313,24 @@ fn qualified_macros() {
 }
 
 #[test]
+fn nested_module_macro() {
+	Project::new()
+		.file(
+			"main.oi",
+			["module main", "use util", "print(util.thunk!(util.thunk!(1) + 1))"],
+		)
+		.file(
+			"util/lib.oi",
+			[
+				"module util",
+				"pub call :: fn(f: fn() int) int { f() }",
+				"pub thunk! :: fn(e: Ast) Ast { `util.call(fn () int { %e })` }",
+			],
+		)
+		.check("2");
+}
+
+#[test]
 fn imported_macro_called_bare() {
 	Project::new()
 		.file("main.oi", ["module main", "use util.{ answer }", "print(answer!())"])
