@@ -421,11 +421,23 @@ impl<'a, M: Module> Translator<'a, M> {
 			BinOp::Send => (role::SEND, "send"),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
+		let (r, moved) = match &r.0 {
+			Expr::ArgMod(Access::Move, x) if op == BinOp::Send => (&**x, true),
+			_ => (r, false),
+		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
 			let sig = (lt.nominal())
 				.and_then(|n| s.fill(lt, tn, method, 2).or_else(|| s.sole_fill(&format!("{n}.{method}"))));
 			sig.map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 		})?;
+		if op == BinOp::Send {
+			if !moved && self.is_affine(&rt) {
+				let msg = "this parameter is `move`, missing `move` at the callsite";
+				return fail(msg, r.1, "wrap it, e.g. `ch <- move x`");
+			}
+			self.move_out(r, &rt)?;
+			self.untemp(rv);
+		}
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 

@@ -647,6 +647,9 @@ where
 				prefix(13, just(Token::ArrowL), |_, rhs, ex| {
 					(Expr::Recv(Box::new(rhs)), ex.span())
 				}),
+				prefix(13, just(Token::Move), |_, rhs, ex| {
+					(Expr::ArgMod(Access::Move, Box::new(rhs)), ex.span())
+				}),
 			),
 			prefix(13, just(Token::Not), |_, rhs, ex| match rhs {
 				(Expr::Cast { target: (t, ts), args }, _) => {

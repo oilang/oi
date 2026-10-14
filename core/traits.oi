@@ -32,7 +32,7 @@ pub Index[I, T] :: trait { index: fn(self, i: I) T }
 pub IndexAssign[I, T] :: trait { index_assign: fn(mut self, i: I, v: T) }
 
 # channels
-pub Send[T] :: trait { send: fn(self, v: T) !() }
+pub Send[T] :: trait { send: fn(self, move v: T) !() }
 pub Recv[T] :: trait { recv: fn(self) ?T }
 
 ## Holds no `^T`, `any`, or fn env, so it can cross threads. Checked structurally.

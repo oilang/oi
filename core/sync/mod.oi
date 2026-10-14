@@ -83,7 +83,7 @@ Chan[T] :< {
 }
 
 Chan[T] : Send[T] < {
-	send :: fn(self, value: T) !() {
+	send :: fn(self, move value: T) !() {
 		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value = __unshare(value) }) == 0 {
 			return error("closed")
 		}

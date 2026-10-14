@@ -421,3 +421,18 @@ fn a_move_loop_owns_each_element() {
 	);
 	fail([FILE, close, mk, "loop f in fs { f.close() }"], "it is borrowed here");
 }
+
+#[test]
+fn send_takes_ownership_with_move() {
+	let send = |arg: &str| {
+		indoc::formatdoc! {r#"
+			use sync
+			ch := sync.Chan[File].{{}}
+			f := File.{{fd = 3}}
+			ch <- {arg}f or panic!("closed")
+			print("sent")
+		"#}
+	};
+	check([FILE, &send("move ")], ["sent", "drop 3"]);
+	fail([FILE, &send("")], "missing `move` at the callsite");
+}

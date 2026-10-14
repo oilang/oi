@@ -81,6 +81,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			// an owned copy with no shared buffers
 			"__unshare" => {
 				let (val, typ) = self.expr(&args[0])?;
+				if self.is_affine(&typ) {
+					self.move_out(&args[0], &typ)?;
+				}
 				let val = self.copy_bind(val, &typ);
 				let val = self.unshare(val, &typ);
 				self.temp(val, &typ);

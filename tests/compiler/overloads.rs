@@ -224,7 +224,7 @@ fn send_and_recv_drive_arrows() {
 	let src = indoc! {r#"
 		Pipe :: struct { cap: int }
 		Pipe : Send[int] < {
-			send :: fn(self, v: int) !() {
+			send :: fn(self, move v: int) !() {
 				if v > self.cap { return error("full") }
 				print("sent {v}")
 			}
