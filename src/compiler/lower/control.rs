@@ -239,7 +239,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	fn finish_merge(&mut self, merge: Block, result: Option<(Variable, Typ)>) -> Option<TypedVal> {
+	pub(super) fn finish_merge(&mut self, merge: Block, result: Option<(Variable, Typ)>) -> Option<TypedVal> {
 		result.map(|(var, typ)| {
 			self.b.switch_to_block(merge);
 			self.b.seal_block(merge);
@@ -541,7 +541,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.throw(&mut catch, err, value.1)?;
 				self.b.switch_to_block(happy_block);
-				(self.opt_payload(val, &typ, &inner, 8), inner)
+				let payload = self.opt_payload(val, &typ, &inner, 8);
+				if self.is_affine(&inner) && self.enum_box(&typ) && self.temps.contains_key(&val) {
+					let gone = self.b.ins().iconst(self.int, -1);
+					self.st(val, 0, gone);
+					(self.unbox_ret(payload, &inner), inner)
+				} else {
+					(payload, inner)
+				}
 			}
 			None if !catch.throws.is_empty() => (val, typ),
 			None => {

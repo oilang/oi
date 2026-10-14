@@ -302,22 +302,37 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(None);
 		}
 		let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(target));
-		let none = self.make_option(&opt, None);
-		// `any` is tagged by typeid, a trait object by its vtable.
 		let want = if *typ == Typ::Any {
+			// `any` is tagged by typeid
 			self.b.ins().iconst(self.int, typeid(target))
 		} else {
+			// trait objects tagged by their vtable
 			let tn = if let Typ::Trait(tn) = typ { tn } else { role::ERROR };
 			if !self.world.trait_impls.contains(&(target.key(), tn.to_string())) {
-				return Ok(Some((none, opt)));
+				return Ok(Some((self.make_option(&opt, None), opt)));
 			}
 			self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())))
 		};
+
 		let got = self.ld_word(obj, 0);
 		let same = self.b.ins().icmp(IntCC::Equal, got, want);
+		let (yes, no) = self.fork(same);
+		let (merge, mut join) = (self.b.create_block(), control::Join::new("cast", span, None));
+		self.b.switch_to_block(no);
+
+		let none = self.make_option(&opt, None);
+		self.contribute((none, opt.clone()), &mut join, merge)?;
+		self.b.switch_to_block(yes);
+
 		let data = self.load_bind(obj, typ, target, 8, span);
+		if *typ == Typ::Any && self.is_affine(target) {
+			let zero = self.b.ins().iconst(self.int, 0);
+			self.st(obj, -16, zero);
+		}
+
 		let some = self.make_option(&opt, Some(data));
-		Ok(Some((self.b.ins().select(same, some, none), opt)))
+		self.contribute((some, opt), &mut join, merge)?;
+		Ok(self.finish_merge(merge, join.result))
 	}
 
 	// Numeric and string casts.

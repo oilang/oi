@@ -436,3 +436,14 @@ fn send_takes_ownership_with_move() {
 	check([FILE, &send("move ")], ["sent", "drop 3"]);
 	fail([FILE, &send("")], "missing `move` at the callsite");
 }
+
+#[test]
+fn a_cast_out_of_any_moves_the_payload() {
+	let src = indoc! {"
+		use sync
+		t := sync.spawn! File.{fd = 1}
+		f := t.wait()
+		print(f.fd)
+	"};
+	check([FILE, src], ["1", "drop 1"]);
+}

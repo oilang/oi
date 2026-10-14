@@ -816,7 +816,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A returned inline value's box moves into a frame slot.
-	fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
+	pub(super) fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
 		let (elem, n) = match typ {
 			Typ::FixedArray(elem, n) => ((**elem).clone(), *n),
 			t if let Some(slots) = t.slots() => (Typ::Int(64), slots.len()),
