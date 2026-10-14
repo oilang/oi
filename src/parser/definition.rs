@@ -2,7 +2,7 @@ use super::{
 	P, Parsers, Rec, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned, stmt,
 	trailing_list, trailing_list1, types,
 };
-use crate::ast::{BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
+use crate::ast::{Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -341,7 +341,13 @@ where
 		.then(just(Token::With).or_not())
 		.then(p.pat.clone().or(p.pat_name.clone()))
 		.then_ignore(just(Token::In))
-		.then(header_expr.clone().map(Box::new))
+		.then(
+			just(Token::Move)
+				.ignore_then(header_expr.clone())
+				.map_with(|e, ex| (Expr::ArgMod(Access::Move, Box::new(e)), ex.span()))
+				.or(header_expr.clone())
+				.map(Box::new),
+		)
 		.then(p.block.clone())
 		.validate(|((((label, with), pat), iter), mut body), ex, emitter| {
 			if with.is_some() && !open_bound(&pat, &mut body) {

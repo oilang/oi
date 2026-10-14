@@ -859,7 +859,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// non-bool headers are iterated
 					self.b.seal_block(top);
 					let wild = (Expr::Ident("_".into()), cond.1);
-					return self.for_value(label, &wild, (cv, ct), cond.1, body).map(Some);
+					return self.for_value(label, &wild, (cv, ct), false, cond.1, body).map(Some);
 				}
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
@@ -977,8 +977,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let valued = frame.result.as_ref().is_some_and(|(_, r)| !r.is_unit());
 		match &mut frame.collect {
 			Some((hdr, elem)) if !t.is_unit() && !valued => {
+				let moved = self.handover(v, &t);
 				let owned = self.copy_in(v, &t);
-				if owned != v {
+				if owned != v && !moved {
 					self.release_value(v, &t);
 				}
 				self.push(*hdr, owned, &t);
@@ -1078,9 +1079,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		self.header_scoped(|s| {
+			let (iter, consume) = match &iter.0 {
+				Expr::ArgMod(Access::Move, x) => (&**x, true),
+				_ => (iter, false),
+			};
 			let iter = s.header(iter)?;
-			let tv = s.expr(iter)?;
-			s.for_value(label, pat, tv, iter.1, body)
+			let (val, typ) = s.expr(iter)?;
+			let owns = consume && matches!(&typ, Typ::Array(e) if s.is_affine(e));
+			if consume {
+				s.move_out(iter, &typ)?;
+				s.untemp(val);
+				if !owns {
+					s.temp(val, &typ);
+				}
+			}
+			s.for_value(label, pat, (val, typ), owns, iter.1, body)
 		})
 	}
 
@@ -1089,6 +1102,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		label: Option<&str>,
 		pat: &Spanned<Expr>,
 		(val, typ): TypedVal,
+		owns: bool,
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
@@ -1139,7 +1153,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				(item, typ) = (tup, Typ::Tuple(vec![(None, typ), (None, vt.clone())]));
 				s.temp(item, &typ);
 			}
+			let n = s.scopes.last().map_or(0, Vec::len);
 			s.bind_pat(pat, item, &typ, Some(false))?;
+			if !owns {
+				for (var, t) in s.scopes.last_mut().expect("scope").split_off(n) {
+					if !s.is_affine(&t) {
+						s.own_local(var, &t);
+					}
+				}
+			}
 			s.block(body)
 		})?;
 
@@ -1156,7 +1178,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().jump(header, &[]);
 		self.b.seal_block(header);
 
-		Ok(self.loop_end(frame, exit))
+		let out = self.loop_end(frame, exit);
+		// release what a `break` skipped
+		if owns {
+			let iv = self.b.use_var(counter);
+			let lo = self.b.ins().iadd_imm(iv, 1);
+			let lo = self.b.ins().smin(lo, limit);
+			let n = self.b.ins().isub(limit, lo);
+			self.elems_rc(val, lo, n, &src.1, false);
+			self.rt_call("array_release", &[val]);
+		}
+		Ok(out)
 	}
 
 	// Bind or assign a pattern's names against a value.
