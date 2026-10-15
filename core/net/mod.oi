@@ -1,0 +1,106 @@
+module net
+
+use math
+
+malloc : fn(n: usize) ptr : foreign
+free : fn(p: ptr) : foreign
+socket : fn(domain: i32, kind: i32, proto: i32) i32 : foreign
+bind : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
+accept : fn(fd: i32, addr: ptr, len: ptr) i32 : foreign
+send : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
+recv : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
+close : fn(fd: i32) i32 : foreign
+setsockopt : fn(fd: i32, level: i32, name: i32, val: ptr, len: u32) i32 : foreign
+inet_addr : fn(host: cstr) u32 : foreign
+
+@link.{name = "connect"}
+c_connect : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
+@link.{name = "listen"}
+c_listen : fn(fd: i32, backlog: i32) i32 : foreign
+
+## sockaddr_in
+@c Addr :: struct {
+	family: u16
+	port: u16
+	ip: u32
+	zero: u64
+}
+
+pub Conn :: struct { fd: i32 }
+pub Listener :: struct { fd: i32 }
+
+## Connect to a dotted IPv4 `host` (or "localhost") on `port`.
+pub connect :: fn(host: string, port: int) !Conn {
+	Conn.{ sock(host, port, false)? }
+}
+
+## Listen for TCP connections on `port`, on every interface.
+pub listen :: fn(port: int) !Listener {
+	Listener.{ sock("0.0.0.0", port, true)? }
+}
+
+## A TCP socket connected to / serving on `host:port`.
+sock :: fn(host: string, port: int, serve: bool) !i32 {
+	h :: if host == "localhost" { "127.0.0.1" } else { host }
+	ip :: unsafe inet_addr(h.cstr())
+	if ip == 4294967295 { return error("bad address {host}") }
+	fd :: unsafe socket(2, 1, 0)
+	buf := unsafe malloc(Addr.size)
+	unsafe buf.write(i32.(1))
+
+	if serve {
+		# SO_REUSEADDR
+		_ := unsafe setsockopt(fd, 1, 2, buf, 4)
+	}
+	unsafe buf.write(Addr.{ 2, u16.((port >> 8) | ((port & 255) << 8)), ip, 0 })
+	ok :: if serve {
+		unsafe bind(fd, buf, 16) == 0 && unsafe c_listen(fd, 128) == 0
+	} else {
+		unsafe c_connect(fd, buf, 16) == 0
+	}
+	unsafe free(buf)
+	if ok { return fd }
+
+	_ := unsafe close(fd)
+	error(if serve { "cannot listen on port {port}" } else { "cannot connect to {host}:{port}" })
+}
+
+Listener :< {
+	## Block until a client connects.
+	pub accept :: fn(self) !Conn {
+		fd :: unsafe accept(self.fd, ptr(0), ptr(0))
+		if fd < 0 { return error("accept failed") }
+		Conn.{ fd }
+	}
+
+	pub close :: fn(self) {
+		discard unsafe close(self.fd)
+	}
+}
+
+Conn :< {
+	## Send a string.
+	pub write :: fn(self, s: string) ! {
+		sent := 0
+		discard loop sent < s.len {
+			# MSG_NOSIGNAL
+			n :: unsafe send(self.fd, s.ptr.offset(sent), usize.(s.len - sent), 16384)
+			if n < 0 { return error("write failed") }
+			sent += int.(n)
+		}
+	}
+
+	## Receive up to `max` bytes, empty once the peer has closed.
+	pub read :: fn(self, max := 4096) !string {
+		buf := unsafe malloc(usize.(max))
+		n :: unsafe recv(self.fd, buf, usize.(max), 0)
+		out :: unsafe buf.string(math.max(0, int.(n)))
+		unsafe free(buf)
+		if n < 0 { return error("read failed") }
+		out
+	}
+
+	pub close :: fn(self) {
+		discard unsafe close(self.fd)
+	}
+}

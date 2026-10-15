@@ -1,0 +1,13 @@
+use net
+
+test! "loopback" {
+	l :: net.listen(40917) or { return }
+	c :: net.connect("localhost", 40917) or { return }
+	c.write("ping") or { return }
+	s :: l.accept() or { return }
+	assert! (s.read() or "") == "ping"
+	c.close()
+	assert! (s.read() or "-") == ""
+	s.close()
+	l.close()
+}
