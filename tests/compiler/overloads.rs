@@ -206,6 +206,20 @@ fn a_type_argument_picks_the_operator_claim() {
 		print((v * v).x, (v * 2).x, (2 * v).x)
 	"};
 	check(src, "9 6 6");
+
+	let src = indoc! {"
+		I :: struct { ns: int }
+		D :: struct { ns: int }
+		I : Sub < {
+			Out :: D
+			sub :: fn(self, o: Self) Out { .{ self.ns - o.ns } }
+		}
+		I : Sub[D] < {
+			sub :: fn(self, d: D) Self { .{ self.ns - d.ns } }
+		}
+		print((I.{9} - I.{4}).ns, (I.{9} - D.{4}).ns)
+	"};
+	check(src, "5 5");
 }
 
 #[test]

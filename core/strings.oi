@@ -200,7 +200,7 @@ pub parse_float[T = float] :: fn(s: string) ?T {
 ## Accumulate decimal digits into `T`.
 digits[T] :: fn(s: string, neg: bool) ?T {
 	if s.len == 0 { return }
-	wraps :: T.(1) / T.(2) == 0  # only ints wrap on overflow
+	wraps :: T.(1) / T.(2) == 0 # only ints wrap on overflow
 	out: T = 0
 	loop i in 0..s.len {
 		d :: int.(s[i]) - 48

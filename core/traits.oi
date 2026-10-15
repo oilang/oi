@@ -7,13 +7,33 @@ pub Eq :: trait { eq: fn(self, other: Self) bool }
 pub Ord :: trait { lt: fn(self, other: Self) bool }
 
 # arithmetic
-pub Neg :: trait { neg: fn(self) Self }
-pub Add[Rhs = Self] :: trait { add: fn(self, other: Rhs) Self }
-pub Sub[Rhs = Self] :: trait { sub: fn(self, other: Rhs) Self }
-pub Mul[Rhs = Self] :: trait { mul: fn(self, other: Rhs) Self }
-pub Div[Rhs = Self] :: trait { div: fn(self, other: Rhs) Self }
-pub Mod[Rhs = Self] :: trait { mod: fn(self, other: Rhs) Self }
-pub Pow[Rhs = Self] :: trait { pow: fn(self, other: Rhs) Self }
+pub Neg :: trait {
+	neg: fn(self) Self
+}
+pub Add[Rhs = Self] :: trait {
+	Out :: Self
+	add: fn(self, other: Rhs) Out
+}
+pub Sub[Rhs = Self] :: trait {
+	Out :: Self
+	sub: fn(self, other: Rhs) Out
+}
+pub Mul[Rhs = Self] :: trait {
+	Out :: Self
+	mul: fn(self, other: Rhs) Out
+}
+pub Div[Rhs = Self] :: trait {
+	Out :: Self
+	div: fn(self, other: Rhs) Out
+}
+pub Mod[Rhs = Self] :: trait {
+	Out :: Self
+	mod: fn(self, other: Rhs) Out
+}
+pub Pow[Rhs = Self] :: trait {
+	Out :: Self
+	pow: fn(self, other: Rhs) Out
+}
 
 # bitwise
 pub Not :: trait { not: fn(self) Self }

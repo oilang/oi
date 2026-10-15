@@ -249,12 +249,13 @@ pub(super) fn check_impls<'p>(
 			let Some((te, sp)) = arg else { continue };
 			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(&te, sp)?);
 		}
-		for (name, te) in claim_assoc(methods, tfields) {
-			sig_params.insert(name, types.with_scope(scope).resolve(&subst(&te, &me), span)?);
+		let assoc = claim_assoc(methods, tfields);
+		for (name, te) in &assoc {
+			sig_params.insert(name.clone(), types.with_scope(scope).resolve(&subst(te, &me), span)?);
 		}
 		for tf in *tfields {
 			if is_assoc_type(tf) {
-				if !types.aliases.contains_key(&format!("{typ}::{}", tf.name)) {
+				if assoc.iter().all(|(n, _)| *n != tf.name) {
 					let msg = format!("`{typ}` is missing associated type `{}` of trait `{tn}`", tf.name);
 					return fail(msg, span, "fill it in the claim");
 				}

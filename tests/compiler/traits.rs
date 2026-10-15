@@ -820,8 +820,8 @@ fn associated_types() {
 		}
 		A :: struct { n: int, k :: 7 }
 		B :: struct {}
-		A : Tr < { Out :: A  f :: fn(self) Out { self } }
-		B : Tr < { Out :: int  j :: 9  f :: fn(self) int { 3 } }
+		A : Tr < { Out :: A, f :: fn(self) Out { self } }
+		B : Tr < { Out :: int, j :: 9, f :: fn(self) int { 3 } }
 		print(A.{2}.f().n, B.{}.f(), A.k, A.j, B.k, B.j)
 	"#};
 	check(src, "2 3 7 6 5 9");
@@ -832,8 +832,8 @@ fn associated_types() {
 			f: fn(self, r: R) Out
 		}
 		A :: struct {}
-		A : Tr[int] < { Out :: int  f :: fn(self, r: int) int { r } }
-		A : Tr[float] < { Out :: float  f :: fn(self, r: float) float { r } }
+		A : Tr[int] < { Out :: int, f :: fn(self, r: int) int { r } }
+		A : Tr[float] < { Out :: float, f :: fn(self, r: float) float { r } }
 		print(A.{}.f(2), A.{}.f(2.5))
 	"#};
 	check(src, "2 2.5");

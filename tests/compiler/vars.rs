@@ -24,8 +24,8 @@ fn assign() {
 #[test]
 fn compound_assign() {
 	let src = indoc! {"
-		a := 10  b := 10  c := 10  d := 10  e := 10  f := 2
-		a += 5  b -= 5  c *= 5  d /= 5  e %= 4  f **= 5
+		a := 10; b := 10; c := 10; d := 10; e := 10; f := 2
+		a += 5; b -= 5; c *= 5; d /= 5; e %= 4; f **= 5
 		print(a, b, c, d, e, f)
 	"};
 	check(src, "15 5 50 2 2 32");
@@ -40,7 +40,7 @@ fn nested_place_assign() {
 			g := [[1, 2], [3, 4]]
 			a := [1, 2, 3]
 			i := 0
-			at :: fn(mut i: int) int { i += 1  i }
+			at :: fn(mut i: int) int { i += 1; i }
 			ps[at(mut i)].x += 10
 			g[1][0] = 7
 			a[1] += 10

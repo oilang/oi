@@ -30,7 +30,6 @@ where
 {
 	let name_head = p.def_name.clone().then(p.type_params.clone());
 	let item_head = name_head.clone().then_ignore(just(Token::DoubleColon));
-	let fill_docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 	let vis = just(Token::Pub)
 		.ignore_then(paren(just(Token::Ident("package".into()))).to(Vis::Package).or_not())
 		.map(|v| v.unwrap_or(Vis::Pub));
@@ -302,15 +301,7 @@ where
 	let fill = attr_macro.clone().or(fill);
 	// field amendments
 	let fill = fill.map(Member::Fn).or(member);
-	let fill_block = brace(
-		fill_docs
-			.clone()
-			.ignore_then(fill)
-			.repeated()
-			.collect::<Vec<_>>()
-			.then_ignore(fill_docs),
-	)
-	.map(|ms| {
+	let fill_block = doc_body(fill).map(|ms| {
 		let (fields, fills, _) = split_members(ms);
 		(fills, fields)
 	});
