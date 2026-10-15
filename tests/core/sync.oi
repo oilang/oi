@@ -85,3 +85,15 @@ test! "poll" {
 	a := sync.after(0.ns())
 	assert! x == 2 && ch.poll() == ?int.(1) && ch.poll() == ?int.(none) && a.poll() != none
 }
+
+test! "select" {
+	ch := sync.Chan[int].{ cap = 1 }
+	assert! sync.select! { <-ch => "recv", else => "idle" } == "idle"
+	assert! sync.select! { ch <- 1 => "sent", else => "full" } == "sent"
+	assert! sync.select! { ch <- 2 => "sent", else => "full" } == "full"
+	t := sync.spawn! { ch <- 7 or () }
+	got := sync.select! { m := <-ch => m or 0, sync.after(1000.ms()) => -1 }
+	late := sync.select! { m := <-ch => m or 0, sync.after(10.ms()) => -1 }
+	t.wait()
+	assert! got == 1 && late == 7
+}

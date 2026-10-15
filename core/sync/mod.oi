@@ -227,3 +227,52 @@ After : Pollable[()] < {
 		unsafe oi_signal_within(s.handle, (self.at - Instant.now()).ns)
 	}
 }
+
+## Waits on the first ready arm, `else` when none is ready.
+pub select! :: fn(arms: Ast) Ast {
+	s := gensym("s")
+	pre: []Ast
+	tries: []Ast
+	wait: []Ast
+	idle: []Ast
+
+	loop a in arms.items {
+		[ lhs body ] := a.items
+		if lhs == "else" {
+			idle << `break :select %body`
+			continue
+		}
+
+		w := gensym("w")
+		bind := lhs.kind == "bind"
+		x := if bind { lhs.name } else { gensym("x") }
+		e := if bind { lhs.items[0] } else { lhs }
+
+		ready := `%w.poll()`
+		pre << match e {
+			`%c <- %v` => {
+				ready = `%w.try_send(move %v)`
+				`%w := %c`
+			}
+			`<-%c` => `%w := %c`
+			else => `%w := %e`
+		}
+		tries << `%{tries.len} => { %x := %ready or continue; break :select %body }`
+		wait << `%w.watch(%s)`
+	}
+
+	wait << `%s.sleep()`
+	n := tries.len
+
+	`:select {
+		%{..pre}
+		%s := sync.Signal.{}
+		k := int.(ctx.rand.proc(ctx.rand.data) % u64.(%n))
+		loop {
+			loop j in 0..%n {
+				match (k + j) % %n { %{..tries} else => () }
+			}
+			%{..if idle.len > 0 { idle } else { wait }}
+		}
+	}`
+}
