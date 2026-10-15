@@ -1,10 +1,13 @@
 module time
 
+use math.{ round }
+
 malloc : fn(n: usize) ptr : foreign
 free : fn(p: ptr) : foreign
 clock_gettime : fn(clock: i32, spec: ptr) i32 : foreign
 nanosleep : fn(req: ptr, rem: ptr) i32 : foreign
 localtime : fn(t: ptr) ptr : foreign
+gmtime : fn(t: ptr) ptr : foreign
 strftime : fn(buf: ptr, max: usize, fmt: cstr, tm: ptr) usize : foreign
 
 @c
@@ -13,24 +16,47 @@ Spec :: struct {
 	nsec: int
 }
 
+clock :: fn(id: i32) int {
+	p := unsafe malloc(Spec.size)
+	_ := unsafe clock_gettime(id, p)
+	s :: unsafe p.read[Spec]()
+	unsafe free(p)
+	s.sec * 1000000000 + s.nsec
+}
+
 ## A span of time, in nanoseconds.
 pub Duration :: struct {
 	pub ns: int
 }
 
-pub ns :: fn(n: int) Duration { .{ n } }
-pub us :: fn(n: int) Duration { .{ n * 1000 } }
-pub ms :: fn(n: int) Duration { .{ n * 1000000 } }
-pub secs :: fn(n: int) Duration { .{ n * 1000000000 } }
+int :< {
+	pub ns :: fn(self) Duration { .{ self } }
+	pub us :: fn(self) Duration { .{ self * 1000 } }
+	pub ms :: fn(self) Duration { .{ self * 1000000 } }
+	pub sec :: fn(self) Duration { .{ self * 1000000000 } }
+	pub min :: fn(self) Duration { .{ self * 60000000000 } }
+	pub hr :: fn(self) Duration { .{ self * 3600000000000 } }
+}
+
+float :< {
+	pub ns :: fn(self) Duration { .{ int.(round(self)) } }
+	pub us :: fn(self) Duration { .{ int.(round(self * 1e3)) } }
+	pub ms :: fn(self) Duration { .{ int.(round(self * 1e6)) } }
+	pub sec :: fn(self) Duration { .{ int.(round(self * 1e9)) } }
+	pub min :: fn(self) Duration { .{ int.(round(self * 6e10)) } }
+	pub hr :: fn(self) Duration { .{ int.(round(self * 3.6e12)) } }
+}
 
 Duration :< {
-	pub us :: fn(self) int { self.ns / 1000 }
-	pub ms :: fn(self) int { self.ns / 1000000 }
-	pub secs :: fn(self) float { float.(self.ns) / 1e9 }
+	pub us :: fn(self) float { float.(self.ns) / 1e3 }
+	pub ms :: fn(self) float { float.(self.ns) / 1e6 }
+	pub sec :: fn(self) float { float.(self.ns) / 1e9 }
+	pub min :: fn(self) float { float.(self.ns) / 6e10 }
+	pub hr :: fn(self) float { float.(self.ns) / 3.6e12 }
 
 	pub str :: fn(self) string {
 		match true {
-			self.ns >= 1000000000 => "{self.secs()}s",
+			self.ns >= 1000000000 => "{self.sec()}s",
 			self.ns >= 1000000 => "{self.ms()}ms",
 			self.ns >= 1000 => "{self.us()}us",
 			else => "{self.ns}ns",
@@ -38,38 +64,98 @@ Duration :< {
 	}
 }
 
-Duration : Add < { add :: fn(self, other: Self) Self { .{ self.ns + other.ns } } }
-Duration : Sub < { sub :: fn(self, other: Self) Self { .{ self.ns - other.ns } } }
-Duration : Eq < { eq :: fn(self, other: Self) bool { self.ns == other.ns } }
-Duration : Ord < { lt :: fn(self, other: Self) bool { self.ns < other.ns } }
+Duration : Add < {
+	add :: fn(self, o: Self) Self { .{ self.ns + o.ns } }
+}
+Duration : Sub < {
+	sub :: fn(self, o: Self) Self { .{ self.ns - o.ns } }
+}
+Duration : Div < {
+	Out :: float
+	div :: fn(self, o: Self) Out { float.(self.ns) / float.(o.ns) }
+}
+Duration : Mul[int] < {
+	mul :: fn(self, k: int) Self { .{ self.ns * k } }
+}
+Duration : Mul[float] < {
+	mul :: fn(self, k: float) Self { .{ int.(round(float.(self.ns) * k)) } }
+}
+Duration : Eq < {
+	eq :: fn(self, o: Self) bool { self.ns == o.ns }
+}
+Duration : Ord < {
+	lt :: fn(self, o: Self) bool { self.ns < o.ns }
+}
 
-## An instant, in nanoseconds since the Unix epoch.
+## Monotonic time.
+pub Instant :: struct {
+	ns: int
+}
+
+Instant :< {
+	pub now :: fn() Self { .{ clock(1) } }
+	pub elapsed :: fn(self) Duration { .{ clock(1) - self.ns } }
+
+	## Get elapsed Duration since the last lap, then restart.
+	pub lap :: fn(mut self) Duration {
+		t :: clock(1)
+		d :: Duration.{ t - self.ns }
+		self.ns = t
+		d
+	}
+}
+
+Instant : Sub < {
+	Out :: Duration
+	sub :: fn(self, o: Self) Out { .{ self.ns - o.ns } }
+}
+Instant : Sub[Duration] < {
+	sub :: fn(self, d: Duration) Self { .{ self.ns - d.ns } }
+}
+Instant : Add[Duration] < {
+	add :: fn(self, d: Duration) Self { .{ self.ns + d.ns } }
+}
+Instant : Eq < {
+	eq :: fn(self, o: Self) bool { self.ns == o.ns }
+}
+Instant : Ord < {
+	lt :: fn(self, o: Self) bool { self.ns < o.ns }
+}
+
+## Clock time, in nanoseconds since the Unix epoch.
 pub Time :: struct {
 	pub ns: int
 }
 
-pub now :: fn() Time {
-	p := unsafe malloc(Spec.size)
-	_ := unsafe clock_gettime(0, p)
-	s :: unsafe p.read[Spec]()
-	unsafe free(p)
-	.{ s.sec * 1000000000 + s.nsec }
-}
-
 Time :< {
-	pub elapsed :: fn(self) Duration {
-		.{ now().ns - self.ns }
+	pub now :: fn() Self { .{ clock(0) } }
+
+	## RFC 3339 in UTC, with milliseconds.
+	pub str :: fn(self) string {
+		ms :: self.ns / 1000000 % 1000
+		pad :: if ms < 10 do "00" else if ms < 100 do "0" else do ""
+		head :: self.zoned(true, "%Y-%m-%dT%H:%M:%S")
+		"{head}.{pad}{ms}Z"
 	}
 
 	## Render in local time with `strftime` directives.
-	pub format :: fn(self, fmt: string) string {
+	pub format :: fn(self, fmt: string) string { self.zoned(false, fmt) }
+
+	zoned :: fn(self, utc: bool, fmt: string) string {
 		buf := unsafe malloc(128)
 		unsafe buf.write(self.ns / 1000000000)
-		n :: unsafe strftime(buf, 128, fmt.cstr(), localtime(buf))
+		n :: unsafe strftime(buf, 128, fmt.cstr(), if utc do gmtime(buf) else do localtime(buf))
 		out :: unsafe buf.string(int.(n))
 		unsafe free(buf)
 		out
 	}
+}
+
+## Measure the time `f` takes to run.
+pub measure :: fn(f: fn()) Duration {
+	t :: Instant.now()
+	f()
+	t.elapsed()
 }
 
 pub sleep :: fn(d: Duration) {

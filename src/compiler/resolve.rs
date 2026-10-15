@@ -620,13 +620,17 @@ impl TypeCtx<'_> {
 				),
 			};
 		}
+
+		let slot = (self.aliases.get("Self"))
+			.is_some_and(|t| matches!(t, TypeExpr::Name(t) if self.aliases.contains_key(&format!("{t}::{name}"))));
 		let name = match self.scope.env.get(name) {
 			Some(q) => q.as_str(),
-			None if !self.scope.module.is_empty() && name != "Self" && !name.contains("::") => {
+			None if !self.scope.module.is_empty() && name != "Self" && !slot && !name.contains("::") => {
 				return fail(format!("unknown type `{name}`"), span, "not a known type");
 			}
 			_ => name,
 		};
+
 		if let Some(te) = self.aliases.get(name) {
 			if matches!(te, TypeExpr::Sum(_) | TypeExpr::AtomSum(_)) {
 				if self.depth == 0 {

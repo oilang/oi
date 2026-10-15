@@ -1,11 +1,29 @@
 use time
 
-test! "time" {
-	t :: time.now()
-	time.sleep(time.ms(2))
+test! "monotonic" {
+	t := time.Instant.now()
+	time.sleep(2.ms())
+	assert! t.lap() >= 2.ms()
+	assert! t.elapsed() < 5.sec()
+}
 
-	assert! t.elapsed() >= time.ms(2) && t.elapsed() < time.secs(5)
-	assert! time.ms(1500).str() == "1.5s"
-	assert! (time.secs(1) - time.ms(999)).str() == "1ms"
-	assert! time.now().format("%Y").len == 4
+test! "out_arithmetic" {
+	a :: time.Instant.now()
+	d :: 1.sec() - 999.ms()
+	assert! d == 1.ms()
+	assert! (a + 3.ms() - a) == 3.ms()
+	assert! (a - a) == 0.ns()
+	assert! (3.sec() / 2.sec()).str() == "1.5"
+	assert! 2.ms() * 3 == 6.ms() && 3 * 2.ms() == 6.ms() && 2.ms() * 0.5 == 1.ms() && 0.5 * 2.ms() == 1.ms()
+	assert! 0.25.sec().ms() == 250.0
+}
+
+test! "rendering" {
+	assert! 1500.ms().str() == "1.5s"
+	assert! 1200.us().str() == "1.2ms"
+	s :: time.Time.now().str()
+	assert! s.len == 24 && s.ends_with("Z") && s[10] == 'T'
+	assert! time.Time.now().format("%Y").len == 4
+	d :: time.measure { time.sleep(1.ms()) }
+	assert! d >= 1.ms()
 }

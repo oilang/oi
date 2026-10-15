@@ -187,7 +187,7 @@ fn a_move_arg_transfers_ownership() {
 
 #[test]
 fn a_mutable_copy_of_a_resource_is_owned() {
-	let f = "f :: fn(x: ?File = none) int { x = File.{fd = 9}  1 }";
+	let f = "f :: fn(x: ?File = none) int { x = File.{fd = 9}; 1 }";
 	let g = "g :: File.{fd = 1}";
 	check(
 		[FILE, f, g, "print(f())", "print(f(move g))"],
