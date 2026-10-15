@@ -127,6 +127,9 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 			};
 		}
 	}
+	if in_quote {
+		def_site(e, scope);
+	}
 	let child_in_quote = match e {
 		Expr::Quote(_) => true,
 		Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) => false,
@@ -138,6 +141,30 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 			.for_each(|(e, _)| direct_calls(e, macros, scope, child_in_quote)),
 		One((e, _)) => direct_calls(e, macros, scope, child_in_quote),
 	});
+}
+
+// Resolve a template's `mod.fn` calls where the macro is actually defined.
+fn def_site(e: &mut Expr, scope: &Scope) {
+	let Expr::MethodCall {
+		recv,
+		method,
+		type_args,
+		args,
+	} = e
+	else {
+		return;
+	};
+	let Expr::Ident(m) = &recv.0 else { return };
+	let name = match scope.visible.contains_key(m) {
+		true => scope.qualify_name(&format!("{m}.{method}")),
+		false if scope.module.rsplit('.').next() == Some(m) => scope.qualify_name(method),
+		false => return,
+	};
+	*e = Expr::Call {
+		name,
+		type_args: std::mem::take(type_args),
+		args: std::mem::take(args),
+	};
 }
 
 impl Expander {

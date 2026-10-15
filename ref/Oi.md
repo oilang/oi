@@ -91,6 +91,8 @@ tags: []
 - [ ] more types (paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `quaternion\d+`, `matrix`) `odin v rust`
 - [ ] swizzle (tried implementing, but I'm going to add core vector types instead) `odin`
 - [ ] allow fn math with arithmetic traits
+- [ ] let `oi test` or at least `just test` for my own personal benefit take multiple test spec patterns
+- [ ] reedline repl niceties (`ctrl-u` is a biggie)
 ## consider
 - `nil`
 - fns that return things should probably error if no binds or `_` blackhole register or `discard` `nim`

@@ -482,3 +482,17 @@ fn a_thread_cant_be_copied_out_of_its_array() {
 	"};
 	fail(src, "cannot move sync::Thread[int] out of its container");
 }
+
+#[test]
+fn destructuring_a_drop_field_consumes_its_owner() {
+	let take = indoc! {"
+		Pair :: struct { f: File, n: int }
+		Pair.{ f } := Pair.{ f = File.{fd = 1}, n = 2 }
+		print(f.fd)
+	"};
+	check([FILE, take], ["1", "drop 1"]);
+	fail(
+		[FILE, "Pair : Drop < { drop :: fn(mut self) {} }", take],
+		"which claims Drop",
+	);
+}

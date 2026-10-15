@@ -675,3 +675,8 @@ fn brace_body_takes_arms() {
 		["binary 1", "recv 2", "ident 3"],
 	);
 }
+
+#[test]
+fn macro_paths_resolve_where_defined() {
+	check(["use sync.{ spawn! }", "print(spawn!(1 + 2).wait())"], "3");
+}

@@ -100,6 +100,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if i + 1 == stmts.len() {
 						last = (ptr, typ.clone());
 					}
+					self.consume_parts(pat, value, ptr, &typ)?;
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 

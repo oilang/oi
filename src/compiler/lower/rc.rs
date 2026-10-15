@@ -283,6 +283,44 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// A pattern taking a move-only part consumes its subject, dropping the rest.
+	pub(super) fn consume_parts(
+		&mut self,
+		pat: &Spanned<Expr>,
+		subject: &Spanned<Expr>,
+		val: Value,
+		typ: &Typ,
+	) -> Result<(), Diagnostic> {
+		let Some(slots) = typ.slots() else { return Ok(()) };
+		let binds = self.pat_binds(pat, typ)?;
+		let moved: Vec<i32> = binds.iter().filter(|b| self.is_affine(&b.1)).map(|b| b.2).collect();
+		if moved.is_empty() {
+			return Ok(());
+		}
+		if self.claims(typ, "Drop") {
+			return fail(
+				format!("cannot move out of {typ}, which claims Drop"),
+				subject.1,
+				"not movable",
+			);
+		}
+		self.move_resource(subject, typ)?;
+		self.untemp(val);
+		let owned: Vec<_> = slots.iter().enumerate().filter(|(_, t)| self.slot_owns(t)).collect();
+		for (i, t) in owned {
+			let off = i as i32 * 8;
+			let fv = self.ld_typ(val, off, t);
+			match moved.contains(&off) {
+				true => {
+					let fv = self.unbox_ret(fv, t);
+					self.st(val, off, fv);
+				}
+				false => self.release_field(fv, t),
+			}
+		}
+		Ok(())
+	}
+
 	// Release (or retain in place) what a box owns, as its descriptor's thunk.
 	pub(crate) fn release_box(&mut self, val: Value, layout: &Typ, retain: bool) {
 		let Typ::Tuple(slots) = layout else {
