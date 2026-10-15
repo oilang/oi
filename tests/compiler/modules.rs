@@ -386,3 +386,33 @@ fn generic_struct_fields_resolve_in_their_module() {
 		)
 		.check("0");
 }
+
+#[test]
+fn trait_fields_resolve_in_their_defining_module() {
+	Project::new()
+		.file(
+			"main.oi",
+			[
+				"use shapes",
+				"use shapes.{ Has Kind }",
+				"Own :: trait { size: shapes.Size }",
+				"A :: struct { size: shapes.Size }",
+				"A : Own < {}",
+				"B :: struct { kind: Kind }",
+				"B : Has < {}",
+				"C :: struct { kind: Kind }",
+				"C : shapes.Has < {}",
+				"main :: fn() { print(1) }",
+			],
+		)
+		.file(
+			"shapes/mod.oi",
+			[
+				"module shapes",
+				"pub Kind :: enum { a b }",
+				"pub Size :: struct { w: int }",
+				"pub Has :: trait { kind: Kind }",
+			],
+		)
+		.check("1");
+}

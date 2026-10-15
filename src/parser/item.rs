@@ -306,7 +306,9 @@ where
 		(fills, fields)
 	});
 	let via = just(Token::Via).ignore_then(ident()).or_not();
-	let trait_ref = ident()
+	let trait_ref = p
+		.lit_path
+		.clone()
 		.then(bracket(list(spanned(p.type_expr.clone()))).or_not())
 		.map(|(name, args)| (name, args.unwrap_or_default()));
 	// arrays and maps

@@ -1155,7 +1155,13 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			let supers = supers.iter().map(|s| scope.qualify_trait(s)).collect();
-			let item = (supers, type_params.as_slice(), fields.as_slice(), methods.as_slice());
+			let item = (
+				supers,
+				type_params.as_slice(),
+				fields.as_slice(),
+				methods.as_slice(),
+				scope,
+			);
 			if traits.insert(name.as_str(), item).is_some() {
 				let msg = format!("duplicate trait `{name}`");
 				return fail(msg, *span, "already defined");
@@ -1317,7 +1323,7 @@ impl<M: Module> Compiler<M> {
 					let decls: Vec<TraitFn> = claimed
 						.iter()
 						.filter_map(|(tn, _)| traits.get(tn.as_str()))
-						.flat_map(|(.., ms)| trait_fns(ms))
+						.flat_map(|(_, _, _, ms, _)| trait_fns(ms))
 						.collect();
 					let targs: Vec<_> = (claimed.iter())
 						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
@@ -1812,7 +1818,7 @@ impl<M: Module> Compiler<M> {
 			if is_hook_trait(&tn) {
 				continue;
 			}
-			let (_, tparams, tfields, tmethods) = traits[tn.as_str()];
+			let (_, tparams, tfields, tmethods, _) = traits[tn.as_str()];
 			if tparams.iter().any(|p| p.default.is_none()) {
 				continue;
 			}

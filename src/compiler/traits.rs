@@ -3,8 +3,14 @@
 use super::*;
 use crate::loader::{fold_const, hook_method, is_hook_trait};
 
-// A trait's supertraits, fields, and methods.
-pub(crate) type TraitItem<'a> = (Vec<String>, &'a [TypeParam], &'a [Param], &'a [Spanned<Expr>]);
+// A trait's supertraits, fields, methods, and defining scope.
+pub(crate) type TraitItem<'a> = (
+	Vec<String>,
+	&'a [TypeParam],
+	&'a [Param],
+	&'a [Spanned<Expr>],
+	&'a Scope,
+);
 
 // A trait method's name, params, and return annotation.
 pub(crate) type TraitFn<'a> = (&'a str, &'a [Param], &'a Option<Spanned<TypeExpr>>);
@@ -225,7 +231,7 @@ pub(super) fn check_impls<'p>(
 			}
 			continue;
 		}
-		let Some((supers, tparams, tfields, tmethods)) = traits.get(tn.as_str()) else {
+		let Some((supers, tparams, tfields, tmethods, home)) = traits.get(tn.as_str()) else {
 			return fail(format!("unknown trait `{tn}`"), span, "no such trait");
 		};
 		let required = tparams.iter().filter(|p| p.default.is_none()).count();
@@ -261,7 +267,7 @@ pub(super) fn check_impls<'p>(
 				}
 				continue;
 			}
-			let want = types.with_type_params(&sig_params).resolve(&tf.typ, tf.span)?;
+			let want = types.with_type_params(&sig_params).with_scope(home).resolve(&tf.typ, tf.span)?;
 			// let embedded structs satisfy field requirements
 			let stored = types
 				.structs

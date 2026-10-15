@@ -912,7 +912,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (.., tmethods) = self.types.traits[tn];
+		let (_, _, _, tmethods, _) = self.types.traits[tn];
 		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "method", method, span));
 		};
@@ -966,7 +966,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		field: &str,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, _, tfields, tmethods) = self.types.traits[tn];
+		let (_, _, tfields, tmethods, _) = self.types.traits[tn];
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "field", field, span));
 		};
