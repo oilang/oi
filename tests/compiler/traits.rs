@@ -810,6 +810,22 @@ fn associated_types() {
 		print(R.{1}.get())
 	"#};
 	fail(src, "`R.get` is `fn(R) string`, trait `It` declares `fn(R) int`");
+
+	let src = indoc! {r#"
+		Tr :: trait {
+			Out :: Self
+			k :: 5
+			j : int : 6
+			f: fn(self) Out
+		}
+		A :: struct { n: int, k :: 7 }
+		B :: struct {}
+		A : Tr < { Out :: A  f :: fn(self) Out { self } }
+		B : Tr < { Out :: int  j :: 9  f :: fn(self) int { 3 } }
+		print(A.{2}.f().n, B.{}.f(), A.k, A.j, B.k, B.j)
+	"#};
+	check(src, "2 3 7 6 5 9");
+	fail(r#"A :: struct { k : int : "s" }"#, "`A::k` must be a `int` literal");
 }
 
 #[test]

@@ -30,6 +30,7 @@ pub(super) fn with_modules(program: &Program, modules: Vec<Module>) -> Program {
 		publics: program.publics.clone(),
 		reexports: program.reexports.clone(),
 		consts: program.consts.clone(),
+		const_types: program.const_types.clone(),
 		annotations: program.annotations.clone(),
 		roots: program.roots.clone(),
 		core_origin: program.core_origin.clone(),

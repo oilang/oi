@@ -133,7 +133,7 @@ where
 	pub(super) param_hole: P<'token, I, Param>,
 	pub(super) ret: P<'token, I, Option<Spanned<TypeExpr>>>,
 	pub(super) fn_ret: P<'token, I, (Option<Bound>, Option<Spanned<TypeExpr>>)>,
-	pub(super) bind_default: P<'token, I, (TypeExpr, Option<Spanned<Expr>>)>,
+	pub(super) param_type: P<'token, I, (TypeExpr, Option<Spanned<Expr>>, bool)>,
 	pub(super) annotation: P<'token, I, Spanned<Expr>>,
 	pub(super) annotations: P<'token, I, Vec<Spanned<Expr>>>,
 	pub(super) unquote: P<'token, I, Spanned<Expr>>,
@@ -357,7 +357,7 @@ where
 	let param_hole = unquote
 		.clone()
 		.map_with(|u, ex| Param::new(String::new(), TypeExpr::Unquote(Box::new(u)), ex.span()));
-	let name_hole = sigil(Token::Percent).ignore_then(brace(ident())).then(param_type);
+	let name_hole = sigil(Token::Percent).ignore_then(brace(ident())).then(param_type.clone());
 	let name_hole = name_hole.map_with(|(name, (typ, default, mutable)), ex| Param {
 		default,
 		mutable,
@@ -453,7 +453,7 @@ where
 		param_hole: param_hole.boxed(),
 		ret: ret.boxed(),
 		fn_ret,
-		bind_default,
+		param_type,
 		annotation,
 		annotations,
 		unquote,

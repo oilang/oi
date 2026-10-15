@@ -152,6 +152,7 @@ pub struct Program {
 	pub publics: Publics,
 	pub reexports: HashMap<String, String>,
 	pub consts: HashMap<String, Spanned<Expr>>,
+	pub const_types: HashMap<String, Spanned<TypeExpr>>,
 	pub annotations: HashMap<String, Vec<Annotation>>,
 	pub roots: Vec<PathBuf>,
 	pub core_origin: HashSet<String>,
@@ -257,13 +258,18 @@ fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) ->
 	}
 }
 
+type ConstFill<'a> = (&'a String, &'a Option<Spanned<TypeExpr>>, &'a Spanned<Expr>);
+
 // Fill an associated const fill.
-fn const_fill(e: &Expr) -> Option<(&String, &Spanned<Expr>)> {
+fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
 	match e {
 		Expr::Pub(_, b) => const_fill(&b.0),
 		Expr::Bind {
-			name, value: Some(v), ..
-		} => Some((name, v)),
+			name,
+			typ,
+			value: Some(v),
+			..
+		} => Some((name, typ, v)),
 		_ => None,
 	}
 }
@@ -336,6 +342,7 @@ struct Loader {
 	reexports: HashMap<String, String>,
 	reexported_modules: HashMap<String, Visible>,
 	consts: HashMap<String, Spanned<Expr>>,
+	const_types: HashMap<String, Spanned<TypeExpr>>,
 	annotations: HashMap<String, Vec<Annotation>>,
 	// import stack
 	loading: Vec<String>,
@@ -387,6 +394,40 @@ impl Loader {
 			_ => {}
 		}
 		Some((e, v.1))
+	}
+
+	// Pull const fills out as associated consts keyed `Type::name`, returning type fills as aliases.
+	fn assoc_fills(
+		&mut self,
+		typ: &str,
+		fills: &mut Vec<Spanned<Expr>>,
+		scope: &Scope,
+	) -> Result<Vec<Spanned<Expr>>, Diagnostic> {
+		let mut aliases = vec![];
+		for (n, t, v) in fills.iter().filter_map(|f| const_fill(&f.0)) {
+			let key = format!("{typ}::{n}");
+			if let Some(lit) = self.const_value(v, scope) {
+				if let Some(t) = t {
+					self.const_types.insert(key.clone(), t.clone());
+				}
+				self.consts.insert(key, lit);
+			} else if let Some(typ) = TypeExpr::from_expr(&v.0) {
+				let alias = Expr::TypeAlias {
+					name: key,
+					type_params: vec![],
+					typ,
+				};
+				aliases.push((alias, v.1));
+			} else {
+				return Err(err(
+					"cannot evaluate this at compile time",
+					v.1,
+					"not a const expression",
+				));
+			}
+		}
+		fills.retain(|f| const_fill(&f.0).is_none());
+		Ok(aliases)
 	}
 
 	// Validate a file and fold its items into the module, qualifying names as they land.
@@ -566,6 +607,20 @@ impl Loader {
 					if !anns.is_empty() {
 						self.annotations.entry(name.clone()).or_default().extend(anns);
 					}
+					match &mut item.0 {
+						Expr::StructDef { name, fills, .. } => assoc_types = self.assoc_fills(name, fills, &m.scope)?,
+						Expr::TraitDef { fields, .. } => {
+							for f in fields {
+								if let TypeExpr::Infer(v) = &f.typ
+									&& self.const_value(v, &m.scope).is_none()
+									&& TypeExpr::from_expr(&v.0).is_some()
+								{
+									f.typ = TypeExpr::Name("type".into());
+								}
+							}
+						}
+						_ => {}
+					}
 				}
 				Expr::MacroDef { name, .. } => {
 					name.push('!');
@@ -639,29 +694,7 @@ impl Loader {
 					{
 						*typ = format!("{}::{typ}", m.name);
 					}
-					// pull const fills out as associated consts, keyed `Type::name`
-					for (n, v) in fills.iter().filter_map(|f| const_fill(&f.0)) {
-						let key = format!("{typ}::{n}");
-						if let Some(lit) = self.const_value(v, &m.scope) {
-							self.consts.insert(key, lit);
-						} else if let Some(te) = TypeExpr::from_expr(&v.0) {
-							assoc_types.push((
-								Expr::TypeAlias {
-									name: key,
-									type_params: vec![],
-									typ: te,
-								},
-								v.1,
-							));
-						} else {
-							return Err(err(
-								"cannot evaluate this at compile time",
-								v.1,
-								"not a const expression",
-							));
-						}
-					}
-					fills.retain(|f| const_fill(&f.0).is_none());
+					assoc_types = self.assoc_fills(typ, fills, &m.scope)?;
 				}
 				Expr::Doc(_) => {}
 				_ if !main => {
@@ -995,6 +1028,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		reexports: HashMap::new(),
 		reexported_modules: HashMap::new(),
 		consts: HashMap::new(),
+		const_types: HashMap::new(),
 		annotations: HashMap::new(),
 		loading: vec![],
 		selected: vec![],
@@ -1017,6 +1051,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		publics: loader.publics,
 		reexports,
 		consts: loader.consts,
+		const_types: loader.const_types,
 		annotations: loader.annotations,
 		core_origin: loader.core_origin,
 	})

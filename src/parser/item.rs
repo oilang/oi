@@ -55,13 +55,10 @@ where
 		.boxed();
 
 	// struct defs
-	let field_typed = just(Token::Colon)
-		.ignore_then(p.type_expr.clone())
-		.then(just(Token::Assign).ignore_then(p.expr.clone()).or_not());
 	let struct_field = just(Token::Pub)
 		.or_not()
 		.then(ident())
-		.then(field_typed.or(p.bind_default.clone()))
+		.then(p.param_type.clone())
 		.then(
 			p.same_line
 				.clone()
@@ -69,8 +66,9 @@ where
 				.repeated()
 				.collect::<Vec<_>>(),
 		)
-		.map_with(|(((public, name), (typ, default)), annotations), ex| Param {
+		.map_with(|(((public, name), (typ, default, mutable)), annotations), ex| Param {
 			default,
+			mutable,
 			public: public.is_some(),
 			annotations,
 			..Param::new(name, typ, ex.span())
@@ -78,6 +76,19 @@ where
 		.boxed();
 	let struct_field = p.param_hole.clone().or(struct_field).boxed();
 	anon_fields.define(loose_list(struct_field.clone()));
+	// associated consts
+	let member = struct_field.clone().map(|f| match f.default {
+		Some(v) if !f.mutable => Member::Fn((
+			Expr::Bind {
+				mutable: false,
+				name: f.name,
+				typ: (!matches!(f.typ, TypeExpr::Infer(_))).then_some((f.typ, f.span)),
+				value: Some(Box::new(v)),
+			},
+			f.span,
+		)),
+		_ => Member::Field(f),
+	});
 	// embedded structs
 	let embedded = just(Token::Pub).or_not().then(ident()).map_with(|(public, name), ex| Param {
 		public: public.is_some(),
@@ -87,10 +98,9 @@ where
 		.clone()
 		.then_ignore(just(Token::Struct))
 		.then(doc_body(
-			struct_field
-				.clone()
-				.map(Member::Field)
-				.or(func.clone().map(Member::Fn))
+			func.clone()
+				.map(Member::Fn)
+				.or(member.clone())
 				.or(attr_macro.clone().map(Member::Fn))
 				.or(embedded.map(Member::Field)),
 		))
@@ -240,8 +250,8 @@ where
 		.then_ignore(just(Token::Trait))
 		.then(doc_body(choice((
 			slot_fn.map(Member::Fn),
-			struct_field.clone().map(Member::Field),
 			default_fn.map(Member::Fn),
+			struct_field.clone().map(Member::Field),
 		))))
 		.map_with(|(((name, type_params), supers), members), ex| {
 			let (fields, methods, _) = split_members(members);
@@ -291,7 +301,7 @@ where
 	});
 	let fill = attr_macro.clone().or(fill);
 	// field amendments
-	let fill = fill.map(Member::Fn).or(struct_field.clone().map(Member::Field));
+	let fill = fill.map(Member::Fn).or(member);
 	let fill_block = brace(
 		fill_docs
 			.clone()

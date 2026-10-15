@@ -267,20 +267,9 @@ pub(super) fn check_impls<'p>(
 					None => return missing(),
 				},
 			};
-			if matches!(&lit.0, Expr::Atom(a) if types.unit_disc(&want, a).is_none()) || !lit_matches(&lit.0, &want) {
-				let msg = format!("`{key}` must be a `{want}` literal to satisfy trait `{tn}`");
-				return fail(msg, lit.1, "wrong kind of literal");
-			}
-			let span = lit.1;
-			let typed = match (&lit.0, &want) {
-				(Expr::Int(n), Typ::Float(_)) => Expr::Float(*n as f64),
-				(Expr::Atom(_), Typ::Enum(n)) => Expr::Cast {
-					target: (TypeExpr::Name(n.clone()), lit.1),
-					args: vec![lit],
-				},
-				_ => continue,
-			};
-			consts.insert(key, (typed, span));
+			let msg = || format!("`{key}` must be a `{want}` literal to satisfy trait `{tn}`");
+			let lit = typed_lit(types, lit, &want, msg)?;
+			consts.insert(key, lit);
 		}
 		let mut sig_aliases = types.aliases.clone();
 		bind_self(&mut sig_aliases, typ);

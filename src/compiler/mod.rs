@@ -514,6 +514,33 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 	}
 }
 
+// Check a const literal against its type, widening ints to floats and atoms to enums.
+fn typed_lit(
+	types: TypeCtx,
+	lit: Spanned<Expr>,
+	want: &Typ,
+	msg: impl FnOnce() -> String,
+) -> Result<Spanned<Expr>, Diagnostic> {
+	if matches!(&lit.0, Expr::Atom(a) if types.unit_disc(want, a).is_none()) || !lit_matches(&lit.0, want) {
+		return fail(msg(), lit.1, "wrong kind of literal");
+	}
+	let span = lit.1;
+	Ok(match (&lit.0, want) {
+		(Expr::Int(n), Typ::Float(_)) => (Expr::Float(*n as f64), span),
+		(Expr::Atom(_), Typ::Enum(n)) => {
+			let target = (TypeExpr::Name(n.clone()), span);
+			(
+				Expr::Cast {
+					target,
+					args: vec![lit],
+				},
+				span,
+			)
+		}
+		_ => lit,
+	})
+}
+
 // No placeholder struct may appear outside a `^T`.
 fn ref_guarded(typ: &Typ, placeholders: &HashSet<String>) -> bool {
 	match typ {
@@ -1515,6 +1542,13 @@ impl<M: Module> Compiler<M> {
 
 		let base = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
 		check_c_structs(base, &structs)?;
+		for (key, (te, sp)) in &program.const_types {
+			let owner = key.rsplit_once("::").map_or(key.as_str(), |(t, _)| t);
+			let want = base.with_scope(scope_of(owner)).resolve(te, *sp)?;
+			let msg = || format!("`{key}` must be a `{want}` literal");
+			let lit = typed_lit(base, self.consts[key].clone(), &want, msg)?;
+			self.consts.insert(key.clone(), lit);
+		}
 
 		// implicit traits
 		for (tn, anns) in &self.annotations {
