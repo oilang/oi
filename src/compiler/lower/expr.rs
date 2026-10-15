@@ -630,7 +630,11 @@ impl<'a, M: Module> Translator<'a, M> {
 						_ => None,
 					};
 					if let Some(ret) = ret {
-						return Ok((self.ast_method(ptr, field, None), ret));
+						let val = self.ast_method(ptr, field, None);
+						if let Typ::Array(_) = ret {
+							self.temp(val, &ret);
+						}
+						return Ok((val, ret));
 					}
 				}
 

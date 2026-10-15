@@ -1,4 +1,5 @@
 use sync
+use time
 
 Job :: struct { id: int }
 
@@ -96,4 +97,23 @@ test! "select" {
 	late := sync.select! { m := <-ch => m or 0, sync.after(10.ms()) => -1 }
 	t.wait()
 	assert! got == 1 && late == 7
+}
+
+test! "group poll keeps order" {
+	g := sync.Group[int].{}
+	g.add(sync.spawn! { time.sleep(5.ms()); 1 })
+	g.add(sync.spawn! 2)
+	s := sync.Signal.{}
+	got := loop {
+		g.watch(s)
+		break g.poll() or { s.sleep(); continue }
+	}
+	assert! got == [1 2]
+}
+
+test! "tick" {
+	tk := sync.tick(2.ms())
+	t := time.Instant.now()
+	loop _ in 0..3 { sync.select! { tk => () } }
+	assert! t.elapsed() >= 6.ms()
 }

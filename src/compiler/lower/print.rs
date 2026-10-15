@@ -181,11 +181,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				let name = display_name(name).to_string();
 				let body = Typ::Tuple(fields.clone());
 				self.write_lit(&name, sink);
-				let val = match typ.newtype() {
-					Some(_) => self.heap_slots(&[val]),
-					None => val,
-				};
-				self.emit_print(val, &body, quote, sink);
+				match typ.newtype() {
+					Some(_) => {
+						let boxed = self.heap_slots(&[val]);
+						self.emit_print(boxed, &body, quote, sink);
+						self.rt_call("free", &[boxed]);
+					}
+					None => self.emit_print(val, &body, quote, sink),
+				}
 			}
 
 			Typ::Atom => self.raw(val, sink),

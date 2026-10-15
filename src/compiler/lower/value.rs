@@ -621,7 +621,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			unreachable!("core `Range` is a struct")
 		};
 		let fields = fields.clone();
-		let ptr = self.struct_slot(&fields, &[])?;
+		let ptr = self.struct_slot(&fields, &[true; 3])?;
 		let end = end.map(|v| self.intcast(v, types::I64, true));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let end = self.make_option(&opt_typ, end);

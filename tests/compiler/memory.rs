@@ -282,3 +282,13 @@ fn zeros_returns_and_any_casts_are_freed() {
 		s: [2]S
 	"});
 }
+
+#[test]
+fn ranges_newtype_prints_and_ast_items_are_freed() {
+	assert_clean(indoc! {"
+		loop i in 0..2 {}
+		print(ptr(0))
+		m! :: fn(a: Ast) Ast { [x y] := a.items; x }
+		print(m! { 1 2 })
+	"});
+}

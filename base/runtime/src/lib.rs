@@ -1233,15 +1233,15 @@ type Queue = (VecDeque<usize>, bool);
 /// # Safety
 /// `v` must be an owned box.
 #[unsafe(export_name = "oi_chan_send")]
-pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize, ns: i64) -> i64 {
+pub unsafe extern "C" fn chan_send(chan: &Chan, cap: i64, v: usize, ns: i64) -> i64 {
 	let full = |(queue, closed): &mut Queue| !*closed && cap > 0 && queue.len() >= cap as usize;
-	let mut queue = wait_on(&c.queue, &c.cv, ns, full);
+	let mut queue = wait_on(&chan.queue, &chan.cv, ns, full);
 	if queue.1 || full(&mut queue) {
 		unsafe { ref_release(v as *mut u8) };
 		return 0;
 	}
 	queue.0.push_back(v);
-	c.wake();
+	chan.wake();
 	1
 }
 
@@ -1256,22 +1256,32 @@ pub extern "C" fn chan_recv(chan: &Chan, ns: i64) -> usize {
 }
 
 #[unsafe(export_name = "oi_chan_closed")]
-pub extern "C" fn chan_closed(c: &Chan) -> i64 {
-	c.queue.lock().unwrap().1 as i64
+pub extern "C" fn chan_closed(chan: &Chan) -> i64 {
+	chan.queue.lock().unwrap().1 as i64
+}
+
+/// Retain and return the `n`th queued box without taking it, 0 past the end.
+#[unsafe(export_name = "oi_chan_peek")]
+pub extern "C" fn chan_peek(chan: &Chan, n: i64) -> usize {
+	let v = chan.queue.lock().unwrap().0.get(n as usize).copied().unwrap_or(0);
+	if v != 0 {
+		unsafe { *rc(v as *const u8) += 1 };
+	}
+	v
 }
 
 #[unsafe(export_name = "oi_chan_close")]
-pub extern "C" fn chan_close(c: &Chan) {
-	c.queue.lock().unwrap().1 = true;
-	c.wake();
+pub extern "C" fn chan_close(chan: &Chan) {
+	chan.queue.lock().unwrap().1 = true;
+	chan.wake();
 }
 
 /// Fire `sig` on the chan's next send, recv or close.
 /// # Safety
 /// `sig` must come from `oi_signal_new`.
 #[unsafe(export_name = "oi_chan_watch")]
-pub unsafe extern "C" fn chan_watch(c: &Chan, sig: *const Signal) {
-	let mut watchers = c.watchers.lock().unwrap();
+pub unsafe extern "C" fn chan_watch(chan: &Chan, sig: *const Signal) {
+	let mut watchers = chan.watchers.lock().unwrap();
 	if !watchers.iter().any(|w| Arc::as_ptr(w) == sig) {
 		unsafe { Arc::increment_strong_count(sig) };
 		watchers.push(unsafe { Arc::from_raw(sig) });

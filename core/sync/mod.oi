@@ -17,6 +17,7 @@ oi_chan_send : fn(chan: ptr, cap: int, move packet: ^Packet, ns: int) int : fore
 oi_chan_recv : fn(chan: ptr, ns: int) ?^Packet : foreign
 oi_chan_close : fn(chan: ptr) : foreign
 oi_chan_closed : fn(chan: ptr) int : foreign
+oi_chan_peek : fn(chan: ptr, i: int) ?^Packet : foreign
 
 Packet :: struct {
 	value: any
@@ -30,7 +31,7 @@ pub Waitable[T] :: trait {
 ## Yields without blocking, none until ready.
 pub Pollable[T] :: trait {
 	poll: fn(mut self) ?T
-	watch: fn(self, s: Signal)
+	watch: fn(self, sig: Signal)
 }
 
 ## Wakes a sleeper once a watched pollable may be ready.
@@ -69,8 +70,8 @@ Thread[T] : Pollable[T] < {
 	poll :: fn(mut self) ?T {
 		self.done.try_recv()
 	}
-	watch :: fn(self, s: Signal) {
-		self.done.watch(s)
+	watch :: fn(self, sig: Signal) {
+		self.done.watch(sig)
 	}
 }
 
@@ -160,8 +161,8 @@ Chan[T] : Pollable[?T] < {
 		if v == none && !shut do return none
 		v
 	}
-	watch :: fn(self, s: Signal) {
-		unsafe oi_chan_watch(self.handle, s.handle)
+	watch :: fn(self, sig: Signal) {
+		unsafe oi_chan_watch(self.handle, sig.handle)
 	}
 }
 
@@ -174,45 +175,48 @@ Chan[T] : Iterator[T] < {
 ## A wait group.
 ## Joins its threads in order of adding them.
 pub Group[T] :: struct {
-	threads: Chan[Thread[T]] = .{}
+	dones: Chan[Chan[T]] = .{}
 }
 
 Group[T] :< {
 	pub add :: fn(self, move t: Thread[T]) {
-		self.threads <- move t or panic!("sync: add after wait")
+		done := t.done
+		self.dones <- move done or panic!("sync: add after wait")
+	}
+
+	## The nth member's result, left queued.
+	member :: fn(self, n: int) ?Chan[T] {
+		packet := unsafe oi_chan_peek(self.dones.handle, n) or return none
+		Chan[T].(packet.value)
 	}
 }
 
 Group[T] : Waitable[[]T] < {
 	wait :: fn(move self) out: []T {
 		loop {
-			t := self.threads.try_recv() or break
-			out << t.wait()
+			d := self.dones.try_recv() or break
+			out << (d.recv() or panic!("sync: thread died"))
 		}
-		self.threads.close()
+		self.dones.close()
 		out
 	}
 }
 
-## Requeues members while polling, so a concurrent `add` can land between them.
+## Peeks, so concurrent adds keep their order.
 Group[T] : Pollable[[]T] < {
 	poll :: fn(mut self) ?[]T {
-		ts := loop { self.threads.try_recv() or break }
-		ready := true
-
-		loop t in ts { ready = ready && t.done.closed() }
-		if ready do return ts.wait()
-
-		loop t in move ts do self.add(move t)
-		none
+		n := 0
+		loop {
+			d := self.member(n) or break
+			if !d.closed() do return none
+			n += 1
+		}
+		loop _ in 0..n do self.dones.try_recv()?.recv() or panic!("sync: thread died")
 	}
 
-	watch :: fn(self, s: Signal) {
-		ts := loop { self.threads.try_recv() or break }
-		loop t in move ts {
-			t.watch(s)
-			self.add(move t)
-		}
+	watch :: fn(self, sig: Signal) {
+		self.dones.watch(sig)
+		loop i in 0.. { (self.member(i) or break).watch(sig) }
 	}
 }
 
@@ -221,22 +225,32 @@ pub after :: fn(d: Duration) After {
 	.{ Instant.now() + d }
 }
 
+## Ready every `d`, skipping missed ticks.
+pub tick :: fn(d: Duration) After {
+	.{ Instant.now() + d, d }
+}
+
 pub After :: struct {
 	at: Instant
+	every: Duration = 0.ns()
 }
 
 After : Pollable[()] < {
 	poll :: fn(mut self) ?() {
-		if Instant.now() < self.at { none } else { () }
+		now := Instant.now()
+		if now < self.at do return none
+		self.at = self.at + self.every
+		if self.at < now { self.at = now + self.every }
+		()
 	}
-	watch :: fn(self, s: Signal) {
-		unsafe oi_signal_within(s.handle, (self.at - Instant.now()).ns)
+	watch :: fn(self, sig: Signal) {
+		unsafe oi_signal_within(sig.handle, (self.at - Instant.now()).ns)
 	}
 }
 
 ## Waits on the first ready arm, `else` when none is ready.
 pub select! :: fn(arms: Ast) Ast {
-	s := gensym("s")
+	sig := gensym("sig")
 	pre: []Ast
 	tries: []Ast
 	wait: []Ast
@@ -261,18 +275,18 @@ pub select! :: fn(arms: Ast) Ast {
 				`%w := %c`
 			}
 			`<-%c` => `%w := %c`
-			else => `%w := %e`
+			else => `%w := &%e`
 		}
 		tries << `%{tries.len} => { %x := %ready or continue; break :select %body }`
-		wait << `%w.watch(%s)`
+		wait << `%w.watch(%sig)`
 	}
 
-	wait << `%s.sleep()`
+	wait << `%sig.sleep()`
 	n := tries.len
 
 	`:select {
 		%{..pre}
-		%s := sync.Signal.{}
+		%sig := sync.Signal.{}
 		k := int.(ctx.rand.proc(ctx.rand.data) % u64.(%n))
 		loop {
 			loop j in 0..%n {
