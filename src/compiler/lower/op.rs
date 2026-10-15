@@ -483,6 +483,41 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let (BinOp::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
 			return Ok((self.call_concat(lv, rv), own.unwrap_or(Typ::Str)));
 		}
+		self.arith(op, (lv, lt), (rv, rt), r, span).map(|(v, t)| (v, own.unwrap_or(t)))
+	}
+
+	fn arith(
+		&mut self,
+		op: BinOp,
+		(lv, lt): TypedVal,
+		(rv, rt): TypedVal,
+		r: &Spanned<Expr>,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		// fixed arrays are element-wise
+		let fixed = |t: &Typ| match t {
+			Typ::FixedArray(e, n) => Some(((**e).clone(), *n)),
+			_ => None,
+		};
+		if let Some((_, n @ 1..)) = fixed(&lt).or(fixed(&rt))
+			&& fixed(&lt).zip(fixed(&rt)).is_none_or(|(a, b)| a.1 == b.1)
+		{
+			let (mut vals, mut elem) = (vec![], Typ::unit());
+			for i in 0..n {
+				let [l, rr] = [(lv, &lt), (rv, &rt)].map(|(v, t)| match fixed(t) {
+					Some((e, _)) => (self.load_elem(v, (i as i64 * self.elem_stride(&e)) as i32, &e), e),
+					None => (v, t.clone()),
+				});
+				let (val, typ) = self.arith(op, l, rr, r, span)?;
+				vals.push(val);
+				elem = typ;
+			}
+			let ptr = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
+			self.store_all(ptr, vals, &elem);
+			let typ = Typ::FixedArray(Box::new(elem), n);
+			self.temp(ptr, &typ);
+			return Ok((ptr, typ));
+		}
 		let (lv, lt, rv, rt) = self.promote(lv, lt, rv, rt);
 
 		#[derive(Clone, Copy)]
@@ -576,7 +611,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		let out = self.narrow(out, &lt);
-		Ok((out, own.unwrap_or(lt)))
+		Ok((out, lt))
 	}
 
 	pub(super) fn cmp(

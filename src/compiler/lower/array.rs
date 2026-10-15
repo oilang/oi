@@ -113,7 +113,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Copy each value into `base` at its stride-sized slot.
-	fn store_all(&mut self, base: Value, vals: Vec<Value>, elem: &Typ) {
+	pub(super) fn store_all(&mut self, base: Value, vals: Vec<Value>, elem: &Typ) {
 		let stride = self.elem_stride(elem);
 		for (i, val) in vals.into_iter().enumerate() {
 			let val = self.copy_in(val, elem);
@@ -231,7 +231,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.copy_struct(val, heap, typ, &slots);
 		}
 		// a fixed array's buffer is inline, so a copy must escape the frame with its owner
-		if let Typ::FixedArray(elem, n) = typ {
+		if let Typ::FixedArray(elem, n) = typ.newtype().unwrap_or(typ) {
 			let (elem, n) = ((**elem).clone(), *n);
 			let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
 			return self.fixed_copy(val, heap, &elem, n);

@@ -307,3 +307,15 @@ fn equality_is_structural() {
 fn ordering_rejected() {
 	fail("[1, 2] < [1, 3]", "only `==` and `!=`");
 }
+
+#[test]
+fn fixed_arithmetic_is_elementwise() {
+	check(
+		indoc! {"
+			vel: [3]f32 = .[0 0 10]
+			m: [2][2]int = .[.[1 2] .[3 4]]
+			print(vel + vel * 2, m + m)
+		"},
+		"[0.0, 0.0, 30.0] [[2, 4], [6, 8]]",
+	);
+}
