@@ -278,5 +278,7 @@ fn zeros_returns_and_any_casts_are_freed() {
 		t := st()
 		a: any = D.{}
 		d := D.(a)
+		S :: struct { a: []int, m: [string]int }
+		s: [2]S
 	"});
 }

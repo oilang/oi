@@ -85,8 +85,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(v) = value {
 						self.move_resource(v, &typ)?;
 					}
-					// filter out already owned types
-					let final_val = match value.is_none() && matches!(typ, Typ::Array(_) | Typ::Map(..)) {
+					// zeros are already owned
+					let final_val = match value.is_none() {
 						true => val,
 						false => self.copy_bind(val, &typ),
 					};

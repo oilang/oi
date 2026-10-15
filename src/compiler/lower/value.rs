@@ -153,10 +153,17 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A zero value for an owning slot, where a fixed array is its own heap block.
 	fn zero_slot(&mut self, typ: &Typ) -> Value {
 		let z = self.zero(typ);
-		match typ {
-			t if rc::inline(t) => self.copy_in(z, typ),
-			_ => z,
-		}
+		let (elem, n) = match typ {
+			Typ::FixedArray(elem, n) => ((**elem).clone(), *n),
+			t if let Some(slots) = t.slots() => (Typ::Int(64), slots.len()),
+			_ => return z,
+		};
+
+		// moved, not shared, since it's fresh
+		let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
+		self.fixed_move(heap, z, &elem, n);
+
+		heap
 	}
 
 	fn zero_val(&mut self, typ: &Typ) -> Value {
@@ -204,7 +211,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
-				let zs: Vec<_> = fields.iter().map(|f| self.zero(&f.typ)).collect();
+				let zs: Vec<_> = fields.iter().map(|f| self.zero_slot(&f.typ)).collect();
 				let ptr = self.stack_slot((zs.len() * 8) as u32);
 				self.store_slots(ptr, &zs);
 				ptr
@@ -225,7 +232,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let stride = self.elem_stride(&elem);
 				let ptr = self.stack_slot((*n as i64 * stride) as u32);
 				for i in 0..*n {
-					let z = self.zero(&elem);
+					let z = self.zero_slot(&elem);
 					self.store_elem(ptr, (i as i64 * stride) as i32, &elem, z);
 				}
 				ptr
