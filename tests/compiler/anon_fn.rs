@@ -69,6 +69,10 @@ fn closure_cannot_escape() {
 		["n :: 10", "arr :: [fn [n] () int { n }]"],
 		"borrows its captures, so it can't be stored in an array",
 	);
+	fail(
+		["n :: 10", "f: any = fn [n] () int { n }"],
+		"borrows its captures, so it can't be boxed as `any`",
+	);
 
 	let src = indoc! {"
 		smuggle[T] :: fn(x: T) []T {

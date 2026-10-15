@@ -959,6 +959,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((self.box_error(val, from), Typ::Error));
 		}
 		if *to == Typ::Any {
+			closure_escape(from, span.into_range(), "boxed as `any`")?;
 			let id = self.typeid_of(from);
 			return Ok((self.any_box(id, val, from), Typ::Any));
 		}

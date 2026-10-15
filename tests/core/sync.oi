@@ -71,3 +71,17 @@ test! "group members add" {
 	})
 	assert! g.wait() == [1 2]
 }
+
+test! "poll" {
+	t := sync.spawn! 2
+	s := sync.Signal.{}
+	x := loop {
+		t.watch(s)
+		break t.poll() or { s.sleep(); continue }
+	}
+	ch := sync.Chan[int].{}
+	ch <- 1 or ()
+	ch.close()
+	a := sync.after(0.ns())
+	assert! x == 2 && ch.poll() == ?int.(1) && ch.poll() == ?int.(none) && a.poll() != none
+}

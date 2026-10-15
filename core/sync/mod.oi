@@ -1,12 +1,15 @@
 module sync
 
-use time.{ Duration }
+use time.{ Duration, Instant }
 
 ## Threads and channels.
 
-oi_thread_spawn : fn(move job: any) ptr : foreign
-oi_thread_join : fn(handle: ptr) any : foreign
-oi_thread_detach : fn(handle: ptr) : foreign
+oi_thread_spawn : fn(move job: any) : foreign
+oi_signal_new : fn() ptr : foreign
+oi_signal_release : fn(s: ptr) : foreign
+oi_signal_within : fn(s: ptr, ns: int) : foreign
+oi_signal_sleep : fn(s: ptr) : foreign
+oi_chan_watch : fn(chan: ptr, s: ptr) : foreign
 oi_chan_new : fn() ptr : foreign
 oi_chan_retain : fn(chan: ptr) : foreign
 oi_chan_release : fn(chan: ptr) : foreign
@@ -24,20 +27,46 @@ pub Waitable[T] :: trait {
 	wait: fn(move self) T
 }
 
-## A running thread. Dropping it detaches.
-pub Thread[T] :: struct {
-	handle: ptr
+## Yields without blocking, none until ready.
+pub Pollable[T] :: trait {
+	poll: fn(mut self) ?T
+	watch: fn(self, s: Signal)
 }
 
-Thread[T] : Drop < {
+## Wakes a sleeper once a watched pollable may be ready.
+pub Signal :: struct {
+	handle: ptr = unsafe oi_signal_new()
+}
+
+Signal : Drop < {
 	drop :: fn(mut self) {
-		unsafe oi_thread_detach(self.handle)
+		unsafe oi_signal_release(self.handle)
 	}
+}
+
+Signal :< {
+	pub sleep :: fn(self) {
+		unsafe oi_signal_sleep(self.handle)
+	}
+}
+
+## A running thread, with the channel its result arrives on.
+pub Thread[T] :: struct {
+	done: Chan[T] = .{}
 }
 
 Thread[T] : Waitable[T] < {
 	wait :: fn(move self) T {
-		T.(unsafe oi_thread_join(self.handle)) or panic!("sync: bad thread result")
+		self.done.recv() or panic!("sync: thread died")
+	}
+}
+
+Thread[T] : Pollable[T] < {
+	poll :: fn(mut self) ?T {
+		self.done.try_recv()
+	}
+	watch :: fn(self, s: Signal) {
+		self.done.watch(s)
 	}
 }
 
@@ -50,8 +79,15 @@ Thread[T] : Waitable[T] < {
 
 ## Run `f` on a new thread.
 pub start[T] :: fn(move f: @isolated fn() T) Thread[T] {
-	job: any = fn [move f] () any { f() }
-	.{ handle = unsafe oi_thread_spawn(move job) }
+	done := Chan[T].{}
+	d := done
+	job: any = fn [move f, move d] () () {
+		r := f()
+		d <- move r or ()
+		d.close()
+	}
+	unsafe oi_thread_spawn(move job)
+	.{ done }
 }
 
 ## Run an expression on a new thread.
@@ -113,6 +149,19 @@ Chan[T] : Recv[T] < {
 	}
 }
 
+## Fires none once closed and drained.
+Chan[T] : Pollable[?T] < {
+	poll :: fn(mut self) ??T {
+		shut := self.closed()
+		v := self.try_recv()
+		if v == none && !shut do return none
+		v
+	}
+	watch :: fn(self, s: Signal) {
+		unsafe oi_chan_watch(self.handle, s.handle)
+	}
+}
+
 Chan[T] : Iterator[T] < {
 	next :: fn(mut self) ?T {
 		self.recv()
@@ -139,5 +188,42 @@ Group[T] : Waitable[[]T] < {
 		}
 		self.threads.close()
 		out
+	}
+}
+
+## Requeues members while polling, so a concurrent `add` can land between them.
+Group[T] : Pollable[[]T] < {
+	poll :: fn(mut self) ?[]T {
+		ts := loop { self.threads.try_recv() or break }
+		ready := true
+		loop t in ts { ready = ready && t.done.closed() }
+		if ready do return loop t in move ts do t.wait()
+		loop t in move ts do self.add(move t)
+		none
+	}
+	watch :: fn(self, s: Signal) {
+		ts := loop { self.threads.try_recv() or break }
+		loop t in move ts {
+			t.watch(s)
+			self.add(move t)
+		}
+	}
+}
+
+## Ready once `d` has passed, a timer for `select!`.
+pub after :: fn(d: Duration) After {
+	.{ Instant.now() + d }
+}
+
+pub After :: struct {
+	at: Instant
+}
+
+After : Pollable[()] < {
+	poll :: fn(mut self) ?() {
+		if Instant.now() < self.at { none } else { () }
+	}
+	watch :: fn(self, s: Signal) {
+		unsafe oi_signal_within(s.handle, (self.at - Instant.now()).ns)
 	}
 }

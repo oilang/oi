@@ -7,7 +7,6 @@ use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
-use std::thread::JoinHandle;
 use std::time::Duration;
 
 // Flush stdout, then fail without a core dump.
@@ -1125,33 +1124,81 @@ pub unsafe extern "C" fn map_entries(map: *mut OiMap, keys: i64, width: i64) -> 
 	array_of(&bits, width)
 }
 
-/// Run a boxed fn on a new thread, with that thread's root context.
+/// Run a boxed fn on a new, detached thread, with that thread's root context.
 /// # Safety
 /// `job` must be an owned `any` holding a fn.
 #[unsafe(export_name = "oi_thread_spawn")]
-pub unsafe extern "C" fn thread_spawn(job: usize) -> Box<Option<JoinHandle<usize>>> {
-	Box::new(Some(std::thread::spawn(move || unsafe {
+pub unsafe extern "C" fn thread_spawn(job: usize) {
+	std::thread::spawn(move || unsafe {
 		let f = *((job + 8) as *const *mut u8);
-		let call: unsafe extern "C" fn(*mut i64, *mut u8) -> usize = std::mem::transmute(*(f as *const usize));
-		let out = call(ctx_root(), f);
+		let call: unsafe extern "C" fn(*mut i64, *mut u8) = std::mem::transmute(*(f as *const usize));
+		call(ctx_root(), f);
 		ref_release(job as *mut u8);
-		out
-	})))
+	});
 }
 
-/// Leaves the box for `oi_thread_detach`.
-#[unsafe(export_name = "oi_thread_join")]
-pub extern "C" fn thread_join(h: &mut Option<JoinHandle<usize>>) -> usize {
-	h.take().map_or(0, |h| h.join().unwrap_or_else(|_| die()))
+/// Wait while `blocked`, up to `ns`, forever when negative.
+fn wait_on<'a, S>(m: &'a Mutex<S>, cv: &Condvar, ns: i64, blocked: impl FnMut(&mut S) -> bool) -> MutexGuard<'a, S> {
+	let guard = m.lock().unwrap();
+	if ns < 0 {
+		return cv.wait_while(guard, blocked).unwrap();
+	}
+	cv.wait_timeout_while(guard, Duration::from_nanos(ns as u64), blocked)
+		.unwrap()
+		.0
 }
 
-#[unsafe(export_name = "oi_thread_detach")]
-pub extern "C" fn thread_detach(_: Box<Option<JoinHandle<usize>>>) {}
+/// Wakes a `select!`. Watched chans fire it, `within` caps its next sleep.
+pub struct Signal {
+	state: Mutex<(bool, i64)>,
+	cv: Condvar,
+}
+
+#[unsafe(export_name = "oi_signal_new")]
+pub extern "C" fn signal_new() -> *const Signal {
+	Arc::into_raw(Arc::new(Signal {
+		state: Mutex::new((false, i64::MAX)),
+		cv: Condvar::new(),
+	}))
+}
+
+/// # Safety
+/// `sig` must come from `oi_signal_new`.
+#[unsafe(export_name = "oi_signal_release")]
+pub unsafe extern "C" fn signal_release(sig: *const Signal) {
+	unsafe { Arc::decrement_strong_count(sig) }
+}
+
+/// Cap the next sleep at `ns`.
+#[unsafe(export_name = "oi_signal_within")]
+pub extern "C" fn signal_within(sig: &Signal, ns: i64) {
+	let mut state = sig.state.lock().unwrap();
+	state.1 = state.1.min(ns.max(0));
+}
+
+/// Sleep until fired or the cap passes, then rearm.
+#[unsafe(export_name = "oi_signal_sleep")]
+pub extern "C" fn signal_sleep(sig: &Signal) {
+	let ns = sig.state.lock().unwrap().1;
+	*wait_on(&sig.state, &sig.cv, ns, |(fired, _)| !*fired) = (false, i64::MAX);
+}
 
 #[derive(Default)]
 pub struct Chan {
 	queue: Mutex<Queue>,
 	cv: Condvar,
+	watchers: Mutex<Vec<Arc<Signal>>>,
+}
+
+impl Chan {
+	// Wake blocked peers, and fire each watcher once.
+	fn wake(&self) {
+		self.cv.notify_all();
+		for sig in self.watchers.lock().unwrap().drain(..) {
+			sig.state.lock().unwrap().0 = true;
+			sig.cv.notify_all();
+		}
+	}
 }
 
 impl Drop for Chan {
@@ -1182,38 +1229,29 @@ pub unsafe extern "C" fn chan_release(c: *const Chan) {
 
 type Queue = (VecDeque<usize>, bool);
 
-/// Wait while `blocked`, up to `ns`, forever when negative.
-fn chan_wait(c: &Chan, ns: i64, blocked: impl FnMut(&mut Queue) -> bool) -> MutexGuard<'_, Queue> {
-	let queue = c.queue.lock().unwrap();
-	if ns < 0 {
-		return c.cv.wait_while(queue, blocked).unwrap();
-	}
-	c.cv.wait_timeout_while(queue, Duration::from_nanos(ns as u64), blocked)
-		.unwrap()
-		.0
-}
-
 /// Queue a value, waiting up to `ns` while queue is at `cap`.
 /// # Safety
 /// `v` must be an owned box.
 #[unsafe(export_name = "oi_chan_send")]
 pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize, ns: i64) -> i64 {
 	let full = |(queue, closed): &mut Queue| !*closed && cap > 0 && queue.len() >= cap as usize;
-	let mut queue = chan_wait(c, ns, full);
+	let mut queue = wait_on(&c.queue, &c.cv, ns, full);
 	if queue.1 || full(&mut queue) {
 		unsafe { ref_release(v as *mut u8) };
 		return 0;
 	}
 	queue.0.push_back(v);
-	c.cv.notify_all();
+	c.wake();
 	1
 }
 
 /// Take the next box, waiting up to `ns` while empty.
 #[unsafe(export_name = "oi_chan_recv")]
 pub extern "C" fn chan_recv(chan: &Chan, ns: i64) -> usize {
-	let mut queue = chan_wait(chan, ns, |(queue, closed)| queue.is_empty() && !*closed);
-	chan.cv.notify_all();
+	let mut queue = wait_on(&chan.queue, &chan.cv, ns, |(queue, closed)| {
+		queue.is_empty() && !*closed
+	});
+	chan.wake();
 	queue.0.pop_front().unwrap_or(0)
 }
 
@@ -1225,5 +1263,17 @@ pub extern "C" fn chan_closed(c: &Chan) -> i64 {
 #[unsafe(export_name = "oi_chan_close")]
 pub extern "C" fn chan_close(c: &Chan) {
 	c.queue.lock().unwrap().1 = true;
-	c.cv.notify_all();
+	c.wake();
+}
+
+/// Fire `sig` on the chan's next send, recv or close.
+/// # Safety
+/// `sig` must come from `oi_signal_new`.
+#[unsafe(export_name = "oi_chan_watch")]
+pub unsafe extern "C" fn chan_watch(c: &Chan, sig: *const Signal) {
+	let mut watchers = c.watchers.lock().unwrap();
+	if !watchers.iter().any(|w| Arc::as_ptr(w) == sig) {
+		unsafe { Arc::increment_strong_count(sig) };
+		watchers.push(unsafe { Arc::from_raw(sig) });
+	}
 }
