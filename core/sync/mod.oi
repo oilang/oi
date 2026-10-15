@@ -118,3 +118,26 @@ Chan[T] : Iterator[T] < {
 		self.recv()
 	}
 }
+
+## A wait group.
+## Joins its threads in order of adding them.
+pub Group[T] :: struct {
+	threads: Chan[Thread[T]] = .{}
+}
+
+Group[T] :< {
+	pub add :: fn(self, move t: Thread[T]) {
+		self.threads <- move t or panic!("sync: add after wait")
+	}
+}
+
+Group[T] : Waitable[[]T] < {
+	wait :: fn(move self) out: []T {
+		loop {
+			t := self.threads.try_recv() or break
+			out << t.wait()
+		}
+		self.threads.close()
+		out
+	}
+}

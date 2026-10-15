@@ -55,3 +55,19 @@ test! "try, within and closed" {
 	ch.close()
 	assert! failed && ch.closed() && ch.try_recv() == 1
 }
+
+test! "group wait" {
+	g := sync.Group[int].{}
+	loop i in 0..4 do g.add(move sync.spawn! i * i)
+	assert! g.wait() == [0 1 4 9]
+}
+
+test! "group members add" {
+	g := sync.Group[int].{}
+	h := g
+	g.add(move sync.spawn! {
+		h.add(move sync.spawn! 2)
+		1
+	})
+	assert! g.wait() == [1 2]
+}
