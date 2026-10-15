@@ -1,5 +1,7 @@
 module sync
 
+use time.{ Duration }
+
 ## Threads and channels.
 
 oi_thread_spawn : fn(move job: any) ptr : foreign
@@ -8,9 +10,10 @@ oi_thread_detach : fn(handle: ptr) : foreign
 oi_chan_new : fn() ptr : foreign
 oi_chan_retain : fn(chan: ptr) : foreign
 oi_chan_release : fn(chan: ptr) : foreign
-oi_chan_send : fn(chan: ptr, cap: int, move packet: ^Packet) int : foreign
-oi_chan_recv : fn(chan: ptr) ?^Packet : foreign
+oi_chan_send : fn(chan: ptr, cap: int, move packet: ^Packet, ns: int) int : foreign
+oi_chan_recv : fn(chan: ptr, ns: int) ?^Packet : foreign
 oi_chan_close : fn(chan: ptr) : foreign
+oi_chan_closed : fn(chan: ptr) int : foreign
 
 Packet :: struct {
 	value: any
@@ -80,20 +83,33 @@ Chan[T] :< {
 	pub close :: fn(self) {
 		unsafe oi_chan_close(self.handle)
 	}
+
+	pub closed :: fn(self) bool { unsafe oi_chan_closed(self.handle) != 0 }
+	pub try_send :: fn(self, move value: T) !() { self.send_within(move value, 0.ns()) }
+	pub try_recv :: fn(self) ?T { self.recv_within(0.ns()) }
+
+	## Send, waiting at most `d`, forever when negative.
+	pub send_within :: fn(self, move value: T, d: Duration) !() {
+		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value = __unshare(value) }, d.ns) == 0 {
+			return error("closed")
+		}
+	}
+
+	pub recv_within :: fn(self, d: Duration) ?T {
+		packet := unsafe oi_chan_recv(self.handle, d.ns) or return none
+		T.(packet.value)
+	}
 }
 
 Chan[T] : Send[T] < {
 	send :: fn(self, move value: T) !() {
-		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value = __unshare(value) }) == 0 {
-			return error("closed")
-		}
+		self.send_within(move value, (-1).ns())
 	}
 }
 
 Chan[T] : Recv[T] < {
 	recv :: fn(self) ?T {
-		packet := unsafe oi_chan_recv(self.handle) or return none
-		T.(packet.value)
+		self.recv_within((-1).ns())
 	}
 }
 

@@ -6,8 +6,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 // Flush stdout, then fail without a core dump.
 fn die() -> ! {
@@ -1149,7 +1150,7 @@ pub extern "C" fn thread_detach(_: Box<Option<JoinHandle<usize>>>) {}
 
 #[derive(Default)]
 pub struct Chan {
-	queue: Mutex<(VecDeque<usize>, bool)>,
+	queue: Mutex<Queue>,
 	cv: Condvar,
 }
 
@@ -1179,14 +1180,27 @@ pub unsafe extern "C" fn chan_release(c: *const Chan) {
 	unsafe { Arc::decrement_strong_count(c) }
 }
 
-/// Queue a value, blocking while queue is at `cap`.
+type Queue = (VecDeque<usize>, bool);
+
+/// Wait while `blocked`, up to `ns`, forever when negative.
+fn chan_wait(c: &Chan, ns: i64, blocked: impl FnMut(&mut Queue) -> bool) -> MutexGuard<'_, Queue> {
+	let queue = c.queue.lock().unwrap();
+	if ns < 0 {
+		return c.cv.wait_while(queue, blocked).unwrap();
+	}
+	c.cv.wait_timeout_while(queue, Duration::from_nanos(ns as u64), blocked)
+		.unwrap()
+		.0
+}
+
+/// Queue a value, waiting up to `ns` while queue is at `cap`.
 /// # Safety
 /// `v` must be an owned box.
 #[unsafe(export_name = "oi_chan_send")]
-pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize) -> i64 {
-	let full = |(queue, closed): &mut (VecDeque<usize>, bool)| !*closed && cap > 0 && queue.len() >= cap as usize;
-	let mut queue = c.cv.wait_while(c.queue.lock().unwrap(), full).unwrap();
-	if queue.1 {
+pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize, ns: i64) -> i64 {
+	let full = |(queue, closed): &mut Queue| !*closed && cap > 0 && queue.len() >= cap as usize;
+	let mut queue = chan_wait(c, ns, full);
+	if queue.1 || full(&mut queue) {
 		unsafe { ref_release(v as *mut u8) };
 		return 0;
 	}
@@ -1195,13 +1209,17 @@ pub unsafe extern "C" fn chan_send(c: &Chan, cap: i64, v: usize) -> i64 {
 	1
 }
 
-/// Take the next box, blocking while empty.
+/// Take the next box, waiting up to `ns` while empty.
 #[unsafe(export_name = "oi_chan_recv")]
-pub extern "C" fn chan_recv(chan: &Chan) -> usize {
-	let empty = |(queue, closed): &mut (VecDeque<usize>, bool)| queue.is_empty() && !*closed;
-	let mut queue = chan.cv.wait_while(chan.queue.lock().unwrap(), empty).unwrap();
+pub extern "C" fn chan_recv(chan: &Chan, ns: i64) -> usize {
+	let mut queue = chan_wait(chan, ns, |(queue, closed)| queue.is_empty() && !*closed);
 	chan.cv.notify_all();
 	queue.0.pop_front().unwrap_or(0)
+}
+
+#[unsafe(export_name = "oi_chan_closed")]
+pub extern "C" fn chan_closed(c: &Chan) -> i64 {
+	c.queue.lock().unwrap().1 as i64
 }
 
 #[unsafe(export_name = "oi_chan_close")]

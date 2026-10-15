@@ -44,3 +44,14 @@ test! "chan copies share a queue" {
 	}
 	assert! (ch.recv() or panic!("empty")).id == 7
 }
+
+test! "try, within and closed" {
+	ch := sync.Chan[int].{ cap = 1 }
+	assert! ch.recv_within(1.ms()) == none
+
+	ch.try_send(move 1) or panic!("full")
+	failed := false
+	ch.try_send(move 2) or { failed = true }
+	ch.close()
+	assert! failed && ch.closed() && ch.try_recv() == 1
+}
