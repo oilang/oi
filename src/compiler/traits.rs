@@ -50,6 +50,26 @@ pub(crate) fn is_assoc_type(p: &Param) -> bool {
 	matches!(&p.typ, TypeExpr::Name(n) if n == "type")
 }
 
+// A claim's associated types, filled or defaulted.
+pub(crate) fn claim_assoc(fills: &[Spanned<Expr>], tfields: &[Param]) -> Vec<(String, TypeExpr)> {
+	let filled = |slot: &str| {
+		fills.iter().find_map(|f| match &Expr::peel_meta(f).2.0 {
+			Expr::Bind {
+				name, value: Some(v), ..
+			} if name == slot => Some(&v.0),
+			_ => None,
+		})
+	};
+	(tfields.iter().filter(|f| is_assoc_type(f)))
+		.filter_map(|f| {
+			Some((
+				f.name.clone(),
+				TypeExpr::from_expr(filled(&f.name).or(f.default.as_ref().map(|d| &d.0))?)?,
+			))
+		})
+		.collect()
+}
+
 // Bind `Self`, plus this type's associated types under their bare slot names.
 pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
 	aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
@@ -228,6 +248,9 @@ pub(super) fn check_impls<'p>(
 			let arg = (args.get(i).cloned()).or_else(|| p.default.as_ref().map(|(te, sp)| (subst(te, &me), *sp)));
 			let Some((te, sp)) = arg else { continue };
 			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(&te, sp)?);
+		}
+		for (name, te) in claim_assoc(methods, tfields) {
+			sig_params.insert(name, types.with_scope(scope).resolve(&subst(&te, &me), span)?);
 		}
 		for tf in *tfields {
 			if is_assoc_type(tf) {

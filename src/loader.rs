@@ -426,7 +426,8 @@ impl Loader {
 				));
 			}
 		}
-		fills.retain(|f| const_fill(&f.0).is_none());
+
+		fills.retain(|f| const_fill(&f.0).is_none_or(|(.., v)| self.const_value(v, scope).is_none()));
 		Ok(aliases)
 	}
 

@@ -825,6 +825,18 @@ fn associated_types() {
 		print(A.{2}.f().n, B.{}.f(), A.k, A.j, B.k, B.j)
 	"#};
 	check(src, "2 3 7 6 5 9");
+
+	let src = indoc! {r#"
+		Tr[R] :: trait {
+			Out: type
+			f: fn(self, r: R) Out
+		}
+		A :: struct {}
+		A : Tr[int] < { Out :: int  f :: fn(self, r: int) int { r } }
+		A : Tr[float] < { Out :: float  f :: fn(self, r: float) float { r } }
+		print(A.{}.f(2), A.{}.f(2.5))
+	"#};
+	check(src, "2 2.5");
 	fail(r#"A :: struct { k : int : "s" }"#, "`A::k` must be a `int` literal");
 }
 

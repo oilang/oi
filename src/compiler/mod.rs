@@ -1323,6 +1323,12 @@ impl<M: Module> Compiler<M> {
 						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
 						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
 						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
+						.chain(
+							claimed
+								.iter()
+								.filter_map(|(tn, _)| traits.get(tn.as_str()))
+								.flat_map(|t| claim_assoc(fills, t.2)),
+						)
 						.collect();
 					let claim = Fills {
 						decls: &decls,
