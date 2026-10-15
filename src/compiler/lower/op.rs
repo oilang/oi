@@ -431,7 +431,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			sig.map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 		})?;
 		if op == BinOp::Send {
-			if !moved && self.is_affine(&rt) {
+			if !moved && Self::is_place(r) && self.is_affine(&rt) {
 				let msg = "this parameter is `move`, missing `move` at the callsite";
 				return fail(msg, r.1, "wrap it, e.g. `ch <- move x`");
 			}

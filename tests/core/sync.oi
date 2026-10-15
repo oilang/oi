@@ -2,6 +2,11 @@ use sync
 
 Job :: struct { id: int }
 
+## move-only
+Done :: struct { n: int }
+Done : Drop < { drop :: fn(mut self) {} }
+Done : sync.Waitable[int] < { wait :: fn(move self) int { self.n } }
+
 test! "threads and chans" {
 	ch := sync.Chan[Job].{ cap = 2 }
 	t := sync.spawn! {
@@ -34,6 +39,7 @@ test! "spawn captures are unshared" {
 test! "wait on many" {
 	ts := loop i in 0..4 do sync.spawn! i * i
 	assert! ts.wait() == [0 1 4 9]
+	assert! [Done.{ n = 1 }, Done.{ n = 2 }].wait() == [1 2]
 }
 
 test! "chan copies share a queue" {
@@ -49,24 +55,24 @@ test! "try, within and closed" {
 	ch := sync.Chan[int].{ cap = 1 }
 	assert! ch.recv_within(1.ms()) == none
 
-	ch.try_send(move 1) or panic!("full")
+	ch.try_send(1) or panic!("full")
 	failed := false
-	ch.try_send(move 2) or { failed = true }
+	ch.try_send(2) or { failed = true }
 	ch.close()
 	assert! failed && ch.closed() && ch.try_recv() == 1
 }
 
 test! "group wait" {
 	g := sync.Group[int].{}
-	loop i in 0..4 do g.add(move sync.spawn! i * i)
+	loop i in 0..4 do g.add(sync.spawn! i * i)
 	assert! g.wait() == [0 1 4 9]
 }
 
 test! "group members add" {
 	g := sync.Group[int].{}
 	h := g
-	g.add(move sync.spawn! {
-		h.add(move sync.spawn! 2)
+	g.add(sync.spawn! {
+		h.add(sync.spawn! 2)
 		1
 	})
 	assert! g.wait() == [1 2]

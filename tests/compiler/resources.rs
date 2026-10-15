@@ -182,6 +182,9 @@ fn a_move_arg_transfers_ownership() {
 	);
 	fail([FILE, eat, f, "eat(move f)", "print(f.fd)"], "undefined variable");
 	fail([FILE, eat, f, "eat(f)"], "missing `move` at the callsite");
+	check([FILE, eat, "eat(File.{fd = 2})"], ["ate 2", "drop 2"]);
+	let close = r#"File :< { close :: fn(move self) { print("closed", self.fd) } }"#;
+	check([FILE, close, "File.{fd = 3}.close()"], ["closed 3", "drop 3"]);
 	fail(["look :: fn(n: int) {}", "look(move 1)"], "not `move`");
 }
 

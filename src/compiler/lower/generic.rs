@@ -137,6 +137,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
 			if rparam.access == Access::Move {
 				self.move_out(rexpr, rtyp)?;
+				self.untemp(*rval);
 			}
 			vals.push(*rval);
 		}

@@ -82,8 +82,7 @@ pub start[T] :: fn(move f: @isolated fn() T) Thread[T] {
 	done := Chan[T].{}
 	d := done
 	job: any = fn [move f, move d] () () {
-		r := f()
-		d <- move r or ()
+		d <- f() or ()
 		d.close()
 	}
 	unsafe oi_thread_spawn(move job)
@@ -126,7 +125,7 @@ Chan[T] :< {
 
 	## Send, waiting at most `d`, forever when negative.
 	pub send_within :: fn(self, move value: T, d: Duration) !() {
-		if unsafe oi_chan_send(self.handle, self.cap, move &Packet.{ value = __unshare(value) }, d.ns) == 0 {
+		if unsafe oi_chan_send(self.handle, self.cap, &Packet.{ value = __unshare(value) }, d.ns) == 0 {
 			return error("closed")
 		}
 	}
@@ -196,11 +195,14 @@ Group[T] : Pollable[[]T] < {
 	poll :: fn(mut self) ?[]T {
 		ts := loop { self.threads.try_recv() or break }
 		ready := true
+
 		loop t in ts { ready = ready && t.done.closed() }
-		if ready do return loop t in move ts do t.wait()
+		if ready do return ts.wait()
+
 		loop t in move ts do self.add(move t)
 		none
 	}
+
 	watch :: fn(self, s: Signal) {
 		ts := loop { self.threads.try_recv() or break }
 		loop t in move ts {

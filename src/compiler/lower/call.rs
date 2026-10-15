@@ -386,6 +386,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.check_args(&access, recv_expr, &slots)?;
 				if access[0] == Access::Move {
 					self.move_out(re, access_peel(&params[0].typ))?;
+					self.untemp(recv.unwrap());
 				}
 			}
 			None => self.check_args(&access[self_n..], None, &slots)?,
@@ -595,6 +596,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let Some(arg) = arg else { continue };
 			let given = match &arg.0 {
 				Expr::ArgMod(a, _) => *a,
+				// temps have no other owners, so `move` is implied
+				_ if want == Access::Move && !Self::is_place(arg) => want,
 				_ => Access::Read,
 			};
 			if given != want {
@@ -638,6 +641,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ => e,
 		}
+	}
+
+	// Whether moving `expr` would take it from a binding.
+	pub(super) fn is_place(expr: &Spanned<Expr>) -> bool {
+		matches!(Self::place_root(expr).0, Expr::Ident(_))
 	}
 
 	// Require a mutable binding place.
