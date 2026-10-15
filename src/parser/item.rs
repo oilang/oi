@@ -375,7 +375,7 @@ where
 		.ignore_then(ident())
 		.map_with(|name, ex| (Expr::Module(name), ex.span()));
 	// imports
-	let use_item = spanned(ident())
+	let use_item = spanned(ident().then_ignore(p.adjacent.clone().then(just(Token::Not)).or_not()))
 		.then(just(Token::DoubleColon).ignore_then(spanned(ident())).or_not())
 		.map(|(local, rename_of)| UseItem { local, rename_of });
 	let use_decl = just(Token::With)

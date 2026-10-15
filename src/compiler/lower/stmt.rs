@@ -85,7 +85,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(v) = value {
 						self.move_resource(v, &typ)?;
 					}
-					let final_val = self.copy_bind(val, &typ);
+					// filter out already owned types
+					let final_val = match value.is_none() && matches!(typ, Typ::Array(_) | Typ::Map(..)) {
+						true => val,
+						false => self.copy_bind(val, &typ),
+					};
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					self.bind_local(name, final_val, typ, *mutable);
 				}

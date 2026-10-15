@@ -222,6 +222,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
 		if let Some(slots) = typ.slots() {
 			let heap = self.call_alloc(slots.len());
+			// a move keeps blocks of its inline fields instead of deep-copying them
+			if self.handover(val, typ) {
+				self.untemp(val);
+				self.fixed_move(heap, val, &Typ::Int(64), slots.len());
+				return heap;
+			}
 			return self.copy_struct(val, heap, typ, &slots);
 		}
 		// a fixed array's buffer is inline, so a copy must escape the frame with its owner

@@ -324,10 +324,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.contribute((none, opt.clone()), &mut join, merge)?;
 		self.b.switch_to_block(yes);
 
-		let data = self.load_bind(obj, typ, target, 8, span);
+		let mut data = self.load_bind(obj, typ, target, 8, span);
 		if *typ == Typ::Any && self.is_affine(target) {
 			let zero = self.b.ins().iconst(self.int, 0);
 			self.st(obj, -16, zero);
+			data = self.unbox_ret(data, target);
 		}
 
 		let some = self.make_option(&opt, Some(data));

@@ -266,3 +266,17 @@ fn iterator_items_and_fallible_tails() {
 		f(false)
 	"#});
 }
+
+#[test]
+fn zeros_returns_and_any_casts_are_freed() {
+	assert_clean(indoc! {"
+		D :: struct { n: int }
+		D : Drop < { drop :: fn(mut self) {} }
+		w :: fn() out: []int { out }
+		st :: fn() (D, int) { (D.{}, 1) }
+		x := w()
+		t := st()
+		a: any = D.{}
+		d := D.(a)
+	"});
+}
