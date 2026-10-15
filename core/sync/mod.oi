@@ -55,6 +55,10 @@ pub Thread[T] :: struct {
 	done: Chan[T] = .{}
 }
 
+Thread[T] : Drop < {
+	drop :: fn(mut self) {}
+}
+
 Thread[T] : Waitable[T] < {
 	wait :: fn(move self) T {
 		self.done.recv() or panic!("sync: thread died")

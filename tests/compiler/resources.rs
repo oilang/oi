@@ -458,3 +458,27 @@ fn or_moves_the_payload_out_of_a_named_option() {
 		["1", "drop 1"],
 	);
 }
+
+#[test]
+fn a_drop_claim_overrides_inferred_copy() {
+	let handle = indoc! {"
+		Handle :: struct { r: Ref }
+		Handle : Drop < { drop :: fn(mut self) {} }
+		h := Handle.{ r = Ref.{id = 1} }
+		g := h
+		print(h)
+	"};
+	fail([REF, handle], "undefined variable");
+}
+
+#[test]
+fn a_thread_cant_be_copied_out_of_its_array() {
+	let src = indoc! {"
+		use sync
+		ts := [sync.spawn! 1]
+		t := ts[0]
+		t.wait()
+		ts.wait()
+	"};
+	fail(src, "cannot move sync::Thread[int] out of its container");
+}

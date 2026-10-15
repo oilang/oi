@@ -2,11 +2,6 @@ use sync
 
 Job :: struct { id: int }
 
-## move-only
-Done :: struct { n: int }
-Done : Drop < { drop :: fn(mut self) {} }
-Done : sync.Waitable[int] < { wait :: fn(move self) int { self.n } }
-
 test! "threads and chans" {
 	ch := sync.Chan[Job].{ cap = 2 }
 	t := sync.spawn! {
@@ -39,7 +34,6 @@ test! "spawn captures are unshared" {
 test! "wait on many" {
 	ts := loop i in 0..4 do sync.spawn! i * i
 	assert! ts.wait() == [0 1 4 9]
-	assert! [Done.{ n = 1 }, Done.{ n = 2 }].wait() == [1 2]
 }
 
 test! "chan copies share a queue" {

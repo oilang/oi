@@ -113,7 +113,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		match typ {
 			Typ::Struct(_, fields) => {
 				self.claims(typ, "Copy")
-					|| (fields.iter().any(|f| self.is_copy(&f.typ)) && fields.iter().all(|f| !self.is_affine(&f.typ)))
+					|| (!self.claims(typ, "Drop")
+						&& fields.iter().any(|f| self.is_copy(&f.typ))
+						&& fields.iter().all(|f| !self.is_affine(&f.typ)))
 			}
 			Typ::Array(t) | Typ::Map(_, t) => self.is_copy(t),
 			_ => false,
