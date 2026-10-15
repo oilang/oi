@@ -185,11 +185,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map(|(_, t)| t.clone())
 				.or_else(|| target.cloned())
 				.unwrap_or(Typ::unit());
-			let ok = self.types.fallible(&t);
-			return self.scoped(|s| {
-				let v = if ok { s.zero(&t) } else { s.zero_or_err(&t, join.span)? };
-				Ok(Some((v, t.clone())))
-			});
+			let v = if self.types.fallible(&t) {
+				self.zero(&t)
+			} else {
+				self.zero_or_err(&t, join.span)?
+			};
+			return Ok(Some((v, t)));
 		};
 		self.branch(els, target)
 	}
@@ -527,8 +528,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			self.expr(value)
 		};
-
 		let (val, typ) = lowered?;
+
+		// unwrapping an affine payload consumes the binding
+		if let Expr::Ident(_) = value.0
+			&& self.enum_box(&typ)
+			&& self.fallible_split(&typ).is_some_and(|(t, _)| self.is_affine(&t))
+		{
+			self.move_out(value, &typ)?;
+			self.temp(val, &typ);
+		}
+
 		let (payload, inner) = match self.fallible_split(&typ) {
 			Some((inner, err)) => {
 				let tag = self.enum_tag(&typ, val);
@@ -541,14 +551,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.throw(&mut catch, err, value.1)?;
 				self.b.switch_to_block(happy_block);
-				let payload = self.opt_payload(val, &typ, &inner, 8);
-				if self.is_affine(&inner) && self.enum_box(&typ) && self.temps.contains_key(&val) {
-					let gone = self.b.ins().iconst(self.int, -1);
-					self.st(val, 0, gone);
-					(self.unbox_ret(payload, &inner), inner)
-				} else {
-					(payload, inner)
-				}
+				(self.take_payload(val, &typ, &inner), inner)
 			}
 			None if !catch.throws.is_empty() => (val, typ),
 			None => {
@@ -577,6 +580,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(self.unit_value());
 		}
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
+	}
+
+	// A some payload, moved out of an owned box if affine.
+	fn take_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
+		let payload = self.opt_payload(val, typ, inner, 8);
+		if !(self.is_affine(inner) && self.enum_box(typ) && self.temps.contains_key(&val)) {
+			return payload;
+		}
+		let gone = self.b.ins().iconst(self.int, -1);
+		self.st(val, 0, gone);
+		self.unbox_ret(payload, inner)
 	}
 
 	// Jump to an `or` fallback, via a conversion block filled in once `$` is known.
@@ -798,6 +812,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("fail", &[msg]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		self.b.switch_to_block(done);
+		self.release_value(val, typ);
 	}
 
 	// `Enum.from(v)`.
@@ -1062,11 +1077,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(header);
 		let (yielded, _) = self.emit_call(&next, &[it]);
 		let tag = self.enum_tag(&opt, yielded);
-		let (body_block, fallthrough) = self.fork(tag);
+		let (body_block, done) = self.fork(tag);
+
+		// each pass owns what gets yielded by `next`
+		self.untemp(yielded);
+		self.b.switch_to_block(done);
+		self.release_value(yielded, &opt);
+		let fallthrough = self.b.create_block();
+		self.b.ins().jump(fallthrough, &[]);
+		self.b.seal_block(fallthrough);
 
 		self.b.switch_to_block(body_block);
 		let (mut frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
-			let v = s.opt_payload(yielded, &opt, &item, 8);
+			s.temp(yielded, &opt);
+			let v = s.take_payload(yielded, &opt, &item);
 			s.bind_pat(pat, v, &item, Some(false))?;
 			s.block(body)
 		})?;

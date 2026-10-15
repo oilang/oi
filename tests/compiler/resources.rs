@@ -447,3 +447,11 @@ fn a_cast_out_of_any_moves_the_payload() {
 	"};
 	check([FILE, src], ["1", "drop 1"]);
 }
+
+#[test]
+fn or_moves_the_payload_out_of_a_named_option() {
+	check(
+		[FILE, "o: ?File = File.{fd = 1}", "x := o or panic!()", "print(x.fd)"],
+		["1", "drop 1"],
+	);
+}

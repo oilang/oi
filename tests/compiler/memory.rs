@@ -249,3 +249,20 @@ fn fixed_arrays_in_slots_are_freed() {
 		print(r.a, z.a, t, e, ps[1].x, q)
 	"});
 }
+
+#[test]
+fn iterator_items_and_fallible_tails() {
+	assert_clean(indoc! {r#"
+		Gen :: struct { n: int }
+		Gen : Iterator[string] < {
+			next :: fn(mut self) ?string {
+				if self.n == 0 { return none }
+				self.n -= 1
+				"x{self.n}"
+			}
+		}
+		loop d in Gen.{n = 2} { print(d) }
+		f :: fn(fail: bool) !() { if fail { return error("x") } }
+		f(false)
+	"#});
+}
