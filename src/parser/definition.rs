@@ -247,13 +247,6 @@ where
 		.then(p.same_line.clone().ignore_then(p.block_ast.clone()).or_not())
 		.map(|(arg, body)| std::iter::once(arg).chain(body).collect())
 		.or(p.block_ast.clone().map(|body| vec![body]));
-	let macro_call = p
-		.dotted_name
-		.clone()
-		.then_ignore(p.adjacent.clone())
-		.then_ignore(just(Token::Not))
-		.then(p.adjacent.clone().ignore_then(paren(loose_list(p.expr.clone()))).or(bare_args))
-		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
 	// map literals
 	let map_entry = p.expr.clone().then_ignore(just(Token::Assign)).then(p.expr.clone());
@@ -420,6 +413,38 @@ where
 		body: vec![e],
 		..Default::default()
 	});
+
+	// arms in macro bodies
+	let macro_arm = (p.bind.clone().or(p.expr.clone()))
+		.or(just(Token::Else).map_with(|_, ex| (Expr::Ident("else".into()), ex.span())))
+		.then_ignore(just(Token::FatArrow))
+		.then(arm_body.clone())
+		.map_with(|(lhs, body), ex| {
+			(
+				Expr::Arm(MatchArm {
+					patterns: vec![lhs],
+					body,
+					..Default::default()
+				}),
+				ex.span(),
+			)
+		});
+	let arms =
+		spanned(brace(macro_arm.repeated().at_least(1).collect())).map(|(arms, span)| vec![(Expr::Block(arms), span)]);
+	let macro_call = p
+		.dotted_name
+		.clone()
+		.then_ignore(p.adjacent.clone())
+		.then_ignore(just(Token::Not))
+		.then(
+			p.adjacent
+				.clone()
+				.ignore_then(paren(loose_list(p.expr.clone())))
+				.or(arms)
+				.or(bare_args),
+		)
+		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
+
 	let match_expr = just(Token::Match)
 		.ignore_then(header_expr.clone())
 		.then(brace(

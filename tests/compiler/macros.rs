@@ -652,3 +652,26 @@ fn unquote_in_method_position() {
 		"4 4",
 	);
 }
+
+#[test]
+fn brace_body_takes_arms() {
+	check(
+		indoc! {r#"
+			arms! :: fn(arms: Ast) Ast {
+				out: []Ast
+				loop a in arms.items {
+					lhs := a.items[0]
+					if lhs.kind == "bind" do lhs = lhs.items[0]
+					out << `print(%{lhs.kind.str()}, %{a.items[1]})`
+				}
+				`{ %{..out} }`
+			}
+			arms! {
+				n := 1 + 1 => 1,
+				<-ch => { 2 }
+				else => 3,
+			}
+		"#},
+		["binary 1", "recv 2", "ident 3"],
+	);
+}
