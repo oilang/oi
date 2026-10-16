@@ -25,3 +25,12 @@ fn raw_macro_body_replays() {
 fn clear_resets_the_session() {
 	assert_eq!(repl("x := 1\n:c\nprint x\n"), "1");
 }
+
+#[test]
+fn help_topic_prints_docs_and_signature() {
+	let err = stderr(&oi(&["repl"]).run(Some(":h math.sqrt\n")));
+	assert!(
+		err.contains("## Square root.\npub sqrt :: fn(x: float) float {"),
+		"{err}"
+	);
+}

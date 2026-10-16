@@ -6,7 +6,7 @@ use oi::Reported;
 use oi::ast::Expr;
 use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
-use oi::loader::parse_file;
+use oi::loader::{core_source, parse_file};
 
 use crate::cli::VERSION;
 
@@ -19,6 +19,7 @@ const HELP: &str = indoc::indoc! {"
 
 	Commands:
 		:h, :help -> help
+		:h <name> -> docs of an item, e.g. :h math.sqrt
 		:q, :quit -> quit
 		:x, :exit -> quit
 		:c, :clear -> clear session context
@@ -66,6 +67,7 @@ pub fn run() -> Result<(), Reported> {
 	while let Some(line) = next() {
 		match line.trim() {
 			"" => {}
+			topic if topic.starts_with(":h ") => help_topic(topic[3..].trim(), &session),
 			":help" | ":h" => eprint!("oi {VERSION}\n{HELP}"),
 			":quit" | ":q" | ":exit" | ":x" => break,
 			":clear" | ":c" => session.clear(),
@@ -80,6 +82,26 @@ pub fn run() -> Result<(), Reported> {
 	}
 	eprintln!("goodbye");
 	Ok(())
+}
+
+// Prints docs and signature for a name, from the session or a core module.
+fn help_topic(name: &str, session: &str) {
+	let (module, item) = name.rsplit_once('.').unwrap_or(("", name));
+	let source = if module.is_empty() {
+		session
+	} else {
+		core_source(module).unwrap_or_default()
+	};
+	let lines: Vec<_> = source.lines().collect();
+	let is_def = |line: &&str| {
+		let rest = line.trim_start_matches("pub ").strip_prefix(item);
+		rest.is_some_and(|rest| rest.trim_start().starts_with("::"))
+	};
+	let Some(at) = lines.iter().rposition(is_def) else {
+		return eprintln!("no docs for `{name}`");
+	};
+	let docs = lines[..at].iter().rev().take_while(|line| line.starts_with("##")).count();
+	eprintln!("{}", lines[at - docs..=at].join("\n"));
 }
 
 fn reedline() -> reedline::Reedline {

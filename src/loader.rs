@@ -18,6 +18,15 @@ use crate::parser::parser;
 
 static CORE: Dir = include_dir!("$CARGO_MANIFEST_DIR/core");
 
+/// Source of an embedded core module.
+pub fn core_source(module: &str) -> Option<&'static str> {
+	let path = module.replace('.', "/");
+	let file = CORE
+		.get_file(format!("{path}.oi"))
+		.or_else(|| CORE.get_file(format!("{path}/mod.oi")));
+	file?.contents_utf8()
+}
+
 fn core_files(dir: &Dir) -> Vec<(String, String)> {
 	let mut files: Vec<_> = dir
 		.files()
