@@ -165,14 +165,16 @@ fn fail(msg: impl std::fmt::Display) -> Reported {
 }
 
 /// Compile a program in test mode and run every `@test` fn in the main module.
-pub fn test_source(entry: Entry, root: &Path, pattern: Option<&str>) -> Result<(), Reported> {
+pub fn test_source(entry: Entry, root: &Path, patterns: &[String]) -> Result<(), Reported> {
 	let mut compiler = Compiler::default();
 	compiler.include_tests = true;
 	let program = load(&mut compiler, entry, root)?;
 	compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
 	let total = compiler.tests.len();
-	if let Some(pattern) = pattern {
-		compiler.tests.retain(|(_, display, _)| display.contains(pattern));
+	if !patterns.is_empty() {
+		compiler
+			.tests
+			.retain(|(_, display, _)| patterns.iter().any(|pattern| display.contains(pattern)));
 	}
 	let filtered = total - compiler.tests.len();
 	let mut passed = 0;

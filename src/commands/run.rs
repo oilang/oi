@@ -38,8 +38,8 @@ pub fn build(file: &Path, out: Option<&Path>, lib: bool, timings: bool) -> Resul
 }
 
 /// Compile a source file and call its `@test` fns.
-pub fn test(file: &Path, pattern: Option<&str>) -> Result<(), Reported> {
-	test_source(files(file)?, root(file), pattern)
+pub fn test(file: &Path, patterns: &[String]) -> Result<(), Reported> {
+	test_source(files(file)?, root(file), patterns)
 }
 
 pub fn files(file: &Path) -> Result<Entry, Reported> {

@@ -69,6 +69,20 @@ fn module_tests_are_qualified_and_filterable() {
 }
 
 #[test]
+fn test_takes_several_patterns() {
+	let dir = project(indoc! {r#"
+		@test alpha :: fn() { assert! true }
+		@test beta :: fn() { assert! true }
+		@test gamma :: fn() { assert! true }
+	"#});
+	let out = dir.ok(&["test", "main.oi", "alpha", "gamma"]);
+	assert!(
+		!out.contains("beta") && out.contains("2 passed; 1 filtered out"),
+		"{out}"
+	);
+}
+
+#[test]
 fn failing_test_is_isolated() {
 	let dir = project(indoc! {r#"
 		@test first :: fn() { assert! false }

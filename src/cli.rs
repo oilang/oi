@@ -84,8 +84,8 @@ pub enum Command {
 		/// Path to the .oi source file.
 		file: Option<PathBuf>,
 
-		/// Only run tests whose name matches pattern.
-		pattern: Option<String>,
+		/// Only run tests whose name matches any pattern.
+		patterns: Vec<String>,
 	},
 
 	/// Start an interactive Oi REPL.
