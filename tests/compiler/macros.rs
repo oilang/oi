@@ -508,7 +508,10 @@ fn quoted_item_can_be_annotated() {
 #[test]
 fn attr_macro_wraps_a_public_module_def() {
 	Project::new()
-		.file("main.oi", ["module main", "use util", "print(util.api())"])
+		.file(
+			"main.oi",
+			["module main", "use util", "use util.{api}", "print(util.api() + api())"],
+		)
 		.file(
 			"util/lib.oi",
 			[
@@ -518,7 +521,7 @@ fn attr_macro_wraps_a_public_module_def() {
 				"pub api :: fn() int { 1 }",
 			],
 		)
-		.check("1");
+		.check("2");
 }
 
 #[test]

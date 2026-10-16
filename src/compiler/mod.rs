@@ -940,6 +940,10 @@ impl<M: Module> Compiler<M> {
 					self.world.extensions.entry(format!("{typ}.{name}")).or_default().push(entry);
 					format!("{typ}.{name}${}", scope.module.replace('.', "$"))
 				}
+				// a repeated claim
+				false if claim.generic && self.world.generic_fns.contains_key(&format!("{typ}.{name}")) => {
+					format!("{typ}.{name}#{}", self.world.generic_fns.len())
+				}
 				false => format!("{typ}.{name}"),
 			};
 			self.annotations

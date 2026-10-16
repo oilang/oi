@@ -447,6 +447,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let plain = self.fill(&lt, tn, method, 2);
 			let picked = (plain.clone().filter(|s| s.params[1].typ == rt))
 				.or_else(|| self.find_fill(&key, 1, &rt))
+				.or_else(|| self.generic_fill(&lt, method, &rt))
 				.or(plain);
 			let Some(sig) = picked else {
 				let label = match self.funcs.keys().any(|k| k.starts_with(&format!("{key}#"))) {
@@ -475,6 +476,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& let Some(name) = rt.nominal()
 			&& let Some(sig) = (self.fill(&rt, tn, method, 2).filter(|s| s.params[1].typ == lt))
 				.or_else(|| self.find_fill(&format!("{name}.{method}"), 1, &lt))
+				.or_else(|| self.generic_fill(&rt, method, &lt))
 		{
 			return Ok(self.emit_call(&sig, &[rv, lv]));
 		}

@@ -220,6 +220,15 @@ fn a_type_argument_picks_the_operator_claim() {
 		print((I.{9} - I.{4}).ns, (I.{9} - D.{4}).ns)
 	"};
 	check(src, "5 5");
+
+	let src = indoc! {"
+		G[T] :: struct { x: T }
+		G[T] : Mul < { mul :: fn(self, o: Self) Self { .{ self.x * o.x } } }
+		G[T] : Mul[T] < { mul :: fn(self, s: T) Self { .{ self.x * s } } }
+		g :: G[float].{3.0}
+		print((g * g).x, (g * 2.0).x, (2.0 * g).x)
+	"};
+	check(src, "9.0 6.0 6.0");
 }
 
 #[test]

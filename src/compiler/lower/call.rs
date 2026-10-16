@@ -291,6 +291,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some(self.funcs[hit].clone())
 	}
 
+	// A generic type's numbered fill of a method.
+	pub(super) fn generic_fill(&mut self, recv: &Typ, method: &str, arg: &Typ) -> Option<FnSig> {
+		let tag = format!("{}.{method}#", rc::base_name(&recv.key()));
+		let keys: Vec<_> = self.world.generic_fns.keys().filter(|k| k.starts_with(&tag)).cloned().collect();
+		(keys.iter().filter_map(|k| self.recv_instance(k, recv)))
+			.find(|s| s.params.get(1).is_some_and(|p| access_peel(&p.typ) == arg))
+	}
+
 	// The fill of `key`, if only one claim has it.
 	pub(super) fn sole_fill(&self, key: &str) -> Option<FnSig> {
 		let tag = format!("{key}#");

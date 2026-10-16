@@ -986,6 +986,8 @@ impl Loader {
 						m.items.iter().any(|i| {
 							i.0.def_name() == Some(q)
 								|| matches!(&i.0, Expr::MacroDef { name, .. } | Expr::Bind { name, .. } if name == q)
+								|| matches!(&i.0, Expr::MacroCall { args, .. }
+									if args.first().is_some_and(|a| Expr::peel_meta(a).2.0.def_name() == Some(q)))
 						})
 					})
 			};
