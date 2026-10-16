@@ -307,7 +307,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.check_static_write(name, field, stmt.1)?;
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
 					let (path, idx, ftyp) = match self.peeled(&local.typ) {
-						Typ::Tuple(elems) => {
+						Typ::Tuple(elems) | Typ::TupleStruct(_, elems) => {
 							let i = tuple_index(&elems, field, stmt.1)?;
 							(Vec::new(), i, elems[i].1.clone())
 						}
@@ -319,6 +319,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					let val = self.stored(value, &ftyp, &format!("field `{field}` of type {ftyp}"), "a field")?;
 					let val = self.copy_in(val, &ftyp);
+					// newtypes
+					if local.typ.newtype().is_some() {
+						let old = self.read_local(&local);
+						self.write_local(&local, val);
+						self.release_value(old, &ftyp);
+						continue;
+					}
 					let base = self.read_local(&local);
 					let ptr = self.follow(base, &path);
 					if self.slot_owns(&ftyp) {

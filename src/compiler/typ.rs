@@ -176,7 +176,9 @@ impl Typ {
 	pub fn slots(&self) -> Option<Vec<Typ>> {
 		match self {
 			Typ::Struct(_, fs) => Some(fs.iter().map(|f| f.typ.clone()).collect()),
-			Typ::Tuple(fs) if !fs.is_empty() => Some(fs.iter().map(|(_, t)| t.clone()).collect()),
+			Typ::Tuple(fs) | Typ::TupleStruct(_, fs) if self.newtype().is_none() && !fs.is_empty() => {
+				Some(fs.iter().map(|(_, t)| t.clone()).collect())
+			}
 			_ => None,
 		}
 	}

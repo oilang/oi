@@ -51,7 +51,7 @@ where
 			let array = just(Token::LBracket)
 				.ignore_then(len.or_not())
 				.then_ignore(just(Token::RBracket))
-				.then(base.clone())
+				.then(same_line.clone().ignore_then(base.clone()))
 				.map(|(n, elem)| match n {
 					Some(n) => TypeExpr::FixedArray(Box::new(elem), Box::new(n)),
 					None => TypeExpr::Array(Box::new(elem)),

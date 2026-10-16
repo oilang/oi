@@ -75,6 +75,26 @@ fn methods_and_self() {
 }
 
 #[test]
+fn field_and_self_assign() {
+	let src = indoc! {r#"
+		Pair :: struct (int, string)
+		Pair :< {
+			set :: fn(mut self, n: int) { self.0 = n }
+			reset :: fn(mut self) { self = Pair(0, "z") }
+		}
+		Money :: struct (int)
+		p := Pair(1, "a")
+		p.set(5)
+		print(p)
+		p.reset()
+		m := Money(1)
+		m.0 = 4
+		print(p, m)
+	"#};
+	check(src, [r#"Pair(5, "a")"#, r#"Pair(0, "z") Money(4)"#]);
+}
+
+#[test]
 fn str_override() {
 	check(
 		indoc! {r#"

@@ -6,6 +6,16 @@ fn semicolons() {
 }
 
 #[test]
+fn array_line_ends_before_a_literal() {
+	let src = indoc! {"
+		S :: struct { f: fn() int }
+		ys := [1]
+		S.{ f = fn [move ys] () int { ys.len } }.f()
+	"};
+	check(src, "1");
+}
+
+#[test]
 fn blocks_are_expressions() {
 	check(
 		["a := { print(3); 5 }", "print(a + { 1 })", "x := 1", "{ x = 7 }", "x"],
