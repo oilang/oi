@@ -1279,7 +1279,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new("`Self` is only valid in an impl block", span.into_range())
 					.with_label("no enclosing impl")
 			})?,
-			_ => self.qualify(name).to_string(),
+			_ => name
+				.split_once('.')
+				.and_then(|(module, typ)| self.dotted_key(module, typ))
+				.unwrap_or_else(|| self.qualify(name).to_string()),
 		};
 
 		self.check_noinit(&name, span)?;

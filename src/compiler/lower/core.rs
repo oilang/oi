@@ -18,18 +18,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Canonical key path.
+	pub(super) fn dotted_key(&self, m: &str, field: &str) -> Option<String> {
+		let vis = self.types.scope.visible.get(m).filter(|_| !self.vars.contains_key(m))?;
+		let t = match &vis.only {
+			None => field,
+			Some(only) => only.get(field)?,
+		};
+		Some(format!("{}::{t}", vis.module))
+	}
+
 	// Rewrite `mod.T` to the canonical `module::T` ident, so every type path sees a plain name.
 	pub(super) fn dotted_type(&self, e: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 		let Expr::Field { tuple, field } = &e.0 else {
 			return None;
 		};
 		let Expr::Ident(m) = &tuple.0 else { return None };
-		let vis = self.types.scope.visible.get(m).filter(|_| !self.vars.contains_key(m))?;
-		let t = match &vis.only {
-			None => field,
-			Some(only) => only.get(field)?,
-		};
-		let key = format!("{}::{t}", vis.module);
+		let key = self.dotted_key(m, field)?;
 		let known = self.types.structs.contains_key(&key)
 			|| self.types.enums.borrow().contains_key(&key)
 			|| self.types.generics.structs.contains_key(&key)
