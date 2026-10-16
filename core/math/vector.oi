@@ -1,0 +1,73 @@
+module math
+
+# TEMP: one Ast per field, since back-to-back `xs << <quote>` statements parse exponentially slow
+fieldwise :: fn(input: Ast, each: fn(Ast) Ast) []Ast {
+	out: []Ast
+	loop f in input.items { out << each(f.name) }
+	out
+}
+
+# component-wise arithmetic and the length methods, for a struct of `T` fields
+vector! :: fn(input: Ast) Ast {
+	n :: input.name
+	adds :: fieldwise(input, fn(f: Ast) Ast { `self.%f + o.%f` })
+	subs :: fieldwise(input, fn(f: Ast) Ast { `self.%f - o.%f` })
+	muls :: fieldwise(input, fn(f: Ast) Ast { `self.%f * o.%f` })
+	divs :: fieldwise(input, fn(f: Ast) Ast { `self.%f / o.%f` })
+	scales :: fieldwise(input, fn(f: Ast) Ast { `self.%f * s` })
+	shrinks :: fieldwise(input, fn(f: Ast) Ast { `self.%f / s` })
+	negs :: fieldwise(input, fn(f: Ast) Ast { `-self.%f` })
+	dot := muls[0]
+	loop m in muls[1..] { dot = `%dot + %m` }
+
+	`
+		%input
+		%n[T] : Add < { add :: fn(self, o: Self) Self { .{ %{..adds} } } }
+		%n[T] : Sub < { sub :: fn(self, o: Self) Self { .{ %{..subs} } } }
+		%n[T] : Mul < { mul :: fn(self, o: Self) Self { .{ %{..muls} } } }
+		%n[T] : Div < { div :: fn(self, o: Self) Self { .{ %{..divs} } } }
+		%n[T] : Mul[T] < { mul :: fn(self, s: T) Self { .{ %{..scales} } } }
+		%n[T] : Div[T] < { div :: fn(self, s: T) Self { .{ %{..shrinks} } } }
+		%n[T] : Neg < { neg :: fn(self) Self { .{ %{..negs} } } }
+
+		%n[T] :< {
+			## Sum of the component-wise product.
+			pub dot :: fn(self, o: Self) T { %dot }
+
+			## Squared length, without the square root.
+			pub length_squared :: fn(self) T { self.dot(self) }
+
+			## Euclidean length, as a `float` whatever `T` is.
+			pub length :: fn(self) float { sqrt(float.(self.dot(self))) }
+
+			## Same direction, unit length.
+			pub normalize :: fn(self) Self { self / T.(self.length()) }
+
+			## Linear interpolation toward `to`.
+			pub lerp :: fn(self, to: Self, by: T) Self { self + (to - self) * by }
+		}
+	`
+}
+
+## A 2D vector.
+@vector!
+pub Vec2[T = float] :: struct { pub x: T, pub y: T }
+
+## A 3D vector.
+@vector!
+pub Vec3[T = float] :: struct { pub x: T, pub y: T, pub z: T }
+
+## A 4D vector.
+@vector!
+pub Vec4[T = float] :: struct { pub x: T, pub y: T, pub z: T, pub w: T }
+
+Vec3[T] :< {
+	## Perpendicular to both, by the right-hand rule.
+	pub cross :: fn(self, o: Self) Self {
+		.{
+			self.y * o.z - self.z * o.y,
+			self.z * o.x - self.x * o.z,
+			self.x * o.y - self.y * o.x,
+		}
+	}
+}
