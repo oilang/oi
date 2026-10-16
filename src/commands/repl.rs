@@ -84,9 +84,15 @@ pub fn run() -> Result<(), Reported> {
 
 fn reedline() -> reedline::Reedline {
 	let commands = [":help", ":h", ":quit", ":q", ":exit", ":x", ":clear", ":c"];
+	let mut insert = reedline::default_vi_insert_keybindings();
+	insert.add_binding(
+		reedline::KeyModifiers::CONTROL,
+		reedline::KeyCode::Char('u'),
+		reedline::ReedlineEvent::Edit(vec![reedline::EditCommand::CutFromLineStart]),
+	);
 	reedline::Reedline::create()
 		.with_edit_mode(Box::new(reedline::Vi::new(
-			reedline::default_vi_insert_keybindings(),
+			insert,
 			reedline::default_vi_normal_keybindings(),
 		)))
 		.with_highlighter(Box::new(reedline::ExampleHighlighter::new(
