@@ -147,7 +147,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				given.push(None);
 				continue;
 			};
-			let (val, typ, entry) = self.arg_value(access, arg, None)?;
+			// params that are already pinned
+			let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
+			let want = types.resolve(&param.typ, arg.1).ok();
+			let (val, typ, entry) = self.arg_value(access, arg, want.as_ref())?;
 			lent.extend(entry.map(|e| (val, e)));
 			unify(&param.typ, &typ, &def.type_params, &mut subst, self.types.generics)
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
