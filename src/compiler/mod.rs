@@ -1290,7 +1290,7 @@ impl<M: Module> Compiler<M> {
 							// generic fills
 							if !is_hook_trait(tn) {
 								// unfilled defaults
-								let ms = traits.get(tn.as_str()).map_or(&[][..], |t| t.3);
+								let (tps, ms) = traits.get(tn.as_str()).map_or((&[][..], &[][..]), |t| (t.1, t.3));
 								let decls: Vec<TraitFn> = trait_fns(ms).collect();
 								let filled = |n: &str| {
 									(fills.iter())
@@ -1303,7 +1303,7 @@ impl<M: Module> Compiler<M> {
 											decls: &decls,
 											..Fills::default()
 										};
-										let d = std::slice::from_ref(d);
+										let d = std::slice::from_ref(bind_trait_args(d, tps, args));
 										self.register_fills(typ, type_params, d, scope, &mut others, claim)?;
 									}
 								}

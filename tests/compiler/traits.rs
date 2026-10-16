@@ -91,6 +91,24 @@ fn default_methods() {
 }
 
 #[test]
+fn default_methods_name_trait_params() {
+	let src = indoc! {r#"
+		Source[T] :: trait {
+			next: fn(mut self) ?T
+			first :: fn(mut self) ?T { got: ?T = self.next()  got }
+		}
+		Count :: struct { n: int }
+		Count : Source[int] < { next :: fn(mut self) ?int { self.n += 1  self.n } }
+		Wrap[E] :: struct { item: E }
+		Wrap[E] : Source[E] < { next :: fn(mut self) ?E { self.item } }
+		c := Count.{ n = 0 }
+		w := Wrap[string].{ item = "hi" }
+		print(c.first() or 0, w.first() or "")
+	"#};
+	check(src, "1 hi");
+}
+
+#[test]
 fn empty_default_method() {
 	let src = indoc! {r#"
 		Counter :: trait {

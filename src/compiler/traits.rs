@@ -86,6 +86,23 @@ pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
 	aliases.extend(slots);
 }
 
+// A trait default with the trait's params bound to a claim's args.
+pub(crate) fn bind_trait_args<'a>(
+	method: &'a Spanned<Expr>,
+	tparams: &[TypeParam],
+	args: &[Spanned<TypeExpr>],
+) -> &'a Spanned<Expr> {
+	let by: Vec<_> = (tparams.iter().enumerate())
+		.filter_map(|(i, p)| Some((p.name.clone(), args.get(i).or(p.default.as_ref())?.0.clone())))
+		.collect();
+	if by.is_empty() {
+		return method;
+	}
+	let mut method = method.clone();
+	method.0.walk(&mut |e| e.types().into_iter().for_each(|t| *t = subst(t, &by)));
+	Box::leak(Box::new(method))
+}
+
 pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = TraitFn<'_>> {
 	methods.iter().filter_map(|m| match &m.0 {
 		Expr::Fn { name, params, ret, .. } => Some((name.as_str(), params.as_slice(), ret)),
@@ -349,7 +366,7 @@ pub(super) fn check_impls<'p>(
 			}
 			same_sig(name, got, want, m.1)?;
 		}
-		for t in *tmethods {
+		for t in tmethods.iter().map(|t| bind_trait_args(t, tparams, args)) {
 			let Expr::Fn {
 				name,
 				params,
@@ -402,10 +419,7 @@ pub(super) fn check_impls<'p>(
 					},
 					false => call,
 				};
-				let by: Vec<_> = (tparams.iter().zip(args).map(|(p, (te, _))| (p.name.clone(), te.clone())))
-					.chain([("Self".to_string(), TypeExpr::Name(typ.into()))])
-					.collect();
-				let (params, ret) = subst_sig(params, ret, &by);
+				let (params, ret) = subst_sig(params, ret, &me);
 				others.push(FnItem {
 					key: format!("{typ}.{name}"),
 					scope,

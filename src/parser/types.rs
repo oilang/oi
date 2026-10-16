@@ -95,7 +95,8 @@ where
 				.map(TypeExpr::AnonStruct);
 
 			// generic structs
-			let generic_instance = ident()
+			let generic_instance = dotted_name
+				.clone()
 				.then(type_args(te.clone().boxed()))
 				.filter(|(_, args)| settled(args))
 				.map(|(name, args)| TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect()));

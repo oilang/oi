@@ -386,7 +386,7 @@ where
 	let fn_ret = ident().then(typed.or(bound_ret)).or_not().then(ret.clone()).boxed();
 
 	// generics
-	let bound = ident().then(bracket(list(spanned(type_expr.clone()))).or_not());
+	let bound = dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not());
 	let type_param = ident()
 		.then(just(Token::Colon).ignore_then(bound).or_not())
 		.then(just(Token::Assign).ignore_then(spanned(type_expr.clone())).or_not())
