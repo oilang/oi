@@ -966,6 +966,7 @@ impl<M: Module> Compiler<M> {
 				}
 				None => (params.clone(), *params_tuple, ret.clone()),
 			};
+
 			if type_params.is_empty() && mtp.is_empty() {
 				others.push(FnItem {
 					key,
@@ -978,6 +979,7 @@ impl<M: Module> Compiler<M> {
 				});
 				continue;
 			}
+
 			let name = |p: &TypeParam| Box::new(TypeExpr::Name(p.name.clone()));
 			let self_ty = match (typ, type_params) {
 				("array", [t, ..]) => TypeExpr::Array(name(t)),
@@ -988,11 +990,19 @@ impl<M: Module> Compiler<M> {
 				}
 				_ => TypeExpr::Name(typ.to_string()),
 			};
-			let by = [("Self".to_string(), self_ty)];
-			let (params, ret) = subst_sig(&params, &ret, &by);
 			let mut all_params = type_params.to_vec();
 			all_params.extend(mtp.clone());
+
+			// generic claims
+			let targs: Vec<_> = (claim.targs.iter())
+				.filter(|(n, _)| all_params.iter().all(|p| p.name != *n))
+				.cloned()
+				.collect();
+
+			let (params, ret) = subst_sig(&params, &ret, &targs);
+			let (params, ret) = subst_sig(&params, &ret, &[("Self".to_string(), self_ty)]);
 			qualify_bounds(scope, &mut all_params);
+
 			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module, m.1);
 			self.world.generic_fns.insert(key, def);
 		}
@@ -1030,6 +1040,7 @@ impl<M: Module> Compiler<M> {
 		let mut enum_items: Vec<EnumItem> = vec![];
 		let mut alias_items: Vec<(&str, TypeExpr)> = vec![];
 		let mut soft_aliases: Vec<(String, TypeExpr)> = vec![];
+		let mut slot_defaults: Vec<(String, TypeExpr)> = vec![];
 		let mut main_body: Option<&[Spanned<Expr>]> = None;
 		let mut main_ret: Option<&Spanned<TypeExpr>> = None;
 		let mut others: Vec<FnItem> = vec![];
@@ -1274,10 +1285,25 @@ impl<M: Module> Compiler<M> {
 					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
 					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
+					let targs: Vec<_> = (claimed.iter())
+						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
+						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
+						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
+						.chain(
+							claimed
+								.iter()
+								.filter_map(|(tn, _)| traits.get(tn.as_str()))
+								.flat_map(|t| claim_assoc(fills, t.2)),
+						)
+						.collect();
 					for (tn, args) in &claimed {
 						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
 						if type_params.is_empty() {
 							self.world.trait_impls.insert((typ.clone(), tn.clone()));
+							let me = [("Self".to_string(), TypeExpr::Name(typ.clone()))];
+							for (slot, te) in traits.get(tn.as_str()).map_or(vec![], |t| claim_assoc(&[], t.2)) {
+								slot_defaults.push((format!("{typ}::{slot}"), subst(&te, &me)));
+							}
 						} else {
 							let mut bounds = type_params.clone();
 							qualify_bounds(scope, &mut bounds);
@@ -1301,6 +1327,7 @@ impl<M: Module> Compiler<M> {
 									{
 										let claim = Fills {
 											decls: &decls,
+											targs: &targs,
 											..Fills::default()
 										};
 										let d = std::slice::from_ref(bind_trait_args(d, tps, args));
@@ -1324,17 +1351,6 @@ impl<M: Module> Compiler<M> {
 						.iter()
 						.filter_map(|(tn, _)| traits.get(tn.as_str()))
 						.flat_map(|(_, _, _, ms, _)| trait_fns(ms))
-						.collect();
-					let targs: Vec<_> = (claimed.iter())
-						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
-						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
-						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
-						.chain(
-							claimed
-								.iter()
-								.filter_map(|(tn, _)| traits.get(tn.as_str()))
-								.flat_map(|t| claim_assoc(fills, t.2)),
-						)
 						.collect();
 					let claim = Fills {
 						decls: &decls,
@@ -1462,6 +1478,9 @@ impl<M: Module> Compiler<M> {
 		let mut aliases: HashMap<String, TypeExpr> =
 			alias_items.iter().map(|(name, te)| (name.to_string(), te.clone())).collect();
 		aliases.extend(soft_aliases);
+		for (name, te) in slot_defaults {
+			aliases.entry(name).or_insert(te);
+		}
 		for (name, te) in &mut aliases {
 			if let TypeExpr::TupleStruct(n, _) = te {
 				n.clone_from(name);

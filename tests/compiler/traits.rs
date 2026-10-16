@@ -838,11 +838,12 @@ fn associated_types() {
 		}
 		A :: struct { n: int, k :: 7 }
 		B :: struct {}
-		A : Tr < { Out :: A, f :: fn(self) Out { self } }
+		A : Tr < { f :: fn(self) Out { self } }
+		A :< { g :: fn(self) Out { self } }
 		B : Tr < { Out :: int, j :: 9, f :: fn(self) int { 3 } }
-		print(A.{2}.f().n, B.{}.f(), A.k, A.j, B.k, B.j)
+		print(A.{2}.f().n, B.{}.f(), A.k, A.j, B.k, B.j, A.{4}.g().n)
 	"#};
-	check(src, "2 3 7 6 5 9");
+	check(src, "2 3 7 6 5 9 4");
 
 	let src = indoc! {r#"
 		Tr[R] :: trait {
@@ -913,4 +914,17 @@ fn generic_claims() {
 		Box.{ 1 }.loud()
 	"#};
 	check(src, "1 BOX");
+
+	let src = indoc! {r#"
+		Tr :: trait {
+			Out :: Self
+			f: fn(self) Out
+			g :: fn(self) Out { self.f() }
+		}
+		Box[T] :: struct { v: T }
+		Box[T] : Tr < { Out :: T, f :: fn(self) Out { self.v } }
+		Box[T] : Sub < { Out :: int, sub :: { 5 } }
+		print(Box.{ "a" }.g(), Box.{ 9 } - Box.{ 2 })
+	"#};
+	check(src, "a 5");
 }
