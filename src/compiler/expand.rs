@@ -72,7 +72,7 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 		Expr::PatBind {
 			pat, mutable: Some(_), ..
 		}
-		| Expr::For { pat, .. } => pat_names(pat).into_iter().for_each(f),
+		| Expr::For { pat, .. } => pat_names(pat).into_iter().filter(|n| !n.starts_with('%')).for_each(f),
 		Expr::AnonFn { params, .. } => params
 			.iter_mut()
 			.filter(|p| !p.name.is_empty() && !p.name.starts_with('%'))
@@ -94,6 +94,10 @@ fn name_slot(e: &mut Expr) -> Option<&mut String> {
 		| Expr::TypeAlias { name, .. }
 		| Expr::StructLit { name, .. }
 		| Expr::Claim { typ: name, .. } => Some(name),
+		Expr::For { pat, .. } => match &mut pat.0 {
+			Expr::Ident(name) => Some(name),
+			_ => None,
+		},
 		_ => None,
 	}
 }

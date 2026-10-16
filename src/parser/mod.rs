@@ -138,7 +138,6 @@ where
 	pub(super) annotations: P<'token, I, Vec<Spanned<Expr>>>,
 	pub(super) unquote: P<'token, I, Spanned<Expr>>,
 	pub(super) pat: P<'token, I, Spanned<Expr>>,
-	pub(super) pat_name: P<'token, I, Spanned<Expr>>,
 	pub(super) bind: P<'token, I, Spanned<Expr>>,
 	pub(super) place: P<'token, I, Spanned<Expr>>,
 	pub(super) macro_def: P<'token, I, Spanned<Expr>>,
@@ -413,7 +412,7 @@ where
 	let def_name = ident().or(hole_ident.clone()).boxed();
 	let path = ident().separated_by(just(Token::Dot)).at_least(1).collect::<Vec<_>>();
 	let lit_path = path.map(|p| p.join(".")).or(hole_ident.clone()).boxed();
-	let (pat_name, pat) = stmt::patterns();
+	let pat = stmt::patterns();
 
 	let macro_def = ident()
 		.then_ignore(adjacent)
@@ -458,7 +457,6 @@ where
 		annotations,
 		unquote,
 		pat,
-		pat_name,
 		bind: bind.clone().boxed(),
 		place: place.clone().boxed(),
 		macro_def: macro_def.boxed(),

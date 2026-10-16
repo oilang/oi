@@ -4,8 +4,8 @@ use crate::lexer::Token;
 
 use chumsky::{input::ValueInput, prelude::*};
 
-// The destructuring patterns, as `(pat_name, pat)`.
-pub(super) fn patterns<'token, I>() -> (P<'token, I, Spanned<Expr>>, P<'token, I, Spanned<Expr>>)
+// The destructuring patterns.
+pub(super) fn patterns<'token, I>() -> P<'token, I, Spanned<Expr>>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
@@ -49,8 +49,7 @@ where
 		}
 		Ok((Expr::Array(elems), espan))
 	});
-	let pat = tuple_pat.or(struct_pat).or(array_pat).boxed();
-	(pat_name.boxed(), pat)
+	tuple_pat.or(struct_pat).or(array_pat).boxed()
 }
 
 // The binding grammar.

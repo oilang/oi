@@ -522,6 +522,20 @@ fn gensym_names_let_a_def_macro_expand_twice() {
 }
 
 #[test]
+fn gensym_loop_binder() {
+	check(
+		indoc! {r#"
+			m! :: fn() Ast {
+				j := gensym("j")
+				`loop %j in 0..3 { print(%j) }`
+			}
+			m!()
+		"#},
+		["0", "1", "2"],
+	);
+}
+
+#[test]
 fn attr_macro_sees_fills() {
 	check(
 		indoc! {r#"

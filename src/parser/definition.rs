@@ -332,7 +332,7 @@ where
 	let for_expr = just(Token::Loop)
 		.ignore_then(label.or_not())
 		.then(just(Token::With).or_not())
-		.then(p.pat.clone().or(p.pat_name.clone()))
+		.then(p.pat.clone().or(spanned(p.def_name.clone().map(Expr::Ident))))
 		.then_ignore(just(Token::In))
 		.then(
 			just(Token::Move)
