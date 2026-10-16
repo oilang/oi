@@ -357,6 +357,22 @@ fn quote_pattern_matches_and_captures() {
 }
 
 #[test]
+fn quote_pattern_matches_a_bind() {
+	check(
+		indoc! {r"
+			value! :: fn(e: Ast) Ast {
+				match e {
+					`%n := %v` => v,
+					else => e,
+				}
+			}
+			print(value!(x := 6 * 7))
+		"},
+		"42",
+	);
+}
+
+#[test]
 fn hole_names_a_param() {
 	check(
 		indoc! {r"
@@ -532,6 +548,25 @@ fn gensym_loop_binder() {
 			m!()
 		"#},
 		["0", "1", "2"],
+	);
+}
+
+#[test]
+fn splice_assign() {
+	check(
+		indoc! {r#"
+			m! :: fn() Ast {
+				r := gensym("r")
+				`{
+					%r := 1
+					%r = 5
+					%r += 2
+					print(%r)
+				}`
+			}
+			m!()
+		"#},
+		"7",
 	);
 }
 

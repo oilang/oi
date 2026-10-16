@@ -264,9 +264,10 @@ pub select! :: fn(arms: Ast) Ast {
 		}
 
 		w := gensym("w")
-		bind := lhs.kind == "bind"
-		x := if bind { lhs.name } else { gensym("x") }
-		e := if bind { lhs.items[0] } else { lhs }
+		(x e) := match lhs {
+			`%n := %v` => (n v)
+			else => (gensym("x") lhs)
+		}
 
 		ready := `%w.poll()`
 		pre << match e {

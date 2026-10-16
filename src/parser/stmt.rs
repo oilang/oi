@@ -159,7 +159,8 @@ pub(super) fn stmt<'token, I>(
 	// assignment
 	let mut assign = Recursive::declare();
 	assign.define(
-		ident()
+		p.def_name
+			.clone()
 			.then(assign_op.clone())
 			.then(assign.clone().or(p.juxt_expr.clone()))
 			.map_with(move |((name, op), value), ex| {

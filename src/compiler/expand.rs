@@ -87,7 +87,9 @@ fn name_slot(e: &mut Expr) -> Option<&mut String> {
 	match e {
 		Expr::Field { field, .. } | Expr::IndexAssign { field: Some(field), .. } => Some(field),
 		Expr::MethodCall { method, .. } => Some(method),
-		Expr::Bind { name, .. }
+		Expr::Ident(name)
+		| Expr::Bind { name, .. }
+		| Expr::Assign { name, .. }
 		| Expr::Fn { name, .. }
 		| Expr::StructDef { name, .. }
 		| Expr::EnumDef { name, .. }
@@ -894,7 +896,14 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 		binds.push(subj.clone());
 		return true;
 	}
-	let ((ph, pk), (sh, sk)) = (split(&pat.0), split(&subj.0));
+	let (mut pat_expr, mut subj_expr) = (pat.0.clone(), subj.0.clone());
+	if let Some(hole) = name_slot(&mut pat_expr).filter(|n| n.starts_with('%'))
+		&& let Some(name) = name_slot(&mut subj_expr)
+	{
+		binds.push((Expr::Ident(std::mem::take(name)), subj.1));
+		hole.clear();
+	}
+	let ((ph, pk), (sh, sk)) = (split(&pat_expr), split(&subj_expr));
 	ph == sh && pk.iter().zip(&sk).all(|(p, s)| unify(p, s, binds))
 }
 
