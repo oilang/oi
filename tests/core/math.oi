@@ -1,5 +1,5 @@
 use math
-use math.{Vec2, Vec3, Vec4}
+use math.{Quat, Vec2, Vec3, Vec4}
 
 test! "constants" {
 	assert! math.pi > 3.1 && math.pi < 3.2
@@ -41,4 +41,13 @@ test! "vectors" {
 	b :: Vec2[i33].{3, 4}
 	assert! b.length_squared() == 25 && b.length() == 5.0 && b * i33.(2) == b + b
 	assert! 2 * Vec4[int].{1, 2, 3, 4} == Vec4[int].{2, 4, 6, 8}
+}
+
+test! "quaternions" {
+	i :: Quat.{1.0, 0.0, 0.0, 0.0}
+	j :: Quat.{0.0, 1.0, 0.0, 0.0}
+	assert! i * j == Quat.{0.0, 0.0, 1.0, 0.0} && j * i == (i * j).conj()
+	q :: Quat.from_axis_angle(Vec3.{0.0, 0.0, 1.0}, math.pi / 2.0)
+	v :: q * Vec3.{1.0, 0.0, 0.0}
+	assert! (v - Vec3.{0.0, 1.0, 0.0}).length() < 1e-15
 }

@@ -1,0 +1,52 @@
+module math
+
+## A rotation quaternion `w + xi + yj + zk`.
+pub Quat[T = float] :: struct {
+	pub x: T,
+	pub y: T,
+	pub z: T,
+	pub w: T,
+}
+
+## The Hamilton product, so `a * b` rotates by `b` then `a`.
+Quat[T] : Mul < {
+	mul :: fn(self, o: Self) Self {
+		.{
+			self.w * o.x + self.x * o.w + self.y * o.z - self.z * o.y,
+			self.w * o.y - self.x * o.z + self.y * o.w + self.z * o.x,
+			self.w * o.z + self.x * o.y - self.y * o.x + self.z * o.w,
+			self.w * o.w - self.x * o.x - self.y * o.y - self.z * o.z,
+		}
+	}
+}
+
+## `v` rotated by a unit quat.
+Quat[T] : Mul[Vec3[T]] < {
+	mul :: fn(self, v: Vec3[T]) Vec3[T] {
+		u :: Vec3[T].{ self.x, self.y, self.z }
+		t :: u.cross(v) * T.(2)
+		v + t * self.w + u.cross(t)
+	}
+}
+
+Quat[T] :< {
+	## The inverse rotation of a unit quaternion.
+	pub conj :: fn(self) Self { .{
+		-self.x,
+		-self.y,
+		-self.z,
+		self.w,
+	} }
+
+	## A rotation of an angle radians around the unit axis.
+	pub from_axis_angle :: fn(axis: Vec3[T], angle: T) Self {
+		half :: float.(angle) / 2.0
+		s :: T.(sin(half))
+		.{
+			axis.x * s,
+			axis.y * s,
+			axis.z * s,
+			T.(cos(half)),
+		}
+	}
+}
