@@ -281,3 +281,10 @@ fn deref_reads_and_writes() {
 		"6",
 	);
 }
+
+#[test]
+fn index_assign_through_ref() {
+	let src = ["a := [1, 2]", "b := a", "p := &a", "p[0] = 5", "print(a, b)"];
+	check(src, "[5, 2] [1, 2]");
+	assert_clean(src);
+}

@@ -1274,13 +1274,20 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				field_binds(elems.iter().zip(fields).map(|((_, e), (_, t))| (e, t)), 0, 8)
 			}
+
 			(Expr::StructLit { name, fields, .. }, Typ::Struct(sname, fdefs)) => {
 				for (fname, e) in fields {
 					let Expr::Ident(local) = &e.0 else { continue };
 					self.check_member(sname, fname.as_deref().unwrap_or(local), e.1)?;
 				}
-				struct_pattern(fdefs, &self.qualify(name), sname, fields, pat.1)
+				let pname = if name.is_empty() {
+					sname.into()
+				} else {
+					self.qualify(name)
+				};
+				struct_pattern(fdefs, &pname, sname, fields, pat.1)
 			}
+
 			(Expr::Array(elems), Typ::Array(elem) | Typ::FixedArray(elem, _)) => {
 				field_binds(elems.iter().map(|e| (e, &**elem)), 0, 1)
 			}

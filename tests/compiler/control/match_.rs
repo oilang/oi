@@ -79,13 +79,14 @@ fn match_destructure() {
 		Point :: struct { x: int, y: int }
 		print(match (3, 4) { (x, y) => x + y, })
 		print(match Point.{ x = 3, y = 4 } { Point.{ y = b, x } => x + b, })
+		print(match Point.{ x = 3, y = 4 } { .{ y = b, x } => x * b, })
 		print(match [3, 4] { [x, y] => x + y, })
 		match [1, 2, 3] {
 			[x, y] => 0,
 			_ => 99,
 		}
 	"#};
-	check(src, ["7", "7", "7", "99"]);
+	check(src, ["7", "7", "12", "7", "99"]);
 }
 
 #[test]

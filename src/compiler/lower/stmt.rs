@@ -165,6 +165,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.write_local(&local, ptr);
 						continue;
 					}
+					let (ptr, typ) = self.deref(ptr, &typ);
 					let elem = match &typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						Typ::Str => {
