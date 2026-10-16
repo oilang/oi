@@ -79,7 +79,7 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-- [ ] `:h <topic>` `vim revo`
+- [x] `:h <topic>` `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] start publishing the blog posts I've been writing for some of the bigger decisions/changes

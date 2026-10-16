@@ -27,8 +27,10 @@ pub clamp[T] :: fn(x: T, low: T, high: T) T {
 ## Round down to the nearest integer.
 ## ref: https://github.com/rust-lang/libm/blob/rewritten-libm-v0.2.8/src/math/floor.rs
 pub floor :: fn(x: float) float {
-	if x != x || abs(x) >= 4503599627370496.0 { return x }
-	magic :: 6755399441055744.0
+	whole :: 1.0 / float.epsilon
+	if x != x || abs(x) >= whole { return x }
+	magic :: 1.5 * whole
+	# HACK: rounding sorcery
 	t :: x + magic - magic
 	match true {
 		t > x => t - 1.0,
@@ -58,17 +60,23 @@ ln2_lo :: 1.90821492927058770002e-10
 ## Euler's number `e` raised to the power `x`.
 pub exp :: fn(x: float) float {
 	if x != x { return x }
-	if x > 709.782712893384 { return inf }
-	if x < -745.133219101941 { return 0.0 }
+	# past 2^1024 overflows, and under 2^-1074 rounds to zero
+	if x > 1024.0 * ln2 { return inf }
+	if x < -1075.0 * ln2 { return 0.0 }
 
 	k :: floor(x / ln2 + 0.5)
 	r :: (x - k * ln2_hi) - k * ln2_lo
 
+	# sum the series until its terms are too small to change the result
 	sum := 1.0
 	term := 1.0
-	loop i in 1..15 {
+	last := 0.0
+	i := 1
+	loop sum != last {
+		last = sum
 		term *= r / float.(i)
 		sum += term
+		i += 1
 	}
 
 	# scale into the sum directly so 2^k alone can't overflow first
@@ -108,9 +116,13 @@ pub log :: fn(x: float) float {
 	t2 :: t * t
 	sum := t
 	term := t
-	loop i in 1..10 {
+	last := 0.0
+	i := 1
+	loop sum != last {
+		last = sum
 		term *= t2
 		sum += term / float.(2 * i + 1)
+		i += 1
 	}
 
 	2.0 * sum + float.(k) * ln2
@@ -138,9 +150,13 @@ pub sin :: fn(x: float) float {
 
 	term := y
 	sum := y
-	loop i in 1..11 {
+	last := 0.0
+	i := 1
+	loop sum != last {
+		last = sum
 		term = -term * y * y / float.(2 * i * (2 * i + 1))
 		sum += term
+		i += 1
 	}
 	sum
 }
@@ -184,4 +200,52 @@ pub lerp :: fn(from: float, to: float, by: float) float {
 ## Length of the hypotenuse.
 pub hypot :: fn(x: float, y: float) float {
 	sqrt(x ** 2 + y ** 2)
+}
+
+# ref: https://github.com/golang/go/blob/master/src/math/atan.go, from Cephes atan.c
+atan_p :: [-8.750608600031904122785e-01, -1.615753718733365076637e+01, -7.500855792314704667340e+01, -1.228866684490136173410e+02, -6.485021904942025371773e+01]
+atan_q :: [2.485846490142306297962e+01, 1.650270098316988542046e+02, 4.328810604912902668951e+02, 4.853903996359136964868e+02, 1.945506571482613964425e+02]
+# what pi / 2.0 loses to rounding
+morebits :: 6.123233995736765886130e-17
+tan3pio8 :: 2.41421356237309504880
+
+# x + x^3 P(x^2) / Q(x^2), valid on [0, 0.66]
+xatan :: fn(x: float) float {
+	z :: x * x
+	p :: (((atan_p[0] * z + atan_p[1]) * z + atan_p[2]) * z + atan_p[3]) * z + atan_p[4]
+	q :: ((((z + atan_q[0]) * z + atan_q[1]) * z + atan_q[2]) * z + atan_q[3]) * z + atan_q[4]
+	x * z * p / q + x
+}
+
+## Arc tangent, in radians.
+pub atan :: fn(x: float) float {
+	if x == 0.0 do return x
+	if x < 0.0 do return -atan(-x)
+	if x <= 0.66 do return xatan(x)
+	if x > tan3pio8 do return pi / 2.0 - xatan(1.0 / x) + morebits
+	pi / 4.0 + xatan((x - 1.0) / (x + 1.0)) + 0.5 * morebits
+}
+
+## Angle of the point `(x, y)` from the positive x axis, in radians.
+pub atan2 :: fn(y: float, x: float) float {
+	match true {
+		x > 0.0 => atan(y / x),
+		x < 0.0 && y >= 0.0 => atan(y / x) + pi,
+		x < 0.0 => atan(y / x) - pi,
+		y > 0.0 => pi / 2.0,
+		y < 0.0 => -(pi / 2.0),
+		else => 0.0,
+	}
+}
+
+## Arc sine, in radians.
+pub asin :: fn(x: float) float {
+	if abs(x) > 1.0 { return nan }
+	if abs(x) == 1.0 { return x * pi / 2.0 }
+	atan(x / sqrt(1.0 - x * x))
+}
+
+## Arc cosine, in radians.
+pub acos :: fn(x: float) float {
+	pi / 2.0 - asin(x)
 }
