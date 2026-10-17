@@ -299,6 +299,20 @@ impl<'a, M: Module> Translator<'a, M> {
 			.find(|s| s.params.get(1).is_some_and(|p| access_peel(&p.typ) == arg))
 	}
 
+	// The int type a claim of a method takes as its operand.
+	pub(super) fn int_operand(&mut self, recv: &Typ, method: &str) -> Option<Typ> {
+		let tag = format!("{}.{method}#", rc::base_name(&recv.key()));
+		let keys: Vec<_> = (self.funcs.keys().chain(self.world.generic_fns.keys()))
+			.filter(|k| k.starts_with(&tag))
+			.cloned()
+			.collect();
+		(keys
+			.iter()
+			.filter_map(|k| self.funcs.get(k).cloned().or_else(|| self.recv_instance(k, recv))))
+		.filter_map(|s| Some(access_peel(&s.params.get(1)?.typ).clone()))
+		.find(|t| matches!(t, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize))
+	}
+
 	// The fill of `key`, if only one claim has it.
 	pub(super) fn sole_fill(&self, key: &str) -> Option<FnSig> {
 		let tag = format!("{key}#");

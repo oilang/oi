@@ -426,6 +426,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => (r, false),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
+			let int = matches!(&r.0, Expr::Int(_)) || matches!(&r.0, Expr::Negative(n) if matches!(n.0, Expr::Int(_)));
+			if int && let Some(t) = s.int_operand(lt, method) {
+				return t;
+			}
 			let sig = (lt.nominal())
 				.and_then(|n| s.fill(lt, tn, method, 2).or_else(|| s.sole_fill(&format!("{n}.{method}"))));
 			sig.map_or(lt.clone(), |sig| sig.params[1].typ.clone())

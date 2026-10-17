@@ -232,6 +232,17 @@ fn a_type_argument_picks_the_operator_claim() {
 }
 
 #[test]
+fn an_int_literal_takes_the_operator_claims_int_type() {
+	let src = indoc! {"
+		S :: struct { v: i33 }
+		S : Mul < { mul :: fn(self, o: S) S { S.{ self.v * o.v } } }
+		S : Mul[i33] < { mul :: fn(self, k: i33) S { S.{ self.v * k } } }
+		print((S.{3} * 2).v, (S.{3} * -2).v)
+	"};
+	check(src, "6 -6");
+}
+
+#[test]
 fn an_operator_claim_must_cover_the_right_operand() {
 	let src = indoc! {"
 		V :: struct { x: int }
