@@ -35,10 +35,8 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
-	if matches!(
-		tn,
-		role::CONTAINS | role::SEND | role::RECV | role::INDEX | role::INDEX_ASSIGN | role::ITERATOR | role::ITERABLE
-	) {
+	let arith = matches!(tn, role::NEG | role::ADD | role::SUB | role::MUL | role::DIV | role::MOD | role::POW);
+	if !(arith || matches!(tn, role::EQ | role::ORD) || role::BITWISE.contains(&tn)) {
 		return false;
 	}
 	match typ {

@@ -118,13 +118,20 @@ impl<'a, M: Module> Translator<'a, M> {
 				trait_name,
 				negated,
 			} => {
+				let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name).clone();
+				if let Expr::Call { name, args, .. } = &subject.0
+					&& let ("type", [x]) = (name.as_str(), args.as_slice())
+				{
+					let typ = self.type_of(x)?;
+					let holds = self.claims(&typ, &tn) ^ negated;
+					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
+				}
 				if let Some(te) = TypeExpr::from_expr(&subject.0)
 					&& let TypeExpr::Name(name) | TypeExpr::Generic(name, _) = &te
 					&& !self.vars.contains_key(name)
 				{
 					let typ = self.types.resolve(&te, subject.1)?;
-					let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name);
-					let holds = self.claims(&typ, tn) ^ negated;
+					let holds = self.claims(&typ, &tn) ^ negated;
 					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
 				}
 				let (obj, vt) = self.expr(subject)?;

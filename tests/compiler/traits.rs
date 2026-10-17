@@ -139,6 +139,15 @@ fn is_expression() {
 }
 
 #[test]
+fn is_on_type_of() {
+	let src = indoc! {"
+		x := 3.7
+		print(type(x) is Float, type(3) is Float, int is Float, type(x) is not Float)
+	"};
+	check(src, "true false false false");
+}
+
+#[test]
 fn implicit_trait() {
 	let src = indoc! {"
 		@implicit
