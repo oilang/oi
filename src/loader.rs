@@ -284,7 +284,7 @@ fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
 }
 
 // The definition an attribute macro wraps, and whether it is public.
-fn wrapped_def(e: &mut Expr) -> Option<(Option<Vis>, &mut String)> {
+pub(crate) fn wrapped_def(e: &mut Expr) -> Option<(Option<Vis>, &mut String)> {
 	match e {
 		Expr::Pub(v, b) => wrapped_def(&mut b.0).map(|(_, n)| (Some(*v), n)),
 		Expr::Annotated(_, b) => wrapped_def(&mut b.0),
@@ -706,7 +706,7 @@ impl Loader {
 					}
 					assoc_types = self.assoc_fills(typ, fills, &m.scope)?;
 				}
-				Expr::Doc(_) => {}
+				Expr::Doc(_) | Expr::MacroCall { .. } => {}
 				_ if !main => {
 					return Err(err(
 						"top-level statements aren't allowed in a module",

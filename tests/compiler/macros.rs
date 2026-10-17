@@ -759,3 +759,11 @@ fn brace_body_takes_arms() {
 fn macro_paths_resolve_where_defined() {
 	check(["use sync.{ spawn! }", "print(spawn!(1 + 2).wait())"], "3");
 }
+
+#[test]
+fn module_top_level_macro_call() {
+	Project::new()
+		.main(["use geo", "print(geo.answer())"])
+		.lib("geo", ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"])
+		.check("42");
+}

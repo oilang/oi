@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
-use crate::loader::{Module, Program, Publics, Scope, module_of};
+use crate::loader::{Module, Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
 
 use super::Compiler;
@@ -217,11 +217,7 @@ impl Expander {
 	}
 
 	// Compile every macro body as a real fn, in one synthetic program, and grab their pointers.
-	fn compile_stage0(
-		&mut self,
-		program: &Program,
-		rest: &mut HashMap<String, Vec<Spanned<Expr>>>,
-	) -> Result<(), Diagnostic> {
+	fn compile_stage0(&mut self, program: &mut Program) -> Result<(), Diagnostic> {
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		for e in &mut self.defs {
 			let scope = scopes[owner(e)].at(e.1);
@@ -230,7 +226,7 @@ impl Expander {
 		let defs = std::mem::take(&mut self.defs);
 		let modules: Vec<Module> = program
 			.modules
-			.iter()
+			.iter_mut()
 			.map(|m| {
 				let lent = |e: &Expr| match e {
 					_ if m.name != "main" => true,
@@ -238,7 +234,7 @@ impl Expander {
 					Expr::Bind { .. } => false,
 					_ => super::comp::is_def(e),
 				};
-				let mut items: Vec<_> = (rest.get_mut(&m.name).expect("every module was seeded").iter_mut())
+				let mut items: Vec<_> = (m.items.iter_mut())
 					.filter_map(|it| {
 						(lent(&it.0) && !self.calls_macro(&mut it.0, m.scope.at(it.1))).then(|| it.clone())
 					})
@@ -426,19 +422,15 @@ impl Expander {
 	}
 }
 
-// Each module's items with macros expanded, and the stage-0 JIT that expanded them.
-type Expansion = (HashMap<String, Vec<Spanned<Expr>>>, Option<Compiler>);
-
-// Expand all macro calls across a program's modules.
-pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
+// Expand all macro calls across a program's modules, keeping the stage-0 JIT that ran them.
+pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnostic> {
 	let mut ex = Expander {
 		publics: program.publics.clone(),
 		..Default::default()
 	};
-	let mut rest: HashMap<String, Vec<Spanned<Expr>>> = HashMap::new();
-	for m in &program.modules {
-		let mut items = Vec::with_capacity(m.items.len());
-		for item in m.items.iter().cloned() {
+	let mut out = with_modules(program, program.modules.clone());
+	for m in &mut out.modules {
+		for item in std::mem::take(&mut m.items) {
 			match item.0 {
 				Expr::MacroDef {
 					name,
@@ -446,31 +438,39 @@ pub fn expand(program: &Program) -> Result<Expansion, Diagnostic> {
 					ret,
 					body,
 				} => ex.define(name, params, ret, body, item.1)?,
-				_ => items.push(item),
+				_ => m.items.push(item),
 			}
 		}
-		rest.insert(m.name.clone(), items);
 	}
-	let called = program.modules.iter().any(|m| {
-		rest.get_mut(&m.name)
-			.unwrap()
-			.iter_mut()
-			.any(|it| ex.calls_macro(&mut it.0, m.scope.at(it.1)))
-	});
+	let called =
+		(out.modules.iter_mut()).any(|m| m.items.iter_mut().any(|it| ex.calls_macro(&mut it.0, m.scope.at(it.1))));
 	if called {
-		ex.compile_stage0(program, &mut rest)?;
+		ex.compile_stage0(&mut out)?;
 	}
 	let defs = program.items().map(|(_, i)| Expr::peel_meta(i).2);
 	DEFS.set((
 		Scope::default(),
 		defs.filter_map(|d| Some((d.0.def_name()?.to_string(), d.clone()))).collect(),
 	));
-	for m in &program.modules {
-		let items = rest.get_mut(&m.name).expect("every module was seeded above");
-		ex.expand(List(items), &m.scope, 0)?;
-		items.append(&mut ex.hoisted);
+	for m in &mut out.modules {
+		for item in std::mem::take(&mut m.items) {
+			let call = m.name != "main" && matches!(item.0, Expr::MacroCall { .. });
+			let mut expanded = vec![item];
+			ex.expand(List(&mut expanded), &m.scope, 0)?;
+			// add module prefixes
+			let defs = expanded.iter_mut().filter(|_| call).filter_map(|it| wrapped_def(&mut it.0));
+			for (public, name) in defs.filter(|(_, name)| module_of(name).is_none()) {
+				*name = format!("{}::{name}", m.name);
+				if let Some(vis) = public {
+					ex.publics.vis.insert(name.clone(), vis);
+				}
+			}
+			m.items.append(&mut expanded);
+		}
+		m.items.append(&mut ex.hoisted);
 	}
-	Ok((rest, ex.stage0))
+	out.publics = ex.publics;
+	Ok((out, ex.stage0))
 }
 
 // A quote template.

@@ -1068,7 +1068,6 @@ impl<M: Module> Compiler<M> {
 		self.builder_ctx = FunctionBuilderContext::new();
 
 		self.cache = cache::Store::open(&program.roots[0]);
-		self.world.publics = program.publics.clone();
 		self.world.core_origin = program.core_origin.clone();
 		self.world.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
@@ -1089,10 +1088,11 @@ impl<M: Module> Compiler<M> {
 
 		// expand user macros to AST
 		let t = Instant::now();
-		let (mut expanded, mut stage0) = expand(program)?;
+		let (mut program, mut stage0) = expand(program)?;
+		self.world.publics = program.publics.clone();
 		self.timings.push(("expand", t.elapsed()));
-		for m in &program.modules {
-			for item in expanded.get_mut(&m.name).expect("every module was seeded") {
+		for m in &mut program.modules {
+			for item in &mut m.items {
 				let (anns, public, inner) = Expr::peel_meta(item);
 				if anns.is_empty() && !public {
 					continue;
@@ -1109,21 +1109,15 @@ impl<M: Module> Compiler<M> {
 		// fold `comp` expressions to literals
 		let t = Instant::now();
 		if !self.stage0 {
-			comp::eval(
-				&mut expanded,
-				&mut self.annotations,
-				&mut self.consts,
-				program,
-				&mut stage0,
-			)?;
+			comp::eval(&mut program, &mut self.annotations, &mut self.consts, &mut stage0)?;
 		}
 		self.timings.push(("comp", t.elapsed()));
 		if self.aot {
-			expanded.values_mut().for_each(|items| items.retain(|(e, _)| !comptime_only(e)));
+			(program.modules.iter_mut()).for_each(|m| m.items.retain(|(e, _)| !comptime_only(e)));
 		}
 		// field amendments
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
-		for (e, span) in program.modules.iter().flat_map(|m| &expanded[&m.name]) {
+		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {
 			let Expr::Claim { typ, fields, .. } = e else { continue };
 			let open = has_ann(&self.annotations, typ, role::OPEN);
 			if !fields.is_empty() && !open {
@@ -1139,26 +1133,22 @@ impl<M: Module> Compiler<M> {
 				.or_default()
 				.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
 		}
-		for (e, _) in expanded.values_mut().flatten() {
+		for (e, _) in program.modules.iter_mut().flat_map(|m| &mut m.items) {
 			if let Expr::StructDef { name, fields, .. } = e
 				&& let Some(extra) = added.remove(name.as_str())
 			{
 				fields.extend(extra);
 			}
 		}
-		let items = || {
-			program
-				.modules
-				.iter()
-				.flat_map(|m| expanded[&m.name].iter().map(move |i| (m.scope.at(i.1), i)))
-		};
-		let defs: HashMap<&str, &Scope> = items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
+		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
 		let scope_of = |key: &str| defs.get(key).copied().unwrap_or_else(|| scope_of(key));
 
-		let has_main = items().any(|(_, i)| matches!(&i.0, Expr::Fn { name, .. } if name == "main"));
+		let has_main = program
+			.items()
+			.any(|(_, i)| matches!(&i.0, Expr::Fn { name, .. } if name == "main"));
 
 		let mut traits: HashMap<&str, TraitItem> = HashMap::new();
-		for (scope, (e, span)) in items() {
+		for (scope, (e, span)) in program.items() {
 			let Expr::TraitDef {
 				name,
 				type_params,
@@ -1185,7 +1175,7 @@ impl<M: Module> Compiler<M> {
 				self.world.core_traits.insert(name.clone());
 			}
 		}
-		for (scope, item) in items() {
+		for (scope, item) in program.items() {
 			match &item.0 {
 				Expr::StructDef {
 					name,

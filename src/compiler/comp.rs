@@ -155,15 +155,14 @@ fn reify(span: Span) -> Expr {
 fn fold(
 	mut inner: Spanned<Expr>,
 	target: &str,
-	expanded: &mut HashMap<String, Vec<Spanned<Expr>>>,
 	consts: &HashMap<String, Spanned<Expr>>,
-	program: &Program,
+	program: &mut Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<Expr, Diagnostic> {
 	// conditional compilation
 	while let Expr::If { cond, then, els } = inner.0 {
 		let span = cond.1;
-		let arm = match fold(*cond, target, expanded, consts, program, stage0)? {
+		let arm = match fold(*cond, target, consts, program, stage0)? {
 			Expr::Bool(true) => then,
 			Expr::Bool(false) if matches!(els.as_deref(), Some([(Expr::If { .. }, _)])) => {
 				inner = els.expect("guard matched").remove(0);
@@ -198,9 +197,9 @@ fn fold(
 	// enable comp code to call imports
 	let modules: Vec<Module> = program
 		.modules
-		.iter()
+		.iter_mut()
 		.map(|m| {
-			let raw = expanded.get_mut(&m.name).expect("every module is expanded");
+			let raw = &mut m.items;
 			let has_main = raw.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
 			let mut items: Vec<Spanned<Expr>> = raw
 				.iter_mut()
@@ -243,18 +242,18 @@ fn fold(
 
 // Fold every `comp` site, and every call in annotation position, to a literal.
 pub(crate) fn eval(
-	expanded: &mut HashMap<String, Vec<Spanned<Expr>>>,
+	program: &mut Program,
 	annotations: &mut HashMap<String, Vec<Annotation>>,
 	consts: &mut HashMap<String, Spanned<Expr>>,
-	program: &Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
 	MAP.set(program.map.clone());
 	// push order is importer-first, so folding in reverse handles dependencies first
-	for m in program.modules.iter().rev() {
+	for i in (0..program.modules.len()).rev() {
+		let module = program.modules[i].name.clone();
 		let mut comps: Vec<String> = consts
 			.iter()
-			.filter(|(k, v)| module_of(k).unwrap_or("main") == m.name && matches!(v.0, Expr::Comp(_)))
+			.filter(|(k, v)| module_of(k).unwrap_or("main") == module && matches!(v.0, Expr::Comp(_)))
 			.map(|(k, _)| k.clone())
 			.collect();
 		// comp expressions may reference siblings, so retry until a pass gets stuck
@@ -264,7 +263,7 @@ pub(crate) fn eval(
 				let (Expr::Comp(inner), span) = consts[k].clone() else {
 					unreachable!()
 				};
-				match fold(*inner, &m.name, expanded, consts, program, stage0) {
+				match fold(*inner, &module, consts, program, stage0) {
 					Ok(lit) => {
 						consts.insert(k.clone(), (lit, span));
 						false
@@ -279,15 +278,15 @@ pub(crate) fn eval(
 				return Err(err.expect("a stuck pass saw an error"));
 			}
 		}
-		while let Some(inner) = first_comp(expanded.get_mut(&m.name).expect("every module is expanded")) {
-			let lit = fold(inner, &m.name, expanded, consts, program, stage0)?;
-			patch_first(expanded.get_mut(&m.name).expect("every module is expanded"), lit);
+		while let Some(inner) = first_comp(&mut program.modules[i].items) {
+			let lit = fold(inner, &module, consts, program, stage0)?;
+			patch_first(&mut program.modules[i].items, lit);
 		}
 	}
 	// an annotation call is implicitly comptime
 	for a in annotations.iter_mut().filter(|(k, _)| !k.contains("::")).flat_map(|(_, v)| v) {
 		if matches!(&a.0, Expr::Call { name, .. } if name != role::CTX) {
-			a.0 = fold(a.clone(), "main", expanded, consts, program, stage0)?;
+			a.0 = fold(a.clone(), "main", consts, program, stage0)?;
 		}
 	}
 	Ok(())
