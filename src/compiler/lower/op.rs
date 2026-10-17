@@ -390,9 +390,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		r: &Spanned<Expr>,
 		rhint: impl FnOnce(&mut Self, &Typ) -> Typ,
 	) -> Result<(TypedVal, TypedVal), Diagnostic> {
-		if l.0.anon() && !r.0.anon() {
+		let typename = TypeExpr::from_expr(&l.0).is_some_and(|te| {
+			!matches!(&l.0, Expr::Ident(n) if self.vars.contains_key(n)) && self.types.resolve(&te, l.1).is_ok()
+		});
+		if (l.0.anon() || typename) && !r.0.anon() {
 			let rhs = self.expr(r)?;
-			return Ok((self.check_expr(l, &rhs.1)?, rhs));
+			let hint = rhint(self, &rhs.1);
+			return Ok((self.check_expr(l, &hint)?, rhs));
 		}
 		let lhs = self.expr(l)?;
 		let hint = rhint(self, &lhs.1);
@@ -448,7 +452,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => (r, false),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
-			let int = matches!(&r.0, Expr::Int(_)) || matches!(&r.0, Expr::Negative(n) if matches!(n.0, Expr::Int(_)));
+			let int = [l, r].iter().any(|e| {
+				matches!(&e.0, Expr::Int(_)) || matches!(&e.0, Expr::Negative(n) if matches!(n.0, Expr::Int(_)))
+			});
 			if int && let Some(t) = s.int_operand(lt, method) {
 				return t;
 			}

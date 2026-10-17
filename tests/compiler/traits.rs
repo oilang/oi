@@ -143,8 +143,9 @@ fn is_on_type_of() {
 	let src = indoc! {"
 		x := 3.7
 		print(type(x) is Float, type(3) is Float, int is Float, type(x) is not Float)
+		print(float == type(x), int == type(x))
 	"};
-	check(src, "true false false false");
+	check(src, ["true false false false", "true false"]);
 }
 
 #[test]

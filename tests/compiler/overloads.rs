@@ -237,9 +237,9 @@ fn an_int_literal_takes_the_operator_claims_int_type() {
 		S :: struct { v: i33 }
 		S : Mul < { mul :: fn(self, o: S) S { S.{ self.v * o.v } } }
 		S : Mul[i33] < { mul :: fn(self, k: i33) S { S.{ self.v * k } } }
-		print((S.{3} * 2).v, (S.{3} * -2).v)
+		print((S.{3} * 2).v, (S.{3} * -2).v, (2 * S.{3}).v)
 	"};
-	check(src, "6 -6");
+	check(src, "6 -6 6");
 }
 
 #[test]
