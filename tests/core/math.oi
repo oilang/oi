@@ -38,9 +38,10 @@ test! "vectors" {
 	assert! a + a - a * a / a == a && 2.0 * -a / 2.0 == -a
 	assert! a.dot(a) == 14.0 && a.cross(.{0.0, 1.0, 0.0}) == Vec3.{-3.0, 0.0, 1.0}
 	assert! Vec2.{3.0, 4.0}.normalize() == Vec2.{0.6, 0.8}
+	assert! Vec2[f32].{3.0, 4.0}.length() == 5.0
 	assert! Vec2.{0.0, 2.0}.lerp(Vec2.{4.0, 6.0}, 0.5) == Vec2.{2.0, 4.0}
 	b :: Vec2[i33].{3, 4}
-	assert! b.length_squared() == 25 && b.length() == 5.0 && b * 2 == b + b
+	assert! b.length_squared() == 25 && b * 2 == b + b
 	assert! 2 * Vec4[int].{1, 2, 3, 4} == Vec4[int].{2, 4, 6, 8}
 }
 
