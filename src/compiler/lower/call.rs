@@ -612,7 +612,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& access[0] == Access::Mut
 			&& !matches!(re.0, Expr::Cast { .. })
 		{
-			self.mut_place(re, "calling a `mut self` method needs a `mut` binding")?;
+			self.mut_place(
+				Self::place_root(re),
+				"calling a `mut self` method needs a `mut` binding",
+			)?;
 		}
 		for (i, (&arg, &want)) in args.iter().zip(&access[recv.is_some() as usize..]).enumerate() {
 			let Some(arg) = arg else { continue };

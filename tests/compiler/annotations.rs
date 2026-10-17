@@ -27,6 +27,7 @@ fn annotation_fn_call_is_folded() {
 	check(
 		indoc! {r#"
 			deprecated :: struct { reason: string }
+			warn :: deprecated.{ reason = "old" }
 			mark :: fn(who: string) deprecated { deprecated.{ "use " + who } }
 			@mark("speak")
 			yell :: fn() string { "AAA" }
