@@ -41,16 +41,16 @@ vector! :: fn(input: Ast) Ast {
 			## Squared length, without the square root.
 			pub length_squared :: fn(self) T { self.dot(self) }
 
+			## Euclidean length.
+			pub length :: fn(self) float { sqrt(self.dot(self)) }
+
 			## Linear interpolation toward `to`.
 			pub lerp :: fn(self, to: Self, by: T) Self { self + (to - self) * by }
 		}
 
 		%n[T: Float] :< {
-			## Euclidean length.
-			pub length :: fn(self) T { self.dot(self).sqrt() }
-
 			## Same direction, unit length.
-			pub normalize :: fn(self) Self { self / self.length() }
+			pub normalize :: fn(self) Self { self / T.(self.length()) }
 		}
 	`
 }

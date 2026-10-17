@@ -18,3 +18,9 @@ float :< {
 f32 :< {
 	epsilon :: 2.0 ** -23.0
 }
+
+## Floating point, of any width.
+pub Float :: trait {}
+float :< Float
+f32 :< Float
+# TODO: f16 and f128, once working in Oi
