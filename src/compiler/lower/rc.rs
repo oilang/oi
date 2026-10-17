@@ -197,12 +197,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				let zero = self.b.ins().iconst(self.int, 0);
 				self.elems_rc(val, zero, n, elem, false);
 			}
-			if let Typ::Map(_, v) = typ
-				&& self.is_resource(v)
-			{
-				let vals = self.map_entries(val, false, v);
-				self.release_value(vals, &Typ::Array(v.clone()));
-			}
 			self.rt_call(release, &[val]);
 		} else if let Typ::FixedArray(elem, _) = typ
 			&& self.slot_owns(elem)
@@ -393,8 +387,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			desc.write_data_addr(off as u32, gv, 0);
 		}
 
-		// only `any` boxes are lent, so only they clone
-		let hooks = 1 + name.starts_with("any ") as usize;
+		// clone `any` and map values
+		let hooks = 1 + (name.starts_with("any ") || name.starts_with("map ")) as usize;
 		for (off, hook) in [(16, "release"), (24, "copy")].into_iter().take(hooks) {
 			let thunk = oi_symbol(&format!("{name}#{hook}"));
 			let mut sig = self.module.make_signature();
@@ -469,6 +463,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn any_desc(&mut self, typ: &Typ) -> Value {
 		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
 		self.trace_desc(&format!("any {}", typ.key()), &slots)
+	}
+
+	pub(super) fn map_desc(&mut self, val: &Typ) -> Value {
+		let slot = Typ::Tuple(vec![(None, val.clone())]);
+		self.trace_desc(&format!("map {}", val.key()), &slot)
 	}
 
 	// A frame block laid out like an rc'd one, with an immortal count.

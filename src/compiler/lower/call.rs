@@ -914,8 +914,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((tag, self.map_bits(val)))
 	}
 
-	pub(super) fn call_map_new(&mut self) -> Value {
-		self.rt_call("map_new", &[]).unwrap()
+	pub(super) fn call_map_new(&mut self, val: &Typ) -> Value {
+		let desc = self.map_desc(val);
+		self.rt_call("map_new", &[desc]).unwrap()
 	}
 
 	// Runtime map operations.

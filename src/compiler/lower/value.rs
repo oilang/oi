@@ -241,8 +241,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				let z = self.b.ins().iconst(self.int, 0);
 				self.any_box(z, z, &Typ::ISize)
 			}
-			Typ::Map(..) => {
-				let m = self.call_map_new();
+			Typ::Map(_, val) => {
+				let m = self.call_map_new(val);
 				self.temp(m, typ);
 				m
 			}
@@ -1190,7 +1190,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			},
 		};
-		let map = self.call_map_new();
+		let mut map = val_typ.as_ref().map(|v| self.call_map_new(v));
 		for (key, value) in entries {
 			let (tag, key_bits) = match first_bits.take() {
 				Some(tb) => tb,
@@ -1202,13 +1202,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			closure_escape(&vt, value.1.into_range(), "stored in a map")?;
 			self.move_resource(value, &vt)?;
-			let val = if self.is_copy(&vt) { self.copy_in(val, &vt) } else { val };
-			self.untemp(val);
+			let val = self.copy_in(val, &vt);
+			let map = *map.get_or_insert_with(|| self.call_map_new(&vt));
 			val_typ.get_or_insert(vt);
 			let bits = self.map_bits(val);
 			self.map_rt("set", map, tag, key_bits, &[bits]);
 		}
-		let val_typ = val_typ.expect("target or first entry set it");
+		let (map, val_typ) = (map.unwrap(), val_typ.expect("target or first entry set it"));
 		let typ = Typ::Map(Box::new(key_typ), Box::new(val_typ));
 		self.temp(map, &typ);
 		Ok((map, typ))

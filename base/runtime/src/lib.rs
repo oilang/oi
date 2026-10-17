@@ -989,6 +989,14 @@ fn map_key(tag: i64, bits: i64) -> MapKey {
 pub struct OiMap {
 	entries: HashMap<MapKey, i64>,
 	rc: i64,
+	desc: *const i64,
+}
+
+unsafe fn value_hook(desc: *const i64, hook: usize, slot: &mut i64) {
+	if !desc.is_null() {
+		let thunk: unsafe extern "C" fn(*mut i64) = unsafe { std::mem::transmute(*desc.add(hook)) };
+		unsafe { thunk(slot) };
+	}
 }
 
 // Only the box routes through the given allocator. The entries stay on the heap.
@@ -1001,16 +1009,9 @@ unsafe fn map_box(a: *const Allocator, map: OiMap) -> *mut OiMap {
 }
 
 #[unsafe(export_name = "oi_map_new")]
-pub unsafe extern "C" fn map_new(a: *const Allocator) -> *mut OiMap {
-	unsafe {
-		map_box(
-			a,
-			OiMap {
-				entries: HashMap::new(),
-				rc: 1,
-			},
-		)
-	}
+pub unsafe extern "C" fn map_new(a: *const Allocator, desc: *const i64) -> *mut OiMap {
+	let entries = HashMap::new();
+	unsafe { map_box(a, OiMap { entries, rc: 1, desc }) }
 }
 
 /// Drop one ref to a map.
@@ -1025,6 +1026,8 @@ pub unsafe extern "C" fn map_release(map: *mut OiMap) {
 	unsafe { (*map).rc -= 1 };
 	if unsafe { (*map).rc } == 0 {
 		unsafe {
+			let desc = (*map).desc;
+			(*map).entries.values_mut().for_each(|v| value_hook(desc, 2, v));
 			std::ptr::drop_in_place(map);
 			free(map.cast());
 		}
@@ -1050,8 +1053,9 @@ pub unsafe extern "C" fn map_cow(a: *const Allocator, map: *mut OiMap) -> *mut O
 		return map;
 	}
 	unsafe { (*map).rc -= 1 };
-	let entries = unsafe { (*map).entries.clone() };
-	unsafe { map_box(a, OiMap { entries, rc: 1 }) }
+	let (mut entries, desc) = unsafe { ((*map).entries.clone(), (*map).desc) };
+	entries.values_mut().for_each(|v| unsafe { value_hook(desc, 3, v) });
+	unsafe { map_box(a, OiMap { entries, rc: 1, desc }) }
 }
 
 /// # Safety
@@ -1072,8 +1076,10 @@ pub unsafe extern "C" fn map_get(map: *mut OiMap, tag: i64, bits: i64) -> i64 {
 /// `map` must be a valid, live `OiMap` pointer.
 #[unsafe(export_name = "oi_map_set")]
 pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64, value: i64) -> *mut OiMap {
-	let map = unsafe { map_cow(a, map) };
-	unsafe { &mut *map }.entries.insert(map_key(tag, bits), value);
+	let map = unsafe { &mut *map_cow(a, map) };
+	if let Some(mut old) = map.entries.insert(map_key(tag, bits), value) {
+		unsafe { value_hook(map.desc, 2, &mut old) };
+	}
 	map
 }
 
@@ -1082,8 +1088,10 @@ pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64,
 /// `map` must be a valid, live `OiMap` pointer.
 #[unsafe(export_name = "oi_map_delete")]
 pub unsafe extern "C" fn map_delete(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64) -> *mut OiMap {
-	let map = unsafe { map_cow(a, map) };
-	unsafe { &mut *map }.entries.remove(&map_key(tag, bits));
+	let map = unsafe { &mut *map_cow(a, map) };
+	if let Some(mut old) = map.entries.remove(&map_key(tag, bits)) {
+		unsafe { value_hook(map.desc, 2, &mut old) };
+	}
 	map
 }
 

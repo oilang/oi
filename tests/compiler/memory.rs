@@ -94,9 +94,10 @@ fn break_and_continue() {
 #[test]
 fn map_set_delete_copy() {
 	assert_clean(indoc! {r#"
-		m := ["a" = 1]
+		m := ["a" = [1]]
 		n :: m
-		m["b"] = 2
+		m["b"] = [2]
+		m["b"] = [3]
 		m.delete["a"]
 		print(n["a"])
 	"#});
