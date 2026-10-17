@@ -721,6 +721,7 @@ fn comptime_only(e: &Expr) -> bool {
 			typ: Some((t @ TypeExpr::Fn(..), _)),
 			..
 		} => mentions(t, "Ast"),
+		Expr::Claim { typ, .. } => typ == "Ast",
 		_ => false,
 	}
 }
@@ -1649,7 +1650,14 @@ impl<M: Module> Compiler<M> {
 		// an extension can't hide the type's own members
 		for (k, exts) in &self.world.extensions {
 			let (t, n) = k.rsplit_once('.').unwrap_or_default();
-			if structs.get(t).is_some_and(|fs| fs.iter().any(|f| f.name == n))
+			let builtin: &[&str] = match t {
+				"string" | "array" => &["len", "ptr"],
+				"map" => &["len", "keys", "values"],
+				"Ast" => &["name", "typ", "kind", "len", "items", "notes", "fills"],
+				_ => &[],
+			};
+			if builtin.contains(&n)
+				|| structs.get(t).is_some_and(|fs| fs.iter().any(|f| f.name == n))
 				|| self.world.generic_fns.contains_key(k)
 				|| others.iter().any(|f| f.key.split('#').next() == Some(k))
 			{

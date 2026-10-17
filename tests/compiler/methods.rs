@@ -138,3 +138,14 @@ fn builtin_amendment_outside_core() {
 		"true",
 	);
 }
+
+#[test]
+fn extension_clashes_with_compiler_method() {
+	fail("Ast :< { int :: fn(self) int { 7 } }", "clashes with `Ast`'s own `int`");
+}
+
+#[test]
+fn extension_clashes_with_builtin_field() {
+	fail("[]T :< { len :: fn(self) int { 7 } }", "own `len`");
+	fail("[string]int :< { keys :: fn(self) int { 7 } }", "own `keys`");
+}

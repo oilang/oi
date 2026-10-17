@@ -403,10 +403,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					let (recv_val, recv_typ) = self.expr(recv)?;
 					let (recv_val, recv_typ) = self.deref(recv_val, &recv_typ);
-					if recv_typ == Typ::Ast && method == "int" && args.is_empty() {
-						let raw = self.ast_method(recv_val, method, None);
-						return Ok((self.intcast(raw, types::I64, true), Typ::Int(64)));
-					}
 					let has_str_impl = matches!(
 						recv_typ,
 						Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Enum(..) | Typ::Sum(..) | Typ::CStr | Typ::Rune
@@ -427,7 +423,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							(name.clone(), Some((recv_val, recv_typ)))
 						}
 						Typ::Str | Typ::CStr | Typ::Rune => (recv_typ.to_string(), Some((recv_val, recv_typ))),
-						Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize => {
+						Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize | Typ::Ast => {
 							(recv_typ.to_string(), Some((recv_val, recv_typ)))
 						}
 						Typ::Array(_) => ("array".into(), Some((recv_val, recv_typ))),

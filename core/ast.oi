@@ -21,3 +21,10 @@ pub parse :: fn(src: string) Ast {
 pub def :: fn(name: Ast) Ast {
 	unsafe rt.oi_ast_def(name)
 }
+
+Ast :< {
+	## The value of an Int literal.
+	int :: fn(self) int {
+		unsafe rt.oi_ast_int(self)
+	}
+}

@@ -952,6 +952,17 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 	}))
 }
 
+#[unsafe(export_name = "oi_ast_int")]
+pub(crate) extern "C" fn rt_ast_int(a: *mut Spanned<Expr>) -> i64 {
+	match unsafe { &(*a).0 } {
+		Expr::Int(n) => *n,
+		_ => {
+			flag("`.int()` needs an Ast holding an Int literal");
+			0
+		}
+	}
+}
+
 // A type as an Ast.
 fn type_ast(t: &TypeExpr) -> Expr {
 	match t {
@@ -990,11 +1001,6 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			ast(Expr::Tuple(vec![]))
 		}
 		(b"len", Expr::TypePat(TypeExpr::FixedArray(_, n))) => ast(n.0.clone()),
-		(b"int", Expr::Int(n)) => *n,
-		(b"int", _) => {
-			flag("`.int()` needs an Ast holding an Int literal");
-			0
-		}
 		// the variant name, lowercased
 		(b"kind", e) => {
 			let name = match e {
