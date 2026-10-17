@@ -165,6 +165,7 @@ pub struct Program {
 	pub annotations: HashMap<String, Vec<Annotation>>,
 	pub roots: Vec<PathBuf>,
 	pub core_origin: HashSet<String>,
+	pub selected: Vec<(String, String, String, Span)>,
 }
 
 impl Program {
@@ -975,24 +976,28 @@ impl Loader {
 			}
 		}
 	}
+}
 
-	// Ensure selected names are public within their module.
-	fn check_selected(&self, reexports: &HashMap<String, String>) -> Result<(), Reported> {
-		for (module, name, from, span) in &self.selected {
+impl Program {
+	// Ensure selected names are public within their module, once macros have expanded.
+	pub(crate) fn check_selected(
+		&self,
+		selected: &[(String, String, String, Span)],
+		is_macro: impl Fn(&str) -> bool,
+	) -> Result<(), Diagnostic> {
+		for (module, name, from, span) in selected {
 			let m = self.modules.iter().find(|m| &m.name == module).unwrap();
-			let is_def = |q: &String| {
+			let is_def = |q: &str| {
 				self.consts.contains_key(q)
-					|| self.modules.iter().any(|m| {
-						m.items.iter().any(|i| {
-							i.0.def_name() == Some(q)
-								|| matches!(&i.0, Expr::MacroDef { name, .. } | Expr::Bind { name, .. } if name == q)
-								|| matches!(&i.0, Expr::MacroCall { args, .. }
-									if args.first().is_some_and(|a| Expr::peel_meta(a).2.0.def_name() == Some(q)))
-						})
-					})
+					|| is_macro(q) || self.items().any(|(_, i)| {
+					let i = &Expr::peel_meta(i).2.0;
+					i.def_name() == Some(q) || matches!(i, Expr::Bind { name, .. } if name == q)
+				})
 			};
+			let qualified = format!("{module}::{name}");
 			let found = (m.scope.env.get(name).or_else(|| m.scope.env.get(&format!("{name}!"))))
-				.or_else(|| reexports.get(&format!("{module}::{name}")));
+				.or_else(|| self.reexports.get(&qualified))
+				.or_else(|| is_def(&qualified).then_some(&qualified));
 			let (msg, label) = match found {
 				None => (format!("module `{module}` has no `{name}`"), "no such name"),
 				Some(q) if !is_def(q) => (
@@ -1004,7 +1009,7 @@ impl Loader {
 				}
 				_ => continue,
 			};
-			return Err(self.report([shadow_note(err(msg, *span, label), module, &self.core_origin)]));
+			return Err(shadow_note(err(msg, *span, label), module, &self.core_origin));
 		}
 		Ok(())
 	}
@@ -1055,7 +1060,6 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	let reexports = loader.resolve_reexports();
 	loader.seed_prelude();
 	loader.resolve_claims();
-	loader.check_selected(&reexports)?;
 	Ok(Program {
 		roots: loader.roots.clone(),
 		map: loader.map,
@@ -1066,5 +1070,6 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		const_types: loader.const_types,
 		annotations: loader.annotations,
 		core_origin: loader.core_origin,
+		selected: loader.selected,
 	})
 }

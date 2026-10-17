@@ -767,3 +767,11 @@ fn module_top_level_macro_call() {
 		.lib("geo", ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"])
 		.check("42");
 }
+
+#[test]
+fn module_top_level_macro_call_selected() {
+	Project::new()
+		.main(["use geo.{ answer }", "print(answer())"])
+		.lib("geo", ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"])
+		.check("42");
+}

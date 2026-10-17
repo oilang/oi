@@ -34,6 +34,7 @@ pub(super) fn with_modules(program: &Program, modules: Vec<Module>) -> Program {
 		annotations: program.annotations.clone(),
 		roots: program.roots.clone(),
 		core_origin: program.core_origin.clone(),
+		selected: vec![],
 	}
 }
 
@@ -470,6 +471,7 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 		m.items.append(&mut ex.hoisted);
 	}
 	out.publics = ex.publics;
+	out.check_selected(&program.selected, |q| ex.macros.contains_key(q))?;
 	Ok((out, ex.stage0))
 }
 
