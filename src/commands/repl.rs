@@ -95,7 +95,7 @@ fn help_topic(name: &str, session: &str) {
 	let lines: Vec<_> = source.lines().collect();
 	let is_def = |line: &&str| {
 		let rest = line.trim_start_matches("pub ").strip_prefix(item);
-		rest.is_some_and(|rest| rest.trim_start().starts_with("::"))
+		rest.is_some_and(|rest| rest.starts_with('[') || rest.trim_start().starts_with("::"))
 	};
 	let Some(at) = lines.iter().rposition(is_def) else {
 		return eprintln!("no docs for `{name}`");

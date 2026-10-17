@@ -30,7 +30,7 @@ fn clear_resets_the_session() {
 fn help_topic_prints_docs_and_signature() {
 	let err = stderr(&oi(&["repl"]).run(Some(":h math.sqrt\n")));
 	assert!(
-		err.contains("## Square root.\npub sqrt :: fn(x: float) float {"),
+		err.contains("## Square root.\npub sqrt[T] :: fn(n: T) float {"),
 		"{err}"
 	);
 }
