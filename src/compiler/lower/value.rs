@@ -902,7 +902,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let [v] = vals[..] {
 			return Ok((v, typ));
 		}
-		Ok((self.heap_slots(&vals), typ))
+		let ptr = self.stack_slot((vals.len() * 8) as u32);
+		self.store_slots(ptr, &vals);
+		Ok((ptr, typ))
 	}
 
 	// An expr checked against an expected type.
