@@ -1,22 +1,26 @@
 module math
 
-# TEMP: one Ast per field, since back-to-back `xs << <quote>` statements parse exponentially slow
-fieldwise :: fn(input: Ast, each: fn(Ast) Ast) []Ast {
-	out: []Ast
-	loop f in input.items { out << each(f.name) }
-	out
-}
-
-# component-wise arithmetic and the length methods, for a struct of `T` fields
+# component-wise arithmetic and the length methods for vectors
+# TODO: there's probably a better way to do this, i was having fun putting Oi's metaprogramming through its paces
 vector! :: fn(input: Ast) Ast {
 	n :: input.name
-	adds :: fieldwise(input, fn(f: Ast) Ast { `self.%f + o.%f` })
-	subs :: fieldwise(input, fn(f: Ast) Ast { `self.%f - o.%f` })
-	muls :: fieldwise(input, fn(f: Ast) Ast { `self.%f * o.%f` })
-	divs :: fieldwise(input, fn(f: Ast) Ast { `self.%f / o.%f` })
-	scales :: fieldwise(input, fn(f: Ast) Ast { `self.%f * s` })
-	shrinks :: fieldwise(input, fn(f: Ast) Ast { `self.%f / s` })
-	negs :: fieldwise(input, fn(f: Ast) Ast { `-self.%f` })
+	adds: []Ast
+	subs: []Ast
+	muls: []Ast
+	divs: []Ast
+	scales: []Ast
+	shrinks: []Ast
+	negs: []Ast
+	loop field in input.items {
+		f :: field.name
+		adds << `self.%f + o.%f`
+		subs << `self.%f - o.%f`
+		muls << `self.%f * o.%f`
+		divs << `self.%f / o.%f`
+		scales << `self.%f * s`
+		shrinks << `self.%f / s`
+		negs << `-self.%f`
+	}
 	dot := muls[0]
 	loop m in muls[1..] { dot = `%dot + %m` }
 

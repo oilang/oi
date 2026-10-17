@@ -771,6 +771,7 @@ where
 	let with_lead = p
 		.same_line
 		.clone()
+		.ignore_then(p.adjacent.clone().then(just(Token::Backtick)).not())
 		.ignore_then(header_expr.clone())
 		.then(trailing.or_not())
 		.map(|(l, t)| (Some(l), t))

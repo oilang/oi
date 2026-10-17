@@ -424,6 +424,33 @@ fn splat_updates_param_tuple_for_dollar() {
 }
 
 #[test]
+fn back_to_back_quote_pushes_parse() {
+	check(
+		indoc! {r#"
+			same :: fn(a: Ast) Ast { a }
+			ten! :: fn() Ast {
+				xs: []Ast
+				xs << `1`
+				xs << `2`
+				xs << `3`
+				xs << `4`
+				xs << `5`
+				xs << `6`
+				xs << `7`
+				xs << `8`
+				xs << `9`
+				xs << `10`
+				eleven := same `11`
+				xs << eleven
+				`print(%{..xs})`
+			}
+			ten!()
+		"#},
+		"1 2 3 4 5 6 7 8 9 10 11",
+	);
+}
+
+#[test]
 fn stamped_fns_keep_their_own_body() {
 	check(
 		indoc! {r#"
