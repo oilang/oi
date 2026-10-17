@@ -343,7 +343,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(None);
 		}
 		if let Float(w) = target
-			&& !matches!(w, 32 | 64)
+			&& !matches!(w, 16 | 32 | 64)
 		{
 			return fail(
 				format!("f{w} casts are not yet supported by the JIT backend"),
@@ -366,15 +366,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		if typ == *target {
 			return Ok(Some((val, typ)));
 		}
-		let cl = cl_type(target, self.int);
 		let signed = matches!(typ, Int(_) | ISize);
 		let out = match (target, &typ) {
 			(Str, Array(e)) if **e == UInt(8) => self.rt_call("str_from_bytes", &[val]).unwrap(),
-			(Float(_), Float(64)) => self.b.ins().fdemote(cl, val),
-			(Float(_), Float(_)) => self.b.ins().fpromote(cl, val),
-			(Float(_), UInt(_) | USize) => self.b.ins().fcvt_from_uint(cl, val),
-			(Float(_), Int(_) | ISize) => self.b.ins().fcvt_from_sint(cl, val),
+			(Float(_), Float(_) | Int(_) | UInt(_) | ISize | USize) => self.numcast(val, &typ, target),
 			(_, Float(_)) => {
+				let val = self.widen_f16(val, &typ);
 				let to_signed = !matches!(target, UInt(_) | USize);
 				let wide = if to_signed {
 					self.b.ins().fcvt_to_sint_sat(self.int, val)

@@ -186,6 +186,16 @@ pub extern "C" fn pow_int(base: i64, exp: i64) -> i64 {
 	base.wrapping_pow(exp as u32)
 }
 
+#[unsafe(export_name = "oi_f16_to_f32")]
+pub extern "C" fn f16_to_f32(bits: u16) -> f32 {
+	f16::from_bits(bits) as f32
+}
+
+#[unsafe(export_name = "oi_f32_to_f16")]
+pub extern "C" fn f32_to_f16(x: f32) -> u16 {
+	(x as f16).to_bits()
+}
+
 #[unsafe(export_name = "oi_pow_float")]
 pub extern "C" fn pow_float(base: f64, exp: f64) -> f64 {
 	base.powf(exp)

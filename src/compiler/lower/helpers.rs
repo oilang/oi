@@ -216,8 +216,8 @@ impl<M: Module> Translator<'_, M> {
 		match typ {
 			Typ::Int(_) | Typ::ISize => self.intcast(val, self.int, true),
 			Typ::UInt(_) | Typ::USize => self.intcast(val, self.int, false),
-			Typ::Float(32) => {
-				let f64v = self.b.ins().fpromote(types::F64, val);
+			Typ::Float(16 | 32) => {
+				let f64v = self.numcast(val, typ, &Typ::Float(64));
 				self.b.ins().bitcast(self.int, MemFlags::new(), f64v)
 			}
 			Typ::Float(_) => self.b.ins().bitcast(self.int, MemFlags::new(), val),

@@ -103,9 +103,15 @@ fn promotion() {
 }
 
 #[test]
-fn f16_f128_not_yet_supported() {
-	fail("f16.(1.0)", "f16 casts are not yet supported");
-	fail("f16.(123)", "f16 casts are not yet supported");
+fn f16() {
+	check(
+		["x: f16 = 1.5", "print(-x, x * x + 1, x < 2.0, int.(x), f16.(70000))"],
+		"-1.5 3.25 true 1 inf",
+	);
+}
+
+#[test]
+fn f128_not_yet_supported() {
 	fail("f128.(1.0)", "f128 casts are not yet supported");
 	fail("f128.(123)", "f128 casts are not yet supported");
 }

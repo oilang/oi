@@ -23,4 +23,4 @@ f32 :< {
 pub Float :: trait {}
 float :< Float
 f32 :< Float
-# TODO: f16 and f128, once working in Oi
+f16 :< Float

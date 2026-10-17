@@ -29,7 +29,10 @@ fn eq_dispatchable(t: &Typ) -> bool {
 impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn emit_eq(&mut self, a: Value, b: Value, typ: &Typ) -> Value {
 		match typ {
-			Typ::Float(_) => self.b.ins().fcmp(FloatCC::Equal, a, b),
+			Typ::Float(_) => {
+				let (a, b) = (self.widen_f16(a, typ), self.widen_f16(b, typ));
+				self.b.ins().fcmp(FloatCC::Equal, a, b)
+			}
 			Typ::Error => {
 				let (a, b) = (self.error_message(a), self.error_message(b));
 				self.emit_eq(a, b, &Typ::Str)
@@ -346,13 +349,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		(lv, common.clone(), rv, common)
 	}
 
-	// Cast a numeric value to a wider (or same) numeric type.
-	fn numcast(&mut self, val: Value, from: &Typ, to: &Typ) -> Value {
+	pub(super) fn widen_f16(&mut self, val: Value, typ: &Typ) -> Value {
+		match typ {
+			Typ::Float(16) => self.numcast(val, typ, &Typ::Float(32)),
+			_ => val,
+		}
+	}
+
+	// Cast a numeric value to a wider numeric type, or between floats.
+	pub(super) fn numcast(&mut self, val: Value, from: &Typ, to: &Typ) -> Value {
 		if from == to {
 			return val;
 		}
 		let cl = cl_type(to, self.int);
 		match (from, to) {
+			// no f16 ops on x64, so it computes as f32
+			(Typ::Float(16), _) => {
+				let bits = self.b.ins().bitcast(types::I16, MemFlags::new(), val);
+				let wide = self.rt_call("f16_to_f32", &[bits]).unwrap();
+				self.numcast(wide, &Typ::Float(32), to)
+			}
+			(_, Typ::Float(16)) => {
+				let wide = self.numcast(val, from, &Typ::Float(32));
+				let bits = self.rt_call("f32_to_f16", &[wide]).unwrap();
+				self.b.ins().bitcast(types::F16, MemFlags::new(), bits)
+			}
+			(Typ::Float(a), Typ::Float(b)) if a > b => self.b.ins().fdemote(cl, val),
 			(Typ::Float(_), _) => self.b.ins().fpromote(cl, val),
 			(Typ::UInt(_) | Typ::USize, Typ::Float(_)) => self.b.ins().fcvt_from_uint(cl, val),
 			(_, Typ::Float(_)) => self.b.ins().fcvt_from_sint(cl, val),
@@ -565,6 +587,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				"bitwise operators need integer operands",
 			);
 		}
+		if lt == Typ::Float(16) {
+			let (wide, l, r2) = (Typ::Float(32), self.widen_f16(lv, &lt), self.widen_f16(rv, &rt));
+			let out = self.arith(op, (l, wide.clone()), (r2, wide.clone()), r, span)?.0;
+			return Ok((self.numcast(out, &wide, &lt), lt));
+		}
 		if let (BinOp::Shl | BinOp::Shr, Some(n)) = (op, self.const_int(r)) {
 			let width = match &lt {
 				Typ::Int(w) | Typ::UInt(w) => *w as i64,
@@ -630,6 +657,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |_, t| t.clone())?;
 		let (lv, lt, rv, rt) = self.promote(lv, lt, rv, rt);
+		let (lv, rv) = (self.widen_f16(lv, &lt), self.widen_f16(rv, &rt));
 
 		// () == ()
 		if let (Typ::Tuple(lf), Typ::Tuple(rf)) = (&lt, &rt)

@@ -157,6 +157,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (v, typ) = self.expr(e)?;
 				let out = match self.own_field(&typ, role::NEG) {
 					Typ::Int(_) => self.b.ins().ineg(v),
+					Typ::Float(16) => {
+						let wide = self.widen_f16(v, &typ);
+						let neg = self.b.ins().fneg(wide);
+						self.numcast(neg, &Typ::Float(32), &typ)
+					}
 					Typ::Float(_) => self.b.ins().fneg(v),
 					t if t.nominal().is_some() => match self.fill(t, role::NEG, "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
@@ -1099,6 +1104,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::USize => ins.iconst(self.int, if hi { uint_max(64) } else { 0 }),
 			Typ::Float(64) => ins.f64const(if hi { f64::MAX } else { f64::MIN }),
 			Typ::Float(32) => ins.f32const(if hi { f32::MAX } else { f32::MIN }),
+			Typ::Float(16) => ins.f16const(Ieee16::with_bits(if hi { 0x7bff } else { 0xfbff })),
 			_ => return None,
 		})
 	}

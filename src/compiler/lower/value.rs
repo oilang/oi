@@ -1139,6 +1139,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	pub(super) fn float_lit(&mut self, x: f64, w: u16, span: Span) -> Result<Value, Diagnostic> {
 		match w {
+			16 => Ok(self.b.ins().f16const(Ieee16::with_bits(runtime::f32_to_f16(x as f32)))),
 			32 => Ok(self.b.ins().f32const(x as f32)),
 			64 => Ok(self.b.ins().f64const(x)),
 			_ => fail(
