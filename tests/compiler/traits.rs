@@ -495,6 +495,27 @@ fn self_return_reboxes_through_object() {
 }
 
 #[test]
+fn option_self_return_reboxes_through_object() {
+	let src = indoc! {r#"
+		Pet :: trait {
+			name : fn(self) string
+			next : fn(self) ?Self
+		}
+		Dog :: struct { n: string }
+		Dog : Pet < {
+			name :: fn(self) string { self.n }
+			next :: fn(self) ?Self { if self.n == "rex" { Dog.{ "max" } } else { none } }
+		}
+		p : Pet : Dog.{ "rex" }
+		match p.next() {
+			.some.(q) => print(q.name(), (q.next() or Dog.{ "end" }).name()),
+			else => print("none"),
+		}
+	"#};
+	check(src, "max end");
+}
+
+#[test]
 fn rejects_self_param_call_through_object() {
 	fail(
 		indoc! {r#"

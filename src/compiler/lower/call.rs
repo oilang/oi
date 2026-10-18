@@ -955,9 +955,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			return fail(msg, span, "an object only borrows its data");
 		}
 
-		// the concrete type is erased, so only a bare `Self` return survives, re-boxed behind the same vtable
-		let self_ret = matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self");
-		let leaks = !self_ret && matches!(ret, Some((te, _)) if mentions(te, "Self"));
+		// Self/?Self
+		let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
+		let bare = matches!(ret, Some((te, _)) if is_self(te));
+		let opt =
+			matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [te] if is_self(te)));
+		let leaks = !bare && !opt && matches!(ret, Some((te, _)) if mentions(te, "Self"));
 		if leaks || params.iter().skip(1).any(|p| mentions(&p.typ, "Self")) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return fail(msg, span, "uses `Self` beyond the receiver");
@@ -973,7 +976,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		let ret = match ret {
-			_ if self_ret => Typ::Trait(tn.into()),
+			_ if bare => Typ::Trait(tn.into()),
+			_ if opt => self.types.core_enum(role::OPTION, &[Typ::Trait(tn.into())]),
 			Some((te, s)) => self.types.resolve(te, *s)?,
 			None => Typ::unit(),
 		};
@@ -981,7 +985,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		let fnptr = self.ld_word(vtable, (idx * 8) as i32);
 		let typ = Typ::Fn(typs, Box::new(ret));
 		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
-		Ok((if self_ret { self.box_with(vtable, val) } else { val }, typ))
+		if opt {
+			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
+			self.on_variant(tag, 1, done, |s| {
+				let data = s.ld_word(val, 8);
+				let boxv = s.box_with(vtable, data);
+				s.st(val, 8, boxv);
+			});
+			self.b.ins().jump(done, &[]);
+			self.b.seal_block(done);
+			self.b.switch_to_block(done);
+		}
+		Ok((if bare { self.box_with(vtable, val) } else { val }, typ))
 	}
 
 	// Dyn-dispatch `message()` on a boxed `Error`.
