@@ -203,10 +203,8 @@ pub(super) fn promote_embeds<'p>(
 // Validates supertraits, required fields, method sigs.
 pub(super) fn check_impls<'p>(
 	trait_bodies: Vec<TraitBody<'p>>,
-	traits: &HashMap<&'p str, TraitItem<'p>>,
-	core_traits: &HashSet<String>,
-	trait_impls: &HashSet<(String, String)>,
-	types: TypeCtx,
+	world: &World,
+	types: TypeCtx<'p>,
 	others: &mut Vec<FnItem<'p>>,
 	consts: &mut HashMap<String, Spanned<Expr>>,
 ) -> Result<(), Diagnostic> {
@@ -230,7 +228,7 @@ pub(super) fn check_impls<'p>(
 				return fail(msg, span, "no such field");
 			};
 			// check whether a via actually claims the mentioned trait
-			if sn != tn && !trait_impls.contains(&(sn.clone(), tn.to_string())) {
+			if sn != tn && !world.trait_impls.contains(&(sn.clone(), tn.to_string())) {
 				let msg = format!("`{sn}` does not claim `{tn}`, so `{typ}` cannot delegate to it");
 				return fail(msg, span, "claim it first");
 			}
@@ -249,7 +247,7 @@ pub(super) fn check_impls<'p>(
 			}
 			continue;
 		}
-		let Some((supers, tparams, tfields, tmethods, home)) = traits.get(tn.as_str()) else {
+		let Some((supers, tparams, tfields, tmethods, home)) = types.traits.get(tn.as_str()) else {
 			return fail(format!("unknown trait `{tn}`"), span, "no such trait");
 		};
 		let required = tparams.iter().filter(|p| p.default.is_none()).count();
@@ -261,7 +259,7 @@ pub(super) fn check_impls<'p>(
 			return arity_err(&format!("trait `{tn}`"), want, args.len(), "type argument", span);
 		}
 		for s in supers {
-			if !trait_impls.contains(&(typ.to_string(), s.clone())) {
+			if !world.trait_impls.contains(&(typ.to_string(), s.clone())) {
 				let msg = format!("`{typ}` must also implement `{s}`, the supertrait of `{tn}`");
 				return fail(msg, span, "missing supertrait impl");
 			}
@@ -358,7 +356,7 @@ pub(super) fn check_impls<'p>(
 			let (params, _, ret) = fill_from_decl(params, *params_tuple, ret, decl, m.1)?;
 			let (mut got, want) = (sig(&params, &ret)?, sig(tp, tr)?);
 			if matches!(tn.as_str(), role::ADD | role::SUB | role::MUL | role::DIV | role::MOD)
-				&& core_traits.contains(tn.as_str())
+				&& world.core_traits.contains(tn.as_str())
 				&& let (Typ::Fn(gp, _), Typ::Fn(wp, _)) = (&mut got, &want)
 				&& let ([_, gother], [_, wother]) = (gp.as_mut_slice(), wp.as_slice())
 			{

@@ -98,6 +98,7 @@ type ConstMaps = (
 	HashMap<String, Spanned<Expr>>,
 	HashMap<String, Vec<Annotation>>,
 	HashMap<String, Spanned<TypeExpr>>,
+	HashMap<String, Typ>,
 );
 static NO_CONSTS: std::sync::LazyLock<ConstMaps> = std::sync::LazyLock::new(ConstMaps::default);
 
@@ -129,7 +130,6 @@ impl<'a> TypeCtx<'a> {
 		structs: &'a HashMap<String, Vec<FieldDef>>,
 		enums: &'a RefCell<HashMap<String, Vec<VariantInfo>>>,
 		aliases: &'a HashMap<String, TypeExpr>,
-		type_params: &'a HashMap<String, Typ>,
 		generics: &'a Generics,
 		traits: &'a HashMap<&'a str, TraitItem<'a>>,
 	) -> Self {
@@ -137,7 +137,7 @@ impl<'a> TypeCtx<'a> {
 			structs,
 			enums,
 			aliases,
-			type_params,
+			type_params: &NO_CONSTS.3,
 			generics,
 			traits,
 			consts: Consts {
@@ -153,6 +153,10 @@ impl<'a> TypeCtx<'a> {
 	// Resolve names through a module's scope.
 	pub fn with_scope(self, scope: &'a Scope) -> Self {
 		TypeCtx { scope, ..self }
+	}
+
+	pub fn with_structs(self, structs: &'a HashMap<String, Vec<FieldDef>>) -> Self {
+		TypeCtx { structs, ..self }
 	}
 
 	pub fn with_aliases(self, aliases: &'a HashMap<String, TypeExpr>) -> Self {

@@ -355,115 +355,101 @@ pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -
 	has_ann(anns, name, role::C)
 }
 
-// Check that every struct marked `@c` has a C layout.
-fn check_c_structs(types: TypeCtx, structs: &HashMap<String, Vec<FieldDef>>) -> Result<(), Diagnostic> {
-	let (anns, is_c) = (types.consts.anns, |n: &str| types.is_c(n));
-	for (name, fields) in structs.iter().filter(|(n, _)| is_c(n)) {
-		let Some(bad) = fields.iter().find(|f| f.typ.c_size_align(&types).is_none()) else {
-			continue;
-		};
-		let span = anns[name].iter().find(|a| ann(a, role::C).is_some()).unwrap().1;
-		let msg = format!("`{}.{}` has no C representation", display_name(name), bad.name);
-		return fail(msg, span, format!("`{}` is not a type with a known C layout", bad.typ));
-	}
-	Ok(())
-}
-
-// Check that annotations name a struct value and pass literal args.
-fn check_annotations<'p>(
-	anns: &HashMap<String, Vec<Annotation>>,
-	structs: &HashMap<String, Vec<FieldDef>>,
-	generics: &Generics,
-	consts: &HashMap<String, Spanned<Expr>>,
-	scope_of: impl Fn(&str) -> &'p Scope,
-) -> Result<(), Diagnostic> {
-	let mut generic_field_anns = Vec::new();
-	for (name, def) in &generics.structs {
-		let scope = scope_of(name);
-		generic_field_anns.extend(def.fields.iter().flat_map(|p| qualify_anns(scope, &p.annotations)));
-	}
-	let field_anns = structs.values().flatten().flat_map(|f| f.annotations.iter());
-	for a in anns.values().flatten().chain(field_anns).chain(&generic_field_anns) {
-		check_annotation(a, structs, generics, consts)?;
-	}
-	Ok(())
-}
-
 const BARE_ANN: &str = "a bare annotation names a unit or struct const";
 
-fn check_annotation(
-	a: &Annotation,
-	structs: &HashMap<String, Vec<FieldDef>>,
-	generics: &Generics,
-	consts: &HashMap<String, Spanned<Expr>>,
-) -> Result<(), Diagnostic> {
-	match &a.0 {
-		Expr::StructLit { name, fields, .. } => check_struct_lit(name, fields, a.1, structs, generics),
-		Expr::Ident(name) if name == "unsafe" => Ok(()),
-		Expr::Ident(name) => match consts.get(name) {
-			Some((Expr::StructLit { name, fields, .. }, _)) => check_struct_lit(name, fields, a.1, structs, generics),
-			Some((Expr::Tuple(fields), _)) if fields.is_empty() => Ok(()),
-			Some(_) => fail(format!("`{name}` is not an annotation value"), a.1, BARE_ANN),
-			// a bare struct type denotes its zero value
-			None if structs.contains_key(name) || generics.structs.contains_key(name) => {
-				check_struct_lit(name, &[], a.1, structs, generics)
-			}
-			None => fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
-		},
-		Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => Ok(()),
-		Expr::Call { .. } => {
-			let msg = "annotation fns aren't supported here yet";
-			fail(msg, a.1, "only main-file items take fn annotations")
+impl<'a> TypeCtx<'a> {
+	// Check that every struct marked `@c` has a C layout.
+	fn check_c_structs(self) -> Result<(), Diagnostic> {
+		for (name, fields) in self.structs.iter().filter(|(name, _)| self.is_c(name)) {
+			let Some(bad) = fields.iter().find(|f| f.typ.c_size_align(&self).is_none()) else {
+				continue;
+			};
+			let span = self.consts.anns[name].iter().find(|a| ann(a, role::C).is_some()).unwrap().1;
+			let msg = format!("`{}.{}` has no C representation", display_name(name), bad.name);
+			return fail(msg, span, format!("`{}` is not a type with a known C layout", bad.typ));
 		}
-		_ => Ok(()),
+		Ok(())
 	}
-}
 
-fn check_struct_lit(
-	name: &str,
-	fields: &[(Option<String>, Spanned<Expr>)],
-	span: Span,
-	structs: &HashMap<String, Vec<FieldDef>>,
-	generics: &Generics,
-) -> Result<(), Diagnostic> {
-	if name.is_empty() {
-		return fields.iter().try_for_each(|(_, v)| check_lit(&v.0, None, v.1));
-	}
-	let Some(field_defs) = structs.get(name) else {
-		if generics.structs.contains_key(name) {
-			let msg = "a generic struct can't be an annotation";
-			return fail(msg, span, "pick a concrete struct");
-		}
-		let msg = format!("`{name}` is not a struct");
-		return fail(msg, span, "an annotation is a struct value");
-	};
-	let mut prefix = 0;
-	for (i, (key, value)) in fields.iter().enumerate() {
-		let idx = match key {
-			None if i != prefix => {
-				let msg = "positional fields go before named fields";
-				return fail(msg, value.1, "positional field after a named one");
-			}
-			None if i >= field_defs.len() => {
-				let n = fields.iter().filter(|(k, _)| k.is_none()).count();
-				let msg = format!("`{name}` has {} fields but {n} values were provided", field_defs.len());
-				return fail(msg, value.1, "wrong number of fields");
-			}
-			None => {
-				prefix += 1;
-				i
-			}
-			Some(key) => match field_defs.iter().position(|f| &f.name == key) {
-				None => return Err(unknown_member(format!("`{name}`"), "field", key, value.1)),
-				Some(idx) if idx < prefix => {
-					return fail(format!("`{key}` was already set positionally"), value.1, "set twice");
+	// Check that annotations name a struct value and pass literal args.
+	fn check_annotations(self, scope_of: impl Fn(&str) -> &'a Scope) -> Result<(), Diagnostic> {
+		let generic_field_anns: Vec<_> = (self.generics.structs.iter())
+			.flat_map(|(name, def)| def.fields.iter().flat_map(|p| qualify_anns(scope_of(name), &p.annotations)))
+			.collect();
+		let field_anns = self.structs.values().flatten().flat_map(|f| f.annotations.iter());
+		for a in self.consts.anns.values().flatten().chain(field_anns).chain(&generic_field_anns) {
+			match &a.0 {
+				Expr::StructLit { name, fields, .. } => self.check_struct_lit(name, fields, a.1)?,
+				Expr::Ident(name) if name == "unsafe" => {}
+				Expr::Ident(name) => match self.consts.map.get(name) {
+					Some((Expr::StructLit { name, fields, .. }, _)) => self.check_struct_lit(name, fields, a.1)?,
+					Some((Expr::Tuple(fields), _)) if fields.is_empty() => {}
+					Some(_) => return fail(format!("`{name}` is not an annotation value"), a.1, BARE_ANN),
+					// a bare struct type denotes its zero value
+					None if self.structs.contains_key(name) || self.generics.structs.contains_key(name) => {
+						self.check_struct_lit(name, &[], a.1)?
+					}
+					None => return fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
+				},
+				Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => {}
+				Expr::Call { .. } => {
+					let msg = "annotation fns aren't supported here yet";
+					return fail(msg, a.1, "only main-file items take fn annotations");
 				}
-				Some(idx) => idx,
-			},
-		};
-		check_lit(&value.0, Some(&field_defs[idx].typ), value.1)?;
+				_ => {}
+			}
+		}
+		Ok(())
 	}
-	Ok(())
+
+	fn check_struct_lit(
+		self,
+		name: &str,
+		fields: &[(Option<String>, Spanned<Expr>)],
+		span: Span,
+	) -> Result<(), Diagnostic> {
+		if name.is_empty() {
+			return fields.iter().try_for_each(|(_, v)| check_lit(&v.0, None, v.1));
+		}
+		let Some(field_defs) = self.structs.get(name) else {
+			if self.generics.structs.contains_key(name) {
+				let msg = "a generic struct can't be an annotation";
+				return fail(msg, span, "pick a concrete struct");
+			}
+			let msg = format!("`{name}` is not a struct");
+			return fail(msg, span, "an annotation is a struct value");
+		};
+		let mut prefix = 0;
+		for (i, (key, value)) in fields.iter().enumerate() {
+			let idx = match key {
+				None if i != prefix => {
+					let msg = "positional fields go before named fields";
+					return fail(msg, value.1, "positional field after a named one");
+				}
+				None if i >= field_defs.len() => {
+					let given = fields.iter().filter(|(k, _)| k.is_none()).count();
+					let msg = format!(
+						"`{name}` has {} fields but {given} values were provided",
+						field_defs.len()
+					);
+					return fail(msg, value.1, "wrong number of fields");
+				}
+				None => {
+					prefix += 1;
+					i
+				}
+				Some(key) => match field_defs.iter().position(|f| &f.name == key) {
+					None => return Err(unknown_member(format!("`{name}`"), "field", key, value.1)),
+					Some(idx) if idx < prefix => {
+						return fail(format!("`{key}` was already set positionally"), value.1, "set twice");
+					}
+					Some(idx) => idx,
+				},
+			};
+			check_lit(&value.0, Some(&field_defs[idx].typ), value.1)?;
+		}
+		Ok(())
+	}
 }
 
 fn check_lit(e: &Expr, typ: Option<&Typ>, span: Span) -> Result<(), Diagnostic> {
@@ -1005,12 +991,7 @@ impl<M: Module> Compiler<M> {
 		let mut static_items = vec![];
 
 		// stage 0 cleanup
-		self.world.generic_fns.clear();
-		self.world.trait_impls.clear();
-		self.world.generic_claims.clear();
-		self.world.blankets.clear();
-		self.world.claim_args.clear();
-		self.world.extensions.clear();
+		self.world = World::default();
 		self.static_inits.clear();
 		self.tests.clear();
 		self.out.wanted.clear();
@@ -1442,11 +1423,10 @@ impl<M: Module> Compiler<M> {
 			binds: &binds,
 		};
 
-		let no_type_params: HashMap<String, Typ> = HashMap::new();
+		let no_structs = HashMap::new();
+		let proto = TypeCtx::new(&no_structs, &enums, &aliases, &generics, &traits).with_consts(consts);
 		let build_enum = |structs: &HashMap<String, Vec<FieldDef>>, &(name, backing, variants): &EnumItem| {
-			let types = TypeCtx::new(structs, &enums, &aliases, &no_type_params, &generics, &traits)
-				.with_consts(consts)
-				.with_scope(scope_of(name));
+			let types = proto.with_structs(structs).with_scope(scope_of(name));
 			let mut vs = build_variants(variants, types)?;
 			if let Some(bt) = backing {
 				apply_backing(bt, &mut vs, variants, types)?;
@@ -1457,7 +1437,7 @@ impl<M: Module> Compiler<M> {
 		// payload-free enums first, for ABI stability
 		let (plain, boxed): (Vec<_>, Vec<_>) =
 			enum_items.iter().partition(|(.., vs)| vs.iter().all(|v| v.payload.is_empty()));
-		plain.into_iter().try_for_each(|e| build_enum(&HashMap::new(), e))?;
+		plain.into_iter().try_for_each(|e| build_enum(&no_structs, e))?;
 
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let mut pending = struct_items;
@@ -1473,9 +1453,7 @@ impl<M: Module> Compiler<M> {
 		while !pending.is_empty() {
 			let (mut done, mut err) = (vec![], None);
 			pending.retain(|(name, fields)| {
-				let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits)
-					.with_consts(consts)
-					.with_scope(scope_of(name));
+				let types = proto.with_structs(&structs).with_scope(scope_of(name));
 				let resolve = || {
 					let mut fs: Vec<FieldDef> = fields.iter().map(|p| field(&types, p)).collect::<Result<_, _>>()?;
 					if is_c_struct(&self.annotations, name) {
@@ -1511,10 +1489,9 @@ impl<M: Module> Compiler<M> {
 			}
 			structs.extend(done);
 		}
-		check_annotations(&self.annotations, &structs, &generics, &self.consts, scope_of)?;
-
-		let base = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics, &traits).with_consts(consts);
-		check_c_structs(base, &structs)?;
+		let base = proto.with_structs(&structs);
+		base.check_annotations(scope_of)?;
+		base.check_c_structs()?;
 		for (key, (te, sp)) in &program.const_types {
 			let owner = key.rsplit_once("::").map_or(key.as_str(), |(t, _)| t);
 			let want = base.with_scope(scope_of(owner)).resolve(te, *sp)?;
@@ -1545,15 +1522,7 @@ impl<M: Module> Compiler<M> {
 					methods: &[],
 					scope: scope_of(typ),
 				};
-				match check_impls(
-					vec![body],
-					&traits,
-					&self.world.core_traits,
-					&self.world.trait_impls,
-					base,
-					&mut others,
-					&mut self.consts,
-				) {
+				match check_impls(vec![body], &self.world, base, &mut others, &mut self.consts) {
 					Ok(()) => {
 						self.world.trait_impls.insert(pair);
 					}
@@ -1582,15 +1551,7 @@ impl<M: Module> Compiler<M> {
 		let promoted = promote_embeds(&structs, &mut self.world.trait_impls, &trait_bodies, scope_of);
 		trait_bodies.extend(promoted);
 
-		check_impls(
-			trait_bodies,
-			&traits,
-			&self.world.core_traits,
-			&self.world.trait_impls,
-			base,
-			&mut others,
-			&mut self.consts,
-		)?;
+		check_impls(trait_bodies, &self.world, base, &mut others, &mut self.consts)?;
 
 		boxed.into_iter().try_for_each(|e| build_enum(&structs, e))?;
 
