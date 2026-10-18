@@ -152,3 +152,16 @@ fn type_of_is_static() {
 		"true true true rune [x]",
 	);
 }
+
+#[test]
+fn type_of_static_in_signatures() {
+	check(
+		indoc! {"
+			x := 3
+			f :: fn(a: type(x)) type(x) { a + 1 }
+			S :: struct { v: type(x) }
+			print(f(2), S.{4}.v)
+		"},
+		"3 4",
+	);
+}

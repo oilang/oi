@@ -110,7 +110,11 @@ pub(super) fn apply_backing(
 }
 
 static NO_SCOPE: std::sync::LazyLock<Scope> = std::sync::LazyLock::new(Scope::default);
-type ConstMaps = (HashMap<String, Spanned<Expr>>, HashMap<String, Vec<Annotation>>);
+type ConstMaps = (
+	HashMap<String, Spanned<Expr>>,
+	HashMap<String, Vec<Annotation>>,
+	HashMap<String, Spanned<TypeExpr>>,
+);
 static NO_CONSTS: std::sync::LazyLock<ConstMaps> = std::sync::LazyLock::new(ConstMaps::default);
 
 // What a const expression in a type can name.
@@ -118,6 +122,7 @@ static NO_CONSTS: std::sync::LazyLock<ConstMaps> = std::sync::LazyLock::new(Cons
 pub(crate) struct Consts<'a> {
 	pub map: &'a HashMap<String, Spanned<Expr>>,
 	pub anns: &'a HashMap<String, Vec<Annotation>>,
+	pub binds: &'a HashMap<String, Spanned<TypeExpr>>,
 }
 
 // The named types in scope for resolution.
@@ -154,6 +159,7 @@ impl<'a> TypeCtx<'a> {
 			consts: Consts {
 				map: &NO_CONSTS.0,
 				anns: &NO_CONSTS.1,
+				binds: &NO_CONSTS.2,
 			},
 			scope: &NO_SCOPE,
 			depth: 0,
@@ -466,7 +472,7 @@ impl TypeCtx<'_> {
 	}
 
 	// Move one level deeper into a self-referential type, failing past the limit.
-	fn nested(&self, name: &str, span: Span, label: &str) -> Result<Self, Diagnostic> {
+	pub(super) fn nested(&self, name: &str, span: Span, label: &str) -> Result<Self, Diagnostic> {
 		if self.depth > MAX_GENERIC_DEPTH {
 			return fail(format!("`{name}` recurses without end"), span, label);
 		}

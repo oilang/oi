@@ -703,6 +703,9 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 			Ok(Typ::Array(Box::new(elem)))
 		}
 		Expr::StructLit { name, .. } if !name.is_empty() => types.resolve(&TypeExpr::Name(name.clone()), span),
+		Expr::Ident(n) if let Some((te, s)) = types.consts.binds.get(&types.scope.qualify_name(n)) => {
+			types.nested(n, span, "types itself")?.resolve(te, *s)
+		}
 		_ => fail(
 			"cannot tell what type this static is",
 			span,
@@ -1487,9 +1490,19 @@ impl<M: Module> Compiler<M> {
 			RefCell::new(enum_items.iter().map(|(name, ..)| (name.to_string(), Vec::new())).collect());
 
 		let (const_map, const_anns) = (self.consts.clone(), self.annotations.clone());
+		let binds: HashMap<String, Spanned<TypeExpr>> = (program.items())
+			.filter_map(|(_, (e, span))| match e {
+				Expr::Bind { name, typ, value, .. } => {
+					let te = typ.clone().or_else(|| Some((TypeExpr::Infer(value.clone()?), *span)))?;
+					Some((name.clone(), te))
+				}
+				_ => None,
+			})
+			.collect();
 		let consts = Consts {
 			map: &const_map,
 			anns: &const_anns,
+			binds: &binds,
 		};
 
 		let no_type_params: HashMap<String, Typ> = HashMap::new();
@@ -2229,6 +2242,7 @@ impl<M: Module> Compiler<M> {
 			types: types.with_consts(Consts {
 				map: &self.consts,
 				anns: &self.annotations,
+				..types.consts
 			}),
 			world: &self.world,
 			out: &mut self.out,
