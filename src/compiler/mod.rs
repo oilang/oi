@@ -2275,9 +2275,22 @@ impl Compiler {
 		Ok(self.module.get_finalized_function(id))
 	}
 
+	pub(crate) fn finalized(&self, name: &str) -> *const u8 {
+		self.module.get_finalized_function(self.hoisted[name].id)
+	}
+
 	pub(crate) fn finalized_test(&self, name: &str) -> fn() {
-		let ptr = self.module.get_finalized_function(self.hoisted[name].id);
 		// SAFETY: `@test` fns are checked to be `fn()` at compile
-		unsafe { std::mem::transmute::<*const u8, fn()>(ptr) }
+		unsafe { std::mem::transmute::<*const u8, fn()>(self.finalized(name)) }
+	}
+
+	// Compile and run a stage-0 program, leaving `roots` callable.
+	pub(crate) fn run_stage0(&mut self, program: &Program, roots: Vec<String>) -> Result<(), Diagnostic> {
+		self.stage0 = true;
+		self.out.roots = roots;
+		let entry = self.compile(program)?;
+		// seed the statics stage-0 bodies may touch
+		unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
+		Ok(())
 	}
 }

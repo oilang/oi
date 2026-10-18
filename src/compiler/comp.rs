@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, Expr, Span, Spanned};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::{Module, Program, module_of};
+use crate::loader::{Program, module_of};
 use crate::runtime;
 
 use super::{Compiler, role};
@@ -195,47 +195,26 @@ fn fold(
 		span,
 	);
 	// enable comp code to call imports
-	let modules: Vec<Module> = program
-		.modules
-		.iter_mut()
-		.map(|m| {
-			let raw = &mut m.items;
-			let has_main = raw.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
-			let mut items: Vec<Spanned<Expr>> = raw
-				.iter_mut()
-				.filter_map(|it| {
-					let keep = match &it.0 {
-						Expr::Fn { name, .. } => name != "main",
-						Expr::Bind { mutable: true, .. } => has_main || m.name != "main",
-						_ => is_def(&it.0) && !has_comp(&mut it.0),
-					};
-					keep.then(|| it.clone())
-				})
-				.collect();
-			if m.name == target {
-				items.push(thunk.clone());
-			}
-			Module {
-				name: m.name.clone(),
-				items,
-				scope: m.scope.clone(),
-			}
-		})
-		.collect();
-	let mut synthetic = super::expand::with_modules(program, modules);
+	let mut synthetic = super::expand::lend(program, |module, items| {
+		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
+		items.retain_mut(|(e, _)| match e {
+			Expr::Fn { name, .. } => name != "main",
+			Expr::Bind { mutable: true, .. } => has_main || module != "main",
+			_ => is_def(e) && !has_comp(e),
+		});
+		if module == target {
+			items.push(thunk.clone());
+		}
+	});
 	(synthetic.annotations.values_mut()).for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
 	synthetic.consts = (consts.iter())
 		.filter(|(_, v)| !matches!(v.0, Expr::Comp(_)))
 		.map(|(k, v)| (k.clone(), v.clone()))
 		.collect();
 	let mut compiler = stage0.take().unwrap_or_default();
-	compiler.out.roots = vec![name.clone()];
-	compiler.stage0 = true;
-	let entry = compiler.compile(&synthetic)?;
-	unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
-	let f = compiler.module.get_finalized_function(compiler.hoisted[&name].id);
+	compiler.run_stage0(&synthetic, vec![name.clone()])?;
 	// SAFETY: fn takes no args and returns unit
-	unsafe { std::mem::transmute::<*const u8, fn()>(f)() };
+	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
 	*stage0 = Some(compiler);
 	Ok(reify(span))
 }

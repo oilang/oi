@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
-use crate::loader::{Module, Program, Publics, Scope, module_of, wrapped_def};
+use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
 
 use super::Compiler;
@@ -22,8 +22,10 @@ pub(crate) const RT_AST_LIT: &str = "oi_rt_ast_lit";
 pub(crate) const RT_AST_METHOD: &str = "oi_rt_ast_method";
 pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
 
-// `program` with its modules swapped out, for a stage-0 compile.
-pub(super) fn with_modules(program: &Program, modules: Vec<Module>) -> Program {
+// A copy of `program` with each module's items filtered by `keep`.
+pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanned<Expr>>)) -> Program {
+	let mut modules = program.modules.clone();
+	modules.iter_mut().for_each(|m| keep(&m.name, &mut m.items));
 	Program {
 		map: program.map.clone(),
 		modules,
@@ -218,48 +220,31 @@ impl Expander {
 	}
 
 	// Compile every macro body as a real fn, in one synthetic program, and grab their pointers.
-	fn compile_stage0(&mut self, program: &mut Program) -> Result<(), Diagnostic> {
+	fn compile_stage0(&mut self, program: &Program) -> Result<(), Diagnostic> {
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		for e in &mut self.defs {
 			let scope = scopes[owner(e)].at(e.1);
 			direct_calls(&mut e.0, &self.macros, scope, false);
 		}
 		let defs = std::mem::take(&mut self.defs);
-		let modules: Vec<Module> = program
-			.modules
-			.iter_mut()
-			.map(|m| {
-				let lent = |e: &Expr| match e {
-					_ if m.name != "main" => true,
+		let mut synthetic = lend(program, |module, items| {
+			let scope = &scopes[module];
+			items.retain_mut(|(e, span)| {
+				let lent = match e {
+					_ if module != "main" => true,
 					Expr::Fn { name, .. } => name != "main",
 					Expr::Bind { .. } => false,
 					_ => super::comp::is_def(e),
 				};
-				let mut items: Vec<_> = (m.items.iter_mut())
-					.filter_map(|it| {
-						(lent(&it.0) && !self.calls_macro(&mut it.0, m.scope.at(it.1))).then(|| it.clone())
-					})
-					.collect();
-				items.extend(defs.iter().filter(|d| owner(d) == m.name).cloned());
-				Module {
-					name: m.name.clone(),
-					items,
-					scope: m.scope.clone(),
-				}
-			})
-			.collect();
-		let mut synthetic = with_modules(program, modules);
+				lent && !self.calls_macro(e, scope.at(*span))
+			});
+			items.extend(defs.iter().filter(|d| owner(d) == module).cloned());
+		});
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
-		compiler.stage0 = true;
-		compiler.out.roots = self.macros.keys().cloned().collect();
-
-		let entry = compiler.compile(&synthetic)?;
-		// seed the statics macro bodies may touch
-		unsafe { std::mem::transmute::<*const u8, fn()>(entry)() };
-
+		compiler.run_stage0(&synthetic, self.macros.keys().cloned().collect())?;
 		for (name, (_, ptr)) in &mut self.macros {
-			*ptr = compiler.module.get_finalized_function(compiler.hoisted[name].id);
+			*ptr = compiler.finalized(name);
 		}
 		Ok(())
 	}
@@ -429,7 +414,7 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 		publics: program.publics.clone(),
 		..Default::default()
 	};
-	let mut out = with_modules(program, program.modules.clone());
+	let mut out = lend(program, |_, _| {});
 	for m in &mut out.modules {
 		for item in std::mem::take(&mut m.items) {
 			match item.0 {
@@ -446,7 +431,7 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 	let called =
 		(out.modules.iter_mut()).any(|m| m.items.iter_mut().any(|it| ex.calls_macro(&mut it.0, m.scope.at(it.1))));
 	if called {
-		ex.compile_stage0(&mut out)?;
+		ex.compile_stage0(&out)?;
 	}
 	let defs = program.items().map(|(_, i)| Expr::peel_meta(i).2);
 	DEFS.set((
