@@ -79,7 +79,7 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-- [x] `:h <topic>` `vim revo`
+- [ ] let `:h <topic>` look at text files too, like vim does <F9>offline wiki kind of thing? or maybe that's too much) `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] start publishing the blog posts I've been writing for some of the bigger decisions/changes

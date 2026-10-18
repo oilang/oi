@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
+use std::ffi::CString;
 use std::path::{MAIN_SEPARATOR, Path};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -267,19 +268,9 @@ impl Generics {
 
 // Does a type ref mention the named type?
 fn mentions(te: &TypeExpr, name: &str) -> bool {
-	match te {
-		TypeExpr::Name(n) => n == name,
-		TypeExpr::Array(e) | TypeExpr::FixedArray(e, _) | TypeExpr::Variadic(e) => mentions(e, name),
-		TypeExpr::Sum(es) | TypeExpr::Generic(_, es) => es.iter().any(|e| mentions(e, name)),
-		TypeExpr::Tuple(fs) => fs.iter().any(|(_, t)| mentions(t, name)),
-		TypeExpr::Fn(ps, r) => ps.iter().any(|(_, _, p)| mentions(p, name)) || mentions(r, name),
-		TypeExpr::Annotated(_, t) => mentions(t, name),
-		TypeExpr::TupleStruct(_, fs) => fs.iter().any(|(_, t)| mentions(t, name)),
-		TypeExpr::AnonStruct(fs) => fs.iter().any(|f| mentions(&f.typ, name)),
-		TypeExpr::Map(k, v) => mentions(k, name) || mentions(v, name),
-		TypeExpr::Ref(e) => mentions(e, name),
-		TypeExpr::AtomSum(_) | TypeExpr::Unquote(_) | TypeExpr::Const(_) | TypeExpr::Infer(_) => false,
-	}
+	let mut hit = false;
+	te.clone().walk_mut(&mut |t| hit |= matches!(t, TypeExpr::Name(n) if n == name));
+	hit
 }
 
 // Whether a fn body stores or returns `name`.
@@ -420,10 +411,8 @@ fn check_annotation(
 			Some((Expr::Tuple(fields), _)) if fields.is_empty() => Ok(()),
 			Some(_) => fail(format!("`{name}` is not an annotation value"), a.1, BARE_ANN),
 			// a bare struct type denotes its zero value
-			None if structs.contains_key(name) => Ok(()),
-			None if generics.structs.contains_key(name) => {
-				let msg = "a generic struct can't be an annotation";
-				fail(msg, a.1, "pick a concrete struct")
+			None if structs.contains_key(name) || generics.structs.contains_key(name) => {
+				check_struct_lit(name, &[], a.1, structs, generics)
 			}
 			None => fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
 		},
@@ -729,41 +718,20 @@ fn comptime_only(e: &Expr) -> bool {
 	}
 }
 
-/// Whether `name` resolves in the running process (libc/libm etc).
+// Whether `name` resolves in the running process (libc/libm etc).
 fn process_symbol_exists(name: &str) -> bool {
-	#[cfg(unix)]
-	{
-		let Ok(cname) = std::ffi::CString::new(name) else {
-			return false;
-		};
-		!unsafe { libc::dlsym(libc::RTLD_DEFAULT, cname.as_ptr()) }.is_null()
-	}
-	#[cfg(not(unix))]
-	{
-		let _ = name;
-		true
-	}
+	let Ok(cname) = CString::new(name) else { return false };
+	!unsafe { libc::dlsym(libc::RTLD_DEFAULT, cname.as_ptr()) }.is_null()
 }
 
-/// dlopen library
-/// `name` can be shared lib name or a file path.
+// dlopen a shared lib by name or path.
 fn load_library(name: &str) -> bool {
-	#[cfg(unix)]
-	{
-		let file = match Path::new(name).is_absolute() {
-			true => name.to_string(),
-			false => format!("{}{name}{}", DLL_PREFIX, DLL_SUFFIX),
-		};
-		let Ok(cname) = std::ffi::CString::new(file) else {
-			return false;
-		};
-		!unsafe { libc::dlopen(cname.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) }.is_null()
-	}
-	#[cfg(not(unix))]
-	{
-		let _ = name;
-		true
-	}
+	let file = match Path::new(name).is_absolute() {
+		true => name.to_string(),
+		false => format!("{DLL_PREFIX}{name}{DLL_SUFFIX}"),
+	};
+	let Ok(cname) = CString::new(file) else { return false };
+	!unsafe { libc::dlopen(cname.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) }.is_null()
 }
 
 // Enable position-independent code for AOT/JIT compilation.
@@ -1017,13 +985,6 @@ impl<M: Module> Compiler<M> {
 		Ok(())
 	}
 
-	fn note_privates(&mut self, name: &str, fields: &[Param]) {
-		if name.contains("::") {
-			let hidden = fields.iter().filter(|f| !f.public).map(|f| f.name.clone());
-			self.world.privates.entry(name.to_string()).or_default().extend(hidden);
-		}
-	}
-
 	// An 8-byte vtable cell holding a trait const's value.
 	fn const_cell(&mut self, sym: &str, lit: &Expr, want: &Typ) -> DataId {
 		let m = &mut self.module;
@@ -1186,53 +1147,43 @@ impl<M: Module> Compiler<M> {
 					type_params,
 					fields,
 					fills,
-				} if !type_params.is_empty() => {
-					let mut bounds = type_params.clone();
-					qualify_bounds(scope, &mut bounds);
-					generics.structs.insert(
-						name.clone(),
-						GenericStructDef {
+				} => {
+					if type_params.is_empty() {
+						struct_items.push((name.as_str(), fields.as_slice()));
+					} else {
+						let mut bounds = type_params.clone();
+						qualify_bounds(scope, &mut bounds);
+						let def = GenericStructDef {
 							type_params: bounds,
 							fields: fields.clone(),
 							scope: scope.clone(),
-						},
-					);
-					self.note_privates(name, fields);
+						};
+						generics.structs.insert(name.clone(), def);
+					}
+					if name.contains("::") {
+						let hidden = fields.iter().filter(|f| !f.public).map(|f| f.name.clone());
+						self.world.privates.entry(name.to_string()).or_default().extend(hidden);
+					}
 					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
-				}
-				Expr::StructDef {
-					name, fields, fills, ..
-				} => {
-					struct_items.push((name.as_str(), fields.as_slice()));
-					self.note_privates(name, fields);
-					self.register_fills(name, &[], fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::EnumDef {
 					name,
 					type_params,
-					variants,
-					fills,
-					..
-				} if !type_params.is_empty() => {
-					generics.enums.insert(
-						name.clone(),
-						GenericEnumDef {
-							type_params: type_params.clone(),
-							variants: variants.clone(),
-							scope: scope.clone(),
-						},
-					);
-					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
-				}
-				Expr::EnumDef {
-					name,
 					backing,
 					variants,
 					fills,
-					..
 				} => {
-					enum_items.push((name.as_str(), backing.as_ref(), variants.as_slice()));
-					self.register_fills(name, &[], fills, scope, &mut others, Fills::default())?;
+					if type_params.is_empty() {
+						enum_items.push((name.as_str(), backing.as_ref(), variants.as_slice()));
+					} else {
+						let def = GenericEnumDef {
+							type_params: type_params.clone(),
+							variants: variants.clone(),
+							scope: scope.clone(),
+						};
+						generics.enums.insert(name.clone(), def);
+					}
+					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
 				}
 				Expr::TypeAlias { name, type_params, typ } => {
 					if matches!(typ, TypeExpr::TupleStruct(..)) && TypeCtx::builtin_type(name) {

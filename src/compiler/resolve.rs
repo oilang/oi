@@ -615,10 +615,7 @@ impl TypeCtx<'_> {
 			&& let Ok(w) = rest.parse::<u16>()
 		{
 			return match w {
-				16 => Ok(Typ::Float(16)),
-				32 => Ok(Typ::Float(32)),
-				64 => Ok(Typ::Float(64)),
-				128 => Ok(Typ::Float(128)),
+				16 | 32 | 64 | 128 => Ok(Typ::Float(w)),
 				_ => fail(
 					format!("unsupported float width f{w}"),
 					span,
