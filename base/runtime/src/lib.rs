@@ -768,7 +768,7 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 thread_local! {
 	// Boxes whose non-zero release marked them as possible cycle roots.
 	static ROOTS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
-	// Root count that triggers a collection, doubled when one frees under half.
+	// Root count that triggers a collection.
 	static THRESHOLD: Cell<usize> = const { Cell::new(10_000) };
 }
 
@@ -801,8 +801,8 @@ pub unsafe extern "C" fn ref_release(ptr: *mut u8) {
 				r.insert(ptr as usize);
 				r.len()
 			});
-			if n >= THRESHOLD.get() && collect_cycles() < n / 2 {
-				THRESHOLD.set(n * 2);
+			if n >= THRESHOLD.get() {
+				THRESHOLD.set((n.saturating_sub(collect_cycles()) * 2).max(10_000));
 			}
 		}
 	}

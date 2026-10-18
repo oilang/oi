@@ -1484,6 +1484,9 @@ main :: fn() {
 		i += 1
 	}
 
+	# a block header shares scope with the body
+	loop { n := next(); n > 0 } do print(n)
+
 	# any iterable header runs the body once per item
 	loop 0..3 { print("hi") }
 

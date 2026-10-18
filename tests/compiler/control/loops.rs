@@ -48,6 +48,18 @@ fn while_loops() {
 	check(src, ["5", "10"]);
 }
 
+#[test]
+fn loop_block_header() {
+	let src = indoc! {"
+		i := 0
+		loop { i += 1; i < 3 } do print(i)
+		loop { n := i; n < 5 } { print(n); i += 1 }
+		loop { i += 1; if i > 6 { break } }
+		{ print(i) }
+	"};
+	check(src, ["1", "2", "3", "4", "7"]);
+}
+
 // loops over ranges
 
 #[test]

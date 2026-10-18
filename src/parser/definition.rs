@@ -311,9 +311,11 @@ where
 	let loop_expr = just(Token::Loop)
 		.ignore_then(label.or_not())
 		.then(
-			p.block
+			p.block_ast
 				.clone()
-				.map(|body| (None, body))
+				.map(Some)
+				.then(p.same_line.clone().ignore_then(p.block.clone()))
+				.or(p.block.clone().map(|body| (None, body)))
 				.or(header_cond.clone().map(Some).then(p.block.clone()))
 				.or(header_expr.clone().map(|e| (None, vec![e]))),
 		)
