@@ -1201,16 +1201,11 @@ impl<M: Module> Compiler<M> {
 					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
 					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
-					let targs: Vec<_> = (claimed.iter())
-						.filter_map(|(tn, args)| traits.get(tn.as_str()).map(|(_, tps, ..)| (*tps, *args)))
-						.flat_map(|(tps, args)| tps.iter().enumerate().map(move |(i, p)| (p, args.get(i))))
-						.filter_map(|(p, arg)| Some((p.name.clone(), arg.or(p.default.as_ref())?.0.clone())))
-						.chain(
-							claimed
-								.iter()
-								.filter_map(|(tn, _)| traits.get(tn.as_str()))
-								.flat_map(|t| claim_assoc(fills, t.2)),
-						)
+					let claimed_traits =
+						|| claimed.iter().filter_map(|(tn, args)| Some((traits.get(tn.as_str())?, *args)));
+					let targs: Vec<_> = claimed_traits()
+						.flat_map(|(t, args)| trait_args(t.1, args))
+						.chain(claimed_traits().flat_map(|(t, _)| claim_assoc(fills, t.2)))
 						.collect();
 					for (tn, args) in &claimed {
 						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
@@ -1263,11 +1258,7 @@ impl<M: Module> Compiler<M> {
 							scope,
 						});
 					}
-					let decls: Vec<TraitFn> = claimed
-						.iter()
-						.filter_map(|(tn, _)| traits.get(tn.as_str()))
-						.flat_map(|(_, _, _, ms, _)| trait_fns(ms))
-						.collect();
+					let decls: Vec<TraitFn> = claimed_traits().flat_map(|(t, _)| trait_fns(t.3)).collect();
 					let claim = Fills {
 						decls: &decls,
 						generic,
@@ -1582,7 +1573,8 @@ impl<M: Module> Compiler<M> {
 				bind_self(&mut aliases, t);
 			}
 			let types = base.with_aliases(&aliases).with_scope(item.scope);
-			let resolved = types.resolve_params(&item.params)?;
+			let (resolved, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
+			let ret = ret.map_or_else(Typ::unit, |(typ, _)| typ);
 			let params: Vec<FnParam> = (item.params.iter().zip(&resolved))
 				.map(|(p, (_, t, _))| FnParam {
 					escapes: escapes(&p.name, t, item.body),
@@ -1590,10 +1582,6 @@ impl<M: Module> Compiler<M> {
 				})
 				.collect();
 			let access: Vec<Access> = item.params.iter().map(|p| p.access).collect();
-			let ret = match &item.ret {
-				Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,
-				None => Typ::unit(),
-			};
 			check_param_defaults(&item.params)?;
 			check_varargs(&item.key, &item.params)?;
 			// `@export` / `@c`
@@ -1877,30 +1865,21 @@ impl<M: Module> Compiler<M> {
 					bind_self(&mut aliases, t);
 				}
 				let types = base.with_aliases(&aliases).with_scope(item.scope);
-				let (params, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
-				let ret = ret.or_else(|| Some((funcs[&item.key].ret.clone(), Span::default())));
-				self.translate(
-					FnDef {
-						params: &params,
-						decls: &item.params,
-						params_tuple: item.params_tuple,
-						ret,
-						body: item.body,
-						self_type,
-						foreign: funcs[&item.key].foreign,
-						ctx: funcs[&item.key].ctx.clone(),
-						ctxless: (self.annotations.get(&item.key).into_iter().flatten())
-							.find(|a| ctx_ann(item.scope, a) == Some(None))
-							.map(|a| a.1),
-						root_ctx: self.out.roots.contains(&item.key),
-						pure: funcs[&item.key].pure,
-						is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
-						..FnDef::default()
-					},
-					&funcs,
-					types,
-				)?;
-				self.finish_fn(&self.symbol(&item.key).0);
+				let sig = &funcs[&item.key];
+				let def = FnDef {
+					params_tuple: item.params_tuple,
+					body: item.body,
+					self_type,
+					foreign: sig.foreign,
+					ctxless: (self.annotations.get(&item.key).into_iter().flatten())
+						.find(|a| ctx_ann(item.scope, a) == Some(None))
+						.map(|a| a.1),
+					is_test: self.tests.iter().any(|(n, ..)| *n == item.key),
+					root_ctx: self.out.roots.contains(&item.key),
+					..FnDef::default()
+				};
+				let sym = self.symbol(&item.key).0;
+				self.lower_fn(&sym, sig, (&item.params, &item.ret), def, &funcs, types)?;
 			}
 			let Some((sym, def, subst)) = self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
 			else {
@@ -1911,36 +1890,46 @@ impl<M: Module> Compiler<M> {
 			};
 			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
-			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
-			let ret = ret.or_else(|| Some((self.out.mono[&sym].ret.clone(), Span::default())));
-			let self_sig = self.out.mono[&sym].clone();
-			self.translate(
-				FnDef {
-					params: &params,
-					decls: &def.params,
-					params_tuple: def.params_tuple,
-					ret,
-					body: &def.body,
-					captures: &def.captures,
-					ctx: self_sig.ctx.clone(),
-					ctxless: self_sig
-						.ctx
-						.is_none()
-						.then(|| def.body.first().map_or(Span::default(), |s| s.1)),
-					root_ctx: self.out.roots.contains(&sym),
-					pure: self_sig.pure,
-					self_fn: def.self_name.as_deref().map(|n| (n, &self_sig)),
-					..FnDef::default()
-				},
-				&funcs,
-				types,
-			)?;
-			self.finish_fn(&sym);
+			let sig = self.out.mono[&sym].clone();
+			let fn_def = FnDef {
+				params_tuple: def.params_tuple,
+				body: &def.body,
+				captures: &def.captures,
+				ctxless: sig.ctx.is_none().then(|| def.body.first().map_or(Span::default(), |s| s.1)),
+				self_fn: def.self_name.as_deref().map(|n| (n, &sig)),
+				root_ctx: self.out.roots.contains(&sym),
+				..FnDef::default()
+			};
+			self.lower_fn(&sym, &sig, (&def.params, &def.ret), fn_def, &funcs, types)?;
 		}
 
 		self.hoisted = funcs;
 
 		Ok(id)
+	}
+
+	// Lower a hoisted fn.
+	fn lower_fn(
+		&mut self,
+		sym: &str,
+		sig: &FnSig,
+		(decls, ret): (&[Param], &Option<Spanned<TypeExpr>>),
+		def: FnDef,
+		funcs: &HashMap<String, FnSig>,
+		types: TypeCtx,
+	) -> Result<(), Diagnostic> {
+		let (params, ret) = types.resolve_params_ret(decls, ret)?;
+		let def = FnDef {
+			params: &params,
+			decls,
+			ret: ret.or_else(|| Some((sig.ret.clone(), Span::default()))),
+			ctx: sig.ctx.clone(),
+			pure: sig.pure,
+			..def
+		};
+		self.translate(def, funcs, types)?;
+		self.finish_fn(sym);
+		Ok(())
 	}
 
 	fn compile_entry(&mut self, entry: FuncId, typ: Typ, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {

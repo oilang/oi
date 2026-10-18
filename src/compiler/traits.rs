@@ -87,15 +87,20 @@ pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
 	aliases.extend(slots);
 }
 
+// A trait's params bound to a claim's args, defaults filling the rest.
+pub(crate) fn trait_args(tparams: &[TypeParam], args: &[Spanned<TypeExpr>]) -> Vec<(String, TypeExpr)> {
+	(tparams.iter().enumerate())
+		.filter_map(|(i, p)| Some((p.name.clone(), args.get(i).or(p.default.as_ref())?.0.clone())))
+		.collect()
+}
+
 // A trait default with the trait's params bound to a claim's args.
 pub(crate) fn bind_trait_args<'a>(
 	method: &'a Spanned<Expr>,
 	tparams: &[TypeParam],
 	args: &[Spanned<TypeExpr>],
 ) -> &'a Spanned<Expr> {
-	let by: Vec<_> = (tparams.iter().enumerate())
-		.filter_map(|(i, p)| Some((p.name.clone(), args.get(i).or(p.default.as_ref())?.0.clone())))
-		.collect();
+	let by = trait_args(tparams, args);
 	if by.is_empty() {
 		return method;
 	}
