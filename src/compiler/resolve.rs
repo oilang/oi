@@ -51,34 +51,25 @@ pub(super) fn apply_backing(
 	ast: &[EnumVariant],
 	types: TypeCtx,
 ) -> Result<(), Diagnostic> {
-	let (te, span) = (&backing.0, backing.1);
-	let bt = types.resolve(te, span)?;
-	if variants.iter().any(|v| !v.payload.is_empty()) {
-		return fail(
-			"a backed enum cannot have payload variants",
-			span,
-			"payloads exclude a backing",
-		);
+	let (te, span) = backing;
+	let (span, bt) = (*span, types.resolve(te, *span)?);
+	if enum_boxed(variants) {
+		let msg = "a backed enum cannot have payload variants";
+		return fail(msg, span, "payloads exclude a backing");
 	}
 	if bt != Typ::Str && variants.iter().any(|v| v.raw.is_some()) {
 		return fail("a raw value needs a string backing", span, "not a string backing");
 	}
 	if bt == Typ::Str {
 		if ast.iter().any(|a| a.disc.is_some()) {
-			return fail(
-				"a string-backed enum uses raw values, not discriminants",
-				span,
-				"not a raw value",
-			);
+			let msg = "a string-backed enum uses raw values, not discriminants";
+			return fail(msg, span, "not a raw value");
 		}
 		// raws default to the variant name at the use site
 		let raws: Vec<_> = variants.iter().map(|v| v.raw.as_ref().unwrap_or(&v.name)).collect();
 		if let Some(r) = raws.iter().enumerate().find_map(|(i, r)| raws[..i].contains(r).then_some(*r)) {
-			return fail(
-				format!("raw value `{r}` assigned more than once"),
-				span,
-				"duplicate raw value",
-			);
+			let msg = format!("raw value `{r}` assigned more than once");
+			return fail(msg, span, "duplicate raw value");
 		}
 	} else {
 		let (lo, hi) = match &bt {
@@ -87,20 +78,13 @@ pub(super) fn apply_backing(
 			Typ::UInt(w) if *w < 64 => (0, uint_max(*w)),
 			Typ::UInt(_) | Typ::USize => (0, i64::MAX),
 			t => {
-				// TODO: come up with a better label
-				return fail(
-					format!("enum backing type `{t}` is unsupported"),
-					span,
-					"not an enum-able type",
-				);
+				let msg = format!("enum backing type `{t}` is unsupported");
+				return fail(msg, span, "not an enum-able type");
 			}
 		};
 		if let Some(v) = variants.iter().find(|v| v.disc < lo || v.disc > hi) {
-			return fail(
-				format!("discriminant `{}` is out of range for its backing type", v.disc),
-				span,
-				"out of range",
-			);
+			let msg = format!("discriminant `{}` is out of range for its backing type", v.disc);
+			return fail(msg, span, "out of range");
 		}
 	}
 	for v in variants.iter_mut() {
@@ -232,24 +216,25 @@ fn builtin(name: &str) -> Option<Typ> {
 	})
 }
 
-// Try to parse `name` as `<prefix><width>`.
-fn int_width(
-	name: &str,
-	prefix: char,
-	ctor: fn(u16) -> Typ,
-	label: &str,
-	span: Span,
-) -> Option<Result<Typ, Diagnostic>> {
-	let rest = name.strip_prefix(prefix)?;
-	let w = rest.parse::<u16>().ok()?;
-	if w == 0 || w > 64 {
-		return Some(fail(
-			format!("{label} width {w} out of range"),
-			span,
-			"width must be 1-64",
-		));
-	}
-	Some(Ok(ctor(w)))
+// A sized numeric type.
+fn sized(name: &str, span: Span) -> Option<Result<Typ, Diagnostic>> {
+	let width: u16 = name.get(1..)?.parse().ok()?;
+	let kind = name.as_bytes()[0];
+	Some(match kind {
+		b'i' | b'u' if width == 0 || width > 64 => {
+			let label = if kind == b'i' { "integer" } else { "unsigned integer" };
+			let msg = format!("{label} width {width} out of range");
+			fail(msg, span, "width must be 1-64")
+		}
+		b'i' => Ok(Typ::Int(width)),
+		b'u' => Ok(Typ::UInt(width)),
+		b'f' if matches!(width, 16 | 32 | 64 | 128) => Ok(Typ::Float(width)),
+		b'f' => {
+			let msg = format!("unsupported float width f{width}");
+			fail(msg, span, "supported widths: f16, f32, f64, f128")
+		}
+		_ => return None,
+	})
 }
 
 // nested generic instantiations allowed before calling it recursive
@@ -388,36 +373,25 @@ impl TypeCtx<'_> {
 		})
 	}
 
-	// Check that value params take literals and type param take types.
-	pub fn check_arg(&self, p: &TypeParam, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
-		let want = self.value_param(p);
-		if want == matches!(typ, Typ::Const(_)) {
-			return Ok(());
-		}
-		let kind = if want { "value" } else { "type" };
-		fail(
-			format!("`{}` is a {kind} parameter", p.name),
-			span,
-			format!("got `{typ}`"),
-		)
-	}
-
 	// Resolve one bracket argument.
 	pub fn arg_typ(&self, p: &TypeParam, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
-		let typ = match self.resolve(te, span) {
-			Ok(typ) => typ,
-			Err(e) => match te {
-				TypeExpr::Name(n) if self.value_param(p) => {
-					match fold_const(&Expr::Ident(n.clone()), self.consts.map, self.scope) {
-						Some(Expr::Int(v)) => Typ::Const(v),
-						_ => return Err(e),
-					}
+		let value = self.value_param(p);
+		let typ = match (self.resolve(te, span), te) {
+			(Ok(typ), _) => typ,
+			(Err(e), TypeExpr::Name(n)) if value => {
+				match fold_const(&Expr::Ident(n.clone()), self.consts.map, self.scope) {
+					Some(Expr::Int(v)) => Typ::Const(v),
+					_ => return Err(e),
 				}
-				_ => return Err(e),
-			},
+			}
+			(Err(e), _) => return Err(e),
 		};
-		self.check_arg(p, &typ, span)?;
-		Ok(typ)
+		if value == matches!(typ, Typ::Const(_)) {
+			return Ok(typ);
+		}
+		let kind = if value { "value" } else { "type" };
+		let msg = format!("`{}` is a {kind} parameter", p.name);
+		fail(msg, span, format!("got `{typ}`"))
 	}
 
 	// Resolve `args` against `params`.
@@ -539,9 +513,7 @@ impl TypeCtx<'_> {
 
 	// Type names owned by the compiler.
 	pub fn builtin_type(name: &str) -> bool {
-		builtin(name).is_some()
-			|| matches!(name, "array" | "map")
-			|| name.strip_prefix(['i', 'u', 'f']).is_some_and(|w| w.parse::<u16>().is_ok())
+		builtin(name).is_some() || matches!(name, "array" | "map") || sized(name, Span::default()).is_some()
 	}
 
 	// An instance of a core generic enum.
@@ -605,23 +577,8 @@ impl TypeCtx<'_> {
 		if let Some("8" | "16" | "32" | "64") = name.strip_prefix('b') {
 			return Ok(Typ::Annotated(vec![name.into()], Box::new(Typ::Bool)));
 		}
-		if let Some(result) = int_width(name, 'i', Typ::Int, "integer", span) {
+		if let Some(result) = sized(name, span) {
 			return result;
-		}
-		if let Some(result) = int_width(name, 'u', Typ::UInt, "unsigned integer", span) {
-			return result;
-		}
-		if let Some(rest) = name.strip_prefix('f')
-			&& let Ok(w) = rest.parse::<u16>()
-		{
-			return match w {
-				16 | 32 | 64 | 128 => Ok(Typ::Float(w)),
-				_ => fail(
-					format!("unsupported float width f{w}"),
-					span,
-					"supported widths: f16, f32, f64, f128",
-				),
-			};
 		}
 
 		let slot = (self.aliases.get("Self"))
@@ -650,11 +607,8 @@ impl TypeCtx<'_> {
 			return Ok(Typ::Enum(name.to_string()));
 		}
 		if self.generics.structs.contains_key(name) || self.generics.enums.contains_key(name) {
-			return fail(
-				format!("`{name}` needs type arguments"),
-				span,
-				format!("try `{name}[...]`"),
-			);
+			let msg = format!("`{name}` needs type arguments");
+			return fail(msg, span, format!("try `{name}[...]`"));
 		}
 		if self.traits.contains_key(name) {
 			return Ok(Typ::Trait(name.to_string()));
@@ -724,11 +678,8 @@ impl TypeCtx<'_> {
 						| Typ::Ref(_)
 				);
 				if p.access == Access::Mut && !lendable {
-					return fail(
-						"this type can't be a `mut` parameter",
-						p.span,
-						format!("{typ} has no address to lend"),
-					);
+					let msg = "this type can't be a `mut` parameter";
+					return fail(msg, p.span, format!("{typ} has no address to lend"));
 				}
 				Ok((p.name.clone(), typ, p.access))
 			})

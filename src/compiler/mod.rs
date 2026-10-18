@@ -100,11 +100,10 @@ impl FnSig {
 // Only a shadow may rebind the implicit context.
 pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
 	match name == CTX {
-		true => fail(
-			"`ctx` is reserved",
-			span,
-			"shadow it with `ctx :: .{ ..ctx, .. }` instead",
-		),
+		true => {
+			let msg = "`ctx` is reserved";
+			fail(msg, span, "shadow it with `ctx :: .{ ..ctx, .. }` instead")
+		}
 		false => Ok(()),
 	}
 }
@@ -113,11 +112,8 @@ pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
 fn check_param_defaults(params: &[Param]) -> Result<(), Diagnostic> {
 	if let Some(p) = params.iter().find(|p| p.access == Access::Mut && p.default.is_some()) {
 		let msg = format!("`{}` is `mut` so it can't have a default value", p.name);
-		return fail(
-			msg,
-			p.span,
-			"`mut` lends the caller's binding, there is none when the arg is omitted",
-		);
+		let hint = "`mut` lends the caller's binding, there is none when the arg is omitted";
+		return fail(msg, p.span, hint);
 	}
 	let tail = params.iter().skip_while(|p| p.default.is_none());
 	if let Some(p) = tail.skip(1).find(|p| p.default.is_none()) {
@@ -142,11 +138,10 @@ pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ,
 		.chain((!ret.is_unit()).then_some(ret))
 		.find(|t| !t.is_c_repr(&types))
 	{
-		Some(t) => fail(
-			format!("`{name}` can't cross the C ABI"),
-			span,
-			format!("`{t}` has no C representation"),
-		),
+		Some(t) => {
+			let msg = format!("`{name}` can't cross the C ABI");
+			fail(msg, span, format!("`{t}` has no C representation"))
+		}
 		None => Ok(()),
 	}
 }
@@ -158,11 +153,10 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => fail("`@c` fns can't capture", span, "C has nowhere to keep an environment"),
 		([n], Typ::Fn(..)) if n == role::PURE || n == role::ISOLATED || n.starts_with(role::CTX) => Ok(()),
-		_ => fail(
-			format!("`{}{typ}` isn't a type", marks(names)),
-			span,
-			"only `@c`, `@pure`, `@isolated`, or `@ctx` on a fn, so far",
-		),
+		_ => {
+			let msg = format!("`{}{typ}` isn't a type", marks(names));
+			fail(msg, span, "only `@c`, `@pure`, `@isolated`, or `@ctx` on a fn, so far")
+		}
 	}
 }
 
@@ -417,11 +411,10 @@ fn check_annotation(
 			None => fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
 		},
 		Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => Ok(()),
-		Expr::Call { .. } => fail(
-			"annotation fns aren't supported here yet",
-			a.1,
-			"only main-file items take fn annotations",
-		),
+		Expr::Call { .. } => {
+			let msg = "annotation fns aren't supported here yet";
+			fail(msg, a.1, "only main-file items take fn annotations")
+		}
 		_ => Ok(()),
 	}
 }
@@ -448,11 +441,8 @@ fn check_struct_lit(
 	for (i, (key, value)) in fields.iter().enumerate() {
 		let idx = match key {
 			None if i != prefix => {
-				return fail(
-					"positional fields go before named fields",
-					value.1,
-					"positional field after a named one",
-				);
+				let msg = "positional fields go before named fields";
+				return fail(msg, value.1, "positional field after a named one");
 			}
 			None if i >= field_defs.len() => {
 				let n = fields.iter().filter(|(k, _)| k.is_none()).count();
@@ -682,11 +672,8 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 				if let Ok(other) = static_typ(e, types, *espan)
 					&& other != elem
 				{
-					return fail(
-						format!("array elements are {elem} and {other}"),
-						*espan,
-						"mixed element types",
-					);
+					let msg = format!("array elements are {elem} and {other}");
+					return fail(msg, *espan, "mixed element types");
 				}
 			}
 			Ok(Typ::Array(Box::new(elem)))
@@ -695,11 +682,10 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 		Expr::Ident(n) if let Some((te, s)) = types.consts.binds.get(&types.scope.qualify_name(n)) => {
 			types.nested(n, span, "types itself")?.resolve(te, *s)
 		}
-		_ => fail(
-			"cannot tell what type this static is",
-			span,
-			"annotate it, or initialize it with a literal",
-		),
+		_ => {
+			let msg = "cannot tell what type this static is";
+			fail(msg, span, "annotate it, or initialize it with a literal")
+		}
 	}
 }
 
@@ -1499,11 +1485,8 @@ impl<M: Module> Compiler<M> {
 					}
 					for (p, f) in fields.iter().zip(&fs) {
 						if !ref_guarded(&f.typ, &placeholders) {
-							return fail(
-								format!("`{name}` recurses for ever ever"),
-								p.span,
-								"would require infinitely nested fields",
-							);
+							let msg = format!("`{name}` recurses for ever ever");
+							return fail(msg, p.span, "would require infinitely nested fields");
 						}
 					}
 					Ok(fs)
@@ -2324,11 +2307,8 @@ impl<M: Module> Compiler<M> {
 		if let Some(span) = def.ctxless
 			&& trans.ctx_used
 		{
-			return fail(
-				"a `@ctx(none)` fn has no `ctx`",
-				span,
-				"but its body allocates or calls a fn that takes one",
-			);
+			let msg = "a `@ctx(none)` fn has no `ctx`";
+			return fail(msg, span, "but its body allocates or calls a fn that takes one");
 		}
 		trans.b.finalize();
 

@@ -35,7 +35,10 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
-	let arith = matches!(tn, role::NEG | role::ADD | role::SUB | role::MUL | role::DIV | role::MOD | role::POW);
+	let arith = matches!(
+		tn,
+		role::NEG | role::ADD | role::SUB | role::MUL | role::DIV | role::MOD | role::POW
+	);
 	if !(arith || matches!(tn, role::EQ | role::ORD) || role::BITWISE.contains(&tn)) {
 		return false;
 	}
@@ -333,11 +336,10 @@ pub(super) fn check_impls<'p>(
 		};
 		let same_sig = |name: &str, got: Typ, want: Typ, at: Span| match got == want {
 			true => Ok(()),
-			false => fail(
-				format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`"),
-				at,
-				"wrong signature",
-			),
+			false => {
+				let msg = format!("`{typ}.{name}` is `{got}`, trait `{tn}` declares `{want}`");
+				fail(msg, at, "wrong signature")
+			}
 		};
 		for m in methods {
 			let Expr::Fn {
