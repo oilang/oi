@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr};
+use crate::ast::{Capture, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
@@ -474,11 +474,12 @@ thread_local! {
 	static DEFS: RefCell<(Scope, HashMap<String, Spanned<Expr>>)> = RefCell::default();
 }
 
-// Record a macro-run failure.
-fn flag(msg: &str) {
+// Record a macro-run failure, carrying on with `stand_in`.
+fn flag<T>(msg: &str, stand_in: T) -> T {
 	ERROR.with_borrow_mut(|e| {
 		e.get_or_insert_with(|| msg.to_string());
 	});
+	stand_in
 }
 
 // One unquote site in a template.
@@ -575,10 +576,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	if let Expr::Unquote(name) = &e.0 {
 		match &args[name.as_str()] {
 			Arg::Ast(v) => *e = (*v).clone(),
-			Arg::Seq(_) => {
-				flag("%{..} spread needs a sequence position");
-				e.0 = Expr::Tuple(vec![]);
-			}
+			Arg::Seq(_) => e.0 = flag("%{..} spread needs a sequence position", Expr::Tuple(vec![])),
 		}
 		return;
 	}
@@ -613,7 +611,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	{
 		match &args[param] {
 			Arg::Ast((Expr::Ident(n), _)) => *name = n.clone(),
-			_ => flag("a `%name` binder needs a plain name argument"),
+			_ => flag("a `%name` binder needs a plain name argument", ()),
 		}
 	}
 	match &mut e.0 {
@@ -661,7 +659,12 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			.into_iter()
 			.flat_map(|a| match a.patterns.is_empty() {
 				false => vec![a],
-				true => a.body.into_iter().filter_map(|(e, _)| to_arm(e)).collect(),
+				true => (a.body.into_iter())
+					.filter_map(|(e, _)| match e {
+						Expr::Arm(arm) => Some(arm),
+						_ => flag("a match arm spread needs `pattern => body` Asts", None),
+					})
+					.collect(),
 			})
 			.collect();
 	}
@@ -686,7 +689,7 @@ fn to_param(hole: &Param, a: &Spanned<Expr>) -> Param {
 		(p.typ, p.default) = (t.0.clone(), value.as_deref().cloned());
 		p.annotations.extend_from_slice(notes);
 	} else {
-		flag("a param hole needs a `name: Type` Ast");
+		flag("a param hole needs a `name: Type` Ast", ());
 	}
 	p
 }
@@ -705,7 +708,7 @@ fn fill_type(t: &mut TypeExpr, args: &HashMap<&str, Arg>) {
 		let Some(k) = hole_key(t) else { return };
 		match &args[k] {
 			Arg::Ast(a) if let Some(named) = TypeExpr::from_expr(&a.0) => *t = named,
-			_ => flag("a type hole needs an Ast naming a type"),
+			_ => flag("a type hole needs an Ast naming a type", ()),
 		}
 	});
 }
@@ -723,7 +726,7 @@ fn fill_sig(params: &mut Vec<Param>, ret: Option<&mut Spanned<TypeExpr>>, args: 
 				if let Some(k) = p.name.strip_prefix('%') {
 					match &args[k] {
 						Arg::Ast((Expr::Ident(n), _)) => p.name = n.clone(),
-						_ => flag("a param name hole needs a plain name argument"),
+						_ => flag("a param name hole needs a plain name argument", ()),
 					}
 				}
 				fill_type(&mut p.typ, args);
@@ -744,23 +747,13 @@ fn to_variant((e, span): Spanned<Expr>) -> EnumVariant {
 	};
 	let payload: Vec<_> = args.iter().filter_map(|a| Some((TypeExpr::from_expr(&a.0)?, a.1))).collect();
 	if payload.len() != args.len() {
-		flag("an enum variant payload needs Asts naming types");
+		flag("an enum variant payload needs Asts naming types", ());
 	}
 	EnumVariant {
 		name,
 		span,
 		payload,
 		..Default::default()
-	}
-}
-
-fn to_arm(e: Expr) -> Option<MatchArm> {
-	match e {
-		Expr::Arm(arm) => Some(arm),
-		_ => {
-			flag("a match arm spread needs `pattern => body` Asts");
-			None
-		}
 	}
 }
 
@@ -834,6 +827,11 @@ fn pin(e: &mut Spanned<Expr>, call: Span) {
 	});
 }
 
+// The unit Ast handed back by a failed macro op.
+fn empty() -> Spanned<Expr> {
+	(Expr::Tuple(vec![]), Span::default())
+}
+
 // Box a value for compiled code to hold.
 fn leak<T>(v: T) -> *mut T {
 	Box::into_raw(Box::new(v))
@@ -871,7 +869,7 @@ fn split(e: &Expr) -> (String, Vec<Spanned<Expr>>) {
 			One(one) => std::slice::from_mut(one),
 		};
 		for one in list {
-			kids.push(std::mem::replace(one, (Expr::Tuple(vec![]), Span::default())));
+			kids.push(std::mem::replace(one, empty()));
 		}
 	});
 	(format!("{e:?}"), kids)
@@ -916,10 +914,7 @@ pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Span
 	let src = unsafe { runtime::str_string(s) };
 	let node = match crate::loader::parse_file(&src, 0, &HashSet::new()) {
 		Ok(stmts) => one(stmts, Span::default()),
-		Err(ds) => {
-			flag(ds.first().map_or("parse failed", Diagnostic::message));
-			(Expr::Tuple(vec![]), Span::default())
-		}
+		Err(ds) => flag(ds.first().map_or("parse failed", Diagnostic::message), empty()),
 	};
 	leak(node)
 }
@@ -931,20 +926,14 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 		_ => String::new(),
 	};
 	let def = DEFS.with_borrow(|(scope, defs)| defs.get(&scope.qualify_name(&name)).cloned());
-	leak(def.unwrap_or_else(|| {
-		flag("`def` needs the name of a definition");
-		(Expr::Tuple(vec![]), Span::default())
-	}))
+	leak(def.unwrap_or_else(|| flag("`def` needs the name of a definition", empty())))
 }
 
 #[unsafe(export_name = "oi_ast_int")]
 pub(crate) extern "C" fn rt_ast_int(a: *mut Spanned<Expr>) -> i64 {
 	match unsafe { &(*a).0 } {
 		Expr::Int(n) => *n,
-		_ => {
-			flag("`.int()` needs an Ast holding an Int literal");
-			0
-		}
+		_ => flag("`.int()` needs an Ast holding an Int literal", 0),
 	}
 }
 
@@ -974,17 +963,15 @@ fn field_ast(f: &Param) -> Expr {
 pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime::StrHeader, arg: i64) -> i64 {
 	let ast = |e: Expr| leak((e, Span::default())) as i64;
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
+	let asts = |es: &mut dyn Iterator<Item = &Spanned<Expr>>| list(es.map(|e| leak(e.clone()) as i64).collect());
 	let m = unsafe { runtime::str_bytes(m) };
 	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });
 	match (m, subject) {
-		(b"notes", _) => list(notes.iter().map(|n| leak(n.clone()) as i64).collect()),
+		(b"notes", _) => asts(&mut notes.iter()),
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
 		(b"typ", Expr::TypePat(TypeExpr::Array(t) | TypeExpr::FixedArray(t, _))) => ast(type_ast(t)),
 		(b"typ", Expr::Fn { ret: None, .. }) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
-		(b"typ", _) => {
-			flag("this Ast has no type");
-			ast(Expr::Tuple(vec![]))
-		}
+		(b"typ", _) => flag("this Ast has no type", leak(empty()) as i64),
 		(b"len", Expr::TypePat(TypeExpr::FixedArray(_, n))) => ast(n.0.clone()),
 		// the variant name, lowercased
 		(b"kind", e) => {
@@ -1000,10 +987,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 				Expr::Int(n) => n.to_string(),
 				Expr::Float(n) => n.to_string(),
 				Expr::Bool(b) => b.to_string(),
-				_ => {
-					flag("`.str()` needs an Ast holding a name or literal");
-					String::new()
-				}
+				_ => flag("`.str()` needs an Ast holding a name or literal", String::new()),
 			};
 			runtime::str_new(runtime::system_allocator(), s.as_bytes()) as i64
 		}
@@ -1019,10 +1003,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			| Expr::StructLit { name, .. },
 		) => ast(Expr::Ident(name.clone())),
 		(b"name", ident @ Expr::Ident(_)) => ast(ident.clone()),
-		(b"name", _) => {
-			flag("this Ast has no name");
-			ast(Expr::Tuple(vec![]))
-		}
+		(b"name", _) => flag("this Ast has no name", leak(empty()) as i64),
 		(
 			b"items",
 			Expr::Array(v)
@@ -1031,14 +1012,12 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			| Expr::Call { args: v, .. }
 			| Expr::MacroCall { args: v, .. }
 			| Expr::Claim { fills: v, .. },
-		) => list(v.iter().map(|e| leak(e.clone()) as i64).collect()),
+		) => asts(&mut v.iter()),
 		(b"items", Expr::StructDef { fields, .. } | Expr::Fn { params: fields, .. }) => {
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}
-		(b"items", Expr::StructLit { fields, .. }) => {
-			list(fields.iter().map(|(_, v)| leak(v.clone()) as i64).collect())
-		}
-		(b"items", Expr::Bind { value: Some(v), .. }) => list(vec![leak((**v).clone()) as i64]),
+		(b"items", Expr::StructLit { fields, .. }) => asts(&mut fields.iter().map(|(_, v)| v)),
+		(b"items", Expr::Bind { value: Some(v), .. }) => asts(&mut std::iter::once(&**v)),
 		(b"items", Expr::Arm(arm)) => list(vec![
 			leak(arm.patterns[0].clone()) as i64,
 			ast(Expr::Block(arm.body.clone())),
@@ -1046,25 +1025,16 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		(b"items", Expr::EnumDef { variants, .. }) => {
 			list(variants.iter().map(|v| ast(Expr::Ident(v.name.clone()))).collect())
 		}
-		(b"items", _) => {
-			flag("this Ast has no items");
-			list(vec![])
-		}
+		(b"items", _) => flag("this Ast has no items", list(vec![])),
 		(b"fills", Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } | Expr::Claim { fills, .. }) => {
-			list(fills.iter().map(|e| leak(e.clone()) as i64).collect())
+			asts(&mut fills.iter())
 		}
-		(b"fills", _) => {
-			flag("this Ast has no fills");
-			list(vec![])
-		}
+		(b"fills", _) => flag("this Ast has no fills", list(vec![])),
 		(b"==", Expr::Ident(n)) => {
 			let bytes = unsafe { runtime::str_bytes(arg as *const runtime::StrHeader) };
 			(n.as_bytes() == bytes) as i64
 		}
 		(b"==", _) => 0,
-		_ => {
-			flag("unknown Ast method");
-			ast(Expr::Tuple(vec![]))
-		}
+		_ => flag("unknown Ast method", leak(empty()) as i64),
 	}
 }
