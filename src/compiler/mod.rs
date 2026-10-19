@@ -49,6 +49,20 @@ struct FnItem<'a> {
 	default: bool,
 }
 
+impl<'a> FnItem<'a> {
+	fn new(key: String, scope: &'a Scope, (params, params_tuple, ret): FillSig, body: &'a [Spanned<Expr>]) -> Self {
+		FnItem {
+			key,
+			scope,
+			params,
+			params_tuple,
+			ret,
+			body,
+			default: false,
+		}
+	}
+}
+
 type EnumItem<'a> = (&'a str, Option<&'a Spanned<TypeExpr>>, &'a [EnumVariant]);
 
 // A claim's fill types.
@@ -172,9 +186,7 @@ pub(crate) struct GenericFnDef {
 impl GenericFnDef {
 	// A top-level generic fn, with the default ctx and no captures.
 	fn new(
-		params: Vec<Param>,
-		params_tuple: bool,
-		ret: Option<Spanned<TypeExpr>>,
+		(params, params_tuple, ret): FillSig,
 		body: &[Spanned<Expr>],
 		type_params: Vec<TypeParam>,
 		module: &str,
@@ -902,30 +914,20 @@ impl<M: Module> Compiler<M> {
 			};
 
 			if type_params.is_empty() && mtp.is_empty() {
-				others.push(FnItem {
-					key,
-					scope,
-					params,
-					params_tuple,
-					ret,
-					body,
-					default: false,
-				});
+				others.push(FnItem::new(key, scope, (params, params_tuple, ret), body));
 				continue;
 			}
 
-			let name = |p: &TypeParam| Box::new(TypeExpr::Name(p.name.clone()));
+			let named = |param: &TypeParam| TypeExpr::Name(param.name.clone());
 			let self_ty = match (typ, type_params) {
-				("array", [t, ..]) => TypeExpr::Array(name(t)),
-				("map", [k, v, ..]) => TypeExpr::Map(name(k), name(v)),
+				("array", [elem, ..]) => TypeExpr::Array(Box::new(named(elem))),
+				("map", [key, value, ..]) => TypeExpr::Map(Box::new(named(key)), Box::new(named(value))),
 				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
-					let args = type_params.iter().map(|p| TypeExpr::Name(p.name.clone())).collect();
-					TypeExpr::Generic(typ.to_string(), args)
+					TypeExpr::Generic(typ.to_string(), type_params.iter().map(named).collect())
 				}
 				_ => TypeExpr::Name(typ.to_string()),
 			};
-			let mut all_params = type_params.to_vec();
-			all_params.extend(mtp.clone());
+			let mut all_params = [type_params, mtp].concat();
 
 			// generic claims
 			let targs: Vec<_> = (claim.targs.iter())
@@ -937,7 +939,7 @@ impl<M: Module> Compiler<M> {
 			let (params, ret) = subst_sig(&params, &ret, &[("Self".to_string(), self_ty)]);
 			qualify_bounds(scope, &mut all_params);
 
-			let def = GenericFnDef::new(params, params_tuple, ret, body, all_params, &scope.module, m.1);
+			let def = GenericFnDef::new((params, params_tuple, ret), body, all_params, &scope.module, m.1);
 			self.world.generic_fns.insert(key, def);
 		}
 		Ok(())
@@ -1267,15 +1269,8 @@ impl<M: Module> Compiler<M> {
 				} if !type_params.is_empty() => {
 					let mut type_params = type_params.clone();
 					qualify_bounds(scope, &mut type_params);
-					let def = GenericFnDef::new(
-						params.clone(),
-						*params_tuple,
-						ret.clone(),
-						body,
-						type_params,
-						&scope.module,
-						item.1,
-					);
+					let sig = (params.clone(), *params_tuple, ret.clone());
+					let def = GenericFnDef::new(sig, body, type_params, &scope.module, item.1);
 					self.world.generic_fns.insert(name.clone(), def);
 				}
 				Expr::Fn {
@@ -1315,15 +1310,8 @@ impl<M: Module> Compiler<M> {
 						let msg = format!("duplicate fn `{}`", display_name(name));
 						return fail(msg, item.1, "already defined");
 					}
-					others.push(FnItem {
-						key: name.clone(),
-						scope,
-						params: params.clone(),
-						params_tuple: *params_tuple,
-						ret: ret.clone(),
-						body,
-						default: false,
-					})
+					let sig = (params.clone(), *params_tuple, ret.clone());
+					others.push(FnItem::new(name.clone(), scope, sig, body))
 				}
 				Expr::Doc(_) => {}
 				Expr::Bind {

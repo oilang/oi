@@ -436,13 +436,8 @@ pub(super) fn check_impls<'p>(
 				(params.clone(), ret.clone(), &body[..], true)
 			};
 			others.push(FnItem {
-				key: format!("{typ}.{name}"),
-				scope,
-				params,
-				params_tuple: *params_tuple,
-				ret,
-				body,
 				default,
+				..FnItem::new(format!("{typ}.{name}"), scope, (params, *params_tuple, ret), body)
 			});
 		}
 	}
