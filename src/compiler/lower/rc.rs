@@ -228,9 +228,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				});
 			}
 		}
-		self.b.ins().jump(done, &[]);
-		self.b.seal_block(done);
-		self.b.switch_to_block(done);
+		self.enter(done);
 	}
 
 	// Release an owned field, freeing an inline value's own block.
@@ -523,18 +521,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			for i in (0..self.scopes[s].len()).rev() {
 				let (var, t) = self.scopes[s][i].clone();
 				let v = self.b.use_var(var);
-				if !self.flagged.contains(&var) {
-					self.release_value(v, &t);
-					continue;
+				match self.flagged.contains(&var) {
+					true => self.when(v, |s| s.release_value(v, &t)),
+					false => self.release_value(v, &t),
 				}
-				let (live, done) = (self.b.create_block(), self.b.create_block());
-				self.b.ins().brif(v, live, &[], done, &[]);
-				self.b.seal_block(live);
-				self.b.switch_to_block(live);
-				self.release_value(v, &t);
-				self.b.ins().jump(done, &[]);
-				self.b.seal_block(done);
-				self.b.switch_to_block(done);
 			}
 		}
 		Ok(())
@@ -561,18 +551,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn run_defer(&mut self, mut d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
 		// unarmed paths never def the flag, so it reads 0. disarm for the next loop iteration
 		if let Some(flag) = d.armed.take() {
-			let (run, after) = (self.b.create_block(), self.b.create_block());
 			let armed = self.b.use_var(flag);
-			self.b.ins().brif(armed, run, &[], after, &[]);
-			self.b.seal_block(run);
-			self.b.switch_to_block(run);
-			let zero = self.b.ins().iconst(self.int, 0);
-			self.b.def_var(flag, zero);
-			self.run_defer(d, ret)?;
-			self.b.ins().jump(after, &[]);
-			self.b.seal_block(after);
-			self.b.switch_to_block(after);
-			return Ok(());
+			return self.when(armed, |s| {
+				let zero = s.b.ins().iconst(s.int, 0);
+				s.b.def_var(flag, zero);
+				s.run_defer(d, ret)
+			});
 		}
 		let mut dollar = ret.cloned();
 		let mut join = None;
@@ -609,9 +593,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let out = self.scoped(|s| s.block_tail(std::slice::from_ref(&d.body), None).map(|_| Some(s.unit_value())));
 		(self.vars, self.loops, self.deferring, self.dollar) = saved;
 		if let Some(after) = join {
-			self.b.ins().jump(after, &[]);
-			self.b.seal_block(after);
-			self.b.switch_to_block(after);
+			self.enter(after);
 		}
 		out.map(drop)
 	}

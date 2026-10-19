@@ -721,26 +721,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		let Some(first) = fields.iter().position(|f| f.default.is_some()) else {
 			return Ok(root);
 		};
-		let (fill, done) = (self.b.create_block(), self.b.create_block());
 		let slot = self.ld_word(root, (first * 8) as i32);
-		self.b.ins().brif(slot, done, &[], fill, &[]);
-		self.b.seal_block(fill);
-		self.b.switch_to_block(fill);
-		// defaults live as long as the thread
-		let sys = self.ld_word(root, 0);
-		let owner = self.rt_call("root_allocator", &[]).unwrap();
-		self.st(root, 0, owner);
-		for (i, f) in fields.clone().iter().enumerate() {
-			let Some(default) = &f.default else { continue };
-			let val = self.check_typed(default, &f.typ, "not a valid default for this field")?;
-			let val = self.copy_in(val, &f.typ);
-			self.st(root, (i * 8) as i32, val);
-		}
-		self.st(root, 0, sys);
-		self.b.ins().jump(done, &[]);
-		self.b.seal_block(done);
-		self.b.switch_to_block(done);
-		Ok(root)
+		let unset = self.b.ins().icmp_imm(IntCC::Equal, slot, 0);
+		self.when(unset, |s| {
+			// defaults live as long as the thread
+			let sys = s.ld_word(root, 0);
+			let owner = s.rt_call("root_allocator", &[]).unwrap();
+			s.st(root, 0, owner);
+			for (i, f) in fields.iter().enumerate() {
+				let Some(default) = &f.default else { continue };
+				let val = s.check_typed(default, &f.typ, "not a valid default for this field")?;
+				let val = s.copy_in(val, &f.typ);
+				s.st(root, (i * 8) as i32, val);
+			}
+			s.st(root, 0, sys);
+			Ok(root)
+		})
 	}
 
 	// Emit the actual call instruction for a resolved fn signature.
@@ -992,9 +988,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let boxv = s.box_with(vtable, data);
 				s.st(val, 8, boxv);
 			});
-			self.b.ins().jump(done, &[]);
-			self.b.seal_block(done);
-			self.b.switch_to_block(done);
+			self.enter(done);
 		}
 		Ok((if bare { self.box_with(vtable, val) } else { val }, typ))
 	}

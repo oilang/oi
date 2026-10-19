@@ -200,6 +200,24 @@ impl<M: Module> Translator<'_, M> {
 		(yes, no)
 	}
 
+	// Run a given body only when a condition is true.
+	pub(super) fn when<T>(&mut self, cond: Value, body: impl FnOnce(&mut Self) -> T) -> T {
+		let (run, after) = (self.b.create_block(), self.b.create_block());
+		self.b.ins().brif(cond, run, &[], after, &[]);
+		self.b.seal_block(run);
+		self.b.switch_to_block(run);
+		let out = body(self);
+		self.enter(after);
+		out
+	}
+
+	// Jump into a block.
+	pub(super) fn enter(&mut self, block: Block) {
+		self.b.ins().jump(block, &[]);
+		self.b.seal_block(block);
+		self.b.switch_to_block(block);
+	}
+
 	// Run `body` when `tag` is `disc`, then jump to `done`.
 	pub(super) fn on_variant(&mut self, tag: Value, disc: i64, done: Block, body: impl FnOnce(&mut Self)) {
 		let is = self.b.ins().icmp_imm(IntCC::Equal, tag, disc);

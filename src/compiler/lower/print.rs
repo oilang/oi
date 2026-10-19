@@ -76,9 +76,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			});
 		}
 		self.write_lit(&format!("<{typ}>"), sink);
-		self.b.ins().jump(done, &[]);
-		self.b.seal_block(done);
-		self.b.switch_to_block(done);
+		self.enter(done);
 	}
 
 	// Payload `Display`.
@@ -122,9 +120,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let ptr = self.enum_name_str(typ, val);
 		self.raw(ptr, sink);
-		self.b.ins().jump(done, &[]);
-		self.b.seal_block(done);
-		self.b.switch_to_block(done);
+		self.enter(done);
 	}
 
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, sink: runtime::Sink) {
