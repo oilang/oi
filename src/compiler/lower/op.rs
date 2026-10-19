@@ -498,7 +498,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// string concatenation
 		if let (BinOp::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
-			return Ok((self.call_concat(lv, rv), own.unwrap_or(Typ::Str)));
+			return Ok((self.rt_call("str_concat", &[lv, rv]).unwrap(), own.unwrap_or(Typ::Str)));
 		}
 		self.arith(op, (lv, lt), (rv, rt), r, span).map(|(v, t)| (v, own.unwrap_or(t)))
 	}

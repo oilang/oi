@@ -58,7 +58,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			"ord" => {
-				let (val, typ) = self.cast_operand(name, args, span)?;
+				let [arg] = args else {
+					return fail("`ord` takes 1 argument", span, "wrong number of arguments");
+				};
+				let (val, typ) = self.expr(arg)?;
 				if !typ.is_enumish() {
 					return fail(
 						format!("`ord` expects an Ordinal, got {typ}"),
@@ -432,22 +435,5 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().ireduce(cl, val)
 		};
 		Ok((val, bt))
-	}
-
-	// Evaluate the operand of a single-argument cast.
-	pub(super) fn cast_operand(
-		&mut self,
-		name: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
-		if args.len() != 1 {
-			return fail(
-				format!("`{name}` cast takes exactly 1 argument"),
-				span,
-				"wrong number of arguments",
-			);
-		}
-		self.expr(&args[0])
 	}
 }

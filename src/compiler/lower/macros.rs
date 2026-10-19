@@ -83,17 +83,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.b.inst_results(call)[0])
 	}
 
-	// Call the runtime panic path with `msg` and mark the current block unreachable.
-	fn abort(&mut self, msg: Value, span: Span) -> Result<TypedVal, Diagnostic> {
-		self.ctx_panic("panic", msg, span)?;
-
-		// unreachable paths
-		let dead = self.b.create_block();
-		self.b.seal_block(dead);
-		self.b.switch_to_block(dead);
-		Ok(self.unit_value())
-	}
-
 	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from, then trap.
 	pub(super) fn ctx_panic(&mut self, rt: &str, msg: Value, span: Span) -> Result<(), Diagnostic> {
 		if self.comptime {
@@ -193,7 +182,12 @@ impl<'a, M: Module> Translator<'a, M> {
 					_ => "entered unreachable code",
 				};
 				let msg = self.msg_arg(name, args.first(), default)?;
-				self.abort(msg, span)
+				self.ctx_panic("panic", msg, span)?;
+				// code after the panic lands in a dead block
+				let dead = self.b.create_block();
+				self.b.seal_block(dead);
+				self.b.switch_to_block(dead);
+				Ok(self.unit_value())
 			}
 		}
 	}

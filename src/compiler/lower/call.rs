@@ -840,17 +840,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((ret_val, ret.clone()))
 	}
 
-	pub(super) fn call_concat(&mut self, a: Value, b: Value) -> Value {
-		self.rt_call("str_concat", &[a, b]).unwrap()
-	}
-
 	// A returned inline value's box moves into a frame slot.
 	pub(super) fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
-		let (elem, n) = match typ {
-			Typ::FixedArray(elem, n) => ((**elem).clone(), *n),
-			t if let Some(slots) = t.slots() => (Typ::Int(64), slots.len()),
-			_ => return val,
-		};
+		let Some((elem, n)) = rc::inline(typ) else { return val };
 		let slot = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
 		self.fixed_move(slot, val, &elem, n);
 		self.rt_call("free", &[val]);

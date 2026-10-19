@@ -150,19 +150,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		val
 	}
 
-	// A zero value for an owning slot, where a fixed array is its own heap block.
+	// A zero value for an owning slot.
 	fn zero_slot(&mut self, typ: &Typ) -> Value {
-		let z = self.zero(typ);
-		let (elem, n) = match typ {
-			Typ::FixedArray(elem, n) => ((**elem).clone(), *n),
-			t if let Some(slots) = t.slots() => (Typ::Int(64), slots.len()),
-			_ => return z,
-		};
+		let zero = self.zero(typ);
+		self.heap_move(zero, typ)
+	}
 
-		// moved, not shared, since it's fresh
+	// Move an inline value into a fresh heap block.
+	pub(super) fn heap_move(&mut self, val: Value, typ: &Typ) -> Value {
+		let Some((elem, n)) = rc::inline(typ) else { return val };
 		let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
-		self.fixed_move(heap, z, &elem, n);
-
+		self.fixed_move(heap, val, &elem, n);
 		heap
 	}
 
@@ -183,10 +181,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.box_error(msg, &Typ::Str)
 			}
 			Typ::Atom => self.atom_const(""),
-			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
-			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
-			Typ::Rune => self.b.ins().iconst(types::I32, 0),
-			Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr | Typ::TypeId => self.b.ins().iconst(self.int, 0),
+			Typ::Int(_) | Typ::UInt(_) | Typ::Rune | Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr | Typ::TypeId => {
+				self.b.ins().iconst(cl_type(typ, self.int), 0)
+			}
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
 				let def = self.world.generic_fns[role::ZERO].clone();
@@ -196,7 +193,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.fn_object(sig.id)
 			}
-			Typ::Annotated(..) | Typ::Closure(..) | Typ::Trait(_) | Typ::Ref(_) => self.b.ins().iconst(self.int, 0),
+			Typ::Annotated(..) | Typ::Closure(..) | Typ::Trait(_) | Typ::Ref(_) | Typ::Ast => {
+				self.b.ins().iconst(self.int, 0)
+			}
 			Typ::Access(..) => unreachable!("an access mod only marks params inside a fn"),
 			Typ::Const(_) => unreachable!("a comptime value param is never a runtime slot"),
 			Typ::Enum(_) if rc::opt_niche(typ) => self.b.ins().iconst(self.int, 0),
@@ -210,15 +209,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.make_enum(&variants, disc, &fields)
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
-			Typ::Struct(_, fields) => {
-				let zs: Vec<_> = fields.iter().map(|f| self.zero_slot(&f.typ)).collect();
-				let ptr = self.stack_slot((zs.len() * 8) as u32);
-				self.store_slots(ptr, &zs);
-				ptr
-			}
-			Typ::TupleStruct(_, fields) => self.zero_slot(&Typ::Tuple(fields.clone())),
-			Typ::Tuple(fields) => {
-				let zs: Vec<_> = fields.iter().map(|(_, t)| self.zero_slot(t)).collect();
+			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Tuple(_) => {
+				let zs: Vec<_> = typ.slots().unwrap_or_default().iter().map(|t| self.zero_slot(t)).collect();
 				let ptr = self.stack_slot((zs.len() * 8) as u32);
 				self.store_slots(ptr, &zs);
 				ptr
@@ -246,7 +238,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.temp(m, typ);
 				m
 			}
-			Typ::Ast => self.b.ins().iconst(self.int, 0),
 		}
 	}
 
@@ -1450,11 +1441,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.copy_in(val?, &f.typ)
 			} else if let Typ::Struct(_, inner) = &f.typ {
 				// apply field defaults of inner structs
-				let inner = inner.clone();
-				let slot = self.struct_slot(&inner, &[])?;
-				let heap = self.call_alloc(inner.len());
-				self.fixed_move(heap, slot, &Typ::Int(64), inner.len());
-				heap
+				let slot = self.struct_slot(inner, &[])?;
+				self.heap_move(slot, &f.typ)
 			} else {
 				self.zero_slot(&f.typ)
 			};

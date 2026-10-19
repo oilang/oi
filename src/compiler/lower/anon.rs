@@ -64,21 +64,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = match c {
 				Capture::Mut(_) => self.box_local(name, &local, span.into_range())?,
 				Capture::Move(_) => {
-					let val = self.move_local(name, &local, span.into_range())?;
 					// a moved inline value leaves the frame with the env
-					match &local.typ {
-						t if let Some(slots) = t.slots() => {
-							let heap = self.call_alloc(slots.len());
-							self.fixed_move(heap, val, &Typ::ISize, slots.len());
-							heap
-						}
-						Typ::FixedArray(e, n) => {
-							let heap = self.call_alloc_bytes(*n as i64 * self.elem_stride(e));
-							self.fixed_move(heap, val, e, *n);
-							heap
-						}
-						_ => val,
-					}
+					let val = self.move_local(name, &local, span.into_range())?;
+					self.heap_move(val, &local.typ)
 				}
 				Capture::ReadOnly(_) if isolated => {
 					let val = self.read_local(&local);
