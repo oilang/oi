@@ -279,12 +279,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			let v = self.coerce_lit(value, &side)?;
 			return Ok(v.map(|v| self.make_enum(&variants, disc as i64, &[v])));
 		}
+		let sign = if neg { -1 } else { 1 };
 		let int;
 		let inner = match inner {
 			Expr::Float(x) if matches!(target, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) => {
 				if *x as i64 as f64 != *x {
 					return fail(
-						format!("{} truncated to {target}", if neg { -x } else { *x }),
+						format!("{} truncated to {target}", x * sign as f64),
 						value.1,
 						"not integral",
 					);
@@ -295,35 +296,23 @@ impl<'a, M: Module> Translator<'a, M> {
 			e => e,
 		};
 		let v = match (inner, target) {
-			(Expr::Int(n), Typ::Int(w)) => {
-				let n = if neg { -*n } else { *n };
-				if n < int_min(*w) || n > int_max(*w) {
+			(Expr::Int(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
+				let n = n * sign;
+				let fits = match target {
+					Typ::Int(w) => (int_min(*w)..=int_max(*w)).contains(&n),
+					Typ::UInt(64) => !neg || n >= 0,
+					Typ::UInt(w) => (0..=uint_max(*w)).contains(&n),
+					Typ::USize => n >= 0,
+					Typ::Rune => u32::try_from(n).ok().and_then(char::from_u32).is_some(),
+					_ => true,
+				};
+				if !fits {
 					return Err(oob(n));
 				}
-				self.b.ins().iconst(cl_int_for_width(*w), n)
+				self.b.ins().iconst(cl_type(target, self.int), n)
 			}
-			(Expr::Int(n), Typ::UInt(w)) => {
-				let n = if neg { -*n } else { *n };
-				if (n < 0 && (neg || *w < 64)) || (*w < 64 && n > uint_max(*w)) {
-					return Err(oob(n));
-				}
-				self.b.ins().iconst(cl_int_for_width(*w), n)
-			}
-			(Expr::Int(n), Typ::ISize) => self.b.ins().iconst(self.int, if neg { -*n } else { *n }),
-			(Expr::Int(n), Typ::USize) => {
-				let n = if neg { -*n } else { *n };
-				if n < 0 {
-					return Err(oob(n));
-				}
-				self.b.ins().iconst(self.int, n)
-			}
-			(Expr::Int(n), Typ::Rune) => {
-				let n = if neg { -*n } else { *n };
-				u32::try_from(n).ok().and_then(char::from_u32).ok_or_else(|| oob(n))?;
-				self.b.ins().iconst(types::I32, n)
-			}
-			(Expr::Int(n), Typ::Float(w)) => self.float_lit((if neg { -*n } else { *n }) as f64, *w, value.1)?,
-			(Expr::Float(x), Typ::Float(w)) => self.float_lit(if neg { -*x } else { *x }, *w, value.1)?,
+			(Expr::Int(n), Typ::Float(w)) => self.float_lit((n * sign) as f64, *w, value.1)?,
+			(Expr::Float(x), Typ::Float(w)) => self.float_lit(x * sign as f64, *w, value.1)?,
 			(Expr::Atom(name), Typ::Enum(typ)) => self.construct_variant(typ, name, &[], value.1)?.0,
 			(Expr::EnumShorthand { variant, args }, Typ::Enum(typ)) => {
 				self.construct_variant(typ, variant, args, value.1)?.0
