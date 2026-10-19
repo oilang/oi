@@ -102,7 +102,7 @@ type ConstMaps = (
 );
 static NO_CONSTS: std::sync::LazyLock<ConstMaps> = std::sync::LazyLock::new(ConstMaps::default);
 
-// What a const expression in a type can name.
+// What can be named by const expressions.
 #[derive(Clone, Copy)]
 pub(crate) struct Consts<'a> {
 	pub map: &'a HashMap<String, Spanned<Expr>>,
@@ -282,7 +282,10 @@ impl TypeCtx<'_> {
 				if let Some(dup) = names.iter().find(|n| !seen.insert(*n)) {
 					return fail(format!("duplicate atom `:{dup}` in sum type"), span, "repeated atom");
 				}
-				Ok(Typ::Sum(String::new(), atom_sum_variants(names)))
+				let variants = (names.iter().enumerate())
+					.map(|(disc, name)| VariantInfo::new(name.clone(), disc as i64, vec![]))
+					.collect();
+				Ok(Typ::Sum(String::new(), variants))
 			}
 			TypeExpr::Sum(ms) => self.resolve_sum(ms, span),
 			TypeExpr::AnonStruct(params) => {

@@ -98,7 +98,7 @@ pub(crate) struct FieldDef {
 	pub annotations: Vec<Annotation>,
 }
 
-// Check whether a field is embedded.
+// Whether a field is embedded.
 pub(crate) fn embedded(p: &Param) -> bool {
 	matches!(&p.typ, TypeExpr::Name(n) if *n == p.name)
 }
@@ -257,12 +257,9 @@ impl Typ {
 
 	// 1:1 spelling for identity keys.
 	pub fn key(&self) -> String {
-		let keys = |ts: &[Typ]| ts.iter().map(Typ::key).collect::<Vec<_>>().join(", ");
+		let keys = |ts: &mut dyn Iterator<Item = &Typ>| ts.map(Typ::key).collect::<Vec<_>>().join(", ");
 		match self {
-			Typ::Tuple(fields) => {
-				let elems: Vec<_> = fields.iter().map(|(_, t)| t.key()).collect();
-				format!("({})", elems.join(", "))
-			}
+			Typ::Tuple(fields) => format!("({})", keys(&mut fields.iter().map(|(_, t)| t))),
 			Typ::Array(e) => format!("[]{}", e.key()),
 			Typ::FixedArray(e, n) => format!("[{n}]{}", e.key()),
 			Typ::Map(k, v) => format!("[{}]{}", k.key(), v.key()),
@@ -270,8 +267,7 @@ impl Typ {
 			Typ::Ref(inner) => format!("^{}", inner.key()),
 			Typ::Trait(name) => format!("dyn {name}"),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
-				let ps: Vec<_> = params.iter().map(|p| p.typ.key()).collect();
-				format!("fn({}) {}", ps.join(", "), ret.key())
+				format!("fn({}) {}", keys(&mut params.iter().map(|p| &p.typ)), ret.key())
 			}
 			Typ::Annotated(anns, t) => format!("{}{}", marks(anns), t.key()),
 			Typ::Sum(name, _) if !name.is_empty() => name.clone(),
@@ -279,7 +275,7 @@ impl Typ {
 				.iter()
 				.map(|v| match v.payload.is_empty() {
 					true => format!(":{}", v.name),
-					false => format!("{}({})", v.name, keys(&v.payload)),
+					false => format!("{}({})", v.name, keys(&mut v.payload.iter())),
 				})
 				.collect::<Vec<_>>()
 				.join(" | "),
@@ -311,44 +307,32 @@ impl fmt::Display for Typ {
 			}
 			Typ::Array(e) => write!(f, "[]{e}"),
 			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
-			Typ::Struct(name, _) => write!(f, "{name}"),
-			Typ::TupleStruct(name, _) => write!(f, "{name}"),
-			Typ::Enum(name) => match sugar(name) {
-				Some(s) => write!(f, "{s}"),
-				None => write!(f, "{name}"),
-			},
-			Typ::Trait(name) => write!(f, "{name}"),
+			Typ::Enum(name) => write!(f, "{}", sugar(name).as_deref().unwrap_or(name)),
+			Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Trait(name) => write!(f, "{name}"),
 			Typ::Sum(name, _) if !name.is_empty() => write!(f, "{name}"),
 			Typ::Sum(_, variants) => {
-				write!(
-					f,
-					"{}",
-					variants
-						.iter()
-						.map(|v| if v.payload.is_empty() {
+				let members: Vec<_> = (variants.iter())
+					.map(|v| {
+						if v.payload.is_empty() {
 							format!(":{}", v.name)
 						} else {
 							v.name.clone()
-						})
-						.collect::<Vec<_>>()
-						.join(" | ")
-				)
+						}
+					})
+					.collect();
+				write!(f, "{}", members.join(" | "))
 			}
 			Typ::Error => write!(f, "Error"),
 			Typ::Annotated(anns, t) if matches!(**t, Typ::Bool) => write!(f, "{}", anns[0]),
 			Typ::Annotated(anns, t) => write!(f, "{}{t}", marks(anns)),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
-				write!(f, "fn(")?;
-				for (i, p) in params.iter().enumerate() {
-					if i > 0 {
-						write!(f, ", ")?;
-					}
-					match (p.variadic, &p.typ) {
-						(true, Typ::Array(e)) => write!(f, "..{e}")?,
-						_ => write!(f, "{}", p.typ)?,
-					}
-				}
-				write!(f, ") {ret}")
+				let shown: Vec<_> = (params.iter())
+					.map(|p| match (p.variadic, &p.typ) {
+						(true, Typ::Array(elem)) => format!("..{elem}"),
+						(_, typ) => typ.to_string(),
+					})
+					.collect();
+				write!(f, "fn({}) {ret}", shown.join(", "))
 			}
 			Typ::Map(k, v) => write!(f, "[{k}]{v}"),
 			Typ::Access(a, inner) => write!(f, "{a} {inner}"),
@@ -583,13 +567,4 @@ pub(crate) fn typeid(t: &Typ) -> i64 {
 	let mut h = DefaultHasher::new();
 	(t.key(), t.to_string()).hash(&mut h);
 	h.finish() as i64
-}
-
-// An atom sum type desugars to a bare enum.
-pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
-	names
-		.iter()
-		.enumerate()
-		.map(|(disc, name)| VariantInfo::new(name.clone(), disc as i64, vec![]))
-		.collect()
 }

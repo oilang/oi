@@ -392,8 +392,7 @@ pub(super) fn check_impls<'p>(
 				same_sig(name, sig(&f.params, &f.ret)?, sig(params, ret)?, span)?;
 				continue;
 			}
-			// vias
-			if let (Some(field), Some(lent)) = (via, &lent) {
+			let (params, ret, body, default) = if let (Some(field), Some(lent)) = (via, &lent) {
 				let s = |e| (e, span);
 				// a method without `self` belongs to the lent type, not the instance
 				let lent_fn = params.first().is_none_or(|p| p.name != "self");
@@ -423,35 +422,27 @@ pub(super) fn check_impls<'p>(
 					false => call,
 				};
 				let (params, ret) = subst_sig(params, ret, &me);
-				others.push(FnItem {
-					key: format!("{typ}.{name}"),
-					scope,
-					params,
-					params_tuple: *params_tuple,
-					ret,
-					body: Box::leak(Box::new([s(body)])),
-					default: false,
-				});
-				continue;
-			}
-			if body.is_empty() {
+				(params, ret, &Box::leak(Box::new([s(body)]))[..], false)
+			} else if body.is_empty() {
 				let msg = format!("`{typ}` is missing method `{name}` required by trait `{tn}`");
 				return fail(msg, span, "provide this method");
-			}
-			if let Some(prev) = defaults.insert(key, tn.clone())
-				&& prev != tn
-			{
-				let msg = format!("`{typ}` takes default `{name}` from both `{prev}` and `{tn}`");
-				return fail(msg, span, format!("fill `{name}` on `{typ}` to settle it"));
-			}
+			} else {
+				if let Some(prev) = defaults.insert(key, tn.clone())
+					&& prev != tn
+				{
+					let msg = format!("`{typ}` takes default `{name}` from both `{prev}` and `{tn}`");
+					return fail(msg, span, format!("fill `{name}` on `{typ}` to settle it"));
+				}
+				(params.clone(), ret.clone(), &body[..], true)
+			};
 			others.push(FnItem {
 				key: format!("{typ}.{name}"),
 				scope,
-				params: params.clone(),
+				params,
 				params_tuple: *params_tuple,
-				ret: ret.clone(),
+				ret,
 				body,
-				default: true,
+				default,
 			});
 		}
 	}

@@ -104,7 +104,6 @@ pub(super) fn is_def(e: &Expr) -> bool {
 	)
 }
 
-// Decode one scalar into its literal.
 pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 	match tag {
 		TAG_INT => Expr::Int(v),
@@ -118,7 +117,6 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 	}
 }
 
-// Decode the stack.
 fn reify(span: Span) -> Expr {
 	STACK
 		.with_borrow_mut(|stack| {

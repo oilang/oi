@@ -83,7 +83,6 @@ impl FnSig {
 		self.params.iter().zip(&self.access).map(fold).collect()
 	}
 
-	// As a fn value.
 	pub(crate) fn value_typ(&self) -> Typ {
 		self.ctx_marked(Typ::Fn(self.value_params(), Box::new(self.ret.clone())))
 	}
@@ -109,7 +108,7 @@ pub(crate) fn check_reserved(name: &str, span: Span) -> Result<(), Diagnostic> {
 }
 
 // Enforce default param rules.
-fn check_param_defaults(params: &[Param]) -> Result<(), Diagnostic> {
+fn check_params(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 	if let Some(p) = params.iter().find(|p| p.access == Access::Mut && p.default.is_some()) {
 		let msg = format!("`{}` is `mut` so it can't have a default value", p.name);
 		let hint = "`mut` lends the caller's binding, there is none when the arg is omitted";
@@ -120,12 +119,6 @@ fn check_param_defaults(params: &[Param]) -> Result<(), Diagnostic> {
 		let msg = format!("`{}` needs a default value", p.name);
 		return fail(msg, p.span, "defaults must be trailing");
 	}
-	Ok(())
-}
-
-// Check that varargs don't violate our rules.
-// TODO: I hope to lax these in the future but don't want to spin my wheels on greedy type checking and stuff right now
-fn check_varargs(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 	let mut varargs = params.iter().filter(|p| matches!(p.typ, TypeExpr::Variadic(_)));
 	let Some(p) = varargs.nth(1) else { return Ok(()) };
 	let msg = format!("`{}` has more than one vararg", display_name(name));
@@ -227,7 +220,6 @@ struct FnDef<'a> {
 	root_ctx: bool,
 }
 
-// A generic struct definition.
 #[derive(Clone)]
 pub(crate) struct GenericStructDef {
 	pub type_params: Vec<TypeParam>,
@@ -235,7 +227,6 @@ pub(crate) struct GenericStructDef {
 	pub scope: Scope,
 }
 
-// A generic enum definition.
 #[derive(Clone)]
 pub(crate) struct GenericEnumDef {
 	pub type_params: Vec<TypeParam>,
@@ -260,7 +251,7 @@ impl Generics {
 	}
 }
 
-// Does a type ref mention the named type?
+// Whether a type ref mentions the named type.
 fn mentions(te: &TypeExpr, name: &str) -> bool {
 	let mut hit = false;
 	te.clone().walk_mut(&mut |t| hit |= matches!(t, TypeExpr::Name(n) if n == name));
@@ -463,7 +454,7 @@ fn check_lit(e: &Expr, typ: Option<&Typ>, span: Span) -> Result<(), Diagnostic> 
 	}
 }
 
-// Check whether a literal expression agrees with a field's type.
+// Whether a literal expression agrees with a field's type.
 fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 	match e {
 		Expr::Negative(inner) => lit_matches(&inner.0, typ),
@@ -634,7 +625,8 @@ pub struct Compiler<M: Module = JITModule> {
 	pub timings: Vec<(&'static str, Duration)>,
 }
 
-// Get a static's type from its literal.
+const NO_STATIC_TYPE: &str = "cannot tell what type this static is";
+
 fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> {
 	match e {
 		Expr::Negative(v) => static_typ(&v.0, types, span),
@@ -651,7 +643,7 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 				} else {
 					"annotate it, or give the array a literal element"
 				};
-				return fail("cannot tell what type this static is", span, hint);
+				return fail(NO_STATIC_TYPE, span, hint);
 			}
 			let elem = static_typ(&non_spread[0].0, types, span)?;
 			for (e, espan) in non_spread.iter().skip(1) {
@@ -668,10 +660,7 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 		Expr::Ident(n) if let Some((te, s)) = types.consts.binds.get(&types.scope.qualify_name(n)) => {
 			types.nested(n, span, "types itself")?.resolve(te, *s)
 		}
-		_ => {
-			let msg = "cannot tell what type this static is";
-			fail(msg, span, "annotate it, or initialize it with a literal")
-		}
+		_ => fail(NO_STATIC_TYPE, span, "annotate it, or initialize it with a literal"),
 	}
 }
 
@@ -752,7 +741,6 @@ impl Compiler<ObjectModule> {
 		Ok((self.module.finish().emit().expect("emit object"), self.link_libs))
 	}
 
-	// The object's entrypoint.
 	fn emit_entry(&mut self, entry: FuncId) {
 		let sig = self.module.make_signature();
 		let ptr = self.module.target_config().pointer_type();
@@ -840,13 +828,11 @@ impl<M: Module> Compiler<M> {
 		}
 	}
 
-	// Time codegen phase.
 	fn time_codegen(&mut self, t: Instant, n: usize) {
 		let inner: Duration = self.timings[n..].iter().map(|(_, d)| *d).sum();
 		self.timings.push(("codegen", t.elapsed().saturating_sub(inner)));
 	}
 
-	/// Print each phase's time to stderr.
 	pub fn report_timings(&self) {
 		for (phase, dur) in &self.timings {
 			eprintln!("{phase}  {dur:.1?}");
@@ -1582,8 +1568,7 @@ impl<M: Module> Compiler<M> {
 				})
 				.collect();
 			let access: Vec<Access> = item.params.iter().map(|p| p.access).collect();
-			check_param_defaults(&item.params)?;
-			check_varargs(&item.key, &item.params)?;
+			check_params(&item.key, &item.params)?;
 			// `@export` / `@c`
 			let anns = self.annotations.get(&item.key);
 			let ann_span = |target| anns.into_iter().flatten().find_map(|a| Some((ann(a, target)?, a.1)));
@@ -1743,17 +1728,13 @@ impl<M: Module> Compiler<M> {
 			if methods.iter().any(|n| !funcs.contains_key(&format!("{typ}.{n}"))) {
 				continue;
 			}
-			let m = methods.len();
-			let f = tfields.len();
-			let mut bytes = vec![0u8; (m + f + 1) * 8];
+			let mut bytes = vec![0u8; (methods.len() + tfields.len() + 1) * 8];
 			let mut const_slots = Vec::new();
-			for (i, tf) in tfields.iter().enumerate() {
-				// leave a hole because associated types have no runtime slot
-				if is_assoc_type(tf) {
-					continue;
-				}
+			// associated types have no runtime slot, so they leave a hole
+			for (i, tf) in tfields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
+				let at = (methods.len() + i) * 8;
 				match structs.get(typ.as_str()).and_then(|fs| field_slot(fs, &tf.name)) {
-					Some((enc, _)) => bytes[(m + i) * 8..(m + i + 1) * 8].copy_from_slice(&enc.to_le_bytes()),
+					Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
 					None => {
 						let want = base.resolve(&tf.typ, tf.span)?;
 						let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
@@ -1763,7 +1744,7 @@ impl<M: Module> Compiler<M> {
 							lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait"));
 						}
 						let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
-						const_slots.push(((m + i) * 8, self.const_cell(&sym, &lit, &want)));
+						const_slots.push((at, self.const_cell(&sym, &lit, &want)));
 					}
 				}
 			}
@@ -1780,7 +1761,7 @@ impl<M: Module> Compiler<M> {
 				desc.write_function_addr((i * 8) as u32, fref);
 			}
 			let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);
-			desc.write_function_addr(((m + f) * 8) as u32, fref);
+			desc.write_function_addr(((methods.len() + tfields.len()) * 8) as u32, fref);
 			let sym = oi_symbol(&format!("vtable_{typ}_{tn}"));
 			let id = self
 				.module

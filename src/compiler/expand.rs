@@ -67,8 +67,7 @@ fn pat_names(pat: &mut Spanned<Expr>) -> Vec<&mut String> {
 		.collect()
 }
 
-// Visit every name-binding site in expr.
-// Skips deliberate `%name` captures.
+// Visit every name-binding site in expr, skipping deliberate `%name` captures.
 fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 	match e {
 		Expr::Bind { name, .. } if !name.starts_with('%') => f(name),
@@ -107,7 +106,6 @@ fn name_slot(e: &mut Expr) -> Option<&mut String> {
 	}
 }
 
-// Resolve a bare macro name through scope.
 fn resolve_bare(name: &str, scope: &Scope) -> String {
 	let key = format!("{name}!");
 	scope.env.get(&key).cloned().unwrap_or(key)
@@ -121,9 +119,7 @@ fn owner(e: &Spanned<Expr>) -> &str {
 	}
 }
 
-// Rewrite direct macro calls from stage-0 bodies into calls of their compiled fns.
-// Unquote expressions run at comptime.
-// Other calls inside quotes stay as calls and expand later, when the produced Ast is spliced.
+// Rewrite direct macro calls in stage-0 bodies to their compiled fns, quoted ones expand once spliced.
 fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scope: &Scope, in_quote: bool) {
 	if !in_quote && let Expr::MacroCall { name, args } = e {
 		let resolved = resolve_bare(name, scope);
@@ -502,8 +498,7 @@ fn push_name(slots: &mut Vec<Slot>, n: &str) {
 	}
 }
 
-// Walk a template body collecting unquote slots and binders, flagging nested quotes.
-// Unquote expressions are pulled out and replaced with an `Unquote`.
+// Collect a template's unquote slots and binders, pulling unquote expressions out into slots.
 fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested: &mut bool) {
 	match e {
 		Expr::Quote(_) => *nested = true,
@@ -569,9 +564,7 @@ pub(crate) fn register(stmts: &[Spanned<Expr>], span: Span) -> Result<(usize, Ve
 	Ok((leak(tpl) as usize, slots))
 }
 
-// One pass over a template copy.
-// Adds a suffix to the template's own binders for good hygiene (see what I did there?).
-// Splices `%name` arguments in verbatim.
+// Fill a template copy, suffixing its own binders for good hygiene (see what I did there?).
 fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg>, suffix: usize) {
 	if let Expr::Unquote(name) = &e.0 {
 		match &args[name.as_str()] {
@@ -775,8 +768,7 @@ fn splice(list: &mut Vec<Spanned<Expr>>, bound: &HashSet<String>, args: &HashMap
 	}
 }
 
-// Instantiate the template at `tpl`, substituting `args` by position against its unquote names.
-// `args` are borrowed, not owned.
+// Instantiate the template at `tpl` with borrowed `args`, by position against its unquote names.
 pub(crate) extern "C" fn rt_quote(tpl: usize, args: *const *mut Spanned<Expr>, len: usize) -> *mut Spanned<Expr> {
 	// SAFETY: `tpl` was leaked by `register`.
 	let tpl = unsafe { &*(tpl as *const Template) };
@@ -845,8 +837,7 @@ pub(crate) fn one(mut stmts: Vec<Spanned<Expr>>, span: Span) -> Spanned<Expr> {
 	}
 }
 
-// Structurally match a template's pattern against `subject`, capturing `%name` holes.
-// `outs` receives leaked pointers to captured subtrees.
+// Match a template's pattern against `subject`, leaking each `%name` capture into `outs`.
 pub(crate) extern "C" fn rt_quote_match(tpl: usize, subject: *mut Spanned<Expr>, outs: *mut *mut Spanned<Expr>) -> i64 {
 	// SAFETY: `tpl` was leaked by `register`, `subject` by the caller's Ast value.
 	let (tpl, subj) = unsafe { (&*(tpl as *const Template), &*subject) };
@@ -895,8 +886,6 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
 	leak((super::comp::scalar(tag, bits), Span::default()))
 }
-
-// Process symbols.
 
 #[unsafe(export_name = "oi_ast_ident")]
 pub(crate) extern "C" fn rt_ast_ident(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
