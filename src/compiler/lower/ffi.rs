@@ -183,10 +183,8 @@ impl<M: Module> Translator<'_, M> {
 				}
 				Typ::FixedArray(e, n) => {
 					let (at, buf) = (self.b.ins().iadd_imm(c, off as i64), self.ld_word(oi, slot));
-					match to_c {
-						true => self.fixed_move(at, buf, e, *n),
-						false => self.fixed_move(buf, at, e, *n),
-					}
+					let (dst, src) = if to_c { (at, buf) } else { (buf, at) };
+					self.fixed_move(dst, src, e, *n, true);
 				}
 				typ if to_c => {
 					let v = self.ld_typ(oi, slot, typ);

@@ -101,20 +101,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					let pv = s.ld_typ(val, 8, &v.payload[0]);
 					s.emit_print(pv, &v.payload[0], quote, sink);
 				} else {
-					s.write_lit(&v.name, sink);
-					let braced = !v.names.is_empty();
-					s.write_lit(if braced { ".{" } else { ".(" }, sink);
-					for (i, pt) in v.payload.iter().enumerate() {
-						if i > 0 {
-							s.write_lit(", ", sink);
-						}
-						if braced {
-							s.write_lit(&format!("{} = ", v.names[i]), sink);
-						}
-						let pv = s.opt_payload(val, typ, pt, (8 + i * 8) as i32);
-						s.emit_print(pv, pt, true, sink);
-					}
-					s.write_lit(if braced { "}" } else { ")" }, sink);
+					let fields: Vec<_> = (v.payload.iter().enumerate())
+						.map(|(i, t)| (v.names.get(i).cloned(), t.clone()))
+						.collect();
+					let delims = match v.names.is_empty() {
+						true => [&format!("{}.(", v.name), ")"],
+						false => [&format!("{}.{{", v.name), "}"],
+					};
+					s.print_fields((val, typ), 8, &fields, delims, sink);
 				}
 			});
 		}
@@ -123,22 +117,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.enter(done);
 	}
 
+	// Print fields with delimeters and names where applicable.
+	fn print_fields(
+		&mut self,
+		(val, typ): (Value, &Typ),
+		base: i32,
+		fields: &[(Option<String>, Typ)],
+		delims: [&str; 2],
+		sink: runtime::Sink,
+	) {
+		self.write_lit(delims[0], sink);
+		for (i, (name, ft)) in fields.iter().enumerate() {
+			if i > 0 {
+				self.write_lit(", ", sink);
+			}
+			if let Some(name) = name {
+				self.write_lit(&format!("{name} = "), sink);
+			}
+			let fv = self.opt_payload(val, typ, ft, base + (i * 8) as i32);
+			self.emit_print(fv, ft, true, sink);
+		}
+		self.write_lit(delims[1], sink);
+	}
+
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, sink: runtime::Sink) {
 		match typ {
-			Typ::Tuple(fields) => {
-				self.write_lit("(", sink);
-				for (i, (name, ft)) in fields.iter().enumerate() {
-					if i > 0 {
-						self.write_lit(", ", sink);
-					}
-					if let Some(name) = name {
-						self.write_lit(&format!("{name} = "), sink);
-					}
-					let fv = self.ld_typ(val, (i * 8) as i32, ft);
-					self.emit_print(fv, ft, true, sink);
-				}
-				self.write_lit(")", sink);
-			}
+			Typ::Tuple(fields) => self.print_fields((val, typ), 0, fields, ["(", ")"], sink),
 
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => {
 				self.write_lit("[", sink);
@@ -156,18 +160,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				// less-noisy anonymous struct names
 				let anon = sname.starts_with("struct{");
-				let sname = if anon { "" } else { display_name(sname) }.to_string();
-				let fields = fields.clone();
-				self.write_lit(&format!("{sname}.{{"), sink);
-				for (i, f) in fields.iter().enumerate() {
-					if i > 0 {
-						self.write_lit(", ", sink);
-					}
-					self.write_lit(&format!("{} = ", f.name), sink);
-					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
-					self.emit_print(fv, &f.typ, true, sink);
-				}
-				self.write_lit("}", sink);
+				let sname = if anon { "" } else { display_name(sname) };
+				let fields: Vec<_> = fields.iter().map(|f| (Some(f.name.clone()), f.typ.clone())).collect();
+				self.print_fields((val, typ), 0, &fields, [&format!("{sname}.{{"), "}"], sink);
 			}
 
 			Typ::TupleStruct(name, fields) => {

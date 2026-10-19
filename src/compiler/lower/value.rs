@@ -160,8 +160,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn heap_move(&mut self, val: Value, typ: &Typ) -> Value {
 		let Some((elem, n)) = rc::inline(typ) else { return val };
 		let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
-		self.fixed_move(heap, val, &elem, n);
-		heap
+		self.fixed_move(heap, val, &elem, n, true)
 	}
 
 	fn zero_val(&mut self, typ: &Typ) -> Value {
@@ -1566,25 +1565,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Copy a fixed array's elements into the given destination, each to its new owner.
-	pub(super) fn fixed_copy(&mut self, src: Value, dst: Value, elem: &Typ, n: usize) -> Value {
+	// Copy n elements between two packed buffers, each to its new owner unless moved.
+	pub(super) fn fixed_move(&mut self, dst: Value, src: Value, elem: &Typ, n: usize, moved: bool) -> Value {
 		let stride = self.elem_stride(elem);
 		for i in 0..n {
 			let off = (i as i64 * stride) as i32;
 			let v = self.load_elem(src, off, elem);
-			let v = self.copy_in(v, elem);
+			let v = if moved { v } else { self.copy_in(v, elem) };
 			self.store_elem(dst, off, elem, v);
 		}
 		dst
-	}
-
-	// Copy n elements between two packed buffers.
-	pub(super) fn fixed_move(&mut self, dst: Value, src: Value, elem: &Typ, n: usize) {
-		let stride = self.elem_stride(elem);
-		for i in 0..n {
-			let off = (i as i64 * stride) as i32;
-			let v = self.load_elem(src, off, elem);
-			self.store_elem(dst, off, elem, v);
-		}
 	}
 }

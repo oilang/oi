@@ -661,7 +661,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		match typ {
 			Typ::FixedArray(elem, n) => {
 				let dst = self.stack_slot((*n as i64 * self.elem_stride(elem)) as u32);
-				self.fixed_copy(val, dst, elem, *n)
+				self.fixed_move(dst, val, elem, *n, false)
 			}
 			t if let Some(slots) = t.slots() => {
 				let dst = self.stack_slot((slots.len() * 8) as u32);

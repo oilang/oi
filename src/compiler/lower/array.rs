@@ -233,7 +233,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::FixedArray(elem, n) = typ.newtype().unwrap_or(typ) {
 			let (elem, n) = ((**elem).clone(), *n);
 			let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
-			return self.fixed_copy(val, heap, &elem, n);
+			return self.fixed_move(heap, val, &elem, n, false);
 		}
 		// move resource to new owner
 		if self.handover(val, typ) {

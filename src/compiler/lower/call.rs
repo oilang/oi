@@ -844,7 +844,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
 		let Some((elem, n)) = rc::inline(typ) else { return val };
 		let slot = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
-		self.fixed_move(slot, val, &elem, n);
+		self.fixed_move(slot, val, &elem, n, true);
 		self.rt_call("free", &[val]);
 		slot
 	}
