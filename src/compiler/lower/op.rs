@@ -1,3 +1,5 @@
+use cranelift::codegen::ir::condcodes::CondCode;
+
 use crate::compiler::role;
 
 use super::*;
@@ -302,36 +304,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Sign-extend the low `w` bits of `val` within its container.
-	// NOTE: noop for standard cranelift widths (8, 16, 32, 64).
-	pub(super) fn reduce_int(&mut self, val: Value, w: u16) -> Value {
-		let cl = cl_type(&Typ::Int(w), self.int);
-		let shift = cl.bits() as i64 - w as i64;
-		if shift == 0 {
-			return val;
-		}
-		let shift_v = self.b.ins().iconst(cl, shift);
-		let up = self.b.ins().ishl(val, shift_v);
-		self.b.ins().sshr(up, shift_v)
-	}
-
-	// Zero-extend (mask) `val` to exactly `w` bits within its Cranelift container.
-	pub(super) fn reduce_uint(&mut self, val: Value, w: u16) -> Value {
-		let cl = cl_type(&Typ::UInt(w), self.int);
-		if cl.bits() as u16 == w {
-			return val;
-		}
-		let mask = ((1u64 << w) - 1) as i64;
-		let mask_v = self.b.ins().iconst(cl, mask);
-		self.b.ins().band(val, mask_v)
-	}
-
 	// Wrap `val` back to its declared bit width.
 	pub(super) fn narrow(&mut self, val: Value, typ: &Typ) -> Value {
+		let (Typ::Int(w) | Typ::UInt(w)) = typ else { return val };
+		let shift = cl_type(typ, self.int).bits() as i64 - *w as i64;
 		match typ {
-			Typ::Int(w) => self.reduce_int(val, *w),
-			Typ::UInt(w) => self.reduce_uint(val, *w),
-			_ => val,
+			_ if shift == 0 => val,
+			Typ::Int(_) => {
+				let up = self.b.ins().ishl_imm(val, shift);
+				self.b.ins().sshr_imm(up, shift)
+			}
+			_ => self.b.ins().band_imm(val, ((1u64 << w) - 1) as i64),
 		}
 	}
 
@@ -684,10 +667,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((result, Typ::Bool));
 		}
 
-		let icc = if matches!((&lt, &rt), (Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize)) {
-			unsigned_cc(icc)
-		} else {
-			icc
+		let icc = match (&lt, &rt) {
+			(Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize) => icc.unsigned(),
+			_ => icc,
 		};
 		let raw = match (&lt, &rt) {
 			(Typ::Int(_), Typ::Int(_))
@@ -738,12 +720,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					(_, Typ::Ast) => self.ast_method(rv, "==", Some(lv)),
 					_ => self.emit_eq(lv, rv, &lt),
 				};
-				let ne_cc = if icc == IntCC::Equal {
-					IntCC::NotEqual
-				} else {
-					IntCC::Equal
-				};
-				self.b.ins().icmp_imm(ne_cc, eq, 0)
+				self.b.ins().icmp_imm(icc.complement(), eq, 0)
 			}
 			_ => {
 				return fail(format!("cannot compare {lt} and {rt}"), span, "not comparable");

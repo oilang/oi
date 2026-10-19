@@ -123,16 +123,6 @@ pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
 	}
 }
 
-pub(super) fn unsigned_cc(icc: IntCC) -> IntCC {
-	match icc {
-		IntCC::SignedLessThan => IntCC::UnsignedLessThan,
-		IntCC::SignedLessThanOrEqual => IntCC::UnsignedLessThanOrEqual,
-		IntCC::SignedGreaterThan => IntCC::UnsignedGreaterThan,
-		IntCC::SignedGreaterThanOrEqual => IntCC::UnsignedGreaterThanOrEqual,
-		other => other,
-	}
-}
-
 // Signed comparison codes for a `BinOp` comparison variant.
 pub(super) fn cmp_cc(op: BinOp) -> (IntCC, FloatCC) {
 	match op {
