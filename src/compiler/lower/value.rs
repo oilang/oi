@@ -1,6 +1,6 @@
-use super::generic::{mangle, unify};
+use super::generic::{Infer, mangle};
 use super::*;
-use crate::ast::record_args;
+use crate::ast::{Param, record_args};
 use crate::compiler::role;
 
 // Give a symbol its bytes.
@@ -773,26 +773,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let payload = &def.variants.iter().find(|v| v.name == variant).unwrap().payload;
-		let mut subst = HashMap::new();
-		if let Some(Typ::Enum(i)) = hint
-			&& rc::base_name(i) == name
-			&& let Some(t) = self.types.generics.instance_args(i)
+		let mut infer = Infer::new(&def.type_params, self.types.generics);
+		if let Some(Typ::Enum(instance)) = hint
+			&& rc::base_name(instance) == name
+			&& let Some(found) = self.types.generics.instance_args(instance)
 		{
-			subst.extend(def.type_params.iter().map(|p| p.name.clone()).zip(t));
+			infer.subst.extend(def.type_params.iter().map(|p| p.name.clone()).zip(found));
 		}
 		let mut fields = Vec::with_capacity(args.len());
-		for (arg, (te, _)) in args.iter().zip(payload) {
+		for (arg, (declared, _)) in args.iter().zip(payload) {
 			let (val, typ) = self.expr(arg)?;
-			unify(te, &typ, &def.type_params, &mut subst, self.types.generics)
-				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
+			infer.bind(declared, &typ, arg.1)?;
 			self.move_resource(arg, &typ)?;
 			fields.push(val);
 		}
-		if args.len() != payload.len() || def.type_params.iter().any(|p| !subst.contains_key(&p.name)) {
+		if args.len() != payload.len() || infer.missing().is_some() {
 			let msg = format!("cannot infer `{name}`'s type arguments from `.{variant}`");
 			return fail(msg, span, format!("write them: `{name}[…]`"));
 		}
-		let typ = self.types.instantiate_enum(name, def, &subst, span)?;
+		let typ = self.types.instantiate_enum(name, def, &infer.subst, span)?;
 		let Typ::Enum(instance) = &typ else {
 			unreachable!("enums instantiate to enums")
 		};
@@ -1303,7 +1302,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let struct_fields = match explicit.or(anon).or_else(|| self.types.structs.get(name.as_str()).cloned()) {
 			Some(fields) => fields,
 			None => match self.types.generics.structs.get(name.as_str()).cloned() {
-				Some(def) => return self.generic_struct_lit(&name, def, fields, span, target),
+				Some(def) => match self.infer_generic(&name, &def, fields, span, target)? {
+					Typ::Struct(instance, fields) => {
+						name = instance;
+						fields
+					}
+					_ => unreachable!("structs instantiate to structs"),
+				},
 				// aliases, tuple structs, and other types
 				None => {
 					let Ok(typ) = self.types.resolve(&TypeExpr::Name(name.clone()), span) else {
@@ -1378,6 +1383,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				},
 			};
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
+			closure_escape(&ftyp, value.1.into_range(), "stored in a field")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
 			if self.slot_owns(&ftyp) && !(base == ptr && given[idx]) {
@@ -1444,100 +1450,39 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(ptr)
 	}
 
-	// Struct literal for a generic struct.
-	fn generic_struct_lit(
+	// A generic struct's instance, pinned by its field values or expected type.
+	fn infer_generic(
 		&mut self,
 		name: &str,
-		def: GenericStructDef,
+		def: &GenericStructDef,
 		fields: &[(Option<String>, Spanned<Expr>)],
 		span: Span,
 		target: Option<&Typ>,
-	) -> Result<TypedVal, Diagnostic> {
-		let positional = fields.first().is_some_and(|(n, _)| n.is_none());
-		if positional && fields.len() != def.fields.len() {
-			return fail(
-				format!(
-					"`{name}` has {} fields but {} values were provided",
-					def.fields.len(),
-					fields.len()
-				),
-				span,
-				"wrong number of fields",
-			);
-		}
-		let mut subst = HashMap::new();
-		let mut provided = Vec::with_capacity(fields.len());
+	) -> Result<Typ, Diagnostic> {
+		let mut infer = Infer::new(&def.type_params, self.types.generics);
 		for (i, (field_name, value)) in fields.iter().enumerate() {
-			if matches!(value.0, Expr::Spread(_)) {
-				return fail(
-					"spread in a generic struct literal isn't supported yet",
-					value.1,
-					"unsupported",
-				);
-			}
-			let idx = match field_name {
-				None if positional => {
-					self.check_member(name, &def.fields[i].name, value.1)?;
-					i
-				}
-				None => {
-					return fail("cannot mix named and positional fields", value.1, "missing field name");
-				}
-				Some(fname) => {
-					self.check_member(name, fname, value.1)?;
-					def.fields
-						.iter()
-						.position(|f| &f.name == fname)
-						.ok_or_else(|| unknown_member(format!("`{name}`"), "field", fname, value.1))?
-				}
+			let declared = match field_name {
+				Some(field_name) => def.fields.iter().find(|f| &f.name == field_name),
+				None => def.fields.get(i),
 			};
-			let fte = &def.fields[idx].typ;
-			let (val, vtyp) = match def.type_params.iter().any(|p| mentions(fte, &p.name)) {
-				true => self.expr(value)?,
-				false => {
-					let want = self.types.resolve(fte, value.1)?;
-					self.check_expr(value, &want)?
-				}
+			let generic = |f: &&Param| def.type_params.iter().any(|p| mentions(&f.typ, &p.name));
+			let Some(field) = declared.filter(generic).filter(|_| !matches!(value.0, Expr::Spread(_))) else {
+				continue;
 			};
-			unify(
-				&def.fields[idx].typ,
-				&vtyp,
-				&def.type_params,
-				&mut subst,
-				self.types.generics,
-			)
-			.map_err(|msg| Diagnostic::new(msg, value.1.into_range()).with_label("type mismatch"))?;
-			let val = self.copy_in(val, &vtyp);
-			provided.push((idx, val, vtyp, value.1));
+			let typ = self.type_of(value)?;
+			infer.bind(&field.typ, &typ, value.1)?;
 		}
 		// params the field values didn't pin can come from the expected type
-		if let Some(Typ::Struct(_, tfields)) = target {
-			for (df, tf) in def.fields.iter().zip(tfields) {
-				unify(&df.typ, &tf.typ, &def.type_params, &mut subst, self.types.generics).ok();
+		if let Some(Typ::Struct(_, expected)) = target {
+			for (field, want) in def.fields.iter().zip(expected) {
+				infer.unify(&field.typ, &want.typ).ok();
 			}
 		}
-		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
-			return fail(
-				format!("cannot infer type parameter `{}`", missing.name),
-				span,
-				"not determined by any field",
-			);
+		if let Some(missing) = infer.missing() {
+			let msg = format!("cannot infer type parameter `{}`", missing.name);
+			return fail(msg, span, "not determined by any field");
 		}
-		let typ = self.types.instantiate(name, &def, &subst, span)?;
-		let Typ::Struct(_, struct_fields) = &typ else {
-			unreachable!()
-		};
-		self.check_required(name, struct_fields, fields, span)?;
-		let ptr = self.struct_slot(struct_fields, &[])?;
-		for (idx, val, vtyp, vspan) in provided {
-			let expected = &struct_fields[idx].typ;
-			if &vtyp != expected {
-				return fail(format!("expected {expected}, got {vtyp}"), vspan, "type mismatch");
-			}
-			closure_escape(&vtyp, vspan.into_range(), "stored in a field")?;
-			self.st(ptr, (idx * 8) as i32, val);
-		}
-		Ok((ptr, typ))
+		self.types.instantiate(name, def, &infer.subst, span)
 	}
 
 	// A stack slot's base address.

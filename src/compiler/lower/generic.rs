@@ -3,68 +3,82 @@ use super::*;
 use crate::ast::TypeParam;
 use crate::compiler::{has_ann, role};
 
-// Extend `subst` by matching a declared type against a concrete arg type.
-pub(super) fn unify(
-	declared: &TypeExpr,
-	concrete: &Typ,
-	params: &[TypeParam],
-	subst: &mut HashMap<String, Typ>,
-	generics: &Generics,
-) -> Result<(), String> {
-	if let TypeExpr::Name(n) = declared
-		&& params.iter().any(|p| &p.name == n)
-	{
-		return match subst.get(n) {
-			Some(bound) if bound != concrete => Err(format!("`{n}` bound to both {bound} and {concrete}")),
-			_ => {
-				subst.insert(n.clone(), concrete.clone());
-				Ok(())
-			}
-		};
+// Type params being solved for, and what they're bound to so far.
+pub(super) struct Infer<'d> {
+	params: &'d [TypeParam],
+	pub subst: HashMap<String, Typ>,
+	generics: &'d Generics,
+}
+
+impl<'d> Infer<'d> {
+	pub(super) fn new(params: &'d [TypeParam], generics: &'d Generics) -> Self {
+		let subst = HashMap::new();
+		Infer {
+			params,
+			subst,
+			generics,
+		}
 	}
-	match (declared, concrete) {
-		(TypeExpr::Array(e), Typ::Array(c)) | (TypeExpr::Variadic(e), Typ::Array(c)) => {
-			unify(e, c, params, subst, generics)
-		}
-		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) => {
-			let size = Typ::Const(*cn as i64);
-			match &n.0 {
-				Expr::Int(n) if *n != *cn as i64 => return Ok(()),
-				Expr::Ident(p) => unify(&TypeExpr::Name(p.clone()), &size, params, subst, generics)?,
-				_ => {}
-			}
-			unify(e, c, params, subst, generics)
-		}
-		(TypeExpr::Map(k, v), Typ::Map(ck, cv)) => {
-			unify(k, ck, params, subst, generics)?;
-			unify(v, cv, params, subst, generics)
-		}
-		(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => elems
-			.iter()
-			.zip(fields)
-			.try_for_each(|((_, e), (_, f))| unify(e, f, params, subst, generics)),
-		(TypeExpr::Annotated(_, e), Typ::Annotated(_, c)) => unify(e, c, params, subst, generics),
-		(TypeExpr::Annotated(_, e), c) => unify(e, c, params, subst, generics),
-		(TypeExpr::Fn(ps, r), Typ::Fn(cps, cr)) if ps.len() == cps.len() => {
-			ps.iter()
-				.zip(cps)
-				.try_for_each(|((_, _, p), c)| unify(p, &c.typ, params, subst, generics))?;
-			unify(r, cr, params, subst, generics)
-		}
-		(TypeExpr::Generic(n, gargs), c)
-			if n == "Option" && !matches!(c, Typ::Enum(e) if e.starts_with(role::OPTION)) =>
+
+	// Extend `subst` by matching a declared type against a concrete one.
+	pub(super) fn unify(&mut self, declared: &TypeExpr, concrete: &Typ) -> Result<(), String> {
+		if let TypeExpr::Name(name) = declared
+			&& self.params.iter().any(|p| &p.name == name)
 		{
-			unify(&gargs[0], c, params, subst, generics)
+			return match self.subst.get(name) {
+				Some(bound) if bound != concrete => Err(format!("`{name}` bound to both {bound} and {concrete}")),
+				_ => {
+					self.subst.insert(name.clone(), concrete.clone());
+					Ok(())
+				}
+			};
 		}
-		(TypeExpr::Generic(_, gargs), Typ::Struct(name, _) | Typ::Enum(name)) => match generics.instance_args(name) {
-			Some(cargs) => gargs
+		match (declared, concrete) {
+			(TypeExpr::Array(elem) | TypeExpr::Variadic(elem), Typ::Array(found)) => self.unify(elem, found),
+			(TypeExpr::FixedArray(elem, len), Typ::FixedArray(found, found_len)) => {
+				match &len.0 {
+					Expr::Int(len) if *len != *found_len as i64 => return Ok(()),
+					Expr::Ident(param) => self.unify(&TypeExpr::Name(param.clone()), &Typ::Const(*found_len as i64))?,
+					_ => {}
+				}
+				self.unify(elem, found)
+			}
+			(TypeExpr::Map(key, val), Typ::Map(found_key, found_val)) => {
+				self.unify(key, found_key)?;
+				self.unify(val, found_val)
+			}
+			(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => elems
 				.iter()
-				.zip(&cargs)
-				.try_for_each(|(g, c)| unify(g, c, params, subst, generics)),
-			None => Ok(()),
-		},
-		// a non-param name, atom-sum, etc: trust it, the call emits against the real signature anyway
-		_ => Ok(()),
+				.zip(fields)
+				.try_for_each(|((_, elem), (_, found))| self.unify(elem, found)),
+			(TypeExpr::Annotated(_, inner), Typ::Annotated(_, found)) => self.unify(inner, found),
+			(TypeExpr::Annotated(_, inner), found) => self.unify(inner, found),
+			(TypeExpr::Fn(params, ret), Typ::Fn(found, found_ret)) if params.len() == found.len() => {
+				(params.iter().zip(found)).try_for_each(|((_, _, param), arg)| self.unify(param, &arg.typ))?;
+				self.unify(ret, found_ret)
+			}
+			(TypeExpr::Generic(name, args), found)
+				if name == "Option" && !matches!(found, Typ::Enum(e) if e.starts_with(role::OPTION)) =>
+			{
+				self.unify(&args[0], found)
+			}
+			(TypeExpr::Generic(_, args), Typ::Struct(name, _) | Typ::Enum(name)) => {
+				let found = self.generics.instance_args(name).unwrap_or_default();
+				args.iter().zip(&found).try_for_each(|(arg, found)| self.unify(arg, found))
+			}
+			_ => Ok(()),
+		}
+	}
+
+	// The first param nothing has pinned yet.
+	pub(super) fn missing(&self) -> Option<&TypeParam> {
+		self.params.iter().find(|p| !self.subst.contains_key(&p.name))
+	}
+
+	// `unify`, reported at `span`.
+	pub(super) fn bind(&mut self, declared: &TypeExpr, concrete: &Typ, span: Span) -> Result<(), Diagnostic> {
+		(self.unify(declared, concrete))
+			.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))
 	}
 }
 
@@ -116,7 +130,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			})
 			.collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
-		let mut subst = HashMap::new();
+		let mut infer = Infer::new(&def.type_params, self.types.generics);
 		if type_args.len() > def.type_params.len() {
 			return arity_err(
 				&format!("`{name}`"),
@@ -127,14 +141,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
-			subst.insert(param.name.clone(), self.types.arg_typ(param, te, *te_span)?);
+			infer.subst.insert(param.name.clone(), self.types.arg_typ(param, te, *te_span)?);
 		}
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
 		if let Some(((rval, rtyp), rexpr)) = &recv {
 			let rparam = declared.next().unwrap();
-			unify(&rparam.typ, rtyp, &def.type_params, &mut subst, self.types.generics)
-				.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
+			infer.bind(&rparam.typ, rtyp, span)?;
 			if rparam.access == Access::Move {
 				self.move_out(rexpr, rtyp)?;
 				self.untemp(*rval);
@@ -148,16 +161,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				continue;
 			};
 			// params that are already pinned
-			let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
+			let types = self.types.with_type_params(&infer.subst).with_scope(self.home_scope(def));
 			let want = types.resolve(&param.typ, arg.1).ok();
 			let (val, typ, entry) = self.arg_value(access, arg, want.as_ref())?;
 			lent.extend(entry.map(|e| (val, e)));
-			unify(&param.typ, &typ, &def.type_params, &mut subst, self.types.generics)
-				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
+			infer.bind(&param.typ, &typ, arg.1)?;
 			given.push(Some((val, typ)));
 		}
-		self.type_defaults(def, &mut subst)?;
-		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
+		self.type_defaults(def, &mut infer)?;
+		if let Some(missing) = infer.missing() {
 			let kind = if self.types.value_param(missing) {
 				"value"
 			} else {
@@ -177,7 +189,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if !self.types.traits.contains_key(bound.as_str()) {
 				return fail(format!("unknown trait `{bound}`"), span, "no such trait");
 			}
-			let typ = &subst[&p.name];
+			let typ = &infer.subst[&p.name];
 			if !self.claims(typ, bound) {
 				return fail(
 					format!("`{typ}` does not claim `{bound}`"),
@@ -186,7 +198,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		}
-		let sig = self.declare_instance(name, def, subst)?;
+		let sig = self.declare_instance(name, def, infer.subst)?;
 		let params = sig.value_params();
 		let access: Vec<Access> = params[self_n..].iter().map(|p| self.param_access(p)).collect();
 		self.check_args(&access, None, &slots)?;
@@ -199,18 +211,17 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Instantiate a generic fill from the receiver type.
 	pub(super) fn recv_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
 		let def = self.world.generic_fns.get(key).cloned()?;
-		let mut subst = HashMap::new();
-		let recv = &def.params.first()?.typ;
-		unify(recv, typ, &def.type_params, &mut subst, self.types.generics).ok()?;
-		self.type_defaults(&def, &mut subst).ok()?;
-		def.type_params.iter().all(|p| subst.contains_key(&p.name)).then_some(())?;
-		self.declare_instance(key, &def, subst).ok()
+		let mut infer = Infer::new(&def.type_params, self.types.generics);
+		infer.unify(&def.params.first()?.typ, typ).ok()?;
+		self.type_defaults(&def, &mut infer).ok()?;
+		infer.missing().is_none().then_some(())?;
+		self.declare_instance(key, &def, infer.subst).ok()
 	}
 
 	// Fill any params inference didn't pin from their declared defaults.
-	fn type_defaults(&self, def: &GenericFnDef, subst: &mut HashMap<String, Typ>) -> Result<(), Diagnostic> {
+	fn type_defaults(&self, def: &GenericFnDef, infer: &mut Infer) -> Result<(), Diagnostic> {
 		for p in &def.type_params {
-			let (Some(bound), Some(w)) = (&p.bound, subst.get(&p.name)) else {
+			let (Some(bound), Some(w)) = (&p.bound, infer.subst.get(&p.name)) else {
 				continue;
 			};
 			let key = (rc::base_name(&w.key()).to_string(), bound.clone());
@@ -232,18 +243,17 @@ impl<'a, M: Module> Translator<'a, M> {
 					(self.world.module_scopes.values().flat_map(|s| &s.files)).find(|(r, _)| r.contains(&span.start));
 				let types = self.types.with_type_params(&own);
 				let typ = home.map_or(types, |(_, s)| types.with_scope(s)).resolve(arg, *span)?;
-				unify(te, &typ, &def.type_params, subst, self.types.generics)
-					.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
+				infer.bind(te, &typ, *span)?;
 			}
 		}
 
 		for p in &def.type_params {
 			let Some((te, span)) = &p.default else { continue };
-			if subst.contains_key(&p.name) {
+			if infer.subst.contains_key(&p.name) {
 				continue;
 			}
 			let typ = self.types.with_scope(self.home_scope(def)).resolve(te, *span)?;
-			subst.insert(p.name.clone(), typ);
+			infer.subst.insert(p.name.clone(), typ);
 		}
 		Ok(())
 	}
