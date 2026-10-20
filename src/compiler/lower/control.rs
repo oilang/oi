@@ -319,86 +319,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(arm_entries[i]);
 
 			// bindings
-			let mut binds = vec![];
-			let mut quote_binds: Option<(Value, Vec<String>)> = None;
+			let (alone, mut binds) = (arm.patterns.len() == 1, None);
 			for (j, pat) in arm.patterns.iter().enumerate() {
-				let eq = if matches!(&pat.0, Expr::Ident(w) if w == "_") {
-					// `_` wildcard
-					self.b.ins().iconst(types::I8, 1)
-				} else if let Some(bounds) = pat.0.bounds() {
-					let sv = self.b.use_var(sv_var);
-					self.range_pattern(sv, &st, bounds, pat.1)?
-				} else if st.is_enumish() {
-					let (disc, b) = self.enum_pattern(pat, &st)?;
-					if arm.patterns.len() == 1 {
-						binds = b;
-					}
-					let sv = self.b.use_var(sv_var);
-					let tag = self.enum_tag(&st, sv);
-					self.b.ins().icmp_imm(IntCC::Equal, tag, disc)
-				} else if matches!(&pat.0, Expr::Tuple(_) | Expr::StructLit { .. } | Expr::Array(_)) {
-					let b = self.pat_binds(pat, &st)?;
-					if arm.patterns.len() == 1 {
-						binds = b;
-					}
-					match &pat.0 {
-						Expr::Array(elems) => {
-							let sv = self.b.use_var(sv_var);
-							let (_, len) = self.array_parts(sv, &st);
-							let count = self.b.ins().iconst(self.int, elems.len() as i64);
-							self.b.ins().icmp(IntCC::Equal, len, count)
-						}
-						_ => self.b.ins().iconst(types::I8, 1),
-					}
-				} else if st == Typ::Ast
-					&& let Expr::Quote(q) = &pat.0
-				{
-					if arm.patterns.len() != 1 || q.len() != 1 {
-						let msg = "a quote pattern is a single expression, alone in its arm";
-						return Err(Diagnostic::new(msg, pat.1.into_range()));
-					}
-					let (tpl, slots) = expand::register(q, pat.1)?;
-					let names: Vec<String> = slots
-						.into_iter()
-						.map(|s| match s {
-							expand::Slot::Name(n) => Some(n),
-							_ => None,
-						})
-						.collect::<Option<_>>()
-						.ok_or_else(|| {
-							let msg = "only `%name` captures are allowed in a quote pattern";
-							Diagnostic::new(msg, pat.1.into_range())
-						})?;
-					let outs = self.stack_slot((names.len().max(1) * 8) as u32);
-					let sv = self.b.use_var(sv_var);
-					let tplv = self.b.ins().iconst(self.int, tpl as i64);
-					let matched = self.extern_call(expand::RT_QUOTE_MATCH, &[tplv, sv, outs], Some(self.int));
-					let matched = matched.unwrap();
-					quote_binds = Some((outs, names));
-					self.b.ins().icmp_imm(IntCC::NotEqual, matched, 0)
-				} else {
-					let sv = self.b.use_var(sv_var);
-					let (pv, pt) = self.check_expr(pat, &st)?;
-					if pt != st {
-						return Err(Diagnostic::new(
-							format!("match pattern ({pt}) does not match subject ({st})"),
-							pat.1.into_range(),
-						)
-						.with_label("type mismatch"));
-					}
-					self.emit_eq(sv, pv, &st)
-				};
-				if j + 1 < arm.patterns.len() {
-					let next = self.b.create_block();
-					self.b.ins().brif(eq, arm_body, &[], next, &[]);
+				let (hit, found) = self.pat_test(pat, (sv, &st), alone)?;
+				binds = found;
+				let last = j + 1 == arm.patterns.len();
+				let next = if last { miss } else { self.b.create_block() };
+				self.b.ins().brif(hit, arm_body, &[], next, &[]);
+				if !last {
 					self.b.seal_block(next);
 					self.b.switch_to_block(next);
-				} else {
-					self.b.ins().brif(eq, arm_body, &[], miss, &[]);
 				}
 			}
 
-			if i > 0 && falls(&arms[i - 1]) && (arm.binding.is_some() || !binds.is_empty() || quote_binds.is_some()) {
+			let binds_names = binds.as_ref().is_some_and(|(_, names): &ArmBinds| !names.is_empty());
+			if i > 0 && falls(&arms[i - 1]) && (arm.binding.is_some() || binds_names) {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
 			}
@@ -413,22 +348,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 			let flow = self.scoped(|s| {
-				let cap = s.sum_capture(arm, &st);
+				let cap = s.sum_capture(arm, &st).map(|c| ((sv, st.clone()), vec![c]));
 				if let Some(name) = &arm.binding
 					&& cap.is_none()
 				{
 					s.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
 				}
-				for (name, typ, off) in cap.iter().chain(&binds) {
-					let sv = s.b.use_var(sv_var);
-					let fv = s.load_bind(sv, &st, typ, *off, span);
-					let fv = s.copy_bind(fv, typ);
-					s.bind_local(name, fv, typ.clone(), false);
-				}
-				if let Some((outs, names)) = &quote_binds {
-					for (i, name) in names.iter().enumerate() {
-						let ptr = s.ld_word(*outs, (i * 8) as i32);
-						s.bind_local(name, ptr, Typ::Ast, false);
+				for ((base, base_typ), list) in cap.iter().chain(&binds) {
+					for (name, typ, off) in list {
+						let field = s.load_bind(*base, base_typ, typ, *off, span);
+						let field = s.copy_bind(field, typ);
+						s.bind_local(name, field, typ.clone(), false);
 					}
 				}
 				match fell {
@@ -464,6 +394,68 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.join_moves(owned, tails, merge);
 
 		Ok(self.finish_merge(merge, join.result))
+	}
+
+	// Tests a pattern against the subject.
+	fn pat_test(
+		&mut self,
+		pat: &Spanned<Expr>,
+		(sv, st): (Value, &Typ),
+		alone: bool,
+	) -> Result<(Value, Option<ArmBinds>), Diagnostic> {
+		let yes = |s: &mut Self| s.b.ins().iconst(types::I8, 1);
+		let subject = |binds| alone.then(|| ((sv, st.clone()), binds));
+		Ok(match &pat.0 {
+			Expr::Ident(w) if w == "_" => (yes(self), None),
+			_ if let Some(bounds) = pat.0.bounds() => (self.range_pattern(sv, st, bounds, pat.1)?, None),
+			_ if st.is_enumish() => {
+				let (disc, binds) = self.enum_pattern(pat, st)?;
+				let tag = self.enum_tag(st, sv);
+				(self.b.ins().icmp_imm(IntCC::Equal, tag, disc), subject(binds))
+			}
+			Expr::Tuple(_) | Expr::StructLit { .. } | Expr::Array(_) => {
+				let binds = self.pat_binds(pat, st)?;
+				let hit = match &pat.0 {
+					Expr::Array(elems) => {
+						let (_, len) = self.array_parts(sv, st);
+						self.b.ins().icmp_imm(IntCC::Equal, len, elems.len() as i64)
+					}
+					_ => yes(self),
+				};
+				(hit, subject(binds))
+			}
+			Expr::Quote(q) if *st == Typ::Ast => {
+				if !alone || q.len() != 1 {
+					let msg = "a quote pattern is a single expression, alone in its arm";
+					return Err(Diagnostic::new(msg, pat.1.into_range()));
+				}
+				let (tpl, slots) = expand::register(q, pat.1)?;
+				let names: Vec<String> = (slots.into_iter())
+					.map(|slot| match slot {
+						expand::Slot::Name(name) => Some(name),
+						_ => None,
+					})
+					.collect::<Option<_>>()
+					.ok_or_else(|| {
+						let msg = "only `%name` captures are allowed in a quote pattern";
+						Diagnostic::new(msg, pat.1.into_range())
+					})?;
+				let outs = self.stack_slot((names.len().max(1) * 8) as u32);
+				let tplv = self.b.ins().iconst(self.int, tpl as i64);
+				let matched = self.extern_call(expand::RT_QUOTE_MATCH, &[tplv, sv, outs], Some(self.int));
+				let hit = self.b.ins().icmp_imm(IntCC::NotEqual, matched.unwrap(), 0);
+				let binds = names.into_iter().enumerate().map(|(i, name)| (name, Typ::Ast, i as i32 * 8));
+				(hit, Some(((outs, Typ::Ast), binds.collect())))
+			}
+			_ => {
+				let (pv, pt) = self.check_expr(pat, st)?;
+				if pt != *st {
+					let msg = format!("match pattern ({pt}) does not match subject ({st})");
+					return fail(msg, pat.1, "type mismatch");
+				}
+				(self.emit_eq(sv, pv, st), None)
+			}
+		})
 	}
 
 	// Write (v, t) into the shared result variable and jump to `merge`.
@@ -1310,6 +1302,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 }
+
+type ArmBinds = (TypedVal, Vec<Bind>);
 
 fn falls(arm: &MatchArm) -> bool {
 	matches!(arm.body.last(), Some((Expr::Fallthrough, _)))
