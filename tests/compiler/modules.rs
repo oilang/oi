@@ -4,11 +4,6 @@ use crate::common::Project;
 use crate::helpers::{check, fail};
 
 #[test]
-fn pub_fn_runs() {
-	check(["use core", r#"pub foo :: fn() { print("hi") } foo()"#], "hi");
-}
-
-#[test]
 fn module_decl() {
 	check(["module main", r#"print("ok")"#], "ok");
 	check(["module other", r#"print("ok")"#], "ok");
@@ -41,15 +36,6 @@ fn rt_is_internal_to_core() {
 
 const MEMSET: &str = "pub memset : fn(p: ptr, c: int, n: usize) : foreign";
 const QSORT: &str = "pub qsort : fn(base: ptr, n: usize, size: usize, cmp: fn(a: ptr, b: ptr) i32) : foreign";
-
-#[test]
-fn foreign_fn() {
-	let src = indoc! {r#"
-		abs : fn(x: i32) i32 : foreign
-		main :: fn() { print(unsafe abs(-5)) }
-	"#};
-	check(src, "5");
-}
 
 #[test]
 fn foreign_resolves_process_symbols() {
@@ -135,25 +121,13 @@ fn foreign_takes_an_oi_fn_as_a_callback() {
 			"buf: []i32 = .[3, 1, 2]",
 			"unsafe cext.qsort(buf.ptr, 3, 4, cmp)",
 			"print(buf)",
+			"inline: []i32 = .[6, 5, 4]",
+			"unsafe cext.qsort(inline.ptr, 3, 4, fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } })",
+			"print(inline)",
 		],
 		QSORT,
 	)
-	.check("[1, 2, 3]");
-}
-
-#[test]
-fn foreign_takes_an_inline_callback() {
-	Project::foreign(
-		[
-			"buf: []i32 = .[3, 1, 2]",
-			"unsafe {",
-			"cext.qsort(buf.ptr, 3, 4, fn(a: ptr, b: ptr) i32 { unsafe { a.array[i32](1)[0] - b.array[i32](1)[0] } })",
-			"}",
-			"print(buf)",
-		],
-		QSORT,
-	)
-	.check("[1, 2, 3]");
+	.check(["[1, 2, 3]", "[4, 5, 6]"]);
 }
 
 #[test]

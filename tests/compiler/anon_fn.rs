@@ -155,29 +155,21 @@ fn capture_mut_writes_visible_outside() {
 #[test]
 fn move_capture_escapes_via_return() {
 	let src = indoc! {"
+		P :: struct { x: int }
 		make :: fn() fn() int {
 			xs :: [7]
 			return fn [move xs] () int { xs[0] }
 		}
-		f :: make()
-		f()
-	"};
-	check(src, "7");
-}
-
-#[test]
-fn move_capture_of_struct_escapes_via_return() {
-	let src = indoc! {"
-		P :: struct { x: int }
 		mk :: fn(n: int) fn() int {
 			p := P.{ x = n }
 			return fn [move p] () int { p.x }
 		}
+		f :: make()
 		g :: mk(7)
 		h :: mk(8)
-		print(g(), h())
+		print(f(), g(), h())
 	"};
-	check(src, "7 8");
+	check(src, "7 7 8");
 }
 
 #[test]
@@ -192,37 +184,29 @@ fn apply_a_fn_value_that_isnt_a_name() {
 }
 
 #[test]
-fn move_capture_kills_the_name() {
-	let src = indoc! {"
-		xs :: [7]
-		f :: fn [move xs] () int { xs[0] }
-		print(xs)
-	"};
-	fail(src, "undefined variable");
-}
-
-#[test]
-fn move_capture_of_fn_param_is_borrowed() {
-	let src = indoc! {"
-		make :: fn(xs: []int) fn() int {
-			fn [move xs] () int { xs[0] }
-		}
-		make([1])
-	"};
-	fail(src, "cannot move `xs`, it is borrowed here");
-}
-
-#[test]
-fn move_capture_inside_loop_of_outer_binding() {
-	let src = indoc! {"
-		xs :: [1]
-		i := 0
-		loop i < 2 {
-			f :: fn [move xs] () int { xs[0] }
-			i = i + 1
-		}
-	"};
-	fail(src, "cannot move `xs` out of the enclosing loop");
+fn move_capture_rejections() {
+	fail(
+		["xs :: [7]", "f :: fn [move xs] () int { xs[0] }", "print(xs)"],
+		"undefined variable",
+	);
+	fail(
+		[
+			"make :: fn(xs: []int) fn() int { fn [move xs] () int { xs[0] } }",
+			"make([1])",
+		],
+		"cannot move `xs`, it is borrowed here",
+	);
+	fail(
+		[
+			"xs :: [1]",
+			"i := 0",
+			"loop i < 2 {",
+			"	f :: fn [move xs] () int { xs[0] }",
+			"	i = i + 1",
+			"}",
+		],
+		"cannot move `xs` out of the enclosing loop",
+	);
 }
 
 #[test]

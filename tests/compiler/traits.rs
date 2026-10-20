@@ -245,18 +245,7 @@ fn is_on_a_trait_object() {
 }
 
 #[test]
-fn is_expression_unknown_type() {
-	fail(
-		indoc! {"
-			Animal :: trait {}
-			print(Ghost is Animal)
-		"},
-		"",
-	);
-}
-
-#[test]
-fn rejects_bad_impls() {
+fn rejects_bad_claims() {
 	fail(
 		indoc! {r#"
 			Dog :: struct {}
@@ -280,16 +269,55 @@ fn rejects_bad_impls() {
 		"#},
 		"",
 	);
-}
-
-#[test]
-fn rejects_duplicate_trait() {
 	fail(
 		indoc! {"
 			Animal :: trait { speak :: fn(self) string }
 			Animal :: trait { bark :: fn(self) string }
 		"},
 		"",
+	);
+	fail(["Animal :: trait {}", "print(Ghost is Animal)"], "");
+	fail([ANIMAL_DOG, "Rock :: struct {}", "a : Animal : Rock.{}"], "");
+	fail(
+		indoc! {r#"
+			Animal :: trait { speak: fn(self) string }
+			Dog :: struct {}
+			Dog : Animal < { speak :: fn(self, loud: bool) string { "woof" } }
+		"#},
+		"wrong signature",
+	);
+	fail(
+		indoc! {"
+			A :: trait { f: fn(self) int }
+			B :: trait { f: fn(self) string }
+			S :: struct {}
+			S : A, B < { f :: fn(self) int { 9 } }
+		"},
+		"declares",
+	);
+	fail(
+		indoc! {"
+			A :: trait { f :: fn(self) int { 1 } }
+			B :: trait { f :: fn(self) int { 2 } }
+			S :: struct {}
+			S :< A, B
+		"},
+		"takes default `f` from both",
+	);
+	fail(
+		indoc! {"
+			S :: struct { f :: fn(self) int { 1 } }
+			S :< { f :: fn(self) int { 2 } }
+		"},
+		"duplicate fill",
+	);
+	fail(
+		indoc! {"
+			Dbl :: trait { dbl: fn(n: int) int }
+			Foo :: struct {}
+			Foo : Dbl < { nope :: { 1 } }
+		"},
+		"no trait method `nope` supplies a signature",
 	);
 }
 
@@ -308,18 +336,6 @@ fn allows_extra_helper_fills() {
 }
 
 #[test]
-fn rejects_wrong_arity_impl() {
-	fail(
-		indoc! {r#"
-			Animal :: trait { speak: fn(self) string }
-			Dog :: struct {}
-			Dog : Animal < { speak :: fn(self, loud: bool) string { "woof" } }
-		"#},
-		"wrong signature",
-	);
-}
-
-#[test]
 fn fills_satisfy_traits() {
 	let src = indoc! {"
 		A :: trait { f: fn(self) int }
@@ -335,43 +351,6 @@ fn fills_satisfy_traits() {
 		print(S.{}.f(), T.{}.f(), U.{}.f())
 	"};
 	check(src, "9 3 7");
-}
-
-#[test]
-fn rejects_shared_fill_sig_mismatch() {
-	fail(
-		indoc! {"
-			A :: trait { f: fn(self) int }
-			B :: trait { f: fn(self) string }
-			S :: struct {}
-			S : A, B < { f :: fn(self) int { 9 } }
-		"},
-		"declares",
-	);
-}
-
-#[test]
-fn rejects_conflicting_defaults() {
-	fail(
-		indoc! {"
-			A :: trait { f :: fn(self) int { 1 } }
-			B :: trait { f :: fn(self) int { 2 } }
-			S :: struct {}
-			S :< A, B
-		"},
-		"takes default `f` from both",
-	);
-}
-
-#[test]
-fn rejects_duplicate_fill() {
-	fail(
-		indoc! {"
-			S :: struct { f :: fn(self) int { 1 } }
-			S :< { f :: fn(self) int { 2 } }
-		"},
-		"duplicate fill",
-	);
 }
 
 #[test]
@@ -583,15 +562,6 @@ fn append_boxes_struct_literal_into_trait_array() {
 }
 
 #[test]
-fn rejects_non_implementing_trait_object() {
-	let src = indoc! {"
-		Rock :: struct {}
-		a : Animal : Rock.{}
-	"};
-	fail([ANIMAL_DOG, src], "");
-}
-
-#[test]
 fn fill_headers_come_from_the_trait() {
 	let src = indoc! {"
 		Dbl :: trait { dbl: fn(n: int) int }
@@ -617,16 +587,6 @@ fn branches_box_into_the_expected_trait_object() {
 		print(pick(true).area(), pick(false).area())
 	"};
 	check(src, "12 4");
-}
-
-#[test]
-fn rejects_headerless_fill_the_trait_does_not_declare() {
-	let src = indoc! {"
-		Dbl :: trait { dbl: fn(n: int) int }
-		Foo :: struct {}
-		Foo : Dbl < { nope :: { 1 } }
-	"};
-	fail(src, "no trait method `nope` supplies a signature");
 }
 
 #[test]

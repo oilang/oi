@@ -9,7 +9,7 @@ pub fn oi(args: &[&str]) -> Command {
 	cmd
 }
 
-// Ends a command chain, runs command, and returns output.
+/// Ends a command chain, runs command, and returns output.
 pub trait Run {
 	fn run(&mut self, stdin: Option<&str>) -> Output;
 }
@@ -168,12 +168,6 @@ impl Project {
 	/// Run main.oi and return the raw output.
 	pub fn run(&self) -> Output {
 		self.oi(&["run", "main.oi"])
-	}
-}
-
-impl Default for Project {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

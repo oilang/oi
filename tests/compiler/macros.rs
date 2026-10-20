@@ -28,10 +28,18 @@ fn assert_statement_form() {
 }
 
 #[test]
-fn helpers_abort() {
+fn macro_rejections() {
 	fail_rt("todo!()", "not yet implemented");
 	fail_rt("unreachable!()", "entered unreachable code");
 	fail(r#"todo!("idk")"#, "idk");
+	fail("nope!(1)", "no macro named");
+	fail("assert(true)", "write `assert!(...)`");
+	fail("q := `1 + 2`", "quotes only exist at comptime");
+	fail(
+		["twice! :: fn(x: Ast) Ast { `%x + %x` }", "twice!(1, 2)"],
+		"expects 1 argument(s), got 2",
+	);
+	fail(["bad! :: fn(x: Ast) int { 1 }", "bad!(1)"], "macros return `Ast`");
 }
 
 #[test]
@@ -39,11 +47,6 @@ fn panic_flushes_stdout_and_exits() {
 	let out = oi(&["exec"]).run(Some(r#"print("before"); panic!("boom")"#));
 	assert_eq!(out.status.code(), Some(101));
 	assert_eq!(trim(&out.stdout), "before");
-}
-
-#[test]
-fn unknown_macro_errors() {
-	fail("nope!(1)", "no macro named");
 }
 
 #[test]
@@ -65,11 +68,6 @@ fn macro_run_error_is_a_diagnostic() {
 		print(grow!(true))
 	"};
 	fail(src, "while running `grow!`");
-}
-
-#[test]
-fn bare_call_suggests_macro() {
-	fail("assert(true)", "write `assert!(...)`");
 }
 
 #[test]
@@ -105,15 +103,6 @@ fn template_macro_is_hygienic() {
 }
 
 #[test]
-fn template_macro_wrong_arity_fails() {
-	let src = indoc! {"
-		twice! :: fn(x: Ast) Ast { `%x + %x` }
-		twice!(1, 2)
-	"};
-	fail(src, "expects 1 argument(s), got 2");
-}
-
-#[test]
 fn comptime_loop_builds_ast() {
 	check(
 		indoc! {r"
@@ -145,15 +134,6 @@ fn comptime_loop_builds_ast() {
 }
 
 #[test]
-fn macro_ret_must_be_ast() {
-	let src = indoc! {"
-		bad! :: fn(x: Ast) int { 1 }
-		bad!(1)
-	"};
-	fail(src, "macros return `Ast`");
-}
-
-#[test]
 fn quotes_in_comp() {
 	check(
 		indoc! {"
@@ -177,11 +157,6 @@ fn quotes_in_comp() {
 		"},
 		"6",
 	);
-}
-
-#[test]
-fn runtime_quote_is_rejected() {
-	fail("q := `1 + 2`", "quotes only exist at comptime");
 }
 
 #[test]
@@ -357,7 +332,7 @@ fn quote_pattern_matches_and_captures() {
 }
 
 #[test]
-fn quote_pattern_matches_a_bind() {
+fn quote_holes_in_positions() {
 	check(
 		indoc! {r"
 			value! :: fn(e: Ast) Ast {
@@ -366,60 +341,20 @@ fn quote_pattern_matches_a_bind() {
 					else => e,
 				}
 			}
-			print(value!(x := 6 * 7))
-		"},
-		"42",
-	);
-}
-
-#[test]
-fn hole_names_a_param() {
-	check(
-		indoc! {r"
-			def! :: fn(name: Ast, p: Ast) Ast { `%{name} :: fn(%{p}: int) int { %{p} + 1 }` }
-			def!(inc, n)
-			print(inc(41))
-		"},
-		"42",
-	);
-}
-
-#[test]
-fn type_holes_nest_in_option_and_array() {
-	check(
-		indoc! {r"
-			def! :: fn(t: Ast) Ast { `f :: fn(x: ?%t) []%t { [x or 0] }` }
-			def!(int)
-			print(f(5))
-		"},
-		"[5]",
-	);
-}
-
-#[test]
-fn quote_literal_arrives_as_ast_arg() {
-	check(
-		indoc! {r"
-			one! :: fn(p: Ast) Ast { `f :: fn(%p) int { n * 2 }` }
-			one!(`n: int`)
-			print(f(21))
-		"},
-		"42",
-	);
-}
-
-#[test]
-fn splat_updates_param_tuple_for_dollar() {
-	check(
-		indoc! {r"
-			def! :: fn() Ast {
+			named! :: fn(name: Ast, p: Ast) Ast { `%{name} :: fn(%{p}: int) int { %{p} + 1 }` }
+			typed! :: fn(t: Ast) Ast { `f :: fn(x: ?%t) []%t { [x or 0] }` }
+			given! :: fn(p: Ast) Ast { `g :: fn(%p) int { n * 2 }` }
+			summed! :: fn() Ast {
 				ps := [`a: int`, `b: int`]
 				`sum :: fn(%{..ps}) int { $.0 + $.1 }`
 			}
-			def!()
-			print(sum(1, 2))
+			named!(inc, n)
+			typed!(int)
+			given!(`n: int`)
+			summed!()
+			print(value!(x := 6 * 7), inc(41), f(5), g(21), sum(1, 2))
 		"},
-		"3",
+		"42 42 [5] 42 3",
 	);
 }
 
@@ -552,40 +487,18 @@ fn attr_macro_wraps_a_public_module_def() {
 }
 
 #[test]
-fn gensym_names_let_a_def_macro_expand_twice() {
+fn gensym_names() {
 	check(
 		indoc! {r#"
 			m! :: fn() Ast {
 				n := gensym("t")
 				`%n :: fn() int { 7 }`
 			}
-			m!()
-			m!()
-			print(1)
-		"#},
-		"1",
-	);
-}
-
-#[test]
-fn gensym_loop_binder() {
-	check(
-		indoc! {r#"
-			m! :: fn() Ast {
+			loops! :: fn() Ast {
 				j := gensym("j")
 				`loop %j in 0..3 { print(%j) }`
 			}
-			m!()
-		"#},
-		["0", "1", "2"],
-	);
-}
-
-#[test]
-fn splice_assign() {
-	check(
-		indoc! {r#"
-			m! :: fn() Ast {
+			assign! :: fn() Ast {
 				r := gensym("r")
 				`{
 					%r := 1
@@ -595,8 +508,11 @@ fn splice_assign() {
 				}`
 			}
 			m!()
+			m!()
+			loops!()
+			assign!()
 		"#},
-		"7",
+		["0", "1", "2", "7"],
 	);
 }
 
@@ -762,16 +678,13 @@ fn macro_paths_resolve_where_defined() {
 
 #[test]
 fn module_top_level_macro_call() {
+	let mk = ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"];
 	Project::new()
 		.main(["use geo", "print(geo.answer())"])
-		.lib("geo", ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"])
+		.lib("geo", mk)
 		.check("42");
-}
-
-#[test]
-fn module_top_level_macro_call_selected() {
 	Project::new()
 		.main(["use geo.{ answer }", "print(answer())"])
-		.lib("geo", ["mk! :: fn() Ast { `pub answer :: fn() int { 42 }` }", "mk!()"])
+		.lib("geo", mk)
 		.check("42");
 }

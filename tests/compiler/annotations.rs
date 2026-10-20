@@ -51,50 +51,50 @@ fn marker_lives_outside_the_value_namespace() {
 }
 
 #[test]
-fn unknown_annotation_is_not_a_struct() {
+fn annotation_rejections() {
+	fail(["@bogus.{}", "thing :: fn() int { 1 }"], "`bogus` is not a struct");
 	fail(
-		indoc! {"
-			@bogus.{}
-			thing :: fn() int { 1 }
-		"},
-		"`bogus` is not a struct",
-	);
-}
-
-#[test]
-fn annotation_arg_must_be_literal() {
-	fail(
-		indoc! {r#"
-			deprecated :: struct { reason: string }
-			x :: "hi"
-			@deprecated.{x}
-			thing :: fn() int { 1 }
-		"#},
+		[
+			"deprecated :: struct { reason: string }",
+			r#"x :: "hi""#,
+			"@deprecated.{x}",
+			"thing :: fn() int { 1 }",
+		],
 		"annotation arguments must be literal values",
 	);
-}
-
-#[test]
-fn annotation_field_set_twice() {
 	fail(
-		indoc! {r#"
-			deprecated :: struct { reason: string }
-			@deprecated.{"a", reason = "b"}
-			thing :: fn() int { 1 }
-		"#},
+		[
+			"deprecated :: struct { reason: string }",
+			r#"@deprecated.{"a", reason = "b"}"#,
+			"thing :: fn() int { 1 }",
+		],
 		"`reason` was already set positionally",
 	);
-}
-
-#[test]
-fn annotation_only_goes_on_definitions() {
 	fail(
-		indoc! {"
-			Foo :: struct {}
-			@:awesome
-			Foo :< Eq
-		"},
+		["Foo :: struct {}", "@:awesome", "Foo :< Eq"],
 		"annotations only attach to definitions",
+	);
+	fail(
+		[
+			"Settings :: struct { idk: int = 7 }",
+			"take :: fn(settings: Settings) {}",
+			"take()",
+		],
+		"expects 1 argument",
+	);
+	fail(["@nope!", "f :: fn() int { 1 }"], "no macro named");
+	fail(
+		["@export", "greet :: fn(name: string) int { 1 }"],
+		"has no C representation",
+	);
+	fail(
+		[
+			"@export",
+			"call_with_getter_cb :: fn(cb: fn(get: fn() i32) i32) i32 { 42 }",
+			"my_cb :: fn(get: fn() i32) i32 { get() }",
+			"print(call_with_getter_cb(my_cb))",
+		],
+		"mark it with `@c`",
 	);
 }
 
@@ -156,18 +156,6 @@ fn params_omits_trailing_struct() {
 			take(.{idk = 1})
 		"},
 		["7", "7", "1"],
-	);
-}
-
-#[test]
-fn params_only_on_marked_struct() {
-	fail(
-		indoc! {"
-			Settings :: struct { idk: int = 7 }
-			take :: fn(settings: Settings) { print(settings.idk) }
-			take()
-		"},
-		"expects 1 argument",
 	);
 }
 
@@ -273,30 +261,6 @@ fn qualified_field_annotation() {
 			["module godot", "pub export :: struct { lo: int, hi: int }"],
 		)
 		.check(["0", "10"]);
-}
-
-#[test]
-fn export_rejects_non_c_repr_params() {
-	fail(
-		indoc! {r#"
-			@export
-			greet :: fn(name: string) int { 1 }
-		"#},
-		"has no C representation",
-	);
-}
-
-#[test]
-fn plain_fn_with_fn_pointer_param_needs_c_marker() {
-	fail(
-		indoc! {r#"
-			@export
-			call_with_getter_cb :: fn(cb: fn(get: fn() i32) i32) i32 { 42 }
-			my_cb :: fn(get: fn() i32) i32 { get() }
-			print(call_with_getter_cb(my_cb))
-		"#},
-		"mark it with `@c`",
-	);
 }
 
 #[test]
@@ -406,16 +370,5 @@ fn pure_fn_values() {
 	fail(
 		["k := 3", "sq := @pure fn(x: int) int { x * k }", "sq(2)"],
 		"can't capture",
-	);
-}
-
-#[test]
-fn unknown_attr_macro_errors() {
-	fail(
-		indoc! {"
-			@nope!
-			f :: fn() int { 1 }
-		"},
-		"no macro named",
 	);
 }

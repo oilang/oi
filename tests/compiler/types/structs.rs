@@ -75,9 +75,11 @@ fn in_fns() {
 			y :: 4
 			p : Point : .{ x = 2, y = 1 }
 			q : Point : .{ x, y }
-			print(sum(Point.{ x = 3, y = 4 }), sum(.{ x = 3, y = 4 }), sum(.{ x, y }), make(), p.x + p.y, q.y)
+			pts := [Point.{ 1, 2 }]
+			pts << .{ 3, 4 }
+			print(pts[1].y, sum(Point.{ x = 3, y = 4 }), sum(.{ x = 3, y = 4 }), sum(.{ x, y }), make(), p.x + p.y, q.y)
 		"},
-		"7 7 7 Point.{x = 1, y = 2} 3 4",
+		"4 7 7 7 Point.{x = 1, y = 2} 3 4",
 	);
 }
 
@@ -160,17 +162,7 @@ fn def_rejections() {
 		"recurses for ever ever",
 	);
 	fail("Wallet :: struct { cash: Money }", "unknown type `Money`");
-}
-
-#[test]
-fn append_infers_anon_literal_from_element_type() {
-	let src = indoc! {r#"
-		Point :: struct { x: int, y: int }
-		pts := [ Point.{ 1, 2 } ]
-		pts << .{ 3, 4 }
-		pts[1].y
-	"#};
-	check(src, "4");
+	fail("x : struct { a: int }", "");
 }
 
 #[test]
@@ -311,11 +303,6 @@ fn anonymous_type_positions() {
 }
 
 #[test]
-fn anonymous_type_rejected_as_middle() {
-	fail("x : struct { a: int }", "");
-}
-
-#[test]
 fn anonymous_structural_identity() {
 	let src = indoc! {"
 		A :: struct { n: struct { calories: int } }
@@ -344,28 +331,17 @@ fn anonymous_inferred_from_the_literal() {
 }
 
 #[test]
-fn nested_struct_survives_return() {
+fn nested_struct_survives_return_and_copy() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, y: int }
 		Config :: struct { origin: Point, name: string }
 		make :: fn() Config { Config.{ Point.{ 3, 4 }, "grid" } }
 		C := make()
-		print("{C.origin.y}")
-	"#};
-	check(src, "4");
-}
-
-#[test]
-fn nested_struct_field_copy_is_independent() {
-	let src = indoc! {r#"
-		Point :: struct { x: int, y: int }
-		Config :: struct { origin: Point, name: string }
-		p :: Config.{ Point.{ 3, 4 }, "grid" }
-		q := p
+		q := C
 		q.origin = Point.{ 99, 4 }
-		p.origin.x
+		print(C.origin.y, C.origin.x)
 	"#};
-	check(src, "3");
+	check(src, "4 3");
 }
 
 #[test]

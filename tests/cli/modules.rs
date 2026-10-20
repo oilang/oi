@@ -383,14 +383,6 @@ fn module_cannot_call_main_private_fn() {
 }
 
 #[test]
-fn module_fn_uses_builtins_and_prints() {
-	let p = Project::new()
-		.main(["use foo", "foo.go()"])
-		.lib("foo", ["pub go :: fn() { n: int = 3\nprint(n + 1) }"]);
-	p.check("4");
-}
-
-#[test]
 fn dir_wins_over_single_file_module() {
 	let p = Project::new()
 		.main(["use foo", "print(foo.hi())"])

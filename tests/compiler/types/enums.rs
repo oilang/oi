@@ -190,37 +190,30 @@ fn payload_eq() {
 }
 
 #[test]
-fn struct_payload() {
+fn nested_payloads() {
 	check(
 		indoc! {r#"
 			Point :: struct { x: int, y: int }
 			Shape :: enum { dot rect(Point) }
+			A :: enum { one two }
+			B :: enum { wrap(A) empty }
+			Meters :: f64
+			Dist :: enum { unknown known(Meters) }
 			s :: Shape.rect.(Point.{ x = 3, y = 4 })
 			match s {
 				.rect.(p) => print(p),
 				.dot => {}
 			}
-		"#},
-		"Point.{x = 3, y = 4}",
-	);
-}
-
-#[test]
-fn enum_payload() {
-	check(
-		indoc! {r#"
-			A :: enum { one two }
-			B :: enum { wrap(A) empty }
-			b :: B.wrap.(A.two)
-			match b {
-				.wrap.(a) => match a {
-					.one => "one",
-					.two => "two",
-				},
-				.empty => "none",
+			match B.wrap.(A.two) {
+				.wrap.(a) => print(a),
+				.empty => {}
+			}
+			match Dist.known.(5.0) {
+				.known.(m) => print(m),
+				.unknown => {}
 			}
 		"#},
-		"two",
+		["Point.{x = 3, y = 4}", "two", "5.0"],
 	);
 }
 
@@ -234,30 +227,21 @@ fn struct_form_construct_and_match() {
 				triangle(f64, f64, f64)
 				point
 			}
+			mk :: fn() Shape { .rectangle.{ width = 3.0, height = 4.0 } }
 			s :: Shape.circle.{ radius = 5.0 }
-			match s {
+			print(match s {
 				.circle.{ radius } => radius * 2.0,
 				.rectangle.{ width, height } => width * height,
 				.triangle.(a, b, c) => a + b + c,
 				.point => 0.0,
-			}
-		"#},
-		"10.0",
-	);
-}
-
-#[test]
-fn struct_form_shorthand_and_rename() {
-	check(
-		indoc! {r#"
-			Shape :: enum { circle { radius: f64 } rectangle { width: f64, height: f64 } }
-			mk :: fn() Shape { .rectangle.{ width = 3.0, height = 4.0 } }
-			match mk() {
+			})
+			print(match mk() {
 				.rectangle.{ width = w, height } => w * height,
 				else => 0.0,
-			}
+			})
+			print(Shape.point, s, Shape.triangle.(3.0, 4.0, 5.0))
 		"#},
-		"12.0",
+		["10.0", "12.0", "point circle.{radius = 5.0} triangle.(3.0, 4.0, 5.0)"],
 	);
 }
 
@@ -284,22 +268,6 @@ fn struct_form_rejections() {
 	fail(
 		["S :: enum { tri(f64, f64) }", "S.tri.{ a = 1.0 }"],
 		"takes positional fields",
-	);
-}
-
-#[test]
-fn alias_payload() {
-	check(
-		indoc! {"
-			Meters :: f64
-			Dist :: enum { unknown known(Meters) }
-			d :: Dist.known.(5.0)
-			match d {
-				.known.(m) => m,
-				.unknown => 0.0,
-			}
-		"},
-		"5.0",
 	);
 }
 
@@ -371,23 +339,6 @@ fn shorthand_coerces_through_branches() {
 			print(name(.blue), tail_if(false), tail_match(9), a, b)
 		"},
 		"blue red blue blue blue",
-	);
-}
-
-#[test]
-fn print_payloads() {
-	check(
-		indoc! {"
-			Shape :: enum {
-				point
-				circle { radius: f64 }
-				triangle(f64, f64, f64)
-			}
-			print(Shape.point)
-			print(Shape.circle.{ radius = 5.0 })
-			print(Shape.triangle.(3.0, 4.0, 5.0))
-		"},
-		["point", "circle.{radius = 5.0}", "triangle.(3.0, 4.0, 5.0)"],
 	);
 }
 
