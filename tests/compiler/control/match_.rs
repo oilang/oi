@@ -181,3 +181,14 @@ fn fallthrough() {
 	fail("match 1 { 1 => fallthrough }", "last arm");
 	fail("match (1, 2) { _ => fallthrough, (a, b) => a }", "binds names");
 }
+
+#[test]
+fn match_bind_header() {
+	let src = indoc! {"
+		count :: fn() int { 3 }
+		match n := count() { 0 => print(0), else => print(n + 1) }
+		match n := 0 { 0 => print(n), else => () }
+	"};
+	check(src, ["4", "0"]);
+	fail("match n := 2 { _ => () }\nprint(n)", "undefined variable `n`");
+}

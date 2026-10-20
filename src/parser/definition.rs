@@ -450,8 +450,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		)
 		.map_with(|(name, args), ex| (Expr::MacroCall { name, args }, ex.span()));
 
+	// header binds
+	let match_subject = header_cond.clone().map(|e| match &e.0 {
+		Expr::Bind { name, .. } => (Expr::Block(vec![e.clone(), (Expr::Ident(name.clone()), e.1)]), e.1),
+		_ => e,
+	});
 	let match_expr = just(Token::Match)
-		.ignore_then(header_expr.clone())
+		.ignore_then(match_subject)
 		.then(brace(
 			match_arm.clone().or(arm_spread).repeated().collect::<Vec<_>>().then(
 				just(Token::Else)

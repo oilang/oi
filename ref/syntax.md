@@ -1437,6 +1437,9 @@ main :: fn() {
 		else => print(os),
 	}
 
+	# header binds are in scope for every arm
+	match n := count() { 0 => print("none"), else => print(n) }
+
 	# can be used as an if-else chain
 	# evaluated in order, first match wins if multiple satisfy the condition
 
