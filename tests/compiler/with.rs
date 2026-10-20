@@ -80,3 +80,17 @@ fn glob_import() {
 	check(src, ["7", "9"]);
 	fail("with use math.{ max }", "`with` needs a module import");
 }
+
+#[test]
+fn scoped_override() {
+	let src = indoc! {"
+		Cfg :: struct { depth: int }
+		cfg := Cfg.{ 1 }
+		print(with cfg.depth = 2 { cfg.depth * 10 })
+		print(cfg.depth)
+		with cfg = Cfg.{ 7 } do print(depth)
+		with cfg.depth = 3
+		print(cfg.depth)
+	"};
+	check(src, ["20", "1", "7", "3"]);
+}

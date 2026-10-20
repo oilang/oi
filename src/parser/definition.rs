@@ -2,7 +2,7 @@ use super::{
 	P, Parsers, Rec, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned,
 	stmt, trailing_list, trailing_list1, types,
 };
-use crate::ast::{Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
+use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -506,9 +506,33 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		}
 	});
 
+	// with assignment
+	let place = header_expr.clone().filter(|e: &Spanned<Expr>| {
+		matches!(
+			e.0,
+			Expr::Ident(_) | Expr::Field { .. } | Expr::Index { .. } | Expr::Deref(_)
+		)
+	});
+	let override_ = place.then_ignore(just(Token::Assign)).then(header_expr.clone());
+	let override_ = override_.map_with(|(place, value): (Spanned<Expr>, _), ex| {
+		let (old, span) = (format!("with#{}", place.1.start), ex.span());
+		let restore = ast::assign(place.clone(), None, (Expr::Ident(old.clone()), span), span);
+		let defer = (
+			Expr::Defer {
+				body: Box::new(restore),
+				when: When::Always,
+			},
+			span,
+		);
+		let set = ast::assign(place.clone(), None, value, span);
+		let mut stmts = vec![ast::bind(&old, place.clone()), set, defer];
+		stmts.extend(matches!(place.0, Expr::Ident(_)).then(|| (Expr::With(vec![place]), span)));
+		(Expr::Block(stmts), span)
+	});
+
 	// with expressions
 	let with_expr = just(Token::With)
-		.ignore_then(list1(p.bind.clone().or(subject)))
+		.ignore_then(list1(override_.or(p.bind.clone()).or(subject)))
 		.then(p.block.clone().or_not())
 		.map_with(|(subjects, body), ex| {
 			let with = (Expr::With(subjects), ex.span());

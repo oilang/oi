@@ -2344,6 +2344,9 @@ main :: fn() {
 	# locals win, and two subjects supplying one name is an error where it's used
 	# `p.x` always works on a named subject
 
+	# `=` overrides an existing binding, and puts the old value back on every exit from the scope
+	with cfg.verbose = true { run() }
+
 	## metaprogramming
 
 	# compile-time eval with comp
@@ -2437,7 +2440,7 @@ main :: fn() {
 	trims_empty :: fn() { assert! trim("") == "" }
 
 	# TODO: the comp and reflection stuff not fleshed out yet
-	comp loop note in typeinfo(yell).annotations { ... }
+	comp loop note in type_info(yell).notes { ... }
 
 	## macros
 
@@ -2515,7 +2518,7 @@ main :: fn() {
 	# `comp` on a control form runs the header at comptime and leaves the body to runtime
 	# that is, `comp loop` is not the same as `comp { loop .. }`, which is is fully comptime
 	debug_print[T] :: fn(value: T) {
-		comp loop field in type_info(T).fields {
+		comp loop field in type_info(T).items {
 			println("{field.name} = {value.(field.name)}")
 		}
 	}

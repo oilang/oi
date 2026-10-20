@@ -245,7 +245,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn open_with(&mut self, subjects: &[Spanned<Expr>]) -> Result<TypedVal, Diagnostic> {
 		for s in subjects {
 			let (Expr::Bind { name, .. } | Expr::Ident(name)) = &s.0 else {
-				unreachable!()
+				// `with p = v`
+				let Expr::Block(stmts) = &s.0 else { unreachable!() };
+				self.block_tail(stmts, None)?;
+				continue;
 			};
 			if matches!(s.0, Expr::Bind { .. }) {
 				self.block_tail(std::slice::from_ref(s), None)?;
