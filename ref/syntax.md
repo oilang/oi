@@ -502,7 +502,7 @@ open :: fn(opts: struct { retries: int }) struct { ok: bool } {
 # static struct methods
 User :< {
 	new :: fn() Self {
-		Self {}
+		Self.{}
 	}
 }
 user :: User.new()
@@ -1039,7 +1039,7 @@ main :: fn() {
 	print("hi {who}!")
 
 	# any expression works inside braces
-	user := User { name = "alice", age = 30 }
+	user := User.{ name = "alice", age = 30 }
 	print("{user.name} is {user.age}")
 	print("sum: {2 + 2}")
 	print("upper: {who.upper()}")
@@ -1136,7 +1136,7 @@ main :: fn() {
 	typed_map.delete["three"]
 
 	# empty `[]` resolves against the expected collection type
-	empty [string]int := []
+	empty: [string]int = []
 
 	# array slices are subsets of another array
 	# used in place a slice is a free view. stored, it is an independent COW value
@@ -1367,11 +1367,11 @@ main :: fn() {
 	## types
 
 	# type aliases
-	type Score = int
-	type Speed = (Point, int)
+	Score :: int
+	Speed :: (Point, int)
 
 	# function signatures can be aliased
-	type Operation = fn (int) int
+	Operation :: fn (int) int
 	op :: fn(n: int, f: Operation) int {
 		return f(n)
 	}
@@ -1383,7 +1383,7 @@ main :: fn() {
 	# duck typing
 	print(op(4, double)) # 8
 	# anonymous function
-	print(op(4, fn (n int) int {
+	print(op(4, fn (n: int) int {
 		return 3 * n
 	})) # 12
 	# anonymous function shorthand (types inferred, input accessible via `$`)
@@ -1457,8 +1457,8 @@ main :: fn() {
 
 	# TODO: not sure whether Oi should support `$` in match or use binding
 	match user {
-		u @ User { age = 0..18 } => "minor: {u.name}",
-		User { age = 0..18 } => "minor: {$.name}",
+		u @ User.{ age = 0..18 } => "minor: {u.name}",
+		User.{ age = 0..18 } => "minor: {$.name}",
 		_ => "adult",
 	}
 
@@ -1637,8 +1637,8 @@ main :: fn() {
 	Result[int, string].err("nope") == string!int.(error("nope"))
 
 	Repo :: struct {
-		users []User
-		cached_name ?string # zero value is `none`
+		users: []User
+		cached_name: ?string # zero value is `none`
 	}
 
 	Repo :< {
@@ -1957,7 +1957,7 @@ main :: fn() {
 	# sum types are interchangeable
 	# NOTE: except for containers like []Id and []Handle
 	Handle :: string | int
-	h Handle := blank
+	h: Handle = blank
 
 	# member order is defined by each type, which determines zero values
 	new: Id
@@ -1994,8 +1994,8 @@ main :: fn() {
 	## errors
 
 	# built-in Error trait
-	trait Error {
-		message :: fn(self) string
+	Error :: trait {
+		message :: fn(self) string { self.str() }
 		cause :: fn(self) ?Error { none }
 	}
 
@@ -2370,15 +2370,15 @@ main :: fn() {
 	}
 
 	# params in `[]` are comptime types/values
-	first[T] :: fn(xs []T) ?T {
-		if xs.len == 0 { none } else { Some(xs[0]) }
+	first[T] :: fn(xs: []T) ?T {
+		if xs.len == 0 { none } else { xs[0] }
 	}
 	# a value param names the type it holds, and callers pass it positionally
 	repeat[T, N: int] :: fn(x: T) [N]T { ... }
 	Matrix[R: int, C: int] :: struct { cells: [R][C]float }
 	threes := repeat[int, 3](0)
 	# generics can have trait guards
-	max[T Ord] :: fn(a: T, b: T) T {
+	max[T: Ord] :: fn(a: T, b: T) T {
 		if a > b { a } else { b }
 	}
 
