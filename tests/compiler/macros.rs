@@ -639,12 +639,13 @@ fn unquote_in_method_position() {
 			S :< { get :: fn(self) int { self.n } }
 			call! :: fn(x: Ast, m: Ast) Ast { `%x.%m()` }
 			braced! :: fn(x: Ast, m: Ast) Ast { `%x.%{m}()` }
+			field! :: fn(x: Ast, f: Ast) Ast { `%x.%{f.name}` }
 			main :: fn() {
 				s := S.{n = 4}
-				print(call!(s, get), braced!(s, get))
+				print(call!(s, get), braced!(s, get), field!(s, n))
 			}
 		"},
-		"4 4",
+		"4 4 4",
 	);
 }
 

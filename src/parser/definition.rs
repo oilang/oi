@@ -14,6 +14,7 @@ use chumsky::{
 enum Dot {
 	Fields(Vec<String>),
 	Method(String, Vec<Spanned<TypeExpr>>, Vec<Spanned<Expr>>),
+	Hole(Box<Spanned<Expr>>),
 }
 
 // `with` opens a bound name over the body.
@@ -591,6 +592,11 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),
 				None => Dot::Fields(vec![name]),
 			}),
+		// `%{expr}` as a field name
+		p.unquote.clone().try_map(|(e, span), _| match e {
+			Expr::UnquoteExpr(inner) => Ok(Dot::Hole(inner)),
+			_ => Err(Rich::custom(span, "expected a field name")),
+		}),
 	))
 	.boxed();
 
@@ -618,6 +624,16 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 						ex.span(),
 					)
 				}),
+				Dot::Hole(binder) => {
+					let field = (
+						Expr::Field {
+							tuple: Box::new(lhs),
+							field: "%".into(),
+						},
+						ex.span(),
+					);
+					(Expr::UnquoteBind(binder, Box::new(field)), ex.span())
+				}
 				Dot::Method(method, type_args, args) => (
 					Expr::MethodCall {
 						recv: Box::new(lhs),
