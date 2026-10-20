@@ -219,3 +219,15 @@ fn macros_and_comp_share_one_stage0() {
 	"};
 	check(src, ["42", "42", "20"]);
 }
+
+#[test]
+fn comp_loop_unrolls() {
+	let src = indoc! {r#"
+		Point :: struct { x: int, y: string }
+		show :: fn(p: Point) {
+			comp loop field in type_info(Point).items { print("{field.name} = {p.(field.name)}") }
+		}
+		show(Point.{ 3, "hi" })
+	"#};
+	check(src, ["x = 3", "y = hi"]);
+}

@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, Expr, Span, Spanned};
+use crate::ast::{Annotation, Child, Expr, Span, Spanned};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
@@ -83,6 +83,27 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			}
 		});
 	}
+}
+
+// Unquote every path rooted at `var`.
+fn unquote(e: &mut Spanned<Expr>, var: &str) {
+	fn rooted(e: &Expr, var: &str) -> bool {
+		match e {
+			Expr::Ident(n) => n == var,
+			Expr::Field { tuple: r, .. } | Expr::MethodCall { recv: r, .. } | Expr::Index { collection: r, .. } => {
+				rooted(&r.0, var)
+			}
+			_ => false,
+		}
+	}
+	if rooted(&e.0, var) {
+		e.0 = Expr::UnquoteExpr(Box::new(e.clone()));
+		return;
+	}
+	e.0.for_children(|c| match c {
+		Child::List(list) => list.iter_mut().for_each(|e| unquote(e, var)),
+		Child::One(e) => unquote(e, var),
+	});
 }
 
 fn has_comp(e: &mut Expr) -> bool {
@@ -172,6 +193,13 @@ fn fold(
 		return Ok(super::expand::one(arm, span).0);
 	}
 	let span = inner.1;
+	// comp loop
+	if let Expr::For { pat, body, .. } = &mut inner.0
+		&& let Expr::Ident(var) = &pat.0
+	{
+		body.iter_mut().for_each(|e| unquote(e, var));
+		*body = vec![(Expr::Quote(std::mem::take(body)), span)];
+	}
 	// every needs its own name
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (

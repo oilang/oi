@@ -2507,6 +2507,8 @@ main :: fn() {
 	cols!(Point) # PointCols :: struct { x: []int, y: []int }
 
 	# reflection in `comp`
+	# `comp` on a control form runs the header at comptime and leaves the body to runtime
+	# that is, `comp loop` is not the same as `comp { loop .. }`, which is is fully comptime
 	debug_print[T] :: fn(value: T) {
 		comp loop field in type_info(T).fields {
 			println("{field.name} = {value.(field.name)}")

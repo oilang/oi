@@ -301,6 +301,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Cast { target, args } => {
+				if let (TypeExpr::Name(local), [(Expr::Ident(field), _)]) = (&target.0, &args[..])
+					&& self.vars.contains_key(local)
+				{
+					let (tuple, field) = (Box::new((Expr::Ident(local.clone()), target.1)), field.clone());
+					return self.lower(&(Expr::Field { tuple, field }, expr.1), hint);
+				}
 				if let TypeExpr::Name(path) = &target.0
 					&& let Some((name, variant)) = self.variant_path(path, target.1)
 				{
