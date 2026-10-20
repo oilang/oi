@@ -1,12 +1,11 @@
 use super::{
-	P, Parsers, Rec, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned, stmt,
-	trailing_list, trailing_list1, types,
+	P, Parsers, Rec, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned,
+	stmt, trailing_list, trailing_list1, types,
 };
 use crate::ast::{Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
-	input::ValueInput,
 	pratt::{infix, left, postfix, prefix, right},
 	prelude::*,
 };
@@ -74,15 +73,12 @@ fn or_else((value, body): (Spanned<Expr>, Option<Vec<Spanned<Expr>>>), span: Spa
 }
 
 // The core expr/atom/pratt grammar.
-pub(super) fn definition<'token, I>(
+pub(super) fn definition<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
 	mut header_expr: Rec<'token, I, Spanned<Expr>>,
 	mut header_cond: Rec<'token, I, Spanned<Expr>>,
 	mut juxt_expr: Rec<'token, I, Spanned<Expr>>,
-) -> P<'token, I, Spanned<Expr>>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) -> P<'token, I, Spanned<Expr>> {
 	let dot = || just(Token::Dot).or(just(Token::SpaceDot));
 
 	let literal = select! {

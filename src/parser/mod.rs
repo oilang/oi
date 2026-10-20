@@ -9,117 +9,72 @@ mod item;
 mod stmt;
 mod types;
 
+type Err<'t> = extra::Err<Rich<'t, Token>>;
 // Every parser passed across a fn boundary in here wears this shape.
-pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, extra::Err<Rich<'t, Token>>>;
+pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, Err<'t>>;
 // A Recursive handle passed across a fn boundary so it can be defined there.
-pub(super) type Rec<'t, I, O> = Recursive<Indirect<'t, 't, I, O, extra::Err<Rich<'t, Token>>>>;
+pub(super) type Rec<'t, I, O> = Recursive<Indirect<'t, 't, I, O, Err<'t>>>;
 
-fn ident<'token, I>() -> impl Parser<'token, I, String, extra::Err<Rich<'token, Token>>> + Copy
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+// trait aliases, so the token and error bounds are spelled once
+pub(super) trait Tokens<'t>: ValueInput<'t, Token = Token, Span = SimpleSpan> {}
+impl<'t, I: ValueInput<'t, Token = Token, Span = SimpleSpan>> Tokens<'t> for I {}
+pub(super) trait Rule<'t, I: Tokens<'t>, O>: Parser<'t, I, O, Err<'t>> + Clone {}
+impl<'t, I: Tokens<'t>, O, T: Parser<'t, I, O, Err<'t>> + Clone> Rule<'t, I, O> for T {}
+
+fn ident<'token, I: Tokens<'token>>() -> impl Rule<'token, I, String> + Copy {
 	select! { Token::Ident(name) => name }
 }
 
-fn paren<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
+fn paren<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, O> {
 	p.delimited_by(just(Token::LParen), just(Token::RParen))
 }
 
-fn brace<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
+fn brace<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, O> {
 	p.delimited_by(just(Token::LBrace), just(Token::RBrace))
 }
 
-fn bracket<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
+fn bracket<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, O> {
 	p.delimited_by(just(Token::LBracket), just(Token::RBracket))
 }
 
-fn list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
-	p.separated_by(just(Token::Comma)).collect::<Vec<_>>()
+fn list<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
+	p.separated_by(just(Token::Comma)).collect()
 }
 
-fn loose_list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
-	p.separated_by(just(Token::Comma).or_not()).allow_trailing().collect::<Vec<_>>()
+fn list1<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
+	p.separated_by(just(Token::Comma)).at_least(1).collect()
 }
 
-fn list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
-	p.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>()
+fn trailing_list<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
+	p.separated_by(just(Token::Comma)).allow_trailing().collect()
 }
 
-fn trailing_list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
-	p.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
+fn trailing_list1<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
+	p.separated_by(just(Token::Comma)).allow_trailing().at_least(1).collect()
 }
 
-fn trailing_list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
-	p.separated_by(just(Token::Comma))
-		.allow_trailing()
-		.at_least(1)
-		.collect::<Vec<_>>()
+fn loose_list<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
+	p.separated_by(just(Token::Comma).or_not()).allow_trailing().collect()
 }
 
-fn loose_list1<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
+fn loose_list1<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	p.separated_by(just(Token::Comma).or_not())
 		.allow_trailing()
 		.at_least(1)
-		.collect::<Vec<_>>()
+		.collect()
 }
 
-fn spanned<'token, I, O, P>(p: P) -> impl Parser<'token, I, Spanned<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-	P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-{
+fn spanned<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Spanned<O>> {
 	p.map_with(|o, ex| (o, ex.span()))
 }
 
 // Whether a binder pair like `:=`/`::` is mutable.
-fn binder<'token, I>(pair: [Token; 2]) -> impl Parser<'token, I, bool, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+fn binder<'token, I: Tokens<'token>>(pair: [Token; 2]) -> impl Rule<'token, I, bool> {
 	one_of(pair).map(|t| matches!(t, Token::Bind | Token::Assign))
 }
 
 // The parsers the grammars borrow from each other.
-pub(super) struct Parsers<'token, I>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+pub(super) struct Parsers<'token, I: Tokens<'token>> {
 	pub(super) access: P<'token, I, Access>,
 	pub(super) def_name: P<'token, I, String>,
 	pub(super) dotted_name: P<'token, I, String>,
@@ -246,10 +201,7 @@ fn fn_def(
 	)
 }
 
-pub fn parser<'src, 'token, I>(
-	src: &'src str,
-	origin: usize,
-) -> impl Parser<'token, I, Vec<Spanned<Expr>>, extra::Err<Rich<'token, Token>>>
+pub fn parser<'src, 'token, I>(src: &'src str, origin: usize) -> impl Parser<'token, I, Vec<Spanned<Expr>>, Err<'token>>
 where
 	'src: 'token,
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,

@@ -1,8 +1,8 @@
-use super::{P, brace, bracket, ident, list1, loose_list, loose_list1, paren, spanned};
+use super::{P, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, spanned};
 use crate::ast::{Access, Expr, Param, Spanned, TypeExpr};
 use crate::lexer::Token;
 
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
 // Construct a Result.
 pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
@@ -11,10 +11,7 @@ pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
 }
 
 // Generic type params.
-pub(super) fn type_args<'token, I>(te: P<'token, I, TypeExpr>) -> P<'token, I, Vec<Spanned<TypeExpr>>>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+pub(super) fn type_args<'token, I: Tokens<'token>>(te: P<'token, I, TypeExpr>) -> P<'token, I, Vec<Spanned<TypeExpr>>> {
 	bracket(list1(spanned(select! { Token::Int(n) => TypeExpr::Const(n) }.or(te)))).boxed()
 }
 
@@ -24,7 +21,7 @@ pub(super) fn settled(args: &[Spanned<TypeExpr>]) -> bool {
 }
 
 // The type-expression grammar, boxed so its types stop at this fn boundary.
-pub(super) fn type_expr<'token, I>(
+pub(super) fn type_expr<'token, I: Tokens<'token>>(
 	dotted_name: P<'token, I, String>,
 	access: P<'token, I, Access>,
 	same_line: P<'token, I, ()>,
@@ -32,10 +29,7 @@ pub(super) fn type_expr<'token, I>(
 	unquote: P<'token, I, Spanned<Expr>>,
 	anon_fields: P<'token, I, Vec<Param>>,
 	expr: P<'token, I, Spanned<Expr>>,
-) -> P<'token, I, TypeExpr>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) -> P<'token, I, TypeExpr> {
 	recursive(|te| {
 		let base = recursive(|base| {
 			let name = dotted_name.clone().map(TypeExpr::Name);

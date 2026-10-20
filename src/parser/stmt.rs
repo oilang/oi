@@ -1,14 +1,11 @@
-use super::{P, Parsers, Rec, binder, brace, bracket, ident, loose_list, paren, spanned};
+use super::{P, Parsers, Rec, Tokens, binder, brace, bracket, ident, loose_list, paren, spanned};
 use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
 use crate::lexer::Token;
 
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
 // The destructuring patterns.
-pub(super) fn patterns<'token, I>() -> P<'token, I, Spanned<Expr>>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+pub(super) fn patterns<'token, I: Tokens<'token>>() -> P<'token, I, Spanned<Expr>> {
 	// pattern bindings
 	let pat_name = spanned(ident()).map(|(n, s)| (Expr::Ident(n), s));
 
@@ -53,14 +50,11 @@ where
 }
 
 // The binding grammar.
-pub(super) fn binds<'token, I>(
+pub(super) fn binds<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
 	value: P<'token, I, Spanned<Expr>>,
 	pat: P<'token, I, Spanned<Expr>>,
-) -> (P<'token, I, Spanned<Expr>>, P<'token, I, Spanned<Expr>>)
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) -> (P<'token, I, Spanned<Expr>>, P<'token, I, Spanned<Expr>>) {
 	let bind_name = just(Token::Percent)
 		.then_ignore(p.adjacent.clone())
 		.ignore_then(
@@ -127,14 +121,12 @@ where
 }
 
 // The statement grammar.
-pub(super) fn stmt<'token, I>(
+pub(super) fn stmt<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
 	mut stmt: Rec<'token, I, Spanned<Expr>>,
 	mut place: Rec<'token, I, Spanned<Expr>>,
 	mut bind: Rec<'token, I, Spanned<Expr>>,
-) where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) {
 	// compound assignment
 	let assign_op = choice((
 		just(Token::PlusEq).to(Some(BinOp::Add)),

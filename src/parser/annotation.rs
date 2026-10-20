@@ -1,8 +1,8 @@
-use super::{P, brace, ident, loose_list, paren, spanned};
+use super::{P, Tokens, brace, ident, loose_list, paren, spanned};
 use crate::ast::{Expr, Spanned};
 use crate::lexer::Token;
 
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
 enum AnnTail {
 	Fields(Vec<(Option<String>, Spanned<Expr>)>),
@@ -10,14 +10,11 @@ enum AnnTail {
 }
 
 // The `@annotation` grammar.
-pub(super) fn annotation<'token, I>(
+pub(super) fn annotation<'token, I: Tokens<'token>>(
 	expr: P<'token, I, Spanned<Expr>>,
 	dotted_name: P<'token, I, String>,
 	adjacent: P<'token, I, ()>,
-) -> P<'token, I, Spanned<Expr>>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) -> P<'token, I, Spanned<Expr>> {
 	let ann_entry = ident().then_ignore(just(Token::Assign)).or_not().then(expr.clone());
 	let ann_tag = spanned(select! { Token::Atom(name) => Expr::Atom(name) });
 

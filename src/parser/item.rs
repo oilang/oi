@@ -1,33 +1,25 @@
 use super::{
-	Member, P, Parsers, Rec, brace, bracket, fn_def, ident, list, list1, loose_list, named_ret, paren, spanned,
-	split_members, trailing_list, trailing_list1,
+	Member, P, Parsers, Rec, Rule, Tokens, brace, bracket, fn_def, ident, list, list1, loose_list, named_ret, paren,
+	spanned, split_members, trailing_list, trailing_list1,
 };
 use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem, Vis};
 use crate::lexer::Token;
 
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
 // A `{}` body of doc-carrying members.
-fn doc_body<'token, I, O>(
-	member: impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
-) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+fn doc_body<'token, I: Tokens<'token>, O>(member: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	let docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 	brace(loose_list(docs.clone().ignore_then(member)).then_ignore(docs))
 }
 
 // The item definition grammar.
-pub(super) fn item<'token, I>(
+pub(super) fn item<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
 	mut item: Rec<'token, I, Spanned<Expr>>,
 	mut attr_macro: Rec<'token, I, Spanned<Expr>>,
 	mut anon_fields: Rec<'token, I, Vec<Param>>,
-) -> P<'token, I, Vec<Spanned<Expr>>>
-where
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
-{
+) -> P<'token, I, Vec<Spanned<Expr>>> {
 	let name_head = p.def_name.clone().then(p.type_params.clone());
 	let item_head = name_head.clone().then_ignore(just(Token::DoubleColon));
 	let vis = just(Token::Pub)
