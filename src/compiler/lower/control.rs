@@ -372,9 +372,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					let outs = self.stack_slot((names.len().max(1) * 8) as u32);
 					let sv = self.b.use_var(sv_var);
 					let tplv = self.b.ins().iconst(self.int, tpl as i64);
-					let func = self.import_fn(expand::RT_QUOTE_MATCH, &[self.int; 3], Some(self.int));
-					let call = self.b.ins().call(func, &[tplv, sv, outs]);
-					let matched = self.b.inst_results(call)[0];
+					let matched = self.extern_call(expand::RT_QUOTE_MATCH, &[tplv, sv, outs], Some(self.int));
+					let matched = matched.unwrap();
 					quote_binds = Some((outs, names));
 					self.b.ins().icmp_imm(IntCC::NotEqual, matched, 0)
 				} else {

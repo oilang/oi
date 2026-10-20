@@ -58,8 +58,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.module.declarations().get_name(&sym).is_none() {
 			self.out.printers.push((sym.clone(), typ.clone(), quote, sink));
 		}
-		let callee = self.import_fn(&sym, &[cl_type(typ, self.int)], None);
-		self.b.ins().call(callee, &[val]);
+		self.extern_call(&sym, &[val], None);
 	}
 
 	// Dispatch on the typeid over every type coerced into `any`.

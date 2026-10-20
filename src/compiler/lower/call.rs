@@ -104,6 +104,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.module.declare_func_in_func(id, self.b.func)
 	}
 
+	// Call an imported host fn.
+	pub(super) fn extern_call(&mut self, name: &str, args: &[Value], ret: Option<types::Type>) -> Option<Value> {
+		let params: Vec<_> = args.iter().map(|v| self.b.func.dfg.value_type(*v)).collect();
+		let func = self.import_fn(name, &params, ret);
+		let call = self.b.ins().call(func, args);
+		ret.map(|_| self.b.inst_results(call)[0])
+	}
+
 	// Call a `core/rt` runtime fn.
 	pub(super) fn rt_call(&mut self, name: &str, args: &[Value]) -> Option<Value> {
 		let key = format!("rt::oi_{name}");

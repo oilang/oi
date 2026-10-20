@@ -89,11 +89,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.emit_val_eq(a, b, &inner, owner, span);
 		}
 		match t {
-			Typ::Any => {
-				let callee = self.import_fn(&oi_symbol("eq_any"), &[self.int; 2], Some(types::I8));
-				let call = self.b.ins().call(callee, &[a, b]);
-				Ok(self.b.inst_results(call)[0])
-			}
+			Typ::Any => Ok(self.extern_call(&oi_symbol("eq_any"), &[a, b], Some(types::I8)).unwrap()),
 			t if let Some(slots) = eq_slots(t) => self.slots_eq(a, b, 0, &slots, &t.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
 			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
@@ -798,30 +794,25 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// result defaults to the short-circuit value
 		let result = self.b.declare_var(self.int);
-		let short = self.b.ins().iconst(self.int, if and { 0 } else { 1 });
-		self.b.def_var(result, short);
-
-		let rhs_block = self.b.create_block();
-		let merge = self.b.create_block();
-		let (then, els) = if and { (rhs_block, merge) } else { (merge, rhs_block) };
-		self.b.ins().brif(lv, then, &[], els, &[]);
-
-		self.b.switch_to_block(rhs_block);
-		self.b.seal_block(rhs_block);
-		// scoped, so a temp the rhs allocates is released here
-		let (rv, rt) = self.block_expr(std::slice::from_ref(r), r.1)?;
-		if rt != Typ::Bool {
-			return fail(
-				format!("expected Bool, got {rt}"),
-				r.1,
-				"logical operators need Bool operands",
-			);
-		}
-		self.b.def_var(result, rv);
-		self.b.ins().jump(merge, &[]);
-
-		self.b.switch_to_block(merge);
-		self.b.seal_block(merge);
+		self.b.def_var(result, lv);
+		let go = if and {
+			lv
+		} else {
+			self.b.ins().icmp_imm(IntCC::Equal, lv, 0)
+		};
+		self.when(go, |s| {
+			// scoped, so a temp allocated by the rhs gets released here
+			let (rv, rt) = s.block_expr(std::slice::from_ref(r), r.1)?;
+			if rt != Typ::Bool {
+				return fail(
+					format!("expected Bool, got {rt}"),
+					r.1,
+					"logical operators need Bool operands",
+				);
+			}
+			s.b.def_var(result, rv);
+			Ok(())
+		})?;
 		Ok((self.b.use_var(result), Typ::Bool))
 	}
 }

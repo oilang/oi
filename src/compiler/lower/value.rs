@@ -267,16 +267,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			let v = self.coerce_lit(value, &some)?;
 			return Ok(v.map(|v| self.make_option(target, Some(v))));
 		}
-		if let Some((ok, err)) = self.types.result_parts(target)
-			&& let Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant) = inner
-		{
-			let has = |t: &Typ| matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant));
-			let Some((disc, side)) = [ok, err].into_iter().enumerate().find(|(_, t)| has(t)) else {
+		if let Some((ok, err)) = self.types.result_parts(target) {
+			let has = |t: &Typ| match inner {
+				Expr::EnumShorthand { variant, .. } | Expr::Atom(variant) | Expr::Ident(variant) => {
+					matches!(t, Typ::Enum(n) if self.enum_variants(n).iter().any(|v| v.name == *variant))
+				}
+				// other literals fill the ok side
+				_ => *t == ok,
+			};
+			let Some((disc, side)) = [ok.clone(), err].into_iter().enumerate().find(|(_, t)| has(t)) else {
 				return Ok(None);
 			};
 			let variants = self.variants_of(target);
-			let v = self.coerce_lit(value, &side)?;
-			return Ok(v.map(|v| self.make_enum(&variants, disc as i64, &[v])));
+			let Some(v) = self.coerce_lit(value, &side)? else {
+				return Ok(None);
+			};
+			let v = self.make_enum(&variants, disc as i64, &[v]);
+			self.temp(v, target);
+			return Ok(Some(v));
 		}
 		let sign = if neg { -1 } else { 1 };
 		let int;

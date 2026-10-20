@@ -1111,29 +1111,4 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => return None,
 		})
 	}
-
-	pub(super) fn result_init(
-		&mut self,
-		ok_typ: Typ,
-		err_typ: Typ,
-		arg: &Spanned<Expr>,
-	) -> Result<TypedVal, Diagnostic> {
-		let typ = self.types.core_enum(role::RESULT, &[ok_typ.clone(), err_typ.clone()]);
-		let variants = self.variants_of(&typ);
-		let (fv, at) = self.check_expr(arg, &ok_typ)?;
-		let disc = if at == ok_typ {
-			0
-		} else if at == err_typ {
-			1
-		} else {
-			return fail(
-				format!("expected {ok_typ} or {err_typ}, got {at}"),
-				arg.1,
-				"type mismatch",
-			);
-		};
-		let val = self.make_enum(&variants, disc, &[fv]);
-		self.temp(val, &typ);
-		Ok((val, typ))
-	}
 }

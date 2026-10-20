@@ -47,18 +47,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let len = self.b.ins().iconst(self.int, ptrs.len() as i64);
 		let idxv = self.b.ins().iconst(self.int, tpl as i64);
-		let func = self.import_fn(expand::RT_QUOTE, &[self.int; 3], Some(self.int));
-		let call = self.b.ins().call(func, &[idxv, slot, len]);
-		Ok((self.b.inst_results(call)[0], Typ::Ast))
+		let ast = self.extern_call(expand::RT_QUOTE, &[idxv, slot, len], Some(self.int));
+		Ok((ast.unwrap(), Typ::Ast))
 	}
 
 	// Call rt_ast_method on an Ast.
 	pub(super) fn ast_method(&mut self, ast: Value, m: &str, arg: Option<Value>) -> Value {
 		let m = self.str_const(m);
 		let arg = arg.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
-		let func = self.import_fn(expand::RT_AST_METHOD, &[self.int; 3], Some(self.int));
-		let call = self.b.ins().call(func, &[ast, m, arg]);
-		self.b.inst_results(call)[0]
+		self.extern_call(expand::RT_AST_METHOD, &[ast, m, arg], Some(self.int)).unwrap()
 	}
 
 	// Lift an unquoted value into a Ast literal pointer, ready to splice into a template.
@@ -78,9 +75,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		};
 		let tagv = self.b.ins().iconst(self.int, tag);
-		let func = self.import_fn(expand::RT_AST_LIT, &[self.int; 2], Some(self.int));
-		let call = self.b.ins().call(func, &[tagv, bits]);
-		Ok(self.b.inst_results(call)[0])
+		Ok(self.extern_call(expand::RT_AST_LIT, &[tagv, bits], Some(self.int)).unwrap())
 	}
 
 	// Abort via the specified `rt`, passing the context it routes `ctx.panic` from, then trap.
@@ -88,8 +83,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.comptime {
 			let [assert, at, end] = [(rt == "assert_fail") as usize, span.start, span.end];
 			let [assert, at, end] = [assert, at, end].map(|n| self.b.ins().iconst(self.int, n as i64));
-			let func = self.import_fn(comp::RT_COMP_PANIC, &[self.int; 4], None);
-			self.b.ins().call(func, &[assert, msg, at, end]);
+			self.extern_call(comp::RT_COMP_PANIC, &[assert, msg, at, end], None);
 		} else {
 			let (at, _) = self.src_lit(span)?;
 			let ctx = self.ctx_value(crate::compiler::CONTEXT);

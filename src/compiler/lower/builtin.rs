@@ -172,8 +172,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				let name = self.str_const(name);
 				let nfields = self.b.ins().iconst(self.int, fields.len() as i64);
-				let func = self.import_fn(comp::RT_COMP_STRUCT, &[self.int; 2], None);
-				self.b.ins().call(func, &[name, nfields]);
+				self.extern_call(comp::RT_COMP_STRUCT, &[name, nfields], None);
 				return Ok(());
 			}
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => {
@@ -200,8 +199,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		};
 		let tag_v = self.b.ins().iconst(self.int, tag);
-		let func = self.import_fn(comp::RT_COMP_YIELD, &[self.int, self.int], None);
-		self.b.ins().call(func, &[tag_v, bits]);
+		self.extern_call(comp::RT_COMP_YIELD, &[tag_v, bits], None);
 		Ok(())
 	}
 
@@ -230,9 +228,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
-		}
-		if let Some((ok, err)) = self.types.result_parts(target) {
-			return self.result_init(ok, err, value);
 		}
 		let (val, typ) = self.check_expr(value, target)?;
 		if typ == *target {
