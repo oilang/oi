@@ -206,10 +206,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Tuple(_) => {
-				let zs: Vec<_> = typ.slots().unwrap_or_default().iter().map(|t| self.zero_slot(t)).collect();
-				let ptr = self.stack_slot((zs.len() * 8) as u32);
-				self.store_slots(ptr, &zs);
-				ptr
+				let slots = typ.slots().unwrap_or_default();
+				let zeros: Vec<_> = slots.iter().map(|slot| self.zero_slot(slot)).collect();
+				self.frame_slots(&zeros)
 			}
 			Typ::Array(_) => {
 				let z = self.b.ins().iconst(self.int, 0);
@@ -885,9 +884,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let [v] = vals[..] {
 			return Ok((v, typ));
 		}
-		let ptr = self.stack_slot((vals.len() * 8) as u32);
-		self.store_slots(ptr, &vals);
-		Ok((ptr, typ))
+		Ok((self.frame_slots(&vals), typ))
 	}
 
 	// An expr checked against an expected type.

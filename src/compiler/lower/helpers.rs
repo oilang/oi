@@ -174,6 +174,13 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
+	// A fresh frame block holding the given values.
+	pub(super) fn frame_slots(&mut self, vals: &[Value]) -> Value {
+		let ptr = self.stack_slot(vals.len() as u32 * 8);
+		self.store_slots(ptr, vals);
+		ptr
+	}
+
 	// A fresh heap block holding the given values.
 	pub(super) fn heap_slots(&mut self, vals: &[Value]) -> Value {
 		let ptr = self.call_alloc(vals.len());

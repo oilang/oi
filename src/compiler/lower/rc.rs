@@ -462,9 +462,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A frame block laid out like an rc'd one, with an immortal count.
 	pub(super) fn lent_block(&mut self, head: &[Value], vals: &[Value]) -> Value {
 		let words = head.len() as i64 + 1;
-		let base = self.stack_slot(((words as usize + vals.len()) * 8) as u32);
 		let rc = self.b.ins().iconst(self.int, runtime::IMMORTAL);
-		self.store_slots(base, &[head, &[rc], vals].concat());
+		let base = self.frame_slots(&[head, &[rc], vals].concat());
 		self.b.ins().iadd_imm(base, words * 8)
 	}
 

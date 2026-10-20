@@ -38,12 +38,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			ptrs.push(ptr);
 		}
-		let slot = if ptrs.is_empty() {
-			self.b.ins().iconst(self.int, 0)
-		} else {
-			let slot = self.stack_slot((ptrs.len() * 8) as u32);
-			self.store_slots(slot, &ptrs);
-			slot
+		let slot = match ptrs.is_empty() {
+			true => self.b.ins().iconst(self.int, 0),
+			false => self.frame_slots(&ptrs),
 		};
 		let len = self.b.ins().iconst(self.int, ptrs.len() as i64);
 		let idxv = self.b.ins().iconst(self.int, tpl as i64);

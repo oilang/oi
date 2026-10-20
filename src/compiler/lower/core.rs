@@ -417,17 +417,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if locals.is_empty() {
 			self.unit_value()
 		} else {
-			let ptr = self.stack_slot((locals.len() * 8) as u32);
-			let fields = locals
-				.iter()
-				.enumerate()
-				.map(|(i, local)| {
-					let val = self.read_local(local);
-					self.st(ptr, (i * 8) as i32, val);
-					(None, local.typ.clone())
-				})
-				.collect();
-			(ptr, Typ::Tuple(fields))
+			let vals: Vec<_> = locals.iter().map(|local| self.read_local(local)).collect();
+			let fields = locals.iter().map(|local| (None, local.typ.clone())).collect();
+			(self.frame_slots(&vals), Typ::Tuple(fields))
 		};
 		self.dollar = Some(value);
 	}

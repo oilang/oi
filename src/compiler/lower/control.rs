@@ -1167,12 +1167,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (data, elem) = &src;
 			let (mut item, mut typ) = (s.load_nth(*data, iv, elem), elem.clone());
 			if let Some((vdata, vt)) = &vals {
-				let (vv, tup) = (s.load_nth(*vdata, iv, vt), s.stack_slot(16));
-				for (i, (v, t)) in [(item, elem), (vv, vt)].into_iter().enumerate() {
-					let v = s.copy_in(v, t);
-					s.st(tup, (i * 8) as i32, v);
-				}
-				(item, typ) = (tup, Typ::Tuple(vec![(None, typ), (None, vt.clone())]));
+				let (key, val) = (s.copy_in(item, elem), s.load_nth(*vdata, iv, vt));
+				let val = s.copy_in(val, vt);
+				typ = Typ::Tuple(vec![(None, typ), (None, vt.clone())]);
+				item = s.frame_slots(&[key, val]);
 				s.temp(item, &typ);
 			}
 			let n = s.scopes.last().map_or(0, Vec::len);
