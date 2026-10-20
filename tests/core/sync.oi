@@ -99,6 +99,17 @@ test! "select" {
 	assert! got == 1 && late == 7
 }
 
+test! "select arms break the caller's loop" {
+	ch := sync.Chan[int].{ cap = 1 }
+	ch <- 5 or ()
+	n := 0
+	loop _ in 0..3 {
+		sync.select! { m := <-ch => { n = m or 0; break }, else => () }
+	}
+	r := loop sync.select! { m := <-ch => break 1, else => break 2 }
+	assert! n == 5 && r == 2
+}
+
 test! "group poll keeps order" {
 	g := sync.Group[int].{}
 	g.add(sync.spawn! { time.sleep(5.ms()); 1 })

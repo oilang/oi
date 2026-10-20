@@ -954,7 +954,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
 	let asts = |es: &mut dyn Iterator<Item = &Spanned<Expr>>| list(es.map(|e| leak(e.clone()) as i64).collect());
 	let m = unsafe { runtime::str_bytes(m) };
-	let (notes, _, (subject, _)) = Expr::peel_meta(unsafe { &*a });
+	let (notes, _, (subject, span)) = Expr::peel_meta(unsafe { &*a });
 	match (m, subject) {
 		(b"notes", _) => asts(&mut notes.iter()),
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
@@ -1009,7 +1009,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		(b"items", Expr::Bind { value: Some(v), .. }) => asts(&mut std::iter::once(&**v)),
 		(b"items", Expr::Arm(arm)) => list(vec![
 			leak(arm.patterns[0].clone()) as i64,
-			ast(Expr::Block(arm.body.clone())),
+			leak((Expr::Block(arm.body.clone()), *span)) as i64,
 		]),
 		(b"items", Expr::EnumDef { variants, .. }) => {
 			list(variants.iter().map(|v| ast(Expr::Ident(v.name.clone()))).collect())

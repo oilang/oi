@@ -255,15 +255,19 @@ pub select! :: fn(arms: Ast) Ast {
 	tries: []Ast
 	wait: []Ast
 	idle: []Ast
+	runs: []Ast
+	fallback := `unreachable!()`
 
 	loop a in arms.items {
 		[ lhs body ] := a.items
 		if lhs == "else" {
-			idle << `break :select %body`
+			idle << `break :poll -1`
+			fallback = body
 			continue
 		}
 
 		w := gensym("w")
+		got := gensym("got")
 		(x e) := match lhs {
 			`%n := %v` => (n v)
 			else => (gensym("x") lhs)
@@ -278,22 +282,30 @@ pub select! :: fn(arms: Ast) Ast {
 			`<-%c` => `%w := %c`
 			else => `%w := &%e`
 		}
-		tries << `%{tries.len} => { %x := %ready or continue; break :select %body }`
+		pre << `%got: ?type(%ready or unreachable!()) = none`
+		# bodies run after the poll loop so their break/continue reach the caller's scope
+		runs << `%{tries.len} => { %x := %got or unreachable!(); %body }`
+		tries << `%{tries.len} => { %got = %ready or continue; break :poll %{tries.len} }`
 		wait << `%w.watch(%sig)`
 	}
 
 	wait << `%sig.sleep()`
 	n := tries.len
+	pick := gensym("pick")
 
-	`:select {
+	`{
 		%{..pre}
+
 		%sig := sync.Signal.{}
 		k := int.(ctx.rand.proc(ctx.rand.data) % u64.(%n))
-		loop {
+
+		%pick := loop :poll {
 			loop j in 0..%n {
 				match (k + j) % %n { %{..tries} else => () }
 			}
 			%{..if idle.len > 0 { idle } else { wait }}
 		}
+
+		match %pick { %{..runs} else => %fallback }
 	}`
 }
