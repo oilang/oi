@@ -247,3 +247,16 @@ fn comp_folds_per_generic_instance() {
 	"#};
 	check(src, ["x = 3", "on = true"]);
 }
+
+#[test]
+fn comp_loop_unquotes_a_struct() {
+	let src = indoc! {r#"
+		Pt :: struct { x: int }
+		Box :: struct { at: Pt, tag: string }
+		f :: fn(a: int) {
+			comp loop b in [Box.{ Pt.{ 1 }, "one" } Box.{ Pt.{ 2 }, "two" }] { print(b.at.x + a, b.tag, b.at) }
+		}
+		f(10)
+	"#};
+	check(src, ["11 one Pt.{x = 1}", "12 two Pt.{x = 2}"]);
+}

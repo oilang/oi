@@ -63,6 +63,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Bool => (comp::TAG_BOOL, val),
 			Typ::Str => (comp::TAG_STR, val),
 			Typ::Float(_) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
+
+			Typ::Struct(name, fields) => {
+				let local = format!("$lift{}", self.vars.len());
+				self.hidden_local(local.clone(), val, typ.clone());
+				let field = |f: &FieldDef| {
+					(
+						Some(f.name.clone()),
+						(Expr::UnquoteExpr(Box::new(place(&local, Some(&f.name), span))), span),
+					)
+				};
+				let lit = Expr::StructLit {
+					name: name.clone(),
+					type_args: vec![],
+					fields: fields.iter().map(field).collect(),
+				};
+				return Ok(self.quote(&[(lit, span)], span)?.0);
+			}
+
 			other => {
 				return fail(
 					format!("can't unquote a `{other}` yet"),
@@ -71,6 +89,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		};
+
 		let tagv = self.b.ins().iconst(self.int, tag);
 		Ok(self.extern_call(expand::RT_AST_LIT, &[tagv, bits], Some(self.int)).unwrap())
 	}
