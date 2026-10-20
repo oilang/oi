@@ -4,12 +4,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, Child, Expr, Span, Spanned};
+use crate::ast::{Annotation, Child, Expr, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
 
-use super::{Compiler, role};
+use super::{Compiler, Typ, role, type_expr};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
@@ -59,7 +59,7 @@ pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHead
 // Find the first unevaluated comp site.
 fn first_comp(items: &mut [Spanned<Expr>]) -> Option<Spanned<Expr>> {
 	let mut found = None;
-	for (e, _) in items.iter_mut() {
+	for (e, _) in items.iter_mut().filter(|(e, _)| !generic(e)) {
 		e.walk(&mut |x| {
 			if found.is_none()
 				&& let Expr::Comp(inner) = x
@@ -74,7 +74,7 @@ fn first_comp(items: &mut [Spanned<Expr>]) -> Option<Spanned<Expr>> {
 // Swap comp site for its folded literal.
 fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 	let mut lit = Some(lit);
-	for (e, _) in items.iter_mut() {
+	for (e, _) in items.iter_mut().filter(|(e, _)| !generic(e)) {
 		e.walk(&mut |x| {
 			if matches!(x, Expr::Comp(_))
 				&& let Some(lit) = lit.take()
@@ -83,6 +83,33 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			}
 		});
 	}
+}
+
+// Whether an expression has type params.
+fn generic(e: &Expr) -> bool {
+	matches!(e, Expr::Fn { type_params, .. } if !type_params.is_empty())
+}
+
+pub(crate) fn instantiate(
+	body: &mut [Spanned<Expr>],
+	subst: &HashMap<String, Typ>,
+	target: &str,
+	consts: &HashMap<String, Spanned<Expr>>,
+	program: &Program,
+	stage0: &mut Option<Compiler>,
+) -> Result<(), Diagnostic> {
+	while let Some(mut inner) = first_comp(body) {
+		inner.0.walk(&mut |e| {
+			if let Expr::Ident(n) = e
+				&& let Some(TypeExpr::Name(to)) = subst.get(n).and_then(type_expr)
+			{
+				*n = to;
+			}
+		});
+		let lit = fold(inner, target, consts, program, stage0)?;
+		patch_first(body, lit);
+	}
+	Ok(())
 }
 
 // Unquote every path rooted at `var`.
@@ -175,7 +202,7 @@ fn fold(
 	mut inner: Spanned<Expr>,
 	target: &str,
 	consts: &HashMap<String, Spanned<Expr>>,
-	program: &mut Program,
+	program: &Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<Expr, Diagnostic> {
 	// conditional compilation

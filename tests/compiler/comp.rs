@@ -231,3 +231,19 @@ fn comp_loop_unrolls() {
 	"#};
 	check(src, ["x = 3", "y = hi"]);
 }
+
+#[test]
+fn comp_folds_per_generic_instance() {
+	let src = indoc! {r#"
+		debug_print[T] :: fn(value: T) {
+			comp loop field in type_info(T).items {
+				print("{field.name} = {value.(field.name)}")
+			}
+		}
+		Point :: struct { x: int }
+		Pair :: struct { on: bool }
+		debug_print(Point.{ 3 })
+		debug_print(Pair.{ true })
+	"#};
+	check(src, ["x = 3", "on = true"]);
+}

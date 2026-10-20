@@ -1849,14 +1849,18 @@ impl<M: Module> Compiler<M> {
 				let sym = self.symbol(&item.key).0;
 				self.lower_fn(&sym, sig, (&item.params, &item.ret), def, &funcs, types)?;
 			}
-			let Some((sym, def, subst)) = self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
+			let Some((sym, mut def, subst)) = self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
 			else {
 				if self.out.wanted.is_empty() {
 					break;
 				}
 				continue;
 			};
-			let home = scopes[if def.module.is_empty() { "main" } else { &def.module }].at(def.span);
+			let module = if def.module.is_empty() { "main" } else { &def.module };
+			if !self.stage0 {
+				comp::instantiate(&mut def.body, &subst, module, &self.consts, &program, &mut stage0)?;
+			}
+			let home = scopes[module].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();
 			let fn_def = FnDef {
