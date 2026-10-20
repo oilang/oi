@@ -131,7 +131,7 @@ divmod :: fn(a: int, b: int) out: (int, int) {
 Cleanup that runs when a scope exits, in reverse order.
 
 ```odin
-f := os.create("out.log")!
+f := os.create("out.log")?
 defer f.close()
 
 defer or {
@@ -142,7 +142,7 @@ defer or {
 # first-class tests
 
 Functions marked as tests are treated specially.
-The are not compiled unless ran with `oi test`.
+They are not compiled unless run with `oi test`.
 
 ```odin
 test! "division" {

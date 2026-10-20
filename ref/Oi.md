@@ -29,7 +29,7 @@ tags: []
 - opt-in mutable `rust v`
 - pipes `Nushell revo`
 	- error-specific pipes (revo uses `|>~` though I won't) `revo`
-- `:atoms`/keywoards `clojure janet elixir revo`
+- `:atoms`/keywords `clojure janet elixir revo`
 - optional types (`?`) `v zig`
 - result types (`!`) `v`
 - structs `c v go rust`
@@ -45,7 +45,7 @@ tags: []
 - compound types `rust`
 - `discard`/`pass` `nim gdscript`
 - macros `rust revo`
-- ~~multiple returns `v go lua`~~ (replaced by destuctured named results)
+- ~~multiple returns `v go lua`~~ (replaced by destructured named results)
 - enum literals `zig v`
 - doc comments `zig v rust`
 - namespaced variables/functions`clojure revo`
@@ -59,7 +59,7 @@ tags: []
 - nu-like arrays and stuff `[1 2 3 4]` `nu`
 - unusual or arbitrary number precision `zig`
 - many things are tuples
-- documantation tests `rust`
+- documentation tests `rust`
 - first-class
 	- `assert` `rust v zig`
 	- `@test` `rust odin`

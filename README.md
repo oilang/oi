@@ -28,10 +28,9 @@ just build
 just test
 
 # generate rustdocs
-just doc
+just docs
 
-# runs fmt, lint, and test together, which is the combo I run most often
-# (and for now is the default when you run just `just`)
+# build, fmt, test, and lint together, the combo I run most
 just check
 
 # preview the website (req: `zola`)

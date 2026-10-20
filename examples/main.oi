@@ -18,7 +18,7 @@
 ##
 ## Called by Oi if present.
 main :: fn() {
-	## primatives
+	## primitives
 
 	bull := true
 	str : string

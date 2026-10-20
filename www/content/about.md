@@ -76,7 +76,6 @@ assert(result == "spying on pipes")
 
 ## sane defaults
 
-- ~~immutable by default~~ (irrelevant now)
 - everything has zero values
 - private default
 - error handling is required
