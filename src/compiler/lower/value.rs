@@ -1425,11 +1425,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let init = if given.get(i) == Some(&true) {
 				self.b.ins().iconst(self.int, 0)
 			} else if let Some(default_expr) = &f.default {
-				// resolve defaults in the file that wrote them
 				let types = self.types;
-				let home = (self.world.module_scopes.values().flat_map(|s| &s.files))
-					.find(|(r, _)| r.contains(&default_expr.1.start));
-				self.types = home.map_or(types, |(_, s)| types.with_scope(s));
+				self.types = self.types_at(default_expr.1);
 				let val = self.check_typed(default_expr, &f.typ, "not a valid default for this field");
 				self.types = types;
 				self.copy_in(val?, &f.typ)

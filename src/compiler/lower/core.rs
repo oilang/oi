@@ -9,6 +9,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.world.module_scopes[if module.is_empty() { "main" } else { module }].at(def.span)
 	}
 
+	pub(super) fn types_at(&self, span: Span) -> TypeCtx<'a> {
+		let mut files = self.world.module_scopes.values().flat_map(|module| &module.files);
+		let home = files.find(|(range, _)| range.contains(&span.start));
+		home.map_or(self.types, |(_, scope)| self.types.with_scope(scope))
+	}
+
 	// Qualify a bare top-level name against the module's own items.
 	pub(super) fn qualify<'n>(&'n self, name: &'n str) -> Cow<'n, str> {
 		match self.types.scope.env.get(name) {

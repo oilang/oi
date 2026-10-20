@@ -239,10 +239,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.zip(self.types.generics.instance_args(&w.key()).unwrap_or_default())
 				.collect();
 			for ((te, _), (arg, span)) in p.bound_args.iter().zip(args) {
-				let home =
-					(self.world.module_scopes.values().flat_map(|s| &s.files)).find(|(r, _)| r.contains(&span.start));
-				let types = self.types.with_type_params(&own);
-				let typ = home.map_or(types, |(_, s)| types.with_scope(s)).resolve(arg, *span)?;
+				let typ = self.types_at(*span).with_type_params(&own).resolve(arg, *span)?;
 				infer.bind(te, &typ, *span)?;
 			}
 		}
