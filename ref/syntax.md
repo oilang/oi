@@ -193,7 +193,6 @@ twople :: fn(x: int, y: int) {
 ## Although Oi looks like V and in turn Go, and Go has a named return feature itself (which V interestingly did not copy),
 ## I really attribute this more to Nim's implicit `result`:
 ## - https://nim-by-example.github.io/variables/result/
-## -
 ## Nim's `result` is great, but I don't like that it's magic.
 ## So I opted to make you opt-in by naming it explicitly.
 
@@ -212,6 +211,13 @@ random_user :: fn() u: User {
 }
 ru :: random_user()
 assert!(ru.name == "I Dunno")
+
+# this really just skips the step of explicitly initializing a zeroed var
+divmod :: fn(a: int, b: int) out: (int, int) {
+	out.0 = a / b
+	out.1 = a % b
+	return
+}
 
 # default values
 three :: fn() r := 2 {
@@ -234,13 +240,6 @@ assert! step(1) == 2
 win :: fn(title: string, x := 0, y := 0, w := 854, h := 480) string { "{title} {w}x{h}" }
 assert! win("hi", h = 360) == "hi 854x360"
 
-# this really just skips the step of explicitly initializing a zeroed var
-divmod :: fn(a: int, b: int) out: (int, int) {
-	out.0 = a / b
-	out.1 = a % b
-	return
-}
-
 # varargs
 
 sum :: fn(xs: ..int) int { xs.fold(0, +) }
@@ -257,16 +256,14 @@ log(:info, "pre", ..parts, "post")
 
 ## pure functions
 
-# `@pure` is a compiler-verified contract for deterministic functions with no side effects.
-# A @pure fn may not perform IO, read/write globals or module-level state, or call non-pure functions.
-# @pure implies non-capturing (no enclosing locals), so [] is redundant alongside it.
-# Can be applied to both named and anonymous functions.
+# `@pure` is a compiler-verified contract for deterministic functions with no side effects
+# a @pure fn may not perform IO, touch globals or module-level state, or call non-pure fns
 
 @pure
 add :: fn(x: int, y: int) int { x + y }
 
 @pure
-clamp :: (value: f64, low: f64, high: f64) f64 {
+clamp :: fn(value: f64, low: f64, high: f64) f64 {
 	match true {
 		value < low => low,
 		value > high => high,
@@ -282,7 +279,7 @@ sum_of_squares :: fn(a: int, b: int) int {
 
 # anon @pure
 # useful when passing to a higher-order fn that requires a purity guarantee
-# (or for theoretically possible optimization from the theoreticl compiler)
+# (or for theoretically possible optimization from the theoretical compiler)
 result :: data.map(@pure fn (x: int) int { x * x })
 
 ## leading literals
@@ -617,7 +614,7 @@ Scale :: struct { f: int }
 Scale : Mul < {
 	mul :: fn(self, other: int) Self { Self.{ self.f * other } }
 }
-assert!(Scale.{3} * 2 == 2 * Scale.{3}) # "+/* are commutative
+assert!(Scale.{3} * 2 == 2 * Scale.{3}) # + and * are commutative
 
 ## traits
 
@@ -897,7 +894,7 @@ main :: fn() {
 	mute := "mutable"
 	mute = "trololololol"
 
-	# muliple assignment
+	# multiple assignment
 	(foo, bar) :: ("food", "bard")
 	(lat long) :: get_coords()
 
@@ -914,7 +911,7 @@ main :: fn() {
 	# `_` skips
 	(one, _) :: (1, 2)
 
-	## primatives
+	## primitives
 
 	bull :: true
 	str :: "string"
@@ -939,7 +936,7 @@ main :: fn() {
 
 	# numbers
 
-	# number litarals are `int` (`i64`) and `float` (`f64`) unless otherwise indicated
+	# number literals are `int` (`i64`) and `float` (`f64`) unless otherwise indicated
 	i := 55 # int AKA i64
 	f := 55.55 # float AKA f64
 	e_notation_float := 10e2 # 1000.0
@@ -1035,7 +1032,7 @@ main :: fn() {
 	assert!("hello"[2..] == "llo")
 
 	# concatenation
-	assert!("foo" + "bar", "foobar")
+	assert! "foo" + "bar" == "foobar"
 
 	# string interpolation
 	who := "mom"
@@ -1084,7 +1081,7 @@ main :: fn() {
 	assert!(names[1] == "jacob")
 	i := 1
 	assert!(names[i] == names[1])
-	# numbers literals may also be used with dot notation
+	# number literals may also be used with dot notation
 	assert!(names.0 == "john")
 	assert!(names.2 == "jingleheimerschmidt")
 
@@ -1303,7 +1300,7 @@ main :: fn() {
 	state := :loading
 	state = :ready
 
-	# on a later pass, despite nothing at the callsites changing, adding this enum definition would add strong typing and copiler checking
+	# on a later pass, adding the enum turns on strong typing and compiler checks
 	# STYLE: if an enum exists, prefer `.foo`
 	State :: enum { loading ready error }
 
@@ -1724,7 +1721,7 @@ main :: fn() {
 		return .timeout
 	}
 
-	# `$` in the `or` block is the return from the called fn, which by definition means it will always be the specified error type
+	# `$` in the `or` block is always the pinned error type
 	res := fetch(url) or {
 		if $ == NetError.timeout { return retry(url) }
 		panic!("refused")
@@ -1788,7 +1785,6 @@ main :: fn() {
 		message :: fn(self) string { self.msg }
 		cause :: fn(self) ?Error { self.inner }
 	}
-
 
 	## enums
 
@@ -1865,12 +1861,6 @@ main :: fn() {
 
 	# methods
 
-	Color :: enum {
-		red
-		green
-		blue
-	}
-
 	Color :< {
 		hex :: fn(self) string {
 			match self {
@@ -1913,12 +1903,12 @@ main :: fn() {
 		three
 	}
 
-	// create enum from value
+	# create enum from value
 	print(Cycle.from(10) or { Cycle.three })
 	print(Cycle.from("two")?)
 	print(Cycle.from(:three) or .one)
 
-	// convert an enum value to a string
+	# convert an enum value to a string
 	print(Cycle.one.str())
 
 	# the newlines are optional
@@ -2038,7 +2028,7 @@ main :: fn() {
 
 	#{
 		Oi has only one way to make a function, which is a fn literal.
-		`name :: func` is a named fucntion, a fill in a type body is a method.
+		`name :: func` is a named function, a fill in a type body is a method.
 		The syntax scales from tiny closures to fully typed, explicitly captured functions.
 		```
 		fn [captures]? (params)? ret? { body }
@@ -2064,7 +2054,7 @@ main :: fn() {
 	scale := fn (x: int) int { x * n }
 
 	# non-capturing
-	# NOTE: This does not mean pure. See [pure functions](#pure-functions)).
+	# NOTE: This does not mean pure. See [pure functions](#pure-functions).
 	mul := fn [] (x: int, y: int) int { x * y }
 	nums.map(fn [] { $ * 2 })
 
@@ -2206,10 +2196,10 @@ main :: fn() {
 	"result-aware" |> upper?
 	result := input |> trim |> upper |> save?
 
-	# Each step gets the piped value as `$`.
-	# A bare fn (ex: `trim`) is ran with the input as the first param (`trim` == `trim($)`).
-	# Any other expression (a call using `$`, an `if`, a block) # is evaluated in place with `$` bound.
-	# This lets us do clojure-like threading.
+	# each step gets the piped value as `$`
+	# a bare fn like `trim` runs with the input as its first param (`trim` == `trim($)`)
+	# any other expression (a call using `$`, an `if`, a block) is evaluated in place with `$` bound
+	# thus we have clojure-like threading
 	"threading"
 		|> wrap("[", $, "]")
 		or log_errors("foo", $)
@@ -2259,8 +2249,7 @@ main :: fn() {
 	maybe |> double # error: `double` takes `int`, not `?int`
 	maybe? |> double or 0
 
-	# you can specify params
-	# to a name when nesting to avoid ambiguity
+	# you can name the param when nesting to avoid ambiguity
 	"foo" |> fn (outer) {
 		outer |> fn (inner) {
 			log.debug("inner: {inner}, outer: {outer}")
@@ -2587,7 +2576,6 @@ hash :: fn(x: int) int { x * 31 }
 on_tick :: fn(dt: f32) { ctx.thread }
 
 ## core
-
 
 # these are plain fns, interpolation happens in the lexer
 print(value) # stdout, with newline
