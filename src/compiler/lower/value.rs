@@ -302,12 +302,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Expr::Int(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
 				let n = n * sign;
 				let fits = match target {
-					Typ::Int(w) => (int_min(*w)..=int_max(*w)).contains(&n),
 					Typ::UInt(64) => !neg || n >= 0,
-					Typ::UInt(w) => (0..=uint_max(*w)).contains(&n),
 					Typ::USize => n >= 0,
 					Typ::Rune => u32::try_from(n).ok().and_then(char::from_u32).is_some(),
-					_ => true,
+					_ => target.int_bounds().is_none_or(|(lo, hi)| (lo..=hi).contains(&n)),
 				};
 				if !fits {
 					return Err(oob(n));

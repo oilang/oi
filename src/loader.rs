@@ -11,7 +11,7 @@ use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis};
-use crate::compiler::{int_max, int_min, uint_max};
+use crate::compiler::{builtin, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -195,23 +195,6 @@ pub(crate) fn is_literal(e: &Expr) -> bool {
 	}
 }
 
-// min/max of a builtin int type, by name.
-fn numeric_bound(name: &str, hi: bool) -> Option<i64> {
-	let width = match name {
-		"int" | "isize" | "uint" | "usize" => 64,
-		_ => name.strip_prefix(['i', 'u'])?.parse::<u16>().ok()?,
-	};
-	if width == 0 || width > 64 {
-		return None;
-	}
-	Some(match (name.starts_with('u'), hi) {
-		(true, true) => uint_max(width),
-		(true, false) => 0,
-		(false, true) => int_max(width),
-		(false, false) => int_min(width),
-	})
-}
-
 // Fold a const initializer down to a literal, so simple arithmetic doesn't need `comp`.
 pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) -> Option<Expr> {
 	let fold = |e: &Spanned<Expr>| fold_const(&e.0, consts, scope);
@@ -227,8 +210,10 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 		},
 		Expr::Ident(n) => fold_const(&consts.get(&scope.qualify_name(n))?.0, consts, scope)?,
 		Expr::Field { tuple, field } => match (&tuple.0, field.as_str()) {
-			(Expr::Ident(n), "min") => Expr::Int(numeric_bound(n, false)?),
-			(Expr::Ident(n), "max") => Expr::Int(numeric_bound(n, true)?),
+			(Expr::Ident(name), bound @ ("min" | "max")) => {
+				let (lo, hi) = builtin(name).or_else(|| sized(name, Span::default())?.ok())?.int_bounds()?;
+				Expr::Int(if bound == "max" { hi } else { lo })
+			}
 			_ => return None,
 		},
 		Expr::Binary(op, a, b) => match (fold(a)?, fold(b)?) {

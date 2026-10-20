@@ -72,16 +72,11 @@ pub(super) fn apply_backing(
 			return fail(msg, span, "duplicate raw value");
 		}
 	} else {
-		let (lo, hi) = match &bt {
-			Typ::Int(w) => (int_min(*w), int_max(*w)),
-			Typ::ISize => (i64::MIN, i64::MAX),
-			Typ::UInt(w) if *w < 64 => (0, uint_max(*w)),
-			Typ::UInt(_) | Typ::USize => (0, i64::MAX),
-			t => {
-				let msg = format!("enum backing type `{t}` is unsupported");
-				return fail(msg, span, "not an enum-able type");
-			}
+		let Some((lo, hi)) = bt.int_bounds() else {
+			let msg = format!("enum backing type `{bt}` is unsupported");
+			return fail(msg, span, "not an enum-able type");
 		};
+		let hi = if hi < lo { i64::MAX } else { hi };
 		if let Some(v) = variants.iter().find(|v| v.disc < lo || v.disc > hi) {
 			let msg = format!("discriminant `{}` is out of range for its backing type", v.disc);
 			return fail(msg, span, "out of range");
@@ -199,7 +194,7 @@ impl<'a> TypeCtx<'a> {
 }
 
 // The fixed-name builtin types.
-fn builtin(name: &str) -> Option<Typ> {
+pub(crate) fn builtin(name: &str) -> Option<Typ> {
 	Some(match name {
 		"int" => Typ::Int(64),
 		"uint" => Typ::UInt(64),
@@ -221,7 +216,7 @@ fn builtin(name: &str) -> Option<Typ> {
 }
 
 // A sized numeric type.
-fn sized(name: &str, span: Span) -> Option<Result<Typ, Diagnostic>> {
+pub(crate) fn sized(name: &str, span: Span) -> Option<Result<Typ, Diagnostic>> {
 	let width: u16 = name.get(1..)?.parse().ok()?;
 	let kind = name.as_bytes()[0];
 	Some(match kind {

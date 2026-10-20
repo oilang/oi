@@ -191,6 +191,17 @@ impl Typ {
 		}
 	}
 
+	// Bounds of an int type, as i64 bits.
+	pub fn int_bounds(&self) -> Option<(i64, i64)> {
+		match self {
+			Typ::Int(width) => Some((int_min(*width), int_max(*width))),
+			Typ::UInt(width) => Some((0, uint_max(*width))),
+			Typ::ISize => Some((int_min(64), int_max(64))),
+			Typ::USize => Some((0, uint_max(64))),
+			_ => None,
+		}
+	}
+
 	pub fn is_enumish(&self) -> bool {
 		matches!(self, Typ::Enum(_) | Typ::Sum(..) | Typ::Any)
 	}

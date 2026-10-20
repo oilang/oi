@@ -1071,12 +1071,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			"min" => false,
 			_ => return None,
 		};
+		if let Some((min, max)) = t.int_bounds() {
+			return Some(self.b.ins().iconst(cl_type(t, self.int), if hi { max } else { min }));
+		}
 		let ins = self.b.ins();
 		Some(match t {
-			Typ::Int(w) => ins.iconst(cl_int_for_width(*w), if hi { int_max(*w) } else { int_min(*w) }),
-			Typ::UInt(w) => ins.iconst(cl_int_for_width(*w), if hi { uint_max(*w) } else { 0 }),
-			Typ::ISize => ins.iconst(self.int, if hi { int_max(64) } else { int_min(64) }),
-			Typ::USize => ins.iconst(self.int, if hi { uint_max(64) } else { 0 }),
 			Typ::Float(64) => ins.f64const(if hi { f64::MAX } else { f64::MIN }),
 			Typ::Float(32) => ins.f32const(if hi { f32::MAX } else { f32::MIN }),
 			Typ::Float(16) => ins.f16const(Ieee16::with_bits(if hi { 0x7bff } else { 0xfbff })),

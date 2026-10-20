@@ -30,7 +30,7 @@ mod typ;
 
 use expand::expand;
 use lower::Translator;
-use lower::value::{define_data, define_once, define_ptr_data};
+use lower::value::{define_data, define_once, define_ptr_data, define_str};
 pub(crate) use resolve::*;
 pub(crate) use traits::*;
 pub(crate) use typ::*;
@@ -950,8 +950,7 @@ impl<M: Module> Compiler<M> {
 		let m = &mut self.module;
 		let bytes = match lit {
 			Expr::String(s) => {
-				let b = define_data(m, &format!("{sym}_bytes"), [s.as_bytes(), &[0]].concat());
-				let hdr = define_ptr_data(m, &format!("{sym}_hdr"), b, &(s.len() as i64).to_le_bytes());
+				let hdr = define_str(m, &format!("{sym}_bytes"), s);
 				return define_ptr_data(m, sym, hdr, &[]);
 			}
 			Expr::Float(v) if matches!(want, Typ::Float(32)) => (f32::to_bits(*v as f32) as i64).to_le_bytes(),

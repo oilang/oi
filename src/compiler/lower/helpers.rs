@@ -1,5 +1,4 @@
 use super::*;
-pub(super) use crate::compiler::{int_max, int_min, uint_max};
 
 // Create field Binds from idents.
 pub(super) fn field_binds<'a>(
