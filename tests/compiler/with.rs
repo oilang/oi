@@ -91,6 +91,10 @@ fn scoped_override() {
 		with cfg = Cfg.{ 7 } do print(depth)
 		with cfg.depth = 3
 		print(cfg.depth)
+		Outer :: struct { cfg: Cfg }
+		outer := Outer.{ Cfg.{ 4 } }
+		with outer.cfg = Cfg.{ 5 } do print(depth)
+		print(outer.cfg.depth)
 	"};
-	check(src, ["20", "1", "7", "3"]);
+	check(src, ["20", "1", "7", "3", "5", "4"]);
 }

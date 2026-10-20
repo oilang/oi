@@ -497,7 +497,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 		.boxed();
 
-	let subject = header_expr.clone().map(|e| match e.0 {
+	let opened = |e: Spanned<Expr>| match e.0 {
 		Expr::Ident(_) => e,
 		_ => {
 			let (name, value) = (format!("with#{}", e.1.start), Some(Box::new(e.clone())));
@@ -509,7 +509,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			};
 			(bind, e.1)
 		}
-	});
+	};
+	let subject = header_expr.clone().map(opened);
 
 	// with assignment
 	let place = header_expr.clone().filter(|e: &Spanned<Expr>| {
@@ -519,8 +520,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		)
 	});
 	let override_ = place.then_ignore(just(Token::Assign)).then(header_expr.clone());
-	let override_ = override_.map_with(|(place, value): (Spanned<Expr>, _), ex| {
-		let (old, span) = (format!("with#{}", place.1.start), ex.span());
+	let override_ = override_.map_with(move |(place, value): (Spanned<Expr>, _), ex| {
+		let (old, span) = (format!("was#{}", place.1.start), ex.span());
 		let restore = ast::assign(place.clone(), None, (Expr::Ident(old.clone()), span), span);
 		let defer = (
 			Expr::Defer {
@@ -530,8 +531,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			span,
 		);
 		let set = ast::assign(place.clone(), None, value, span);
-		let mut stmts = vec![ast::bind(&old, place.clone()), set, defer];
-		stmts.extend(matches!(place.0, Expr::Ident(_)).then(|| (Expr::With(vec![place]), span)));
+		let with = (Expr::With(vec![opened(place.clone())]), span);
+		let stmts = vec![ast::bind(&old, place), set, defer, with];
 		(Expr::Block(stmts), span)
 	});
 
