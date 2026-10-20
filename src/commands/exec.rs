@@ -1,5 +1,5 @@
 use oi::Reported;
-use oi::driver::{DebugOpts, run_snippet};
+use oi::driver::{DebugOpts, fail, run_snippet};
 
 /// Compile and run source from the argument, or from stdin when the arg is absent or `-`.
 pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
@@ -7,10 +7,7 @@ pub fn run(source: Option<String>, opts: DebugOpts) -> Result<(), Reported> {
 		Some(arg) => ("<exec>", arg),
 		None => (
 			"<stdin>",
-			std::io::read_to_string(std::io::stdin()).map_err(|e| {
-				eprintln!("oi: cannot read stdin: {e}");
-				Reported
-			})?,
+			std::io::read_to_string(std::io::stdin()).map_err(|e| fail(format!("cannot read stdin: {e}")))?,
 		),
 	};
 	run_snippet(name, src, opts)

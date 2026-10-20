@@ -7,7 +7,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use chumsky::{input::Stream, prelude::*};
-use include_dir::{Dir, include_dir};
+use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis};
@@ -27,21 +27,18 @@ pub fn core_source(module: &str) -> Option<&'static str> {
 	file?.contents_utf8()
 }
 
+fn core_file(file: &File) -> (String, String) {
+	let src = file.contents_utf8().unwrap_or_default();
+	(format!("core/{}", file.path().display()), src.into())
+}
+
 fn core_files(dir: &Dir) -> Vec<(String, String)> {
 	let mut files: Vec<_> = dir
 		.files()
 		.filter(|f| f.path().extension().is_some_and(|x| x == "oi"))
 		.collect();
 	files.sort_by_key(|f| f.path());
-	files
-		.into_iter()
-		.map(|f| {
-			(
-				format!("core/{}", f.path().display()),
-				f.contents_utf8().unwrap_or_default().to_string(),
-			)
-		})
-		.collect()
+	files.into_iter().map(core_file).collect()
 }
 
 // A parsed module.
@@ -270,7 +267,7 @@ fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) ->
 
 type ConstFill<'a> = (&'a String, &'a Option<Spanned<TypeExpr>>, &'a Spanned<Expr>);
 
-// Fill an associated const fill.
+// Fill an associated const.
 fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
 	match e {
 		Expr::Pub(_, b) => const_fill(&b.0),
@@ -313,10 +310,8 @@ fn is_const_value(e: &Expr) -> bool {
 
 /// Read a source file, reporting failure.
 pub fn read_src(path: &Path) -> Result<(String, String), Reported> {
-	let src = fs::read_to_string(path).map_err(|e| {
-		eprintln!("oi: cannot read {}: {e}", path.display());
-		Reported
-	})?;
+	let src =
+		fs::read_to_string(path).map_err(|e| crate::driver::fail(format!("cannot read {}: {e}", path.display())))?;
 	Ok((path.display().to_string(), src))
 }
 
@@ -342,6 +337,7 @@ pub fn parse_file(src: &str, base: usize, raw: &HashSet<String>) -> Result<Vec<S
 		.map_err(|errs| errs.iter().map(Diagnostic::from_rich).collect())
 }
 
+#[derive(Default)]
 struct Loader {
 	// entry dir first, then `OI_PATH`
 	roots: Vec<PathBuf>,
@@ -867,10 +863,7 @@ impl Loader {
 		if files.is_empty() {
 			files = match (CORE.get_dir(dir), CORE.get_file(&file)) {
 				(Some(d), _) => core_files(d),
-				(_, Some(f)) => vec![(
-					format!("core/{file}"),
-					f.contents_utf8().unwrap_or_default().to_string(),
-				)],
+				(_, Some(f)) => vec![core_file(f)],
 				_ => vec![],
 			};
 			if !files.is_empty() {
@@ -888,7 +881,7 @@ impl Loader {
 		Ok(files)
 	}
 
-	// LOok (recursively) for raw-stream macros within a module.
+	// Find raw-stream macros in a module and everything it imports.
 	fn prescan_module(&mut self, name: &str, files: &[(String, String)]) {
 		if !self.prescanned.insert(name.to_string()) {
 			return;
@@ -961,8 +954,7 @@ impl Loader {
 		}
 	}
 
-	// Re-resolve claim targets once the prelude is seeded.
-	// So that a claim on an imported type keys off the owning module instead of the writer's guess.
+	// Re-key claims on imported types to their owning module, once the prelude is seeded.
 	fn resolve_claims(&mut self) {
 		for m in &mut self.modules {
 			let own = format!("{}::", m.scope.module);
@@ -1025,8 +1017,7 @@ pub fn home() -> PathBuf {
 // Entry files.
 pub type Entry = Vec<(String, String)>;
 
-// Load the whole program from the entry's files.
-// `root` anchors module lookups.
+// Load the whole program from the entry's files, with `root` anchoring module lookups.
 pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	let deps = std::env::var_os("OI_PATH").unwrap_or_default();
 	let deps = std::env::split_paths(&deps).filter(|p| !p.as_os_str().is_empty());
@@ -1039,19 +1030,8 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 			.iter()
 			.map(|(n, _)| root.join(Path::new(n).file_name().unwrap_or_default()))
 			.collect(),
-		map: SourceMap::default(),
-		modules: vec![],
-		publics: Publics::default(),
-		reexports: HashMap::new(),
-		reexported_modules: HashMap::new(),
-		consts: HashMap::new(),
-		const_types: HashMap::new(),
-		annotations: HashMap::new(),
-		loading: vec![],
-		selected: vec![],
 		core_origin: HashSet::from(["core".to_string()]),
-		raw_macros: HashSet::new(),
-		prescanned: HashSet::new(),
+		..Loader::default()
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;

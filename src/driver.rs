@@ -159,7 +159,8 @@ pub fn build_source(
 	Ok(())
 }
 
-fn fail(msg: impl std::fmt::Display) -> Reported {
+/// Report a CLI-level error.
+pub fn fail(msg: impl std::fmt::Display) -> Reported {
 	eprintln!("oi: {msg}");
 	Reported
 }
@@ -193,10 +194,7 @@ pub fn test_source(entry: Entry, root: &Path, patterns: &[String]) -> Result<(),
 				compiler.finalized_test(fn_name)();
 				std::process::exit(0)
 			}
-			-1 => {
-				eprintln!("oi: fork failed");
-				return Err(Reported);
-			}
+			-1 => return Err(fail("fork failed")),
 			pid => {
 				let mut status = 0;
 				// SAFETY: `pid` is our own child, `status` is a valid out-pointer

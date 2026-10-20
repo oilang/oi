@@ -1,12 +1,8 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use oi::Reported;
-
-fn template_path(p: &str) -> PathBuf {
-	Path::new(env!("CARGO_MANIFEST_DIR")).join("templates").join(p)
-}
+use oi::driver::fail;
 
 /// Scaffold a project in the current directory.
 pub fn init() -> Result<(), Reported> {
@@ -17,8 +13,7 @@ pub fn init() -> Result<(), Reported> {
 pub fn new(name: &str) -> Result<(), Reported> {
 	let dir = Path::new(name);
 	if dir.exists() {
-		eprintln!("oi: {name} already exists");
-		return Err(Reported);
+		return Err(fail(format!("{name} already exists")));
 	}
 	scaffold(dir)
 }
@@ -26,22 +21,12 @@ pub fn new(name: &str) -> Result<(), Reported> {
 fn scaffold(dir: &Path) -> Result<(), Reported> {
 	let entry = dir.join("src/main.oi");
 	if entry.exists() {
-		eprintln!("oi: {} already exists", entry.display());
-		return Err(Reported);
+		return Err(fail(format!("{} already exists", entry.display())));
 	}
-
-	let main_content = fs::read_to_string(template_path("src/main.oi")).map_err(|e| {
-		eprintln!("oi: cannot read scaffold: {e}");
-		Reported
-	})?;
-	write(&entry, &main_content)?;
+	write(&entry, include_str!("../../templates/src/main.oi"))?;
 	let ignore = dir.join(".gitignore");
 	if !ignore.exists() {
-		let ignore_content = fs::read_to_string(template_path(".gitignore")).map_err(|e| {
-			eprintln!("oi: cannot read .gitignore scaffold: {e}");
-			Reported
-		})?;
-		write(&ignore, &ignore_content)?;
+		write(&ignore, include_str!("../../templates/.gitignore"))?;
 	}
 	if !dir.canonicalize().is_ok_and(|p| p.ancestors().any(|a| a.join(".git").exists())) {
 		Command::new("git").args(["init", "--quiet"]).arg(dir).status().ok();
@@ -55,8 +40,5 @@ fn scaffold(dir: &Path) -> Result<(), Reported> {
 fn write(path: &Path, content: &str) -> Result<(), Reported> {
 	std::fs::create_dir_all(path.parent().unwrap_or(path))
 		.and_then(|()| std::fs::write(path, content))
-		.map_err(|e| {
-			eprintln!("oi: cannot write {}: {e}", path.display());
-			Reported
-		})
+		.map_err(|e| fail(format!("cannot write {}: {e}", path.display())))
 }

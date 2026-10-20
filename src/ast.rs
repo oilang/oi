@@ -6,7 +6,6 @@ pub type Span = SimpleSpan;
 pub type Spanned<T> = (T, Span);
 pub type Bounds<'a> = (Option<&'a Spanned<Expr>>, Option<&'a Spanned<Expr>>, bool);
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Expr {
 	// literals
@@ -124,7 +123,7 @@ pub enum Expr {
 	UnquoteExpr(Box<Spanned<Expr>>),
 	// `%{..expr}`
 	UnquoteSplat(Box<Spanned<Expr>>),
-	// `%{expr}`
+	// `%{expr} := value`
 	UnquoteBind(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 	// a macro expansion scoped block
 	Block(Vec<Spanned<Expr>>),
@@ -357,7 +356,6 @@ pub enum Expr {
 	Doc(Vec<String>),
 }
 
-// A child of `Expr`.
 pub enum Child<'a> {
 	List(&'a mut Vec<Spanned<Expr>>),
 	One(&'a mut Spanned<Expr>),
@@ -743,9 +741,6 @@ impl TypeExpr {
 
 #[derive(Debug, Clone, Default)]
 // One arm of a `match` expression.
-// `patterns` are compared to the subject (OR'd together).
-// `binding @` names the subject value for the arm body.
-// `body` runs when any pattern matches.
 pub struct MatchArm {
 	pub binding: Option<String>,
 	pub patterns: Vec<Spanned<Expr>>,
@@ -924,8 +919,8 @@ pub enum Access {
 	Move,
 }
 
-impl std::fmt::Display for Access {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for Access {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.write_str(match self {
 			Access::Read => "read",
 			Access::Mut => "mut",
@@ -941,7 +936,7 @@ pub enum Vis {
 	Package,
 }
 
-// A function parameter or struct field declaration.
+// A fn param or struct field.
 #[derive(Debug, Clone)]
 pub struct Param {
 	pub name: String,

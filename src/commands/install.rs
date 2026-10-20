@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use oi::Reported;
-use oi::driver::{DebugOpts, build_source};
+use oi::driver::{DebugOpts, build_source, fail};
 use oi::loader::home;
 
 use crate::commands::run;
@@ -66,8 +66,7 @@ fn fetch(url: &str, prefix: Option<&Path>) -> Result<PathBuf, Reported> {
 			.success();
 	}
 	if !ok {
-		eprintln!("oi: {url}: git failed");
-		return Err(Reported);
+		return Err(fail(format!("{url}: git failed")));
 	}
 	Ok(dir)
 }
@@ -89,8 +88,5 @@ fn copy(src: &Path, dst: &Path) -> io::Result<()> {
 
 fn at(path: &Path) -> impl Fn(io::Error) -> Reported {
 	let path = path.display().to_string();
-	move |e| {
-		eprintln!("oi: {path}: {e}");
-		Reported
-	}
+	move |e| fail(format!("{path}: {e}"))
 }
