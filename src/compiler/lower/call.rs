@@ -714,15 +714,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		})
 	}
 
-	/// The innermost context's allocator record.
-	/// NOTE: `Context.alloc` is field 0.
+	// The innermost context's allocator record, its field 0.
 	fn ctx_alloc(&mut self) -> Value {
 		self.ctx_used = true;
 		let ctx = self.ctx_value(CONTEXT);
 		self.ld_word(ctx, 0)
 	}
 
-	/// The thread root, its field defaults filled on the thread's first entry.
+	// The thread root, its field defaults filled on the thread's first entry.
 	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
 		let root = self.ctx_value(CONTEXT);
 		let Typ::Struct(_, fields) = typ else { return Ok(root) };
@@ -914,7 +913,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	pub(super) fn call_map_new(&mut self, val: &Typ) -> Value {
-		let desc = self.map_desc(val);
+		let desc = self.trace_desc(&format!("map {}", val.key()), &Typ::Tuple(vec![(None, val.clone())]));
 		self.rt_call("map_new", &[desc]).unwrap()
 	}
 

@@ -34,14 +34,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("str_take", &[mark]).unwrap()
 	}
 
-	// Enum `Display`.
-	pub(super) fn enum_name_str(&mut self, typ: &Typ, val: Value) -> Value {
-		let tag = self.enum_tag(typ, val);
-		let empty = self.str_const("");
-		let names: Vec<_> = self.variants_of(typ).into_iter().map(|v| (v.disc, v.name)).collect();
-		self.select_by_disc(tag, empty, &names)
-	}
-
 	// The string paired with `tag`'s discriminant, or else `out`.
 	pub(super) fn select_by_disc(&mut self, tag: Value, mut out: Value, strs: &[(i64, String)]) -> Value {
 		for (disc, s) in strs {
@@ -111,8 +103,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			});
 		}
-		let ptr = self.enum_name_str(typ, val);
-		self.raw(ptr, sink);
+		let empty = self.str_const("");
+		let names: Vec<_> = variants.into_iter().map(|v| (v.disc, v.name)).collect();
+		let name = self.select_by_disc(tag, empty, &names);
+		self.raw(name, sink);
 		self.enter(done);
 	}
 

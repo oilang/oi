@@ -328,7 +328,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// The address of a box's trace descriptor symbol.
-	fn trace_desc(&mut self, name: &str, typ: &Typ) -> Value {
+	pub(super) fn trace_desc(&mut self, name: &str, typ: &Typ) -> Value {
 		if self.desc_data(name, typ).is_none() {
 			return self.b.ins().iconst(self.int, 0);
 		}
@@ -457,11 +457,6 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn any_desc(&mut self, typ: &Typ) -> Value {
 		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
 		self.trace_desc(&format!("any {}", typ.key()), &slots)
-	}
-
-	pub(super) fn map_desc(&mut self, val: &Typ) -> Value {
-		let slot = Typ::Tuple(vec![(None, val.clone())]);
-		self.trace_desc(&format!("map {}", val.key()), &slot)
 	}
 
 	// A frame block laid out like an rc'd one, with an immortal count.
@@ -696,7 +691,8 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 		Typ::Map(..) => Some(("map_share", "map_release")),
 		Typ::Fn(..) | Typ::Closure(..) => Some(("ref_share", "fn_release")),
 		Typ::Annotated(a, t) if helpers::is_isolated(a) => handle_fns(t),
-		t if ref_like(t) || *t == Typ::Any => Some(("ref_share", "ref_release")),
+		Typ::Ref(_) | Typ::Any => Some(("ref_share", "ref_release")),
+		t if opt_ref(t) => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
 	}
 }
@@ -720,9 +716,4 @@ pub(super) fn opt_niche(typ: &Typ) -> bool {
 	let arg = n.strip_prefix(role::OPTION).and_then(|a| a.strip_prefix('['));
 	let bare = arg.and_then(|a| a.split(' ').find(|w| !w.starts_with('@')));
 	opt_ref(typ) || bare.is_some_and(|w| w.starts_with("fn("))
-}
-
-// Is type a ref pointer?
-pub(super) fn ref_like(typ: &Typ) -> bool {
-	matches!(typ, Typ::Ref(_)) || opt_ref(typ)
 }

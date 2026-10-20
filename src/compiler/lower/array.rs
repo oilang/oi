@@ -10,10 +10,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.ld_word(header, 8)
 	}
 
-	pub(super) fn array_cap(&mut self, header: Value) -> Value {
-		self.ld_word(header, 16)
-	}
-
 	// Build a fresh array handle, owned by the enclosing scope.
 	pub(super) fn make_array(&mut self, data: Value, len: Value, typ: &Typ) -> Value {
 		let header = self.heap_slots(&[data, len, len]);
@@ -282,7 +278,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Append an owned value, growing the buffer when full.
 	pub(super) fn push(&mut self, header: Value, val: Value, elem: &Typ) {
-		let (len, cap, stride) = (self.array_len(header), self.array_cap(header), self.elem_stride(elem));
+		let (len, cap, stride) = (self.array_len(header), self.ld_word(header, 16), self.elem_stride(elem));
 		let full = self.b.ins().icmp(IntCC::Equal, len, cap);
 		self.when(full, |s| {
 			let (min_cap, size) = (s.b.ins().iadd_imm(len, 1), s.b.ins().iconst(s.int, stride));

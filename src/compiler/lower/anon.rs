@@ -28,8 +28,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let captures: &[Capture] = match captures {
 			Some(list) => list,
 			None => {
-				let mut names: Vec<_> = free_vars(body)
-					.into_iter()
+				let mut used = HashSet::new();
+				body.iter().for_each(|(stmt, _)| stmt.idents(&mut used));
+				let mut names: Vec<_> = (used.into_iter())
 					.filter(|n| n != CTX && self.vars.contains_key(n) && !params.iter().any(|p| &p.name == n))
 					.collect();
 				names.sort();
@@ -190,11 +191,4 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.temp(env, &typ);
 		Ok((env, typ))
 	}
-}
-
-// Every identifier referenced in `body`.
-fn free_vars(body: &[Spanned<Expr>]) -> HashSet<String> {
-	let mut out = HashSet::new();
-	body.iter().for_each(|(e, _)| e.idents(&mut out));
-	out
 }

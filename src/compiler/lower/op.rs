@@ -23,24 +23,19 @@ fn eq_slots(t: &Typ) -> Option<Vec<Typ>> {
 	}
 }
 
-// Whether a type should compare structurally, rather than comparing bits.
-fn eq_dispatchable(t: &Typ) -> bool {
-	t.is_enumish() || eq_slots(t).is_some() || matches!(t, Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..))
-}
-
 impl<'a, M: Module> Translator<'a, M> {
-	pub(super) fn emit_eq(&mut self, a: Value, b: Value, typ: &Typ) -> Value {
+	pub(super) fn emit_eq(&mut self, lhs: Value, rhs: Value, typ: &Typ) -> Value {
 		match typ {
 			Typ::Float(_) => {
-				let (a, b) = (self.widen_f16(a, typ), self.widen_f16(b, typ));
-				self.b.ins().fcmp(FloatCC::Equal, a, b)
+				let (lhs, rhs) = (self.widen_f16(lhs, typ), self.widen_f16(rhs, typ));
+				self.b.ins().fcmp(FloatCC::Equal, lhs, rhs)
 			}
 			Typ::Error => {
-				let (a, b) = (self.error_message(a), self.error_message(b));
-				self.emit_eq(a, b, &Typ::Str)
+				let (lhs, rhs) = (self.error_message(lhs), self.error_message(rhs));
+				self.emit_eq(lhs, rhs, &Typ::Str)
 			}
-			Typ::Str => self.rt_call("str_eq", &[a, b]).unwrap(),
-			_ => self.b.ins().icmp(IntCC::Equal, a, b),
+			Typ::Str => self.rt_call("str_eq", &[lhs, rhs]).unwrap(),
+			_ => self.b.ins().icmp(IntCC::Equal, lhs, rhs),
 		}
 	}
 
@@ -48,15 +43,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Checks that tags match, and for the hit variant every payload slot matches.
 	fn emit_enum_eq(
 		&mut self,
-		a: Value,
-		b: Value,
+		lhs: Value,
+		rhs: Value,
 		typ: &Typ,
 		variants: &[VariantInfo],
 		span: Span,
 	) -> Result<Value, Diagnostic> {
 		let owner = typ.to_string();
-		let ta = self.enum_tag(typ, a);
-		let tb = self.enum_tag(typ, b);
+		let ta = self.enum_tag(typ, lhs);
+		let tb = self.enum_tag(typ, rhs);
 		let tags_eq = self.b.ins().icmp(IntCC::Equal, ta, tb);
 		let eq = self.b.declare_var(types::I8);
 		self.b.def_var(eq, tags_eq);
@@ -66,7 +61,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let hit = self.b.ins().band(tags_eq, same);
 			let (body, next) = self.fork(hit);
 			self.b.switch_to_block(body);
-			let all = self.slots_eq(a, b, 8, &v.payload, &owner, span)?;
+			let all = self.slots_eq(lhs, rhs, 8, &v.payload, &owner, span)?;
 			self.b.def_var(eq, all);
 			self.b.ins().jump(merge, &[]);
 			self.b.switch_to_block(next);
@@ -78,27 +73,27 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// `Eq` fill, or structural diff by default.
-	fn emit_val_eq(&mut self, a: Value, b: Value, t: &Typ, owner: &str, span: Span) -> Result<Value, Diagnostic> {
-		if t.nominal().is_some()
-			&& let Some(sig) = self.fill(t, role::EQ, "eq", 2)
+	fn emit_val_eq(&mut self, lhs: Value, rhs: Value, typ: &Typ, owner: &str, span: Span) -> Result<Value, Diagnostic> {
+		if typ.nominal().is_some()
+			&& let Some(sig) = self.fill(typ, role::EQ, "eq", 2)
 		{
-			return Ok(self.emit_call(&sig, &[a, b]).0);
+			return Ok(self.emit_call(&sig, &[lhs, rhs]).0);
 		}
-		if let Some(inner) = t.newtype().cloned() {
-			// a newtype compares as its inner value
-			return self.emit_val_eq(a, b, &inner, owner, span);
+		if let Some(inner) = typ.newtype().cloned() {
+			// newtypes
+			return self.emit_val_eq(lhs, rhs, &inner, owner, span);
 		}
-		match t {
-			Typ::Any => Ok(self.extern_call(&oi_symbol("eq_any"), &[a, b], Some(types::I8)).unwrap()),
-			t if let Some(slots) = eq_slots(t) => self.slots_eq(a, b, 0, &slots, &t.to_string(), span),
-			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(a, b, t, span),
-			Typ::Map(..) => self.emit_map_eq(a, b, t, span),
-			t if t.is_enumish() && enum_boxed(&self.variants_of(t)) && !rc::opt_niche(t) => {
-				self.emit_enum_eq(a, b, t, &self.variants_of(t), span)
+		match typ {
+			Typ::Any => Ok(self.extern_call(&oi_symbol("eq_any"), &[lhs, rhs], Some(types::I8)).unwrap()),
+			typ if let Some(slots) = eq_slots(typ) => self.slots_eq(lhs, rhs, 0, &slots, &typ.to_string(), span),
+			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(lhs, rhs, typ, span),
+			Typ::Map(..) => self.emit_map_eq(lhs, rhs, typ, span),
+			typ if typ.is_enumish() && enum_boxed(&self.variants_of(typ)) && !rc::opt_niche(typ) => {
+				self.emit_enum_eq(lhs, rhs, typ, &self.variants_of(typ), span)
 			}
-			t if comparable(t) => Ok(self.emit_eq(a, b, t)),
-			t => fail(
-				format!("cannot compare {owner}: contains {t}"),
+			typ if comparable(typ) => Ok(self.emit_eq(lhs, rhs, typ)),
+			typ => fail(
+				format!("cannot compare {owner}: contains {typ}"),
 				span,
 				format!("claim `Eq` for `{owner}` to define equality"),
 			),
@@ -106,26 +101,32 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Payloads without equality compare by identity.
-	pub(crate) fn emit_any_eq(&mut self, a: Value, b: Value) -> Value {
+	pub(crate) fn emit_any_eq(&mut self, lhs: Value, rhs: Value) -> Value {
 		let variants: Vec<_> = (self.out.any_types.clone().into_iter())
-			.map(|t| VariantInfo::new(t.key(), typeid(&t), vec![if self.has_eq(&t) { t } else { Typ::ISize }]))
+			.map(|typ| {
+				VariantInfo::new(
+					typ.key(),
+					typeid(&typ),
+					vec![if self.has_eq(&typ) { typ } else { Typ::ISize }],
+				)
+			})
 			.collect();
-		self.emit_enum_eq(a, b, &Typ::Any, &variants, Span::default())
+		self.emit_enum_eq(lhs, rhs, &Typ::Any, &variants, Span::default())
 			.ok()
 			.expect("has_eq")
 	}
 
-	fn has_eq(&mut self, t: &Typ) -> bool {
-		if t.nominal().is_some() && self.fill(t, role::EQ, "eq", 2).is_some() {
+	fn has_eq(&mut self, typ: &Typ) -> bool {
+		if typ.nominal().is_some() && self.fill(typ, role::EQ, "eq", 2).is_some() {
 			return true;
 		}
-		match t.newtype().unwrap_or(t).clone() {
-			t if let Some(slots) = eq_slots(&t) => slots.iter().all(|s| self.has_eq(s)),
+		match typ.newtype().unwrap_or(typ).clone() {
+			typ if let Some(slots) = eq_slots(&typ) => slots.iter().all(|s| self.has_eq(s)),
 			Typ::Array(e) | Typ::FixedArray(e, _) | Typ::Map(_, e) => self.has_eq(&e),
-			t if t.is_enumish() && t != Typ::Any => {
-				self.variants_of(&t).iter().flat_map(|v| &v.payload).all(|p| self.has_eq(p))
+			typ if typ.is_enumish() && typ != Typ::Any => {
+				self.variants_of(&typ).iter().flat_map(|v| &v.payload).all(|p| self.has_eq(p))
 			}
-			t => t == Typ::Any || comparable(&t),
+			typ => typ == Typ::Any || comparable(&typ),
 		}
 	}
 
@@ -182,8 +183,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Compare two heap blocks slot by slot, from byte `base`.
 	fn slots_eq(
 		&mut self,
-		a: Value,
-		b: Value,
+		lhs: Value,
+		rhs: Value,
 		base: i32,
 		slots: &[Typ],
 		owner: &str,
@@ -191,8 +192,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Value, Diagnostic> {
 		let mut acc = self.b.ins().iconst(types::I8, 1);
 		for (i, st) in slots.iter().enumerate() {
-			let fa = self.ld_typ(a, base + (i * 8) as i32, st);
-			let fb = self.ld_typ(b, base + (i * 8) as i32, st);
+			let fa = self.ld_typ(lhs, base + (i * 8) as i32, st);
+			let fb = self.ld_typ(rhs, base + (i * 8) as i32, st);
 			let eq = self.emit_val_eq(fa, fb, st, owner, span)?;
 			let eq = self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0);
 			acc = self.b.ins().band(acc, eq);
@@ -240,9 +241,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Check whether every element is equal between two arrays.
-	fn emit_array_eq(&mut self, a: Value, b: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
+	fn emit_array_eq(&mut self, lhs: Value, rhs: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
 		let (elem, owner) = (array_elem(typ).clone(), typ.to_string());
-		let ((da, la), (db, lb)) = (self.array_parts(a, typ), self.array_parts(b, typ));
+		let ((da, la), (db, lb)) = (self.array_parts(lhs, typ), self.array_parts(rhs, typ));
 		let seed = self.b.ins().icmp(IntCC::Equal, la, lb);
 		self.emit_scan(la, true, seed, |s, i| {
 			let (ea, eb) = (s.load_nth(da, i, &elem), s.load_nth(db, i, &elem));
@@ -251,18 +252,18 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Check whether every key/value pair is equal between two maps.
-	fn emit_map_eq(&mut self, a: Value, b: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
+	fn emit_map_eq(&mut self, lhs: Value, rhs: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
 		let Typ::Map(k, v) = typ else {
 			unreachable!("emit_map_eq on {typ}")
 		};
 		let (owner, kt) = (typ.to_string(), Typ::Array(k.clone()));
 		let tag = map_key_tag(k).expect("map keys are taggable");
 		let (la, lb) = (
-			self.rt_call("map_len", &[a]).unwrap(),
-			self.rt_call("map_len", &[b]).unwrap(),
+			self.rt_call("map_len", &[lhs]).unwrap(),
+			self.rt_call("map_len", &[rhs]).unwrap(),
 		);
 		let seed = self.b.ins().icmp(IntCC::Equal, la, lb);
-		let keys = self.map_entries(a, true, k);
+		let keys = self.map_entries(lhs, true, k);
 		self.temp(keys, &kt);
 
 		let (data, n) = self.array_parts(keys, &kt);
@@ -271,11 +272,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.emit_scan(n, true, seed, |s, i| {
 			let key = s.load_nth(data, i, k);
 			let bits = s.map_bits(key);
-			let ga = s.map_rt("get", a, tag, bits, &[]);
+			let ga = s.map_rt("get", lhs, tag, bits, &[]);
 			s.st(slot, 0, ga);
 
-			// writes b's value into `slot`, returning whether the key was there at all
-			let hit = s.map_rt("find", b, tag, bits, &[slot]);
+			// write rhs's value into `slot`, returning whether the key was there
+			let hit = s.map_rt("find", rhs, tag, bits, &[slot]);
 			let gb = s.ld_word(slot, 0);
 			let (va, vb) = (s.unmap_bits(ga, v), s.unmap_bits(gb, v));
 			let same = s.emit_val_eq(va, vb, v, &owner, span)?;
@@ -680,7 +681,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Typ::Ref(_), _) if lt == rt && matches!(icc, IntCC::Equal | IntCC::NotEqual) => {
 				self.b.ins().icmp(icc, lv, rv)
 			}
-			(l, _) if lt == rt && eq_dispatchable(l) => {
+			// compare structurally
+			(l, _)
+				if lt == rt
+					&& (l.is_enumish()
+						|| eq_slots(l).is_some()
+						|| matches!(l, Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..))) =>
+			{
 				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedLessThanOrEqual);
 				let negated = matches!(
 					icc,
