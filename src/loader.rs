@@ -231,24 +231,30 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 			(Expr::Ident(n), "max") => Expr::Int(numeric_bound(n, true)?),
 			_ => return None,
 		},
-		Expr::Binary(op, a, b) => match (op, fold(a)?, fold(b)?) {
-			(BinOp::Add, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_add(b)),
-			(BinOp::Sub, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_sub(b)),
-			(BinOp::Mul, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_mul(b)),
-			(BinOp::Div, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_div(b)?),
-			(BinOp::Mod, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.checked_rem(b)?),
-			(BinOp::Pow, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_pow(u32::try_from(b).ok()?)),
-			(BinOp::BitAnd, Expr::Int(a), Expr::Int(b)) => Expr::Int(a & b),
-			(BinOp::BitOr, Expr::Int(a), Expr::Int(b)) => Expr::Int(a | b),
-			(BinOp::BitXor, Expr::Int(a), Expr::Int(b)) => Expr::Int(a ^ b),
-			(BinOp::Shl, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_shl(u32::try_from(b).ok()?)),
-			(BinOp::Shr, Expr::Int(a), Expr::Int(b)) => Expr::Int(a.wrapping_shr(u32::try_from(b).ok()?)),
-			(BinOp::Add, Expr::Float(a), Expr::Float(b)) => Expr::Float(a + b),
-			(BinOp::Sub, Expr::Float(a), Expr::Float(b)) => Expr::Float(a - b),
-			(BinOp::Mul, Expr::Float(a), Expr::Float(b)) => Expr::Float(a * b),
-			(BinOp::Div, Expr::Float(a), Expr::Float(b)) => Expr::Float(a / b),
-			(BinOp::Pow, Expr::Float(a), Expr::Float(b)) => Expr::Float(a.powf(b)),
-			(BinOp::Add, Expr::String(a), Expr::String(b)) => Expr::String(a + &b),
+		Expr::Binary(op, a, b) => match (fold(a)?, fold(b)?) {
+			(Expr::Int(a), Expr::Int(b)) => Expr::Int(match op {
+				BinOp::Add => a.wrapping_add(b),
+				BinOp::Sub => a.wrapping_sub(b),
+				BinOp::Mul => a.wrapping_mul(b),
+				BinOp::Div => a.checked_div(b)?,
+				BinOp::Mod => a.checked_rem(b)?,
+				BinOp::Pow => a.wrapping_pow(b.try_into().ok()?),
+				BinOp::BitAnd => a & b,
+				BinOp::BitOr => a | b,
+				BinOp::BitXor => a ^ b,
+				BinOp::Shl => a.wrapping_shl(b.try_into().ok()?),
+				BinOp::Shr => a.wrapping_shr(b.try_into().ok()?),
+				_ => return None,
+			}),
+			(Expr::Float(a), Expr::Float(b)) => Expr::Float(match op {
+				BinOp::Add => a + b,
+				BinOp::Sub => a - b,
+				BinOp::Mul => a * b,
+				BinOp::Div => a / b,
+				BinOp::Pow => a.powf(b),
+				_ => return None,
+			}),
+			(Expr::String(a), Expr::String(b)) if *op == BinOp::Add => Expr::String(a + &b),
 			_ => return None,
 		},
 		_ if is_literal(e) => e.clone(),
@@ -339,29 +345,21 @@ pub fn parse_file(src: &str, base: usize, raw: &HashSet<String>) -> Result<Vec<S
 
 #[derive(Default)]
 struct Loader {
-	// entry dir first, then `OI_PATH`
-	roots: Vec<PathBuf>,
+	program: Program,
 	entry_paths: Vec<PathBuf>,
-	map: SourceMap,
-	modules: Vec<Module>,
-	publics: Publics,
-	reexports: HashMap<String, String>,
 	reexported_modules: HashMap<String, Visible>,
-	consts: HashMap<String, Spanned<Expr>>,
-	const_types: HashMap<String, Spanned<TypeExpr>>,
-	annotations: HashMap<String, Vec<Annotation>>,
-	// import stack
 	loading: Vec<String>,
-	selected: Vec<(String, String, String, Span)>,
-	// modules loaded from the embedded core tree, allowed to import internal mods
-	core_origin: HashSet<String>,
 	raw_macros: HashSet<String>,
 	prescanned: HashSet<String>,
 }
 
 impl Loader {
 	fn report(&self, diags: impl IntoIterator<Item = Diagnostic>) -> Reported {
-		diags.into_iter().map(|d| d.report_mapped(&self.map)).last().unwrap_or(Reported)
+		diags
+			.into_iter()
+			.map(|d| d.report_mapped(&self.program.map))
+			.last()
+			.unwrap_or(Reported)
 	}
 
 	// Record a definition.
@@ -382,14 +380,15 @@ impl Loader {
 			return Err(err(msg, span, "duplicate definition"));
 		}
 		if let Some(v) = public {
-			self.publics.vis.insert(name.clone(), v);
+			self.program.publics.vis.insert(name.clone(), v);
 		}
 		Ok(())
 	}
 
 	// Fold a const initializer to a literal, qualifying any type name it carries.
 	fn const_value(&self, v: &Spanned<Expr>, scope: &Scope) -> Option<Spanned<Expr>> {
-		let mut e = fold_const(&v.0, &self.consts, scope).or_else(|| is_const_value(&v.0).then(|| v.0.clone()))?;
+		let mut e =
+			fold_const(&v.0, &self.program.consts, scope).or_else(|| is_const_value(&v.0).then(|| v.0.clone()))?;
 		match &mut e {
 			Expr::StructLit { name, .. } if !name.is_empty() => *name = scope.qualify_name(name),
 			Expr::Field { tuple, .. } => {
@@ -414,9 +413,9 @@ impl Loader {
 			let key = format!("{typ}::{n}");
 			if let Some(lit) = self.const_value(v, scope) {
 				if let Some(t) = t {
-					self.const_types.insert(key.clone(), t.clone());
+					self.program.const_types.insert(key.clone(), t.clone());
 				}
-				self.consts.insert(key, lit);
+				self.program.consts.insert(key, lit);
 			} else if let Some(typ) = TypeExpr::from_expr(&v.0) {
 				let alias = Expr::TypeAlias {
 					name: key,
@@ -506,7 +505,8 @@ impl Loader {
 				// ensure every imported item is public in its module
 				for it in &items {
 					let (remote, span) = it.remote();
-					self.selected
+					self.program
+						.selected
 						.push((module.clone(), remote.clone(), m.scope.module.clone(), *span));
 				}
 				let narrows = name.is_some() && group.is_some();
@@ -532,7 +532,12 @@ impl Loader {
 					if public.is_some() {
 						self.reexported_modules.insert(format!("{}::{local}", m.name), vis.clone());
 						if !narrows {
-							self.publics.uses.entry(m.name.clone()).or_default().push(module.clone());
+							self.program
+								.publics
+								.uses
+								.entry(m.name.clone())
+								.or_default()
+								.push(module.clone());
 						}
 					}
 					// handle re-importing
@@ -558,7 +563,7 @@ impl Loader {
 						locals.push(local.clone());
 						let target = format!("{module}::{}", it.remote().0);
 						if public.is_some() {
-							self.reexports.insert(format!("{}::{local}", m.name), target.clone());
+							self.program.reexports.insert(format!("{}::{local}", m.name), target.clone());
 						}
 						m.scope.env.insert(format!("{local}!"), format!("{target}!"));
 						if m.scope.env.insert(local.clone(), target).is_some() {
@@ -580,8 +585,8 @@ impl Loader {
 			{
 				m.items.remove(file_start + i);
 				m.scope.env.remove(name.as_str());
-				self.annotations.remove(&prev);
-				self.publics.vis.remove(&prev);
+				self.program.annotations.remove(&prev);
+				self.program.publics.vis.remove(&prev);
 			}
 			if let Expr::MacroCall { args, .. } = &mut item.0
 				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
@@ -597,10 +602,10 @@ impl Loader {
 			} = &mut item.0
 				&& let Some(v) = members
 					.iter()
-					.try_fold(0, |acc, t| Some(acc | flag(t, &self.consts, &m.scope)?))
+					.try_fold(0, |acc, t| Some(acc | flag(t, &self.program.consts, &m.scope)?))
 			{
 				self.define(m, name, true, public, span)?;
-				self.consts.insert(name.clone(), (Expr::Int(v), span));
+				self.program.consts.insert(name.clone(), (Expr::Int(v), span));
 				continue;
 			}
 			let mut assoc_types = vec![];
@@ -612,7 +617,7 @@ impl Loader {
 				| Expr::TraitDef { name, .. } => {
 					self.define(m, name, !main, public, span)?;
 					if !anns.is_empty() {
-						self.annotations.entry(name.clone()).or_default().extend(anns);
+						self.program.annotations.entry(name.clone()).or_default().extend(anns);
 					}
 					match &mut item.0 {
 						Expr::StructDef { name, fills, .. } => assoc_types = self.assoc_fills(name, fills, &m.scope)?,
@@ -654,7 +659,7 @@ impl Loader {
 							Some((TypeExpr::Fn(..), _)) => {
 								self.define(m, name, !main, public, span)?;
 								if !anns.is_empty() {
-									self.annotations.entry(name.clone()).or_default().extend(anns);
+									self.program.annotations.entry(name.clone()).or_default().extend(anns);
 								}
 								None
 							}
@@ -666,7 +671,7 @@ impl Loader {
 						(_, _, Some(v)) if is_const_value(&v.0) || matches!(v.0, Expr::Comp(_)) => {
 							let v = v.clone();
 							self.define(m, name, true, public, span)?;
-							self.consts.insert(name.clone(), v);
+							self.program.consts.insert(name.clone(), v);
 							continue;
 						}
 						(_, _, Some(v)) if TypeExpr::from_expr(&v.0).is_some() => {
@@ -686,7 +691,7 @@ impl Loader {
 					value: Some(v),
 				} => {
 					if let Some(c) = self.const_value(v, &m.scope) {
-						self.consts.insert(name.clone(), c);
+						self.program.consts.insert(name.clone(), c);
 					}
 				}
 				Expr::Claim {
@@ -736,8 +741,8 @@ impl Loader {
 	// Seal a module, then load its imports.
 	fn seal(&mut self, mut module: Module, imports: Vec<(String, Span)>) -> Result<(), Reported> {
 		self.loading.push(module.name.clone());
-		let at = self.modules.len();
-		self.modules.push(Module::new(&module.name));
+		let at = self.program.modules.len();
+		self.program.modules.push(Module::new(&module.name));
 		for (name, span) in imports {
 			self.load_module(&name, span)?;
 		}
@@ -748,7 +753,7 @@ impl Loader {
 				self.reach_submodules(item, scope, &mut reached);
 			}
 		}
-		self.modules[at] = module;
+		self.program.modules[at] = module;
 		for (name, span) in reached {
 			self.load_module(&name, span)?;
 		}
@@ -761,8 +766,8 @@ impl Loader {
 		let mut module = Module::new(name);
 		let mut imports = vec![];
 		self.prescan_module(name, &files);
-		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.map.push(file, src)).collect();
-		let (map, raw) = (&self.map, &self.raw_macros);
+		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.program.map.push(file, src)).collect();
+		let (map, raw) = (&self.program.map, &self.raw_macros);
 		let parsed: Vec<_> = std::thread::scope(|s| {
 			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b, raw))).collect();
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
@@ -770,7 +775,7 @@ impl Loader {
 		for (result, base) in parsed.into_iter().zip(bases) {
 			let items = result.map_err(|ds| self.report(ds))?;
 			let scope = self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
-			module.scope.files.push((base..base + self.map.src(base).len(), scope));
+			module.scope.files.push((base..base + self.program.map.src(base).len(), scope));
 		}
 		self.seal(module, imports)
 	}
@@ -778,7 +783,7 @@ impl Loader {
 	// Whether `name` is a module dir.
 	fn is_module(&self, name: &str) -> bool {
 		let path = name.replace('.', "/");
-		self.roots.iter().any(|r| r.join(&path).is_dir())
+		self.program.roots.iter().any(|r| r.join(&path).is_dir())
 			|| CORE.get_dir(path.strip_prefix("core/").unwrap_or(&path)).is_some()
 	}
 
@@ -791,7 +796,7 @@ impl Loader {
 	// `core.x` is `x` unless shadowed.
 	fn canon(&self, name: &str) -> String {
 		match name.strip_prefix("core.") {
-			Some(x) if !self.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
+			Some(x) if !self.program.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
 			_ => name.into(),
 		}
 	}
@@ -824,14 +829,14 @@ impl Loader {
 			let msg = format!("import cycle: {} -> {name}", self.loading.join(" -> "));
 			return Err(self.report([err(msg, span, "closes a cycle")]));
 		}
-		if name == "rt" && !self.loading.last().is_some_and(|m| self.core_origin.contains(m)) {
+		if name == "rt" && !self.loading.last().is_some_and(|m| self.program.core_origin.contains(m)) {
 			return Err(self.report([err("`rt` is internal to core", span, "not importable here")]));
 		}
-		if self.modules.iter().any(|m| m.name == name) {
+		if self.program.modules.iter().any(|m| m.name == name) {
 			return Ok(());
 		}
 		// resolve core's imports from internal files
-		let from_core = self.loading.last().is_some_and(|m| self.core_origin.contains(m));
+		let from_core = self.loading.last().is_some_and(|m| self.program.core_origin.contains(m));
 		let files = self.module_files(name, from_core)?;
 		if files.is_empty() {
 			return Err(self.report([err(format!("cannot find module `{name}`"), span, "no such module")]));
@@ -845,7 +850,12 @@ impl Loader {
 		let from_core = from_core || name.starts_with("core.");
 		let dir = &name.strip_prefix("core.").unwrap_or(name).replace('.', "/");
 		let file = format!("{dir}.oi");
-		let root = self.roots.iter().find(|r| self.on_disk(r, dir)).unwrap_or(&self.roots[0]);
+		let root = self
+			.program
+			.roots
+			.iter()
+			.find(|r| self.on_disk(r, dir))
+			.unwrap_or(&self.program.roots[0]);
 		let mut disk = if !from_core {
 			walk_oi(&root.join(dir))
 		} else {
@@ -867,16 +877,16 @@ impl Loader {
 				_ => vec![],
 			};
 			if !files.is_empty() {
-				self.core_origin.insert(name.to_string());
+				self.program.core_origin.insert(name.to_string());
 			}
 		} else {
-			let lib = self.roots.last() == Some(root);
+			let lib = self.program.roots.last() == Some(root);
 			let pkg = if lib {
 				root.join(dir.split('/').next().unwrap())
 			} else {
 				root.clone()
 			};
-			self.publics.packages.insert(name.to_string(), pkg);
+			self.program.publics.packages.insert(name.to_string(), pkg);
 		}
 		Ok(files)
 	}
@@ -892,7 +902,7 @@ impl Loader {
 			self.raw_macros.extend(raw);
 			imports.extend(used);
 		}
-		let from_core = self.core_origin.contains(name);
+		let from_core = self.program.core_origin.contains(name);
 		for m in imports {
 			if !self.prescanned.contains(&m) {
 				let inner = self.module_files(&m, from_core).unwrap_or_default();
@@ -902,32 +912,33 @@ impl Loader {
 	}
 
 	// Collapse `pub use` chains to their final targets, then point every binding at them.
-	fn resolve_reexports(&mut self) -> HashMap<String, String> {
+	fn resolve_reexports(&mut self) {
 		let resolved: HashMap<_, _> = self
+			.program
 			.reexports
 			.keys()
 			.map(|alias| {
-				let mut target = &self.reexports[alias];
-				while let Some(next) = self.reexports.get(target) {
+				let mut target = &self.program.reexports[alias];
+				while let Some(next) = self.program.reexports.get(target) {
 					target = next;
 				}
 				(alias.clone(), target.clone())
 			})
 			.collect();
-		for (_, s) in self.modules.iter_mut().flat_map(|m| &mut m.scope.files) {
+		for (_, s) in self.program.modules.iter_mut().flat_map(|m| &mut m.scope.files) {
 			for target in s.env.values_mut() {
 				if let Some(t) = resolved.get(target) {
 					*target = t.clone();
 				}
 			}
 		}
-		resolved
+		self.program.reexports = resolved;
 	}
 
 	// Every module implicitly uses core.
 	fn seed_prelude(&mut self) {
-		let core_pub: Vec<&String> = self.publics.vis.keys().filter(|q| q.starts_with("core::")).collect();
-		for m in self.modules.iter_mut().filter(|m| m.name != "core") {
+		let core_pub: Vec<&String> = self.program.publics.vis.keys().filter(|q| q.starts_with("core::")).collect();
+		for m in self.program.modules.iter_mut().filter(|m| m.name != "core") {
 			let core = Visible {
 				module: "core".into(),
 				only: None,
@@ -942,7 +953,7 @@ impl Loader {
 		}
 
 		// files see their module's names under their own imports
-		for m in &mut self.modules {
+		for m in &mut self.program.modules {
 			for (_, f) in &mut m.scope.files {
 				for (k, v) in &m.scope.env {
 					f.env.entry(k.clone()).or_insert_with(|| v.clone());
@@ -956,7 +967,7 @@ impl Loader {
 
 	// Re-key claims on imported types to their owning module, once the prelude is seeded.
 	fn resolve_claims(&mut self) {
-		for m in &mut self.modules {
+		for m in &mut self.program.modules {
 			let own = format!("{}::", m.scope.module);
 			for item in &mut m.items {
 				if let Expr::Claim { typ, type_params, .. } = &mut item.0
@@ -1021,35 +1032,28 @@ pub type Entry = Vec<(String, String)>;
 pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	let deps = std::env::var_os("OI_PATH").unwrap_or_default();
 	let deps = std::env::split_paths(&deps).filter(|p| !p.as_os_str().is_empty());
-	let mut loader = Loader {
+	let program = Program {
 		roots: std::iter::once(root.to_path_buf())
 			.chain(deps)
 			.chain(std::iter::once(home().join("lib")))
 			.collect(),
+		core_origin: HashSet::from(["core".to_string()]),
+		..Program::default()
+	};
+	let mut loader = Loader {
+		program,
 		entry_paths: entry
 			.iter()
 			.map(|(n, _)| root.join(Path::new(n).file_name().unwrap_or_default()))
 			.collect(),
-		core_origin: HashSet::from(["core".to_string()]),
 		..Loader::default()
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
-	loader.publics.packages.insert(String::new(), root.to_path_buf());
+	loader.program.publics.packages.insert(String::new(), root.to_path_buf());
 	loader.load_files("main", entry)?;
-	let reexports = loader.resolve_reexports();
+	loader.resolve_reexports();
 	loader.seed_prelude();
 	loader.resolve_claims();
-	Ok(Program {
-		roots: loader.roots.clone(),
-		map: loader.map,
-		modules: loader.modules,
-		publics: loader.publics,
-		reexports,
-		consts: loader.consts,
-		const_types: loader.const_types,
-		annotations: loader.annotations,
-		core_origin: loader.core_origin,
-		selected: loader.selected,
-	})
+	Ok(loader.program)
 }

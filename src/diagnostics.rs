@@ -106,20 +106,10 @@ impl Diagnostic {
 		Self::new(err.reason().to_string(), err.span().into_range()).with_label(label)
 	}
 
-	// Render through a source map, rebasing the span into its owning file.
+	// Render to stderr, rebasing the span into its owning file.
 	pub fn report_mapped(&self, map: &SourceMap) -> Reported {
 		let (file, span) = map.locate(&self.span);
-		self.render(&file.name, &file.src, span);
-		Reported
-	}
-
-	// Render span to stderr.
-	pub fn report(&self, filename: &str, src: &str) {
-		self.render(filename, src, self.span.clone());
-	}
-
-	fn render(&self, filename: &str, src: &str, span: Range<usize>) {
-		let id = filename.to_string();
+		let id = file.name.clone();
 		let color = match COLOR.get().copied().unwrap_or_default() {
 			ColorMode::Always => true,
 			ColorMode::Never => false,
@@ -140,7 +130,8 @@ impl Diagnostic {
 		if let Some(note) = &self.note {
 			builder = builder.with_note(note);
 		}
-		let _ = builder.finish().eprint((id, Source::from(src)));
+		let _ = builder.finish().eprint((id, Source::from(&file.src)));
+		Reported
 	}
 }
 
