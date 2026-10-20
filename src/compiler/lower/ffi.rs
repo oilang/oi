@@ -39,7 +39,7 @@ impl<M: Module> Translator<'_, M> {
 		match (read, recv, type_args, args) {
 			(true, Some(c), [(te, ts)], []) => {
 				let typ = self.types.resolve(te, *ts)?;
-				if self.oi_fields(&typ).is_some() {
+				if self.oi_struct(&typ) {
 					return Ok((self.copy_in(c, &typ), typ));
 				}
 				let Some(fields) = self.c_fields(&typ, *ts)? else {
@@ -51,8 +51,8 @@ impl<M: Module> Translator<'_, M> {
 			}
 			(false, Some(c), [], [value]) => {
 				let (oi, typ) = self.expr(value)?;
-				if let Some(fields) = self.oi_fields(&typ) {
-					self.assign_fields(oi, c, fields, false);
+				if self.oi_struct(&typ) {
+					self.assign_slots(oi, c, &typ.slots().unwrap_or_default(), false);
 				} else if let Some(fields) = self.c_fields(&typ, value.1)? {
 					self.copy_fields(oi, c, 0, &fields, true);
 				} else {
@@ -121,11 +121,8 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	fn oi_fields<'t>(&self, typ: &'t Typ) -> Option<&'t [FieldDef]> {
-		match typ {
-			Typ::Struct(name, fields) if !is_c_struct(self.types.consts.anns, name) => Some(fields),
-			_ => None,
-		}
+	fn oi_struct(&self, typ: &Typ) -> bool {
+		matches!(typ, Typ::Struct(name, _) if !is_c_struct(self.types.consts.anns, name))
 	}
 
 	fn c_fields(&self, typ: &Typ, span: Span) -> Result<Option<Vec<FieldDef>>, Diagnostic> {

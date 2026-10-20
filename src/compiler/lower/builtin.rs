@@ -273,7 +273,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& fs.iter().map(|f| &f.typ).eq(ts.iter().map(|(_, t)| t))
 		{
 			let ptr = self.stack_slot((fs.len() * 8) as u32);
-			self.assign_fields(val, ptr, fs, false);
+			self.assign_slots(val, ptr, &target.slots().unwrap_or_default(), false);
 			return Ok((ptr, target.clone()));
 		}
 		if let Typ::TupleStruct(_, fields) = target

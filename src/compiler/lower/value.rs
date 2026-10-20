@@ -34,6 +34,11 @@ pub(crate) fn define_ptr_data<M: Module>(m: &mut M, sym: &str, target: DataId, t
 	id
 }
 
+pub(crate) fn define_str<M: Module>(m: &mut M, sym: &str, s: &str) -> DataId {
+	let bytes = define_data(m, sym, [s.as_bytes(), &[0]].concat());
+	define_ptr_data(m, &format!("{sym}_hdr"), bytes, &(s.len() as i64).to_le_bytes())
+}
+
 impl<'a, M: Module> Translator<'a, M> {
 	// Error when a `@required` field, or a `@nozero` one without a default, isn't fulfilled.
 	fn check_required(
@@ -65,33 +70,25 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Get a fresh symbol holding a NUL-terminated `s`.
-	fn fresh_cstr(&mut self, s: &str) -> (String, DataId) {
+	fn fresh_cstr(&mut self, s: &str) -> String {
 		let sym = format!("__str_{}", self.out.string_idx);
 		self.out.string_idx += 1;
-		let id = define_data(&mut self.module, &sym, [s.as_bytes(), &[0]].concat());
-		(sym, id)
+		define_str(&mut self.module, &sym, s);
+		sym
 	}
 
 	pub(super) fn str_const(&mut self, s: &str) -> Value {
-		let (sym, bytes_id) = self.fresh_cstr(s);
-		let hdr_sym = format!("{sym}_hdr");
-		define_ptr_data(&mut self.module, &hdr_sym, bytes_id, &(s.len() as i64).to_le_bytes());
-		self.data_addr(&hdr_sym)
+		let sym = self.fresh_cstr(s);
+		self.data_addr(&format!("{sym}_hdr"))
 	}
 
 	// Intern an atom name to a pointer-sized symbol.
 	pub(super) fn atom_const(&mut self, name: &str) -> Value {
 		let sym = format!("__atom_{name}");
-		let hdr_sym = format!("{sym}_hdr");
 		if self.out.atoms.insert(name.to_string()) {
-			let text = format!(":{name}");
-			let len = text.len() as i64;
-			let mut bytes = text.into_bytes();
-			bytes.push(0);
-			let bytes_id = define_data(&mut self.module, &sym, bytes);
-			define_ptr_data(&mut self.module, &hdr_sym, bytes_id, &len.to_le_bytes());
+			define_str(&mut self.module, &sym, &format!(":{name}"));
 		}
-		self.data_addr(&hdr_sym)
+		self.data_addr(&format!("{sym}_hdr"))
 	}
 
 	// A capture-free fn's value.
@@ -325,7 +322,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
 			(Expr::String(s), Typ::CStr) => {
-				let (sym, _) = self.fresh_cstr(s);
+				let sym = self.fresh_cstr(s);
 				self.data_addr(&sym)
 			}
 			(Expr::Atom(name), Typ::Sum(..)) => {
@@ -1356,7 +1353,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !matches!(&typ, Typ::Struct(n, _) if *n == name) {
 					return fail(format!("cannot spread {typ} into `{name}`"), src.1, "type mismatch");
 				}
-				self.assign_fields(val, ptr, &struct_fields, i > 0);
+				self.assign_slots(val, ptr, &typ.slots().unwrap_or_default(), i > 0);
 				continue;
 			}
 			let (idx, ftyp, base) = match field_name.as_deref() {
@@ -1551,16 +1548,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().stack_addr(self.int, slot, 0)
 	}
 
-	// Copy field slots between structs.
-	pub(super) fn assign_fields(&mut self, src: Value, dst: Value, fields: &[FieldDef], release_old: bool) {
-		self.assign_slots(
-			src,
-			dst,
-			&fields.iter().map(|f| f.typ.clone()).collect::<Vec<_>>(),
-			release_old,
-		);
-	}
-
+	// Copy slots between aggregates.
 	pub(super) fn assign_slots(&mut self, src: Value, dst: Value, slots: &[Typ], release_old: bool) {
 		for (i, t) in slots.iter().enumerate() {
 			let old = (release_old && self.slot_owns(t)).then(|| self.ld_typ(dst, (i * 8) as i32, t));
