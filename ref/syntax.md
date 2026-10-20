@@ -2175,6 +2175,11 @@ main :: fn() {
 	# `defer and` only runs if the fn returned some/ok, with `$` as the value
 	defer and log.info("loaded {$.name}")
 
+	# a trailing block scopes it.
+	# it runs the block, then the defer, and yields the block
+	data := defer f.close() { f.read()? }
+	defer cleanup() do work()
+
 	# defers in loops run at the end of each iteration
 	loop {
 		defer print("here we go again...")

@@ -81,6 +81,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	mut juxt_expr: Rec<'token, I, Spanned<Expr>>,
 ) -> P<'token, I, Spanned<Expr>> {
 	let dot = || just(Token::Dot).or(just(Token::SpaceDot));
+	let mut defer_body = Recursive::declare();
 
 	let literal = select! {
 		Token::Bool(b) => Expr::Bool(b),
@@ -367,10 +368,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	.map_with(|v, ex| (Expr::Return(v.map(Box::new)), ex.span()));
 	let defer_expr = just(Token::Defer)
 		.ignore_then(just(Token::And).to(When::Ok).or(just(Token::Or).to(When::Err)).or_not())
-		.then(p.place.clone().or(juxt_expr.clone()))
-		.map_with(|(when, body), ex| {
+		.then(p.place.clone().or(defer_body.clone()))
+		.then(p.block.clone().or_not())
+		.map_with(|((when, body), scope), ex| {
 			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
-			(Expr::Defer { body, when }, ex.span())
+			let defer = (Expr::Defer { body, when }, ex.span());
+			match scope {
+				Some(scope) => (Expr::Block(std::iter::once(defer).chain(scope).collect()), ex.span()),
+				None => defer,
+			}
 		});
 	let fallthrough_expr = just(Token::Fallthrough).map_with(|_, ex| (Expr::Fallthrough, ex.span()));
 	let discard_expr = just(Token::Discard)
@@ -782,14 +788,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// juxts
 	let trailing = anon_fn.clone().or(p.block_ast.clone()).boxed();
 	let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
-	let with_lead = p
+	let lead = p
 		.same_line
 		.clone()
 		.ignore_then(p.adjacent.clone().then(just(Token::Backtick)).not())
 		.ignore_then(header_expr.clone())
-		.then(trailing.or_not())
-		.map(|(l, t)| (Some(l), t))
 		.boxed();
+	let with_lead = lead.clone().then(trailing.or_not()).map(|(l, t)| (Some(l), t)).boxed();
 
 	// labeled blocks
 	let labeled = label
@@ -869,6 +874,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	header_expr.define(level(None));
 	let (bind, test) = stmt::binds(p, level(None).boxed(), match_pat.clone());
 	header_cond.define(bind.or(test).or(header_expr.clone()));
+	defer_body.define(level(Some(
+		just(Token::LBrace)
+			.not()
+			.ignore_then(lead)
+			.map(|lead| (Some(lead), None))
+			.boxed(),
+	)));
 	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
 	level(Some(trail_only))
 }

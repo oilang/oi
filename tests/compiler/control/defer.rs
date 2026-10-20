@@ -102,3 +102,30 @@ fn bare_return_reads_named_result_after_defers() {
 	"};
 	check(src, "456");
 }
+
+#[test]
+fn block_form_scopes_the_defer_and_yields_the_block() {
+	let src = indoc! {"
+		a := defer print(1) {
+			print(0)
+			10
+		}
+		b := defer print(3) do 20
+		print(a + b)
+		defer { print(5) } {
+			print(4)
+		}
+		defer print 6 { print(7) }
+	"};
+	check(src, ["0", "1", "3", "30", "4", "5", "7", "6"]);
+	check(
+		[
+			"c :: fn() { print(9) }",
+			"f :: fn() { defer c { print(1) }",
+			" print(0) }",
+			"f()",
+		],
+		["1", "0"],
+	);
+	check(["f :: fn() { defer print 1", " print(0) }", "f()"], ["0", "1"]);
+}
