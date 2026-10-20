@@ -16,10 +16,7 @@ module core
 	}
 
 	contains :: fn(self, x: T) bool {
-		loop i in self {
-			if i == x { return true }
-		}
-		false
+		x in self
 	}
 
 	index :: fn(self, x: T) ?int {
@@ -31,11 +28,7 @@ module core
 
 	## New array with elements in reverse order.
 	reverse :: fn(self) []T {
-		out: []T = []
-		loop i in 0..self.len {
-			out << self[self.len - 1 - i]
-		}
-		out
+		loop i in 0..self.len do self[self.len - 1 - i]
 	}
 
 	## Join elements with `separator`.

@@ -14,10 +14,7 @@ pub Result[T, E] :: enum {
 Result[T, E] :< {
 	## The ok value, discarding any error.
 	pub ok :: fn(self) ?T {
-		match self {
-			.ok.(v) => v,
-			else => none
-		}
+		self or return none
 	}
 
 	## Wrap any error with additional context.

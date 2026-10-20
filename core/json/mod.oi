@@ -28,18 +28,8 @@ Json :< {
 				}
 			},
 			s @ string => quote(s),
-			a @ Arr => {
-				parts: []string
-				loop v in a {
-					parts << v.str()
-				}
-				"[" + parts.join(",") + "]"
-			},
-			o @ Obj => {
-				parts: []string = []
-				loop (k, v) in o { parts << quote(k) + ":" + v.str() }
-				"{{" + parts.join(",") + "}}"
-			},
+			a @ Arr => "[" + (loop v in a do v.str()).join(",") + "]",
+			o @ Obj => "{{" + (loop (k, v) in o { quote(k) + ":" + v.str() }).join(",") + "}}",
 		}
 	}
 }

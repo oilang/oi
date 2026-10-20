@@ -8,9 +8,7 @@ pub Range :: struct { start: int, end: ?int, step: int }
 
 Range :< {
 	pub collect :: fn(self) []int {
-		out: []int = []
-		loop n in self { out << n }
-		out
+		loop n in self do n
 	}
 
 	str :: fn(self) string {
@@ -46,7 +44,7 @@ Range : Iterator[int] < {
 }
 
 Range : Iterable[Range] < {
-	iter :: fn(self) Self { Self.{ self.start, self.end, self.step } }
+	iter :: fn(self) Self { self }
 }
 
 # ffi

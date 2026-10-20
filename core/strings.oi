@@ -62,12 +62,11 @@ string :< {
 
 	## Flip the case bit of bytes in `lo..=hi`.
 	map_ascii :: fn(self, lo: u8, hi: u8) string {
-		out: []u8 = []
-		loop i in 0..self.len {
+		bytes :: loop i in 0..self.len {
 			c :: self[i]
-			out << if c >= lo && c <= hi { c ~ 32 } else { c }
+			if c >= lo && c <= hi { c ~ 32 } else { c }
 		}
-		string.(out)
+		string.(bytes)
 	}
 
 	## Replace `from` with `to`.
@@ -107,11 +106,8 @@ string :< {
 	}
 
 	## The codepoints of this string, decoded from UTF-8.
-	runes :: fn(self) out: []rune {
-		loop r in self {
-			out << r
-		}
-		out
+	runes :: fn(self) []rune {
+		loop r in self do r
 	}
 }
 

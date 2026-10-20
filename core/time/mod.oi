@@ -80,9 +80,6 @@ Duration : Mul[int] < {
 Duration : Mul[float] < {
 	mul :: fn(self, k: float) Self { .{ int.(round(float.(self.ns) * k)) } }
 }
-Duration : Eq < {
-	eq :: fn(self, o: Self) bool { self.ns == o.ns }
-}
 Duration : Ord < {
 	lt :: fn(self, o: Self) bool { self.ns < o.ns }
 }
@@ -114,9 +111,6 @@ Instant : Sub[Duration] < {
 }
 Instant : Add[Duration] < {
 	add :: fn(self, d: Duration) Self { .{ self.ns + d.ns } }
-}
-Instant : Eq < {
-	eq :: fn(self, o: Self) bool { self.ns == o.ns }
 }
 Instant : Ord < {
 	lt :: fn(self, o: Self) bool { self.ns < o.ns }
