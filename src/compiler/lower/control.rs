@@ -1294,9 +1294,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn load_bind(&mut self, subject: Value, typ: &Typ, field: &Typ, off: i32, span: Span) -> Value {
 		match typ {
 			Typ::Array(_) | Typ::FixedArray(..) => {
-				let (data, len) = self.array_parts(subject, typ);
 				let idx = self.b.ins().iconst(self.int, off as i64);
-				self.load_index(data, len, field, idx, span)
+				self.load_index((subject, typ), idx, span)
 			}
 			_ => self.opt_payload(subject, typ, field, off),
 		}

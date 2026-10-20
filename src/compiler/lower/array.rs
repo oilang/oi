@@ -422,8 +422,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(v)
 	}
 
-	// Bounds-check `idx` and return the element address.
-	pub(super) fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
+	// Bounds-check `idx` into an array and return the element address.
+	fn elem_addr(&mut self, (header, typ): (Value, &Typ), idx: Value, span: Span) -> Value {
+		let (data, len) = self.array_parts(header, typ);
 		let oob = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
 
 		let (panic_block, ok_block) = self.fork(oob);
@@ -435,19 +436,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok_block);
-		let stride = self.elem_stride(elem);
+		let stride = self.elem_stride(array_elem(typ));
 		let off = self.b.ins().imul_imm(idx, stride);
 		self.b.ins().iadd(data, off)
 	}
 
-	pub(super) fn load_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, span: Span) -> Value {
-		let addr = self.elem_addr(data, len, elem, idx, span);
-		self.load_elem(addr, 0, elem)
+	pub(super) fn load_index(&mut self, array: (Value, &Typ), idx: Value, span: Span) -> Value {
+		let addr = self.elem_addr(array, idx, span);
+		self.load_elem(addr, 0, array_elem(array.1))
 	}
 
-	pub(super) fn store_index(&mut self, data: Value, len: Value, typ: &Typ, idx: Value, val: Value, span: Span) {
-		let elem = array_elem(typ);
-		let addr = self.elem_addr(data, len, elem, idx, span);
+	pub(super) fn store_index(&mut self, array: (Value, &Typ), idx: Value, val: Value, span: Span) {
+		let (addr, elem) = (self.elem_addr(array, idx, span), array_elem(array.1));
 		if self.slot_owns(elem) {
 			let old = self.load_elem(addr, 0, elem);
 			self.release_field(old, elem);

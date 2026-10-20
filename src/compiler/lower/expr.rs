@@ -383,23 +383,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					(instance, None)
 				} else if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
-					&& let Some(typ) = self.types.named(name, recv.1).ok().filter(|t| {
-						matches!(
-							t,
-							Typ::Int(_)
-								| Typ::UInt(_) | Typ::Float(_)
-								| Typ::Bool | Typ::ISize | Typ::USize
-								| Typ::Rune | Typ::Str | Typ::Struct(..)
-								| Typ::TupleStruct(..) | Typ::Enum(_)
-								| Typ::Array(_) | Typ::Map(..)
-						)
-					}) {
-					match &typ {
-						Typ::Enum(n) => (n.clone(), None),
-						Typ::Array(_) => ("array".into(), None),
-						Typ::Map(..) => ("map".into(), None),
-						_ => (typ.to_string(), None),
-					}
+					&& let Some(owner) = self.types.named(name, recv.1).ok().as_ref().and_then(method_owner)
+				{
+					(owner, None)
 				} else {
 					let (recv_val, recv_typ) = self.expr(recv)?;
 					let (recv_val, recv_typ) = self.deref(recv_val, &recv_typ);
@@ -418,24 +404,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					if recv_typ == Typ::Error {
 						return self.dyn_call(recv_val, role::ERROR, method, args, expr.1);
 					}
-					match &recv_typ {
-						Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) | Typ::Sum(name, _) => {
-							(name.clone(), Some((recv_val, recv_typ)))
-						}
-						Typ::Str | Typ::CStr | Typ::Rune => (recv_typ.to_string(), Some((recv_val, recv_typ))),
-						Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize | Typ::Ast => {
-							(recv_typ.to_string(), Some((recv_val, recv_typ)))
-						}
-						Typ::Array(_) => ("array".into(), Some((recv_val, recv_typ))),
-						Typ::Map(..) => ("map".into(), Some((recv_val, recv_typ))),
-						_ => {
-							return fail(
-								format!("`{recv_typ}` has no methods"),
-								recv.1,
-								"methods are only defined on structs and primitives",
-							);
-						}
-					}
+					let Some(owner) = method_owner(&recv_typ) else {
+						let msg = format!("`{recv_typ}` has no methods");
+						return fail(msg, recv.1, "methods are only defined on structs and primitives");
+					};
+					(owner, Some((recv_val, recv_typ)))
 				};
 
 				if sname == role::PTR {
@@ -664,7 +637,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return match field.parse::<i64>() {
 						Ok(n) => {
 							let idx = self.b.ins().iconst(self.int, n);
-							Ok((self.load_index(data, len, &elem, idx, expr.1), elem))
+							Ok((self.load_index((ptr, &typ), idx, expr.1), elem))
 						}
 						Err(_) => Err(Diagnostic::new(
 							format!("{typ} has no field `{field}`"),
@@ -817,8 +790,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						};
 						let elem = array_elem(&typ).clone();
 						let idx = self.intcast(idx, self.int, true);
-						let (data, len) = self.array_parts(ptr, &typ);
-						Ok((self.load_index(data, len, &elem, idx, collection.1), elem))
+						Ok((self.load_index((ptr, &typ), idx, collection.1), elem))
 					}
 					t if self.claims(t, role::INDEX) => self.index_call((ptr, typ), index, expr.1),
 					_ => fail(
@@ -1111,4 +1083,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => return None,
 		})
 	}
+}
+
+// The name a type's methods are keyed under.
+fn method_owner(typ: &Typ) -> Option<String> {
+	Some(match typ {
+		Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) | Typ::Sum(name, _) => name.clone(),
+		Typ::Array(_) => "array".into(),
+		Typ::Map(..) => "map".into(),
+		Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize => typ.to_string(),
+		Typ::Rune | Typ::Str | Typ::CStr | Typ::Ast => typ.to_string(),
+		_ => return None,
+	})
 }

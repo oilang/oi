@@ -201,8 +201,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let idx = self.intcast(idx, self.int, true);
 					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
 					let val = self.copy_in(val, &elem);
-					let (data, len) = self.array_parts(ptr, &typ);
-					self.store_index(data, len, &typ, idx, val, stmt.1);
+					self.store_index((ptr, &typ), idx, val, stmt.1);
 				}
 
 				Expr::MapDelete { name, key } => {
