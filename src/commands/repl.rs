@@ -1,12 +1,13 @@
 use std::collections::HashSet;
 use std::io::IsTerminal as _;
+use std::path::Path;
 
 use indoc::eprintdoc;
 use oi::Reported;
-use oi::ast::Expr;
+use oi::ast::{Expr, Span, Spanned};
 use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
-use oi::loader::{core_source, parse_file};
+use oi::loader::{core_source, load, parse_file};
 
 use crate::cli::VERSION;
 
@@ -84,24 +85,50 @@ pub fn run() -> Result<(), Reported> {
 	Ok(())
 }
 
-// Prints docs and signature for a name, from the session or a core module.
+// Prints docs and signature for a name, from the session or a module it names.
 fn help_topic(name: &str, session: &str) {
-	let (module, item) = name.rsplit_once('.').unwrap_or(("", name));
-	let source = if module.is_empty() {
-		session
-	} else {
-		core_source(module).unwrap_or_default()
+	let module = name.split_once('.').map(|(head, _)| head).filter(|head| {
+		core_source(head).is_some() || Path::new(head).is_dir() || Path::new(&format!("{head}.oi")).is_file()
+	});
+	let src = module.map_or(session.into(), |m| format!("{session}use {m}\n"));
+	let Ok(program) = load(vec![("<repl>".into(), src)], Path::new(".")) else {
+		return;
 	};
-	let lines: Vec<_> = source.lines().collect();
-	let is_def = |line: &&str| {
-		let rest = line.trim_start_matches("pub ").strip_prefix(item);
-		rest.is_some_and(|rest| rest.starts_with('[') || rest.trim_start().starts_with("::"))
-	};
-	let Some(at) = lines.iter().rposition(is_def) else {
+	let Some(span) = program.modules.iter().rev().find_map(|m| find_def(&m.items, "", name)) else {
 		return eprintln!("no docs for `{name}`");
 	};
-	let docs = lines[..at].iter().rev().take_while(|line| line.starts_with("##")).count();
-	eprintln!("{}", lines[at - docs..=at].join("\n"));
+	let (.., text) = program.map.locate_span(span.into_range());
+	let (above, indent) = program.map.before(span.start).rsplit_once('\n').unwrap_or_default();
+	let docs = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
+	let docs: Vec<_> = docs.take_while(|l| l.starts_with("##")).collect();
+	docs.iter().rev().for_each(|doc| eprintln!("{doc}"));
+	eprintln!("{}{}", indent.trim_start(), text.lines().next().unwrap_or_default());
+}
+
+// The last definition at the given dotted path.
+fn find_def(items: &[Spanned<Expr>], prefix: &str, path: &str) -> Option<Span> {
+	items.iter().rev().find_map(|item| {
+		let item = match &item.0 {
+			Expr::MacroCall { args, .. } => args.first()?,
+			_ => item,
+		};
+		let def = Expr::peel_meta(item).2;
+		let (name, members): (&str, &[_]) = match &def.0 {
+			Expr::Claim { typ, fills, .. } => return find_def(fills, &format!("{prefix}{typ}."), path),
+			Expr::StructDef { name, fills, .. }
+			| Expr::EnumDef { name, fills, .. }
+			| Expr::TraitDef {
+				name, methods: fills, ..
+			} => (name, fills),
+			Expr::Bind { name, .. } | Expr::MacroDef { name, .. } => (name, &[]),
+			e => (e.def_name()?, &[]),
+		};
+		let full = format!("{prefix}{name}").replace("::", ".");
+		match full.trim_start_matches("core.") == path {
+			true => Some(def.1),
+			false => find_def(members, &format!("{full}."), path),
+		}
+	})
 }
 
 fn reedline() -> reedline::Reedline {

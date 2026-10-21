@@ -28,9 +28,10 @@ fn clear_resets_the_session() {
 
 #[test]
 fn help_topic_prints_docs_and_signature() {
-	let err = stderr(&oi(&["repl"]).run(Some(":h math.sqrt\n")));
+	let err = stderr(&oi(&["repl"]).run(Some(":h math.sqrt\n:h string.first\n")));
 	assert!(
 		err.contains("## Square root.\npub sqrt[T] :: fn(n: T) float {"),
 		"{err}"
 	);
+	assert!(err.contains("## First n characters.\nfirst :: fn(self"), "{err}");
 }

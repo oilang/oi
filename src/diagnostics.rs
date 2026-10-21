@@ -62,6 +62,12 @@ impl SourceMap {
 		let col = before[before.rfind('\n').map_or(0, |i| i + 1)..].chars().count() + 1;
 		(&file.name, line, col, &file.src[local])
 	}
+
+	// The source of `at`'s file up to `at`.
+	pub fn before(&self, at: usize) -> &str {
+		let (file, local) = self.locate(&(at..at));
+		&file.src[..local.start]
+	}
 }
 
 // A user-facing error rendered with ariadne.
