@@ -84,7 +84,7 @@ pub enum Command {
 		/// Path to the .oi source file.
 		file: Option<PathBuf>,
 
-		/// Only run tests whose name matches any pattern.
+		/// Only run tests whose name matches any pattern, or carry a `:tag`.
 		patterns: Vec<String>,
 	},
 

@@ -629,7 +629,7 @@ pub struct Compiler<M: Module = JITModule> {
 	aot: bool,
 	pub(crate) emit_clif: bool,
 	pub(crate) include_tests: bool,
-	pub(crate) tests: Vec<(String, String, bool)>,
+	pub(crate) tests: Vec<(String, String, bool, Vec<String>)>,
 	pub(crate) stage0: bool,
 	link_libs: Vec<String>,
 	exports: HashMap<String, String>,
@@ -1303,7 +1303,11 @@ impl<M: Module> Compiler<M> {
 							_ => name.replace("::", "."),
 						};
 						let skip = matches!(lit("skip", 1), Some(Expr::Bool(true)));
-						self.tests.push((name.clone(), display, skip));
+						let tags = self.annotations[name].iter().filter_map(|a| match &a.0 {
+							Expr::Atom(tag) => Some(tag.clone()),
+							_ => None,
+						});
+						self.tests.push((name.clone(), display, skip, tags.collect()));
 					}
 					if others.iter().any(|f| f.key == *name) {
 						let msg = format!("duplicate fn `{}`", display_name(name));

@@ -173,14 +173,17 @@ pub fn test_source(entry: Entry, root: &Path, patterns: &[String]) -> Result<(),
 	compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
 	let total = compiler.tests.len();
 	if !patterns.is_empty() {
-		compiler
-			.tests
-			.retain(|(_, display, _)| patterns.iter().any(|pattern| display.contains(pattern)));
+		compiler.tests.retain(|(_, display, _, tags)| {
+			patterns.iter().any(|pattern| match pattern.strip_prefix(':') {
+				Some(tag) => tags.iter().any(|candidate| candidate == tag),
+				None => display.contains(pattern),
+			})
+		});
 	}
 	let filtered = total - compiler.tests.len();
 	let mut passed = 0;
 	let mut skipped = 0;
-	for (fn_name, display, skip) in &compiler.tests {
+	for (fn_name, display, skip, _) in &compiler.tests {
 		print!("test {display} ... ");
 		std::io::Write::flush(&mut std::io::stdout()).ok();
 		if *skip {

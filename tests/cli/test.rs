@@ -38,6 +38,17 @@ fn test_payload_renames_and_skips() {
 }
 
 #[test]
+fn test_atom_pattern_selects_tagged_tests() {
+	let dir = project(indoc! {r#"
+		@test.{"tagged"} @:slow @:gpu first :: fn() { assert! true }
+		@test second :: fn() { assert! false }
+	"#});
+	let out = dir.ok(&["test", "main.oi", ":gpu"]);
+	assert!(out.contains("tagged ... ok") && !out.contains("second"));
+	assert!(out.contains("1 passed; 1 filtered out"));
+}
+
+#[test]
 fn each_test_starts_from_the_declared_statics() {
 	let dir = project(indoc! {r#"
 		main :: fn() {}

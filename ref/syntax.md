@@ -2447,6 +2447,11 @@ main :: fn() {
 	@test.{"trims nothing", skip = true}
 	trims_empty :: fn() { assert! trim("") == "" }
 
+	# tests may be tagged with atoms
+	# `oi test :slow` runs only the tests so tagged
+	@test @:slow @:live
+	parses_big :: fn() { assert! parse(big_input).ok }
+
 	# TODO: the comp and reflection stuff not fleshed out yet
 	comp loop note in type_info(yell).notes { ... }
 
