@@ -858,6 +858,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(t @ Typ::Fn(..)) => {
 					self.declare_anon_fn(&None, &[], true, AnonSig::Inferred(t.clone()), body, expr.1)
 				}
+				Some(Typ::Annotated(anns, t)) if is_isolated(anns) && matches!(**t, Typ::Fn(..)) => {
+					self.isolated = true;
+					self.lower(expr, Some(t))
+				}
 				_ => self.block_expr(body, expr.1),
 			},
 

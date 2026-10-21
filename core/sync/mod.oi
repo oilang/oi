@@ -94,6 +94,16 @@ pub start[T] :: fn(move f: @isolated fn() T) Thread[T] {
 	.{ done }
 }
 
+## Run `f` on every item, one thread each, and wait for them all.
+pub each[T: Isolated] :: fn(xs: []T, f: @isolated fn(T)) {
+	group := Group[()].{}
+	loop x in xs {
+		job: @isolated fn() () = fn [move x, f] () { f(x) }
+		group.add(start(move job))
+	}
+	discard group.wait()
+}
+
 ## Run an expression on a new thread.
 pub spawn! :: fn(expr: Ast) Ast {
 	`{

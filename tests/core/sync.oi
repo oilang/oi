@@ -37,6 +37,15 @@ test! "wait on many" {
 	assert! ts.wait() == [0 1 4 9]
 }
 
+test! "each runs every item" {
+	seen := sync.Chan[int].{}
+	sync.each([1 2 3]) { seen <- $ * 2 or panic!("closed") }
+	seen.close()
+	total := 0
+	loop n in seen { total += n }
+	assert! total == 12
+}
+
 test! "chan copies share a queue" {
 	ch := sync.Chan[Job].{}
 	{
