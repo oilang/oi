@@ -41,14 +41,11 @@ test! "split" {
 }
 
 test! "parsing" {
-	assert! parse_int("-42") == -42
-	assert! parse_int("4x") == none
-	assert! parse_int[i8]("-42") == i8.(-42)
-	assert! parse_float("-2.05") == -2.05
-	assert! parse_float("2.") == none
-	assert! parse_float[f32]("-2.5") == f32.(-2.5)
-	assert! (int.try_from("42") or 0) == 42
-	assert! (float.try_from("nope") or 1.5) == 1.5
+	assert! (i8.try_from("-42") or i8.(0)) == i8.(-42)
+	assert! (u8.try_from("300") or u8.(1)) == u8.(1)
+	assert! (f32.try_from("-2.5") or f32.(0)) == f32.(-2.5)
+	assert! (float.try_from("2.") or 0.5) == 0.5
+	assert! (int.try_from("4x") or { assert! $.input == "4x"; 0 }) == 0
 }
 
 test! "runes" {

@@ -19,6 +19,9 @@ f32 :< {
 	epsilon :: 2.0 ** -23.0
 }
 
+## Any int or float, of any width.
+pub Number :: trait {}
+
 ## Floating point, of any width.
 pub Float :: trait {}
 float :< Float

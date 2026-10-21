@@ -35,6 +35,9 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
+	if tn == role::NUMBER {
+		return matches!(typ, Int(_) | UInt(_) | ISize | USize | Float(_));
+	}
 	let arith = matches!(
 		tn,
 		role::NEG | role::ADD | role::SUB | role::MUL | role::DIV | role::MOD | role::POW

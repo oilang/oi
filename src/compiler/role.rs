@@ -28,6 +28,7 @@ pub(crate) const ERROR: &str = "core::Error";
 pub(crate) const ALLOCATOR: &str = "core::Allocator";
 pub(crate) const DISPLAY: &str = "core::Display";
 pub(crate) const DEBUG: &str = "core::Debug";
+pub(crate) const NUMBER: &str = "core::Number";
 pub(crate) const ISOLATED_TRAIT: &str = "core::Isolated";
 
 // types

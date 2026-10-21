@@ -101,7 +101,7 @@ P :< {
 	num :: fn(mut self) !Json {
 		a :: self.i
 		loop self.at() != "" && "+-.eE0123456789".contains(self.at()) { self.i += 1 }
-		parse_float(self.s[a..self.i]) or { return error("invalid number at {a}") }
+		float.try_from(self.s[a..self.i]) or { return error("invalid number at {a}") }
 	}
 
 	## Decode 4 hex digits at the cursor into a code point.

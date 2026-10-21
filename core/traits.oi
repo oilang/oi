@@ -127,6 +127,15 @@ Err : Error < {
 	message :: fn(self) string { self.msg }
 }
 
+## Input that doesn't read as the intended kind.
+pub ParseError :: struct {
+	pub input: string,
+	pub want: string,
+}
+ParseError : Error < {
+	message :: fn(self) string { "`{self.input}` is not a {self.want}" }
+}
+
 ## A source location, as `src!()` captures it.
 pub Src :: struct {
 	pub file: string,

@@ -175,47 +175,35 @@ is_space :: fn(x: u8) bool {
 	x == 32 || (x >= 9 && x <= 13)
 }
 
-## Parse an integer of any width.
-pub parse_int[T = int] :: fn(s: string) ?T {
-	neg :: s.starts_with("-")
-	digits[T](if neg { s[1..] } else { s }, neg)
-}
-
-## Parse a float of any width.
-pub parse_float[T = float] :: fn(s: string) ?T {
-	if s.starts_with("-") { return -parse_float[T](s[1..])? }
-	loop i in 0..s.len {
-		if s[i] == 46 {
-			frac :: s[(i + 1)..]
-			return digits[T](s[..i], false)? + digits[T](frac, false)? / 10 ** T.(frac.len)
-		}
-	}
-	digits[T](s, false)
-}
-
 ## Accumulate decimal digits into `T`.
 digits[T] :: fn(s: string, neg: bool) ?T {
-	if s.len == 0 { return }
 	wraps :: T.(1) / T.(2) == 0 # only ints wrap on overflow
 	out: T = 0
+	point := s.len
 	loop i in 0..s.len {
-		d :: int.(s[i]) - 48
+		if s[i] == '.' && !wraps && point == s.len {
+			point = i
+			continue
+		}
+		d :: int.(s[i]) - '0'
 		if d < 0 || d > 9 { return }
 		n :: if neg { out * 10 - T.(d) } else { out * 10 + T.(d) }
 		if wraps && n / 10 != out { return }
 		out = n
 	}
-	out
+	if point == 0 || point == s.len - 1 { return }
+
+	if point < s.len {
+		out / 10 ** T.(s.len - point - 1)
+	} else do out
 }
 
-int : TryFrom[string] < {
-	try_from :: fn(s: string) !int {
-		parse_int[Self](s) or { return error("`{s}` is not an int") }
-	}
-}
-
-float : TryFrom[string] < {
-	try_from :: fn(s: string) !float {
-		parse_float[Self](s) or { return error("`{s}` is not a float") }
+[T: Number] T : TryFrom[string] < {
+	try_from :: fn(s: string) ParseError!Self {
+		neg :: s.starts_with("-")
+		str :: if neg { s[1..] } else { s }
+		digits[T](str, neg) or {
+			return ParseError.{ input = s, want = "number" }
+		}
 	}
 }
