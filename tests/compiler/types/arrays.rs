@@ -18,6 +18,17 @@ fn literals() {
 }
 
 #[test]
+fn matrix_literals() {
+	check(
+		indoc! {"
+			m : [3][2]int : .[1 0; 0 1;]
+			print(m[1][0], m[0][0], m)
+		"},
+		"0 1 [[1, 0], [0, 1], [0, 0]]",
+	);
+}
+
+#[test]
 fn indexing() {
 	let src = indoc! {"
 		first :: fn(xs: []int) int { xs.0 }

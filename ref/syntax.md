@@ -2428,7 +2428,7 @@ main :: fn() {
 	}
 	# a value param names the type it holds, and callers pass it positionally
 	repeat[T; N: int] :: fn(x: T) [N]T { ... }
-	Matrix[R: int, C: int] :: struct { cells: [R][C]float }
+	Matrix[R, C: int] :: struct { cells: [R][C]float }
 	threes := repeat[int, 3](0)
 	# generics can have trait guards
 	max[T: Ord] :: fn(a: T, b: T) T {

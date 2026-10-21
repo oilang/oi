@@ -751,6 +751,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::DotArray(None, elems) => match hint {
 				Some(Typ::Array(elem)) => self.array_lit(elems, Some(elem), expr.1),
+				Some(t @ Typ::FixedArray(..)) if elems.is_empty() => Ok((self.zero_or_err(t, expr.1)?, t.clone())),
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
 				// built through `From[[]T]` fills

@@ -1,6 +1,6 @@
 use super::{
-	P, Parsers, Rec, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, shadow_params, spanned,
-	stmt, trailing_list, trailing_list1, types,
+	P, Parsers, Rec, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, matrix, paren, shadow_params,
+	spanned, stmt, trailing_list, trailing_list1, types,
 };
 use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
@@ -223,7 +223,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.clone()
 		.or_not()
 		.then_ignore(dot())
-		.then(bracket(loose_list(p.expr.clone())))
+		.then(bracket(matrix(p.expr.clone())))
 		.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| (t, ex.span())), elems), ex.span()));
 
 	// casting

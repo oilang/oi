@@ -187,6 +187,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("expected {n} elements, got {}", elems.len());
 			return fail(msg, span, "wrong number of elements");
 		}
+
 		let (vals, elem) = self.collect_elems(elems, want.map(|w| w.0))?;
 		let Some(elem) = elem else {
 			return fail(
@@ -195,11 +196,13 @@ impl<'a, M: Module> Translator<'a, M> {
 				"needs at least one element to infer its type",
 			);
 		};
+
 		let n = vals.len();
 		let ptr = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
 		self.store_all(ptr, vals, &elem);
 		let typ = Typ::FixedArray(Box::new(elem), n);
 		self.temp(ptr, &typ);
+
 		Ok((ptr, typ))
 	}
 

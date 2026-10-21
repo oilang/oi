@@ -61,6 +61,19 @@ fn semi<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'
 	p.then_ignore(just(Token::Semicolon).or_not())
 }
 
+// Matrix literals.
+fn matrix<'token, I: Tokens<'token>>(
+	p: impl Rule<'token, I, Spanned<Expr>>,
+) -> impl Rule<'token, I, Vec<Spanned<Expr>>> {
+	let row = loose_list(p).map_with(|row, ex| (Expr::DotArray(None, row), ex.span()));
+	row.separated_by(just(Token::Semicolon))
+		.collect::<Vec<_>>()
+		.map(|mut rows| match rows.as_mut_slice() {
+			[(Expr::DotArray(_, row), _)] => std::mem::take(row),
+			_ => rows,
+		})
+}
+
 fn loose_list1<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	p.separated_by(just(Token::Comma).or_not())
 		.allow_trailing()
