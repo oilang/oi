@@ -24,6 +24,7 @@ pub(crate) const TAG_UNIT: i64 = 4;
 pub(crate) const TAG_ARRAY: i64 = 5;
 pub(crate) const TAG_AST: i64 = 6;
 pub(crate) const TAG_AST_SEQ: i64 = 7;
+pub(crate) const TAG_ATOM: i64 = 8;
 
 enum Entry {
 	Scalar(i64, i64),
@@ -156,6 +157,8 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 		TAG_BOOL => Expr::Bool(v != 0),
 		// SAFETY: `v` is a str handle the runtime just produced
 		TAG_STR => Expr::String(unsafe { runtime::str_string(v as *const _) }),
+		// SAFETY: `v` is an interned `:name` str handle
+		TAG_ATOM => Expr::Atom(unsafe { runtime::str_string(v as *const _) }[1..].into()),
 		// SAFETY: `v` is an Ast handle, a box the quote runtime leaked
 		TAG_AST => unsafe { (*(v as *mut Spanned<Expr>)).0.clone() },
 		_ => Expr::Tuple(vec![]),
