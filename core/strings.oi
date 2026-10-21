@@ -207,3 +207,55 @@ digits[T] :: fn(s: string, neg: bool) ?T {
 		}
 	}
 }
+
+## UTF-16 strings.
+pub string16 :: struct ([]u16)
+
+string16 :< {
+	## Length in code units, not characters.
+	pub len :: fn(self) int {
+		self.0.len
+	}
+
+	pub str :: fn(self) out: string {
+		loop r in self do out += r.str()
+		out
+	}
+}
+
+string16 : From[string] < {
+	from :: fn(s: string) Self {
+		units: []u16 = []
+		loop r in s {
+			c :: int.(r)
+			if c < 0x10000 {
+				units << u16.(c)
+			} else {
+				units << u16.(0xd800 | ((c - 0x10000) >> 10))
+				units << u16.(0xdc00 | (c & 0x3ff))
+			}
+		}
+		string16(units)
+	}
+}
+
+## Cursor over a string16's codepoints.
+pub Runes16 :: struct { s: []u16, at: int }
+
+Runes16 : Iterator[rune] < {
+	next :: fn(mut self) ?rune {
+		if self.at >= self.s.len do return none
+
+		hi :: int.(self.s[self.at])
+		self.at += 1
+		if hi < 0xd800 || hi > 0xdbff || self.at >= self.s.len do return rune.(hi)
+		lo :: int.(self.s[self.at])
+		if lo < 0xdc00 || lo > 0xdfff do return rune.(hi) # lone surrogate
+		self.at += 1
+		rune.(0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00))
+	}
+}
+
+string16 : Iterable[Runes16] < {
+	iter :: fn(self) Runes16 { Runes16.{ self.0, 0 } }
+}
