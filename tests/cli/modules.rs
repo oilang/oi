@@ -239,7 +239,7 @@ fn std_trait_claimed_without_import_in_module() {
 			"foo",
 			[
 				"pub P :: struct { pub x: int }",
-				"P : Add < { add :: fn(self, other: P) P { P.{ x = self.x + other.x } } }",
+				"P : Add < { add :: fn(self; other: P) P { P.{ x = self.x + other.x } } }",
 			],
 		);
 	p.check("5");

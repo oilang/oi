@@ -15,7 +15,7 @@ Bits[E] : From[[]E] < {
 }
 
 Bits[E] : Contains[E] < {
-	contains :: fn(self, x: E) bool {
+	contains :: fn(self; x: E) bool {
 		self.raw & u64.(1) << int.(x) != 0
 	}
 }

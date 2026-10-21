@@ -10,49 +10,49 @@ pub Ord :: trait { lt: fn(self, other: Self) bool }
 pub Neg :: trait {
 	neg: fn(self) Self
 }
-pub Add[Rhs = Self] :: trait {
+pub Add[Rhs :: Self] :: trait {
 	Out :: Self
-	add: fn(self, other: Rhs) Out
+	add: fn(self; other: Rhs) Out
 }
-pub Sub[Rhs = Self] :: trait {
+pub Sub[Rhs :: Self] :: trait {
 	Out :: Self
-	sub: fn(self, other: Rhs) Out
+	sub: fn(self; other: Rhs) Out
 }
-pub Mul[Rhs = Self] :: trait {
+pub Mul[Rhs :: Self] :: trait {
 	Out :: Self
-	mul: fn(self, other: Rhs) Out
+	mul: fn(self; other: Rhs) Out
 }
-pub Div[Rhs = Self] :: trait {
+pub Div[Rhs :: Self] :: trait {
 	Out :: Self
-	div: fn(self, other: Rhs) Out
+	div: fn(self; other: Rhs) Out
 }
-pub Mod[Rhs = Self] :: trait {
+pub Mod[Rhs :: Self] :: trait {
 	Out :: Self
-	mod: fn(self, other: Rhs) Out
+	mod: fn(self; other: Rhs) Out
 }
-pub Pow[Rhs = Self] :: trait {
+pub Pow[Rhs :: Self] :: trait {
 	Out :: Self
-	pow: fn(self, other: Rhs) Out
+	pow: fn(self; other: Rhs) Out
 }
 
 # bitwise
 pub Not :: trait { not: fn(self) Self }
-pub BitAnd[Rhs = Self] :: trait { bitand: fn(self, other: Rhs) Self }
-pub BitOr[Rhs = Self] :: trait { bitor: fn(self, other: Rhs) Self }
-pub BitXor[Rhs = Self] :: trait { bitxor: fn(self, other: Rhs) Self }
-pub Shl[Rhs = int] :: trait { shl: fn(self, other: Rhs) Self }
-pub Shr :: trait { shr: fn(self, other: int) Self }
+pub BitAnd[Rhs :: Self] :: trait { bitand: fn(self; other: Rhs) Self }
+pub BitOr[Rhs :: Self] :: trait { bitor: fn(self; other: Rhs) Self }
+pub BitXor[Rhs :: Self] :: trait { bitxor: fn(self; other: Rhs) Self }
+pub Shl[Rhs :: int] :: trait { shl: fn(self; other: Rhs) Self }
+pub Shr :: trait { shr: fn(self; other: int) Self }
 
 # membership
-pub Contains[T] :: trait { contains: fn(self, v: T) bool }
+pub Contains[T] :: trait { contains: fn(self; v: T) bool }
 
 # indexing
 # TODO: handle index oob
-pub Index[I, T] :: trait { index: fn(self, i: I) T }
-pub IndexAssign[I, T] :: trait { index_assign: fn(mut self, i: I, v: T) }
+pub Index[I, T] :: trait { index: fn(self; i: I) T }
+pub IndexAssign[I, T] :: trait { index_assign: fn(mut self; i: I, v: T) }
 
 # channels
-pub Send[T] :: trait { send: fn(self, move v: T) !() }
+pub Send[T] :: trait { send: fn(self; move v: T) !() }
 pub Recv[T] :: trait { recv: fn(self) ?T }
 
 ## Holds no `^T`, `any`, or fn env, so it can cross threads. Checked structurally.
@@ -70,7 +70,7 @@ pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 ## Every type renders, through its own `fmt` or `str`, or the derived printer.
 @implicit
 pub Display :: trait {
-	fmt :: fn(self, mut b: Buffer) {
+	fmt :: fn(self; mut b: Buffer) {
 		fmt_derived(self, mut b)
 	}
 
@@ -89,7 +89,7 @@ pub fmt_derived[T] :: fn(v: T, mut b: Buffer) {
 ## Every type debugs, through its own `debug` or the derived printer.
 @implicit
 pub Debug :: trait {
-	debug :: fn(self, mut b: Buffer) {
+	debug :: fn(self; mut b: Buffer) {
 		debug_derived(self, mut b)
 	}
 

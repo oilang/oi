@@ -8,28 +8,28 @@ string :< {
 	}
 
 	## First n characters.
-	first :: fn(self, n := 1) string {
+	first :: fn(self; n := 1) string {
 		if n < 0 { return }
 		self[..n]
 	}
 
 	## Last n characters.
-	last :: fn(self, n := 1) string {
+	last :: fn(self; n := 1) string {
 		if n < 0 { return }
 		if n > self.len() { return self }
 		self[(self.len() - n)..]
 	}
 
-	starts_with :: fn(self, prefix: string) bool {
+	starts_with :: fn(self; prefix: string) bool {
 		prefix.len() <= self.len() && self[..prefix.len()] == prefix
 	}
 
-	ends_with :: fn(self, suffix: string) bool {
+	ends_with :: fn(self; suffix: string) bool {
 		suffix.len() <= self.len() && self[(self.len() - suffix.len())..] == suffix
 	}
 
 	## Whether the string contains substring `sub`.
-	contains :: fn(self, sub: string) bool {
+	contains :: fn(self; sub: string) bool {
 		upper :: self.len() - sub.len() + 1
 		loop i in 0..upper {
 			if self[i..(i + sub.len())] == sub { return true }
@@ -61,7 +61,7 @@ string :< {
 	}
 
 	## Flip the case bit of bytes in `lo..=hi`.
-	map_ascii :: fn(self, lo: u8, hi: u8) string {
+	map_ascii :: fn(self; lo: u8, hi: u8) string {
 		bytes :: loop i in 0..self.len() {
 			c :: self[i]
 			if c >= lo && c <= hi { c ~ 32 } else { c }
@@ -70,12 +70,12 @@ string :< {
 	}
 
 	## Replace `from` with `to`.
-	replace :: fn(self, from: string, to: string) string {
+	replace :: fn(self; from: string, to: string) string {
 		self.split(from).join(to)
 	}
 
 	## Split on `sep`.
-	split :: fn(self, sep := "") []string {
+	split :: fn(self; sep := "") []string {
 		if sep == "" { return [self] }
 
 		out: []string = []
@@ -96,7 +96,7 @@ string :< {
 	}
 
 	## Wrap with given characters.
-	wrap :: fn(self, left: string, right: string = left) string {
+	wrap :: fn(self; left: string, right: string = left) string {
 		left + self + right
 	}
 

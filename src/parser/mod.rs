@@ -329,7 +329,7 @@ where
 				Some((t, d, m)) => (Some(t), d, m),
 				None => (None, None, false),
 			};
-			let typ = typ.unwrap_or_else(|| TypeExpr::Name(if name == "self" { "Self" } else { "$?" }.into()));
+			let typ = typ.unwrap_or_else(|| TypeExpr::Name("$?".into()));
 			Param {
 				default,
 				access: access.unwrap_or_default(),
@@ -350,12 +350,29 @@ where
 	let param = name_hole.or(param_hole.clone()).or(param).boxed();
 	// NOTE: a trailing comma forces a tuple even for one param
 	let params = paren(
-		param
-			.separated_by(just(Token::Comma))
+		(param.separated_by(just(Token::Comma)).collect::<Vec<_>>())
+			.separated_by(just(Token::Semicolon))
 			.collect::<Vec<_>>()
 			.then(just(Token::Comma).or_not()),
 	)
-	.map(|(params, trailing)| {
+	.map(|(groups, trailing)| {
+		let params: Vec<Param> = groups
+			.into_iter()
+			.flat_map(|mut group| {
+				// param grouping
+				let mut typed: Option<Param> = None;
+				for param in group.iter_mut().rev() {
+					if !matches!(&param.typ, TypeExpr::Name(n) if n == "$?") {
+						typed = Some(param.clone());
+					} else if let Some(t) = &typed {
+						(param.typ, param.default, param.mutable) = (t.typ.clone(), t.default.clone(), t.mutable);
+					} else if param.name == "self" {
+						param.typ = TypeExpr::Name("Self".into());
+					}
+				}
+				group
+			})
+			.collect();
 		let tuple = params.len() != 1 || trailing.is_some();
 		(params, tuple)
 	})
@@ -373,7 +390,7 @@ where
 	let bound = dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not());
 	let type_param = ident()
 		.then(just(Token::Colon).ignore_then(bound).or_not())
-		.then(just(Token::Assign).ignore_then(spanned(type_expr.clone())).or_not())
+		.then(just(Token::DoubleColon).ignore_then(spanned(type_expr.clone())).or_not())
 		.map(|((name, bound), default)| {
 			let (bound, args) = bound.unzip();
 			let bound_args = args.flatten().unwrap_or_default();
@@ -384,7 +401,29 @@ where
 				default,
 			}
 		});
-	let type_params = bracket(list(type_param)).or_not().map(Option::unwrap_or_default).boxed();
+
+	// param grouping
+	let type_params = bracket(list(type_param).separated_by(just(Token::Semicolon)).collect::<Vec<_>>())
+		.map(|groups| {
+			groups
+				.into_iter()
+				.flat_map(|mut group: Vec<TypeParam>| {
+					for at in (1..group.len()).rev() {
+						let (bare, next) = (&group[at - 1], &group[at]);
+						if bare.bound.is_none() && bare.default.is_none() {
+							group[at - 1] = TypeParam {
+								name: bare.name.clone(),
+								..next.clone()
+							};
+						}
+					}
+					group
+				})
+				.collect()
+		})
+		.or_not()
+		.map(Option::unwrap_or_default)
+		.boxed();
 
 	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
 

@@ -27,8 +27,8 @@ Alloc :< {
 
 ## Claimers coerce to `Alloc`.
 pub Allocator :: trait {
-	alloc: fn(mut self, size: int, align: int) ptr
-	free :: fn(mut self, old: ptr, old_size: int) {}
+	alloc: fn(mut self; size: int, align: int) ptr
+	free :: fn(mut self; old: ptr, old_size: int) {}
 	free_all :: fn(mut self) {}
 }
 
@@ -85,7 +85,7 @@ chunk :: fn(size: int) ptr {
 }
 
 Arena : Allocator < {
-	alloc :: fn(mut self, size: int, align: int) ptr {
+	alloc :: fn(mut self; size: int, align: int) ptr {
 		n :: if size > 0 {
 			(size + 7) / 8 * 8
 		} else do 8

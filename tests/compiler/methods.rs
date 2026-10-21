@@ -6,7 +6,7 @@ fn instance_method() {
 		Point :: struct { x: int, y: int }
 		Point :< {
 			sum :: fn(self) int { self.x + self.y }
-			scaled :: fn(self, k: int) int { (self.x + self.y) * k }
+			scaled :: fn(self; k: int) int { (self.x + self.y) * k }
 		}
 		p :: Point.{3, 4}
 		f :: p.scaled
@@ -39,7 +39,7 @@ fn qualified_mut_self() {
 		S :: struct { n: int }
 		S :< { bump :: fn(mut self) { self.n = self.n + 1 } }
 		B[T] :: struct { v: T }
-		B[T] :< { set :: fn(mut self, v: T) { self.v = v } }
+		B[T] :< { set :: fn(mut self; v: T) { self.v = v } }
 		f[T] :: fn(mut x: T) { T.bump(mut x) }
 		s := S.{n = 4}
 		S.bump(mut s)
@@ -86,7 +86,7 @@ fn wrong_arg_count() {
 	fail(
 		indoc! {"
 			P :: struct { x: int }
-			P :< { add :: fn(self, k: int) int { self.x + k } }
+			P :< { add :: fn(self; k: int) int { self.x + k } }
 			P.{1}.add()
 		"},
 		"expects 1 argument",

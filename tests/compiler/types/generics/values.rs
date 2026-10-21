@@ -5,7 +5,7 @@ use indoc::indoc;
 #[test]
 fn value_params() {
 	let src = indoc! {r#"
-		repeat[T, N: int] :: fn(x: T) out: [N]T {
+		repeat[T; N: int] :: fn(x: T) out: [N]T {
 			loop i in 0..N { out[i] = x }
 			out
 		}
@@ -39,7 +39,7 @@ fn a_lone_value_arg_beats_indexing() {
 fn a_value_param_takes_a_const() {
 	let src = indoc! {r"
 		N :: 3
-		repeat[T, N: int] :: fn(x: T) [N]T { out: [N]T; out }
+		repeat[T; N: int] :: fn(x: T) [N]T { out: [N]T; out }
 		Matrix[R: int, C: int] :: struct { cells: [R][C]float }
 		print(repeat[int, N](0), Matrix[N, N].{}.cells[0].len())
 	"};
@@ -50,7 +50,7 @@ fn a_value_param_takes_a_const() {
 fn param_kind_mismatch() {
 	fail(
 		[
-			"repeat[T, N: int] :: fn(x: T) [N]T { out: [N]T; out }",
+			"repeat[T; N: int] :: fn(x: T) [N]T { out: [N]T; out }",
 			"print(repeat[int, int](1))",
 		],
 		"`N` is a value parameter",
@@ -64,7 +64,7 @@ fn param_kind_mismatch() {
 #[test]
 fn a_value_param_infers_from_a_fixed_array() {
 	let src = indoc! {r"
-		last[T, N: int] :: fn(xs: [N]T) T { xs[N - 1] }
+		last[T; N: int] :: fn(xs: [N]T) T { xs[N - 1] }
 		xs: [3]int = .[1, 2, 3]
 		print(last(xs))
 	"};

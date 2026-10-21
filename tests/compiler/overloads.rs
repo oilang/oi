@@ -28,7 +28,7 @@ fn anon_literal_on_the_lhs_borrows_the_other_side() {
 		Point :: struct { x: int, y: int }
 		Point : Add < { add :: fn(self, other: Self) Self { Self.{ self.x + other.x, self.y + other.y } } }
 		Point : Eq < { eq :: fn(self, other: Self) bool { self.x == other.x && self.y == other.y } }
-		Point : Mul < { mul :: fn(self, k: i8) Self { self } }
+		Point : Mul < { mul :: fn(self; k: i8) Self { self } }
 		p :: Point.{1, 2}
 		print(.{2, 3} + p, .{1, 2} == p, p * 3)
 	"};
@@ -129,7 +129,7 @@ fn fill_must_match_the_trait() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
 		Point : Eq < {
-			eq :: fn(self, other: int) bool { true }
+			eq :: fn(self; other: int) bool { true }
 		}
 	"};
 	fail(
@@ -143,7 +143,7 @@ fn arithmetic_fills_narrow_and_commute() {
 	let src = indoc! {"
 		Scale :: struct { f: int }
 		Scale : Mul < {
-			mul :: fn(self, other: int) Self { Self.{ self.f * other } }
+			mul :: fn(self; other: int) Self { Self.{ self.f * other } }
 		}
 		print((Scale.{3} * 2).f, (2 * Scale.{3}).f)
 	"};
@@ -155,7 +155,7 @@ fn non_commuting_ops_never_reverse() {
 	let src = indoc! {"
 		Scale :: struct { f: int }
 		Scale : Div < {
-			div :: fn(self, other: int) Self { Self.{ self.f / other } }
+			div :: fn(self; other: int) Self { Self.{ self.f / other } }
 		}
 		print(2 / Scale.{3})
 	"};
@@ -167,7 +167,7 @@ fn contains_drives_in() {
 	let src = indoc! {r#"
 		Bag :: struct { items: []int }
 		Bag : Contains[int] < {
-			contains :: fn(self, v: int) bool { v in self.items }
+			contains :: fn(self; v: int) bool { v in self.items }
 		}
 		b :: Bag.{ items = [1 2 3] }
 		print(2 in b, 9 in b)
@@ -180,10 +180,10 @@ fn index_traits_drive_brackets() {
 	let src = indoc! {"
 		Grid :: struct { cells: []int = [0 0 0 0] }
 		Grid : Index[(int, int), int] < {
-			index :: fn(self, p: (int, int)) int { self.cells[p.0 * 2 + p.1] }
+			index :: fn(self; p: (int, int)) int { self.cells[p.0 * 2 + p.1] }
 		}
 		Grid : IndexAssign[(int, int), int] < {
-			index_assign :: fn(mut self, p: (int, int), v: int) {
+			index_assign :: fn(mut self; p: (int, int), v: int) {
 				c := self.cells
 				c[p.0 * 2 + p.1] = v
 				self.cells = c
@@ -200,8 +200,8 @@ fn index_traits_drive_brackets() {
 fn a_type_argument_picks_the_operator_claim() {
 	let src = indoc! {"
 		V :: struct { x: int }
-		V : Mul < { mul :: fn(self, other: V) V { V.{ self.x * other.x } } }
-		V : Mul[int] < { mul :: fn(self, other: int) V { V.{ self.x * other } } }
+		V : Mul < { mul :: fn(self; other: V) V { V.{ self.x * other.x } } }
+		V : Mul[int] < { mul :: fn(self; other: int) V { V.{ self.x * other } } }
 		v :: V.{3}
 		print((v * v).x, (v * 2).x, (2 * v).x)
 	"};
@@ -215,7 +215,7 @@ fn a_type_argument_picks_the_operator_claim() {
 			sub :: fn(self, o: Self) Out { .{ self.ns - o.ns } }
 		}
 		I : Sub[D] < {
-			sub :: fn(self, d: D) Self { .{ self.ns - d.ns } }
+			sub :: fn(self; d: D) Self { .{ self.ns - d.ns } }
 		}
 		print((I.{9} - I.{4}).ns, (I.{9} - D.{4}).ns)
 	"};
@@ -224,7 +224,7 @@ fn a_type_argument_picks_the_operator_claim() {
 	let src = indoc! {"
 		G[T] :: struct { x: T }
 		G[T] : Mul < { mul :: fn(self, o: Self) Self { .{ self.x * o.x } } }
-		G[T] : Mul[T] < { mul :: fn(self, s: T) Self { .{ self.x * s } } }
+		G[T] : Mul[T] < { mul :: fn(self; s: T) Self { .{ self.x * s } } }
 		g :: G[float].{3.0}
 		print((g * g).x, (g * 2.0).x, (2.0 * g).x)
 	"};
@@ -235,8 +235,8 @@ fn a_type_argument_picks_the_operator_claim() {
 fn an_int_literal_takes_the_operator_claims_int_type() {
 	let src = indoc! {"
 		S :: struct { v: i33 }
-		S : Mul < { mul :: fn(self, o: S) S { S.{ self.v * o.v } } }
-		S : Mul[i33] < { mul :: fn(self, k: i33) S { S.{ self.v * k } } }
+		S : Mul < { mul :: fn(self; o: S) S { S.{ self.v * o.v } } }
+		S : Mul[i33] < { mul :: fn(self; k: i33) S { S.{ self.v * k } } }
 		print((S.{3} * 2).v, (S.{3} * -2).v, (2 * S.{3}).v)
 	"};
 	check(src, "6 -6 6");
@@ -246,7 +246,7 @@ fn an_int_literal_takes_the_operator_claims_int_type() {
 fn an_operator_claim_must_cover_the_right_operand() {
 	let src = indoc! {"
 		V :: struct { x: int }
-		V : Mul[int] < { mul :: fn(self, other: int) V { V.{ self.x * other } } }
+		V : Mul[int] < { mul :: fn(self; other: int) V { V.{ self.x * other } } }
 		f := 2.0
 		print((V.{3} * f).x)
 	"};
@@ -258,7 +258,7 @@ fn send_and_recv_drive_arrows() {
 	let src = indoc! {r#"
 		Pipe :: struct { cap: int }
 		Pipe : Send[int] < {
-			send :: fn(self, move v: int) !() {
+			send :: fn(self; move v: int) !() {
 				if v > self.cap { return error("full") }
 				print("sent {v}")
 			}

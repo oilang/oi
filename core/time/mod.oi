@@ -75,10 +75,10 @@ Duration : Div < {
 	div :: fn(self, o: Self) Out { float.(self.ns) / float.(o.ns) }
 }
 Duration : Mul[int] < {
-	mul :: fn(self, k: int) Self { .{ self.ns * k } }
+	mul :: fn(self; k: int) Self { .{ self.ns * k } }
 }
 Duration : Mul[float] < {
-	mul :: fn(self, k: float) Self { .{ int.(round(float.(self.ns) * k)) } }
+	mul :: fn(self; k: float) Self { .{ int.(round(float.(self.ns) * k)) } }
 }
 Duration : Ord < {
 	lt :: fn(self, o: Self) bool { self.ns < o.ns }
@@ -107,10 +107,10 @@ Instant : Sub < {
 	sub :: fn(self, o: Self) Out { .{ self.ns - o.ns } }
 }
 Instant : Sub[Duration] < {
-	sub :: fn(self, d: Duration) Self { .{ self.ns - d.ns } }
+	sub :: fn(self; d: Duration) Self { .{ self.ns - d.ns } }
 }
 Instant : Add[Duration] < {
-	add :: fn(self, d: Duration) Self { .{ self.ns + d.ns } }
+	add :: fn(self; d: Duration) Self { .{ self.ns + d.ns } }
 }
 Instant : Ord < {
 	lt :: fn(self, o: Self) bool { self.ns < o.ns }
@@ -133,9 +133,9 @@ Time :< {
 	}
 
 	## Render in local time with `strftime` directives.
-	pub format :: fn(self, fmt: string) string { self.zoned(false, fmt) }
+	pub format :: fn(self; fmt: string) string { self.zoned(false, fmt) }
 
-	zoned :: fn(self, utc: bool, fmt: string) string {
+	zoned :: fn(self; utc: bool, fmt: string) string {
 		buf := unsafe malloc(128)
 		unsafe buf.write(self.ns / 1000000000)
 		n :: unsafe strftime(buf, 128, fmt.cstr(), if utc do gmtime(buf) else do localtime(buf))

@@ -122,7 +122,7 @@ fn named_call_args() {
 			Options :: struct { foo: int, bar: bool }
 			User :: struct {}
 			User :< {
-				with_options :: fn(self, opt: Options) { print(opt.bar) }
+				with_options :: fn(self; opt: Options) { print(opt.bar) }
 			}
 			f :: fn(o: Options) { print(o.foo) }
 			g :: fn(x: int, o: Options) { print(x + o.foo) }
@@ -410,7 +410,7 @@ fn typed_literals() {
 fn field_append() {
 	let src = indoc! {"
 		Bag :: struct { xs: []int = [] }
-		Bag :< { push :: fn(mut self, x: int) { self.xs << x << x + 1 } }
+		Bag :< { push :: fn(mut self; x: int) { self.xs << x << x + 1 } }
 		b := Bag.{}
 		b.push(1)
 		b.xs << 5
@@ -430,7 +430,7 @@ fn field_index_assign() {
 	let src = indoc! {"
 		Bag :: struct { xs: []int = [] }
 		Bag :< {
-			bump :: fn(mut self, i: int) {
+			bump :: fn(mut self; i: int) {
 				self.xs[i] += 10
 			}
 		}

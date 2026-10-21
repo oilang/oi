@@ -65,11 +65,11 @@ fn overloads() {
 			Flags :: struct { bits: int }
 			Flags : Not, BitAnd, BitOr, BitXor, Shl, Shr < {
 				not :: fn(self) Flags { .{ bits = !self.bits } }
-				bitand :: fn(self, other: Flags) Flags { .{ bits = self.bits & other.bits } }
-				bitor :: fn(self, other: Flags) Flags { .{ bits = self.bits | other.bits } }
-				bitxor :: fn(self, other: Flags) Flags { .{ bits = self.bits ~ other.bits } }
-				shl :: fn(self, other: int) Flags { .{ bits = self.bits << other } }
-				shr :: fn(self, other: int) Flags { .{ bits = self.bits >> other } }
+				bitand :: fn(self; other: Flags) Flags { .{ bits = self.bits & other.bits } }
+				bitor :: fn(self; other: Flags) Flags { .{ bits = self.bits | other.bits } }
+				bitxor :: fn(self; other: Flags) Flags { .{ bits = self.bits ~ other.bits } }
+				shl :: fn(self; other: int) Flags { .{ bits = self.bits << other } }
+				shr :: fn(self; other: int) Flags { .{ bits = self.bits >> other } }
 			}
 			a := Flags.{ bits = 12 }
 			bits := Flags.{ bits = 10 }

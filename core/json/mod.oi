@@ -80,7 +80,7 @@ P :< {
 		}
 	}
 
-	word :: fn(mut self, w: string) ! {
+	word :: fn(mut self; w: string) ! {
 		self.space()
 		if !self.s[self.i..].starts_with(w) { return error("expected {w} at {self.i}") }
 		self.i += w.len()
@@ -168,7 +168,7 @@ P :< {
 	}
 
 	## Check whether an item follows a comma.
-	more :: fn(mut self, close: string) !bool {
+	more :: fn(mut self; close: string) !bool {
 		self.space()
 		c :: self.at()
 		self.i += 1

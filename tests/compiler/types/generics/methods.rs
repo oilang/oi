@@ -18,9 +18,9 @@ fn dispatch() {
 fn method_own_type_param() {
 	let src = indoc! {r#"
 		Box[T] :: struct { v: T }
-		Box[T] :< { swap[U] :: fn(self, u: U) U { u } }
+		Box[T] :< { swap[U] :: fn(self; u: U) U { u } }
 		Point :: struct { x: int, y: int }
-		Point :< { id[U] :: fn(self, u: U) U { u } }
+		Point :< { id[U] :: fn(self; u: U) U { u } }
 		print(Box.{ v = 1 }.swap("hi"), Point.{1, 2}.id(5))
 	"#};
 	check(src, "hi 5");

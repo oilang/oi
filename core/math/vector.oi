@@ -30,8 +30,8 @@ vector! :: fn(input: Ast) Ast {
 		%n[T] : Sub < { sub :: fn(self, o: Self) Self { .{ %{..subs} } } }
 		%n[T] : Mul < { mul :: fn(self, o: Self) Self { .{ %{..muls} } } }
 		%n[T] : Div < { div :: fn(self, o: Self) Self { .{ %{..divs} } } }
-		%n[T] : Mul[T] < { mul :: fn(self, s: T) Self { .{ %{..scales} } } }
-		%n[T] : Div[T] < { div :: fn(self, s: T) Self { .{ %{..shrinks} } } }
+		%n[T] : Mul[T] < { mul :: fn(self; s: T) Self { .{ %{..scales} } } }
+		%n[T] : Div[T] < { div :: fn(self; s: T) Self { .{ %{..shrinks} } } }
 		%n[T] : Neg < { neg :: fn(self) Self { .{ %{..negs} } } }
 
 		%n[T] :< {
@@ -57,15 +57,15 @@ vector! :: fn(input: Ast) Ast {
 
 ## A 2D vector.
 @vector!
-pub Vec2[T = float] :: struct { pub x: T, pub y: T }
+pub Vec2[T :: float] :: struct { pub x: T, pub y: T }
 
 ## A 3D vector.
 @vector!
-pub Vec3[T = float] :: struct { pub x: T, pub y: T, pub z: T }
+pub Vec3[T :: float] :: struct { pub x: T, pub y: T, pub z: T }
 
 ## A 4D vector.
 @vector!
-pub Vec4[T = float] :: struct { pub x: T, pub y: T, pub z: T, pub w: T }
+pub Vec4[T :: float] :: struct { pub x: T, pub y: T, pub z: T, pub w: T }
 
 Vec3[T] :< {
 	## Perpendicular to both, by the right-hand rule.

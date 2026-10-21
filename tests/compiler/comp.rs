@@ -274,7 +274,7 @@ fn comp_loop_with_destructuring_bind() {
 fn comp_folds_generic_instances_called_from_comptime() {
 	let src = indoc! {r#"
 		Pt :: struct { x: int, y: int }
-		Pt :< { show[T] :: fn(self, v: T) { comp loop f in type_info(T).items { print("{f.name} = {v.(f.name)}") } } }
+		Pt :< { show[T] :: fn(self; v: T) { comp loop f in type_info(T).items { print("{f.name} = {v.(f.name)}") } } }
 		g[T] :: fn(v: T) { comp loop f in type_info(T).items { print("{f.name}") } }
 		h :: fn() int { comp { g(Pt.{ 1, 2 }); Pt.{ 1, 2 }.show(Pt.{ 3, 4 }); 5 } }
 		print(h())

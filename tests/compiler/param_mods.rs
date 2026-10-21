@@ -6,7 +6,7 @@ fn inout() {
 		indoc! {r#"
 			C :: struct { n: int }
 			C :< {
-				take :: fn(self, mut xs: []int) { xs << self.n }
+				take :: fn(self; mut xs: []int) { xs << self.n }
 				bump :: fn(mut self) { self.n = self.n + 1 }
 			}
 			push9 :: fn(mut xs: []int) { xs << 9 }
@@ -140,7 +140,7 @@ fn exclusivity() {
 		"},
 		indoc! {"
 			C :: struct { xs: []int }
-			C :< { take :: fn(self, mut xs: []int) {} }
+			C :< { take :: fn(self; mut xs: []int) {} }
 			c := C.{xs = [1]}
 			c.take(mut c)
 		"},

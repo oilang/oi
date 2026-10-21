@@ -165,7 +165,7 @@ fn an_allocator_claimer_installs_as_ctx_alloc() {
 		Counter :: struct { hits: int }
 
 		Counter : Allocator < {
-			alloc :: fn(mut self, size: int, align: int) ptr {
+			alloc :: fn(mut self; size: int, align: int) ptr {
 				self.hits = self.hits + 1
 				sys :: system_allocator()
 				sys.proc(sys.data, .alloc, size, align, ptr(0), 0)

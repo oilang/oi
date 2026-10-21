@@ -28,7 +28,7 @@ pub soa! :: fn(t: Ast) Ast {
 	if !fixed {
 		grow << `
 			%n : Shl[%e] < {
-				shl :: fn(self, v: %e) Self {
+				shl :: fn(self; v: %e) Self {
 					%o := self
 					%{..pushes}
 					%o
@@ -36,7 +36,7 @@ pub soa! :: fn(t: Ast) Ast {
 			}
 
 			%n : Index[Range, %n] < {
-				index :: fn(self, r: Range) Self { %n.{ %{..slices} } }
+				index :: fn(self; r: Range) Self { %n.{ %{..slices} } }
 			}
 
 			%n : From[[]%e] < {
@@ -55,12 +55,12 @@ pub soa! :: fn(t: Ast) Ast {
 			len :: fn(self) int { self.%first.len() }
 		}
 		%n : Index[int, %e] < {
-			index :: fn(self, i: int) %e {
+			index :: fn(self; i: int) %e {
 				%e.{ %{..gets} }
 			}
 		}
 		%n : IndexAssign[int, %e] < {
-			index_assign :: fn(mut self, i: int, v: %e) {
+			index_assign :: fn(mut self; i: int, v: %e) {
 				%{..sets}
 			}
 		}

@@ -192,7 +192,7 @@ fn display_objects_render_their_own_way() {
 fn fmt_overrides_display() {
 	let src = indoc! {r#"
 		Hex :: struct { n: int }
-		Hex :< { fmt :: fn(self, mut b: Buffer) { b.write("0x{self.n}") } }
+		Hex :< { fmt :: fn(self; mut b: Buffer) { b.write("0x{self.n}") } }
 		h :: Hex.{255}
 		print(h, "{h}", h.str())
 		loop x in Display.[h] { print(x) }
@@ -205,7 +205,7 @@ fn every_type_is_debug() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, s: string }
 		Hex :: struct { n: int }
-		Hex :< { debug :: fn(self, mut b: Buffer) { b.write("Hex({self.n})") } }
+		Hex :< { debug :: fn(self; mut b: Buffer) { b.write("Hex({self.n})") } }
 		print("hi".repr(), 3.repr(), Point.{1, "a"}.repr(), Hex.{255}.repr())
 	"#};
 	check(src, r#""hi" 3 Point.{x = 1, s = "a"} Hex(255)"#);
@@ -282,7 +282,7 @@ fn rejects_bad_claims() {
 		indoc! {r#"
 			Animal :: trait { speak: fn(self) string }
 			Dog :: struct {}
-			Dog : Animal < { speak :: fn(self, loud: bool) string { "woof" } }
+			Dog : Animal < { speak :: fn(self; loud: bool) string { "woof" } }
 		"#},
 		"wrong signature",
 	);
@@ -796,9 +796,9 @@ fn embedding_promotes_a_parameterized_claim() {
 #[test]
 fn a_claim_binds_its_trait_type_params_in_fills() {
 	let src = indoc! {r#"
-		Pair[T] :: trait { pair: fn(self, v: T) []T }
+		Pair[T] :: trait { pair: fn(self; v: T) []T }
 		P :: struct { b: int }
-		P : Pair[int] < { pair :: fn(self, v) []int { [self.b v] } }
+		P : Pair[int] < { pair :: fn(self; v) []int { [self.b v] } }
 		print(P.{7}.pair(8))
 	"#};
 	check(src, "[7, 8]");
@@ -863,11 +863,11 @@ fn associated_types() {
 	let src = indoc! {r#"
 		Tr[R] :: trait {
 			Out: type
-			f: fn(self, r: R) Out
+			f: fn(self; r: R) Out
 		}
 		A :: struct {}
-		A : Tr[int] < { Out :: int, f :: fn(self, r: int) int { r } }
-		A : Tr[float] < { Out :: float, f :: fn(self, r: float) float { r } }
+		A : Tr[int] < { Out :: int, f :: fn(self; r: int) int { r } }
+		A : Tr[float] < { Out :: float, f :: fn(self; r: float) float { r } }
 		print(A.{}.f(2), A.{}.f(2.5))
 	"#};
 	check(src, "2 2.5");
@@ -896,7 +896,7 @@ fn bounds_with_trait_args() {
 		Get[T] :: trait { get: fn(self) T }
 		Box[T] :: struct { v: T }
 		Box[T] : Get[T] < { get :: fn(self) T { self.v } }
-		twice[T, W: Get[T]] :: fn(w: W) (T, T) { (w.get(), w.get()) }
+		twice[T; W: Get[T]] :: fn(w: W) (T, T) { (w.get(), w.get()) }
 		print(twice(Box.{ v = "a" }))
 	"#};
 	check(src, r#"("a", "a")"#);

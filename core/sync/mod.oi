@@ -31,7 +31,7 @@ pub Waitable[T] :: trait {
 ## Yields without blocking, none until ready.
 pub Pollable[T] :: trait {
 	poll: fn(mut self) ?T
-	watch: fn(self, sig: Signal)
+	watch: fn(self; sig: Signal)
 }
 
 ## Wakes a sleeper once a watched pollable may be ready.
@@ -70,13 +70,13 @@ Thread[T] : Pollable[T] < {
 	poll :: fn(mut self) ?T {
 		self.done.try_recv()
 	}
-	watch :: fn(self, sig: Signal) {
+	watch :: fn(self; sig: Signal) {
 		self.done.watch(sig)
 	}
 }
 
 ## Waits on each in turn.
-[T, W: Waitable[T]] []W : Waitable[[]T] < {
+[T; W: Waitable[T]] []W : Waitable[[]T] < {
 	wait :: fn(move self) []T {
 		loop w in move self do w.wait()
 	}
@@ -135,24 +135,24 @@ Chan[T] :< {
 	}
 
 	pub closed :: fn(self) bool { unsafe oi_chan_closed(self.handle) != 0 }
-	pub try_send :: fn(self, move value: T) !() { self.send_within(move value, 0.ns()) }
+	pub try_send :: fn(self; move value: T) !() { self.send_within(move value, 0.ns()) }
 	pub try_recv :: fn(self) ?T { self.recv_within(0.ns()) }
 
 	## Send, waiting at most `d`, forever when negative.
-	pub send_within :: fn(self, move value: T, d: Duration) !() {
+	pub send_within :: fn(self; move value: T, d: Duration) !() {
 		if unsafe oi_chan_send(self.handle, self.cap, &Packet.{ value = __unshare(value) }, d.ns) == 0 {
 			return error("closed")
 		}
 	}
 
-	pub recv_within :: fn(self, d: Duration) ?T {
+	pub recv_within :: fn(self; d: Duration) ?T {
 		packet := unsafe oi_chan_recv(self.handle, d.ns) or return none
 		T.(packet.value)
 	}
 }
 
 Chan[T] : Send[T] < {
-	send :: fn(self, move value: T) !() {
+	send :: fn(self; move value: T) !() {
 		self.send_within(move value, (-1).ns())
 	}
 }
@@ -171,7 +171,7 @@ Chan[T] : Pollable[?T] < {
 		if v == none && !shut do return none
 		v
 	}
-	watch :: fn(self, sig: Signal) {
+	watch :: fn(self; sig: Signal) {
 		unsafe oi_chan_watch(self.handle, sig.handle)
 	}
 }
@@ -189,13 +189,13 @@ pub Group[T] :: struct {
 }
 
 Group[T] :< {
-	pub add :: fn(self, move t: Thread[T]) {
+	pub add :: fn(self; move t: Thread[T]) {
 		done := t.done
 		self.dones <- move done or panic!("sync: add after wait")
 	}
 
 	## The nth member's result, left queued.
-	member :: fn(self, n: int) ?Chan[T] {
+	member :: fn(self; n: int) ?Chan[T] {
 		packet := unsafe oi_chan_peek(self.dones.handle, n) or return none
 		Chan[T].(packet.value)
 	}
@@ -224,7 +224,7 @@ Group[T] : Pollable[[]T] < {
 		loop _ in 0..n do self.dones.try_recv()?.recv() or panic!("sync: thread died")
 	}
 
-	watch :: fn(self, sig: Signal) {
+	watch :: fn(self; sig: Signal) {
 		self.dones.watch(sig)
 		loop i in 0.. { (self.member(i) or break).watch(sig) }
 	}
@@ -253,7 +253,7 @@ After : Pollable[()] < {
 		if self.at < now { self.at = now + self.every }
 		()
 	}
-	watch :: fn(self, sig: Signal) {
+	watch :: fn(self; sig: Signal) {
 		unsafe oi_signal_within(sig.handle, (self.at - Instant.now()).ns)
 	}
 }

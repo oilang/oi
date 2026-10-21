@@ -147,7 +147,7 @@ fn params_omits_trailing_struct() {
 			Settings :: struct { idk: int = 7 }
 			User :: struct {}
 			User :< {
-				with_settings :: fn(self, settings: Settings) { print(settings.idk) }
+				with_settings :: fn(self; settings: Settings) { print(settings.idk) }
 			}
 			take :: fn(settings: Settings) { print(settings.idk) }
 			u := User.{}

@@ -71,11 +71,21 @@ fn rejections() {
 fn explicit_and_default_args() {
 	let src = indoc! {r#"
 		none_of[T] :: fn() ?T { ?T.(none) }
-		dnone_of[T = int] :: fn() ?T { ?T.(none) }
-		id[T = int] :: fn(x: T) T { x }
+		dnone_of[T :: int] :: fn() ?T { ?T.(none) }
+		id[T :: int] :: fn(x: T) T { x }
 		print(none_of[int](), dnone_of(), id("a"), dnone_of[string]())
 	"#};
 	check(src, "none none a none");
+}
+
+#[test]
+fn grouped_type_params() {
+	let src = indoc! {"
+		Grid[R, C: int] :: struct { cells: [R][C]float }
+		pair[A, B :: int] :: fn() (?A, ?B) { (?A.(none), ?B.(none)) }
+		print(Grid[2, 3].{}.cells[0].len(), pair())
+	"};
+	check(src, "3 (none, none)");
 }
 
 #[test]

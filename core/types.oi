@@ -19,7 +19,7 @@ Range :< {
 }
 
 Range : Contains[int] < {
-	contains :: fn(self, n: int) bool {
+	contains :: fn(self; n: int) bool {
 		offset :: n - self.start
 		if offset % self.step != 0 { return false }
 		if (self.step > 0 && offset < 0) || (self.step < 0 && offset > 0) { return false }
@@ -55,12 +55,12 @@ pub ptr :: struct (usize)
 ptr :< {
 	## Copy `len` bytes into an owned string.
 	@unsafe
-	pub string :: fn(self, len: int) string {
+	pub string :: fn(self; len: int) string {
 		unsafe rt.oi_ptr_string(ctx.alloc, self, len)
 	}
 
 	## The pointer `n` bytes further along.
-	pub offset :: fn(self, n: int) ptr {
+	pub offset :: fn(self; n: int) ptr {
 		ptr(self.0 + usize.(n))
 	}
 

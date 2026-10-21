@@ -136,7 +136,7 @@ fn default_param_refs_earlier_param() {
 	let src = indoc! {r#"
 		Wrapper :: struct { s: string }
 		Wrapper :< {
-			wrap :: fn(self, left: string, right: string = left) string { left + self.s + right }
+			wrap :: fn(self; left: string, right: string = left) string { left + self.s + right }
 		}
 		Wrapper.{"hi"}.wrap("|")
 	"#};
@@ -151,6 +151,18 @@ fn default_param_names_do_not_shadow_the_caller() {
 		print("{f(a, 1)} {f(1, a)}")
 	"#};
 	check(src, "913 193");
+}
+
+#[test]
+fn grouped_params() {
+	let src = indoc! {r#"
+		area :: fn(w, h: int) int { w * h }
+		pad :: fn(s: string, left, right := "-") string { left + s + right }
+		Point :: struct { x: int, y: int }
+		Point :< { scale :: fn(self; x, y: int) int { self.x * x + self.y * y } }
+		print(area(6, 7), pad("x"), pad("x", "<"), Point.{ 1, 2 }.scale(3, 4))
+	"#};
+	check(src, "42 -x- <x- 11");
 }
 
 #[test]

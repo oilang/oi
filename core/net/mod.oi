@@ -80,7 +80,7 @@ Listener :< {
 
 Conn :< {
 	## Send a string.
-	pub write :: fn(self, s: string) ! {
+	pub write :: fn(self; s: string) ! {
 		sent := 0
 		discard loop sent < s.len() {
 			# MSG_NOSIGNAL
@@ -91,7 +91,7 @@ Conn :< {
 	}
 
 	## Receive up to `max` bytes, empty once the peer has closed.
-	pub read :: fn(self, max := 4096) !string {
+	pub read :: fn(self; max := 4096) !string {
 		buf := unsafe malloc(usize.(max))
 		n :: unsafe recv(self.fd, buf, usize.(max), 0)
 		out :: unsafe buf.string(math.max(0, int.(n)))

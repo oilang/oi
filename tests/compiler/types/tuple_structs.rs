@@ -79,7 +79,7 @@ fn field_and_self_assign() {
 	let src = indoc! {r#"
 		Pair :: struct (int, string)
 		Pair :< {
-			set :: fn(mut self, n: int) { self.0 = n }
+			set :: fn(mut self; n: int) { self.0 = n }
 			reset :: fn(mut self) { self = Pair(0, "z") }
 		}
 		Money :: struct (int)

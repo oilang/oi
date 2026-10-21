@@ -15,11 +15,11 @@ module core
 		self[self.len() - 1]
 	}
 
-	contains :: fn(self, x: T) bool {
+	contains :: fn(self; x: T) bool {
 		x in self
 	}
 
-	index :: fn(self, x: T) ?int {
+	index :: fn(self; x: T) ?int {
 		loop i in 0..self.len() {
 			if self[i] == x do return i
 		}
@@ -32,7 +32,7 @@ module core
 	}
 
 	## Join elements with `separator`.
-	join :: fn(self, separator: string) string {
+	join :: fn(self; separator: string) string {
 		out := ""
 		loop i in 0..self.len() {
 			if i > 0 { out += separator }

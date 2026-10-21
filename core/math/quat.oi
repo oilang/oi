@@ -1,7 +1,7 @@
 module math
 
 ## A rotation quaternion `w + xi + yj + zk`.
-pub Quat[T = float] :: struct {
+pub Quat[T :: float] :: struct {
 	pub x: T,
 	pub y: T,
 	pub z: T,
@@ -22,7 +22,7 @@ Quat[T] : Mul < {
 
 ## `v` rotated by a unit quat.
 Quat[T] : Mul[Vec3[T]] < {
-	mul :: fn(self, v: Vec3[T]) Vec3[T] {
+	mul :: fn(self; v: Vec3[T]) Vec3[T] {
 		u :: Vec3[T].{ self.x, self.y, self.z }
 		t :: u.cross(v) * T.(2)
 		v + t * self.w + u.cross(t)

@@ -20,8 +20,8 @@ fn method_trailing_fn() {
 	let src = indoc! {"
 		Box :: struct { n: int }
 		Box :< {
-			add :: fn(self, f: fn() int) int { self.n + f() }
-			m :: fn(self, k: int, f: fn() int) int { self.n + k + f() }
+			add :: fn(self; f: fn() int) int { self.n + f() }
+			m :: fn(self; k: int, f: fn() int) int { self.n + k + f() }
 		}
 		b :: Box.{ n = 10 }
 		print(b.add fn() int { 5 })
@@ -34,7 +34,7 @@ fn method_trailing_fn() {
 fn leading_literals() {
 	let src = indoc! {r#"
 		Box :: struct { n: int }
-		Box :< { tag :: fn(self, a: :go) int { self.n } }
+		Box :< { tag :: fn(self; a: :go) int { self.n } }
 		shout :: fn(s: string) string { s }
 		s :: shout "hey"
 		print(s)
