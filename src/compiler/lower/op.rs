@@ -532,6 +532,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.temp(ptr, &typ);
 			return Ok((ptr, typ));
 		}
+
+		// shift counts take the shifted operand's width
+		let int = |t: &Typ| matches!(t, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize);
+		let (rv, rt) = match matches!(op, BinOp::Shl | BinOp::Shr) && int(&lt) && int(&rt) {
+			true => (self.numcast(rv, &rt, &lt), lt.clone()),
+			false => (rv, rt),
+		};
 		let (lv, lt, rv, rt) = self.promote(lv, lt, rv, rt);
 
 		#[derive(Clone, Copy)]

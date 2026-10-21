@@ -6,9 +6,9 @@ pub Bits[E] :: struct {
 }
 
 Bits[E] : From[[]E] < {
-	from :: fn(xs: []E) out: Bits[E] {
+	from :: fn(xs: []E) out: Self {
 		loop x in xs {
-			out.raw |= u64.(1) << u64.(x)
+			out.raw |= u64.(1) << int.(x)
 		}
 		out
 	}
@@ -16,24 +16,24 @@ Bits[E] : From[[]E] < {
 
 Bits[E] : Contains[E] < {
 	contains :: fn(self, x: E) bool {
-		self.raw & u64.(1) << u64.(x) != 0
+		self.raw & u64.(1) << int.(x) != 0
 	}
 }
 
 Bits[E] : BitOr < {
-	bitor :: fn(self, other: Bits[E]) Bits[E] {
+	bitor :: fn(self, other: Self) Self {
 		.{ self.raw | other.raw }
 	}
 }
 
 Bits[E] : BitAnd < {
-	bitand :: fn(self, other: Bits[E]) Bits[E] {
+	bitand :: fn(self, other: Self) Self {
 		.{ self.raw & other.raw }
 	}
 }
 
 Bits[E] : Sub < {
-	sub :: fn(self, other: Bits[E]) Bits[E] {
+	sub :: fn(self, other: Self) Self {
 		.{ self.raw & !other.raw }
 	}
 }

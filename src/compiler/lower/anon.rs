@@ -143,6 +143,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			type_params: vec![],
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
 			self_name,
+			self_typ: None,
 			module: self.types.scope.module.clone(),
 			span,
 			pure: self.pure,

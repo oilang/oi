@@ -19,6 +19,11 @@ fn ops() {
 }
 
 #[test]
+fn shift_count_any_int() {
+	check(["n := 3", "print(u64.(1) << n, u8.(16) >> n)"], ["8 2"]);
+}
+
+#[test]
 fn narrow_widths() {
 	check(
 		indoc! {"

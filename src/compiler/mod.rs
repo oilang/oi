@@ -177,6 +177,7 @@ pub(crate) struct GenericFnDef {
 	pub type_params: Vec<TypeParam>,
 	pub captures: Vec<(String, Typ, bool)>,
 	pub self_name: Option<String>,
+	pub self_typ: Option<TypeExpr>,
 	pub module: String,
 	pub span: Span,
 	pub pure: bool,
@@ -200,6 +201,7 @@ impl GenericFnDef {
 			type_params,
 			captures: vec![],
 			self_name: None,
+			self_typ: None,
 			module: module.into(),
 			span,
 			pure: false,
@@ -919,7 +921,7 @@ impl<M: Module> Compiler<M> {
 			}
 
 			let named = |param: &TypeParam| TypeExpr::Name(param.name.clone());
-			let self_ty = match (typ, type_params) {
+			let self_typ = match (typ, type_params) {
 				("array", [elem, ..]) => TypeExpr::Array(Box::new(named(elem))),
 				("map", [key, value, ..]) => TypeExpr::Map(Box::new(named(key)), Box::new(named(value))),
 				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
@@ -936,10 +938,13 @@ impl<M: Module> Compiler<M> {
 				.collect();
 
 			let (params, ret) = subst_sig(&params, &ret, &targs);
-			let (params, ret) = subst_sig(&params, &ret, &[("Self".to_string(), self_ty)]);
+			let (params, ret) = subst_sig(&params, &ret, &[("Self".to_string(), self_typ.clone())]);
 			qualify_bounds(scope, &mut all_params);
 
-			let def = GenericFnDef::new((params, params_tuple, ret), body, all_params, &scope.module, m.1);
+			let def = GenericFnDef {
+				self_typ: Some(self_typ),
+				..GenericFnDef::new((params, params_tuple, ret), body, all_params, &scope.module, m.1)
+			};
 			self.world.generic_fns.insert(key, def);
 		}
 		Ok(())
@@ -1854,7 +1859,8 @@ impl<M: Module> Compiler<M> {
 				let sym = self.symbol(&item.key).0;
 				self.lower_fn(&sym, sig, (&item.params, &item.ret), def, &funcs, types)?;
 			}
-			let Some((sym, mut def, subst)) = self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
+			let Some((sym, mut def, mut subst)) =
+				self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
 			else {
 				if self.out.wanted.is_empty() {
 					break;
@@ -1864,9 +1870,15 @@ impl<M: Module> Compiler<M> {
 			let module = if def.module.is_empty() { "main" } else { &def.module };
 			comp::instantiate(&mut def.body, &subst, module, &self.consts, &program, &mut stage0)?;
 			let home = scopes[module].at(def.span);
+			let me = (def.self_typ.as_ref())
+				.map(|te| base.with_type_params(&subst).with_scope(home).resolve(te, def.span))
+				.transpose()?;
+			let self_key = me.as_ref().map(Typ::key);
+			subst.extend(me.map(|t| ("Self".to_string(), t)));
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();
 			let fn_def = FnDef {
+				self_type: self_key.as_deref(),
 				params_tuple: def.params_tuple,
 				body: &def.body,
 				captures: &def.captures,
