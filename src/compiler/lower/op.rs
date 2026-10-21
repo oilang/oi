@@ -755,6 +755,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		if self.claims(&rhs_typ, role::CONTAINS) {
+			if let Some(sig) = self.resolve_method(&rhs_typ, "contains") {
+				let (v, _) = self.check_expr(lhs, access_peel(&sig.params[1].typ))?;
+				return Ok(self.emit_call(&sig, &[rhs_val, v]));
+			}
 			let v = self.expr(lhs)?;
 			return self.emit_contains(rhs_val, &rhs_typ, v, lhs.1);
 		}

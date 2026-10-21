@@ -210,9 +210,18 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Instantiate a generic fill from the receiver type.
 	pub(super) fn recv_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
+		self.instance(key, typ, |def| Some(&def.params.first()?.typ))
+	}
+
+	// Instantiate a generic fill from its return type.
+	pub(super) fn ret_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
+		self.instance(key, typ, |def| Some(&def.ret.as_ref()?.0))
+	}
+
+	fn instance(&mut self, key: &str, typ: &Typ, at: fn(&GenericFnDef) -> Option<&TypeExpr>) -> Option<FnSig> {
 		let def = self.world.generic_fns.get(key).cloned()?;
 		let mut infer = Infer::new(&def.type_params, self.types.generics);
-		infer.unify(&def.params.first()?.typ, typ).ok()?;
+		infer.unify(at(&def)?, typ).ok()?;
 		self.type_defaults(&def, &mut infer).ok()?;
 		infer.missing().is_none().then_some(())?;
 		self.declare_instance(key, &def, infer.subst).ok()

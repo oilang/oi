@@ -322,12 +322,22 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Pick the From claim of a type whose parameter fits the given check.
-	pub(super) fn pick_from(&self, typ: &Typ, fits: fn(&Typ) -> bool, span: Span) -> Result<Option<FnSig>, Diagnostic> {
+	pub(super) fn pick_from(
+		&mut self,
+		typ: &Typ,
+		fits: fn(&Typ) -> bool,
+		span: Span,
+	) -> Result<Option<FnSig>, Diagnostic> {
 		let tag = format!("{typ}.from#");
-		let mut hits = (self.funcs.iter()).filter(|(k, s)| k.starts_with(&tag) && fits(access_peel(&s.params[0].typ)));
+		let mut sigs: Vec<_> = (self.funcs.iter())
+			.filter(|(k, _)| k.starts_with(&tag))
+			.map(|(_, s)| s.clone())
+			.collect();
+		sigs.extend(self.ret_instance(&format!("{}.from", rc::base_name(&typ.key())), typ));
+		let mut hits = sigs.into_iter().filter(|s| fits(access_peel(&s.params[0].typ)));
 		match (hits.next(), hits.next()) {
 			(Some(_), Some(_)) => fail(format!("ambiguous `{typ}.from`"), span, "two claims fit"),
-			(hit, _) => Ok(hit.map(|(_, s)| s.clone())),
+			(hit, _) => Ok(hit),
 		}
 	}
 
