@@ -218,7 +218,10 @@ fn collector_runs_past_threshold() {
 
 #[test]
 fn ref_boxes_any_type() {
-	check(["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len)"#], "5hi 2");
+	check(
+		["p: ^int = &5", r#"s := &"hi""#, r#"print("{p}{s}", s.len())"#],
+		"5hi 2",
+	);
 	check(["xs := &[1, 2, 3]", "print(xs[0], xs[1..])"], "1 [2, 3]");
 	assert_clean(["xs := &[1, 2]", "print(xs)"]);
 }

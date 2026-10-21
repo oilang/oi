@@ -23,7 +23,7 @@ fn indexing() {
 		first :: fn(xs: []int) int { xs.0 }
 		a :: [10, 20, 30]
 		i :: 2
-		print(a[1], a[i], a.0, a.len, first([9, 8, 7]))
+		print(a[1], a[i], a.0, a.len(), first([9, 8, 7]))
 	"};
 	check(src, "20 30 10 3 9");
 }
@@ -95,7 +95,7 @@ fn append_and_extend() {
 		odd << e
 		f := s[0..0]
 		f << [3, 4]
-		print(a, b, (c << 2 << 3).len, odd, f)
+		print(a, b, (c << 2 << 3).len(), odd, f)
 	"};
 	check(src, "[1, 2, 3, 4, 5] [2, 3, 99] 3 [1, 3, 5, 9, 11] [3, 4]");
 }
@@ -188,7 +188,7 @@ fn fn_return_type_mismatch_array() {
 fn if_no_else_array_zero() {
 	let src = indoc! {"
 		a :: if false { [1, 2, 3] }
-		a.len
+		a.len()
 	"};
 	check(src, "0");
 }
@@ -207,7 +207,7 @@ fn fixed() {
 		v: [2]int
 		w := v
 		v[0] = 9
-		print(a, a.len, n.len, three, v.0, w[0])
+		print(a, a.len(), n.len(), three, v.0, w[0])
 	"#};
 	check(src, r#"[0, 0, 0] 3 3 ["larry", "curly", ""] 9 0"#);
 }
@@ -260,7 +260,7 @@ fn anon_literals() {
 		f: [2]int = .[1 2]
 		g := f
 		f[0] = 9
-		print(a, d, three(.[1 2 3]), primes.len, g[0])
+		print(a, d, three(.[1 2 3]), primes.len(), g[0])
 	"};
 	check(src, "[1, 2, 3] [1, 2] 1 4 1");
 }
@@ -270,7 +270,7 @@ fn anon_literals() {
 #[test]
 fn fixed_coerces_to_dynamic() {
 	let src = indoc! {"
-		total :: fn(xs: []int) int { xs.len }
+		total :: fn(xs: []int) int { xs.len() }
 		a := i32.[1, 2]
 		b: []i32 = a
 		b << 3

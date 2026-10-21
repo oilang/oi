@@ -54,8 +54,8 @@ test! "runes" {
 
 	# one rune of each encoded width
 	s :: "a\u{e9}\u{2603}\u{1F600}"
-	assert! s.len == 10
-	assert! s.runes().len == 4
+	assert! s.len() == 10
+	assert! s.runes().len() == 4
 	assert! s.runes()[2] == snow
 	assert! s.runes().join("") == s
 
@@ -69,5 +69,5 @@ test! "string16" {
 	assert! s.len() == 4
 	assert! s.0 == [104 233 0xd83d 0xde00]
 	assert! s.str() == "hé😀"
-	assert! (loop r in s do r).len == 3
+	assert! (loop r in s do r).len() == 3
 }

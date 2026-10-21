@@ -125,7 +125,7 @@ fn juxt_enum_shorthand_arg() {
 fn newline_led_dot_stays_access() {
 	let src = indoc! {r#"
 		"ab"
-			.len
+			.len()
 	"#};
 	check(src, "2");
 }

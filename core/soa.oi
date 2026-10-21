@@ -51,8 +51,8 @@ pub soa! :: fn(t: Ast) Ast {
 
 	`
 		%n :: struct { %{..cols} }
-		%n :< {
-			len :: fn(self) int { self.%first.len }
+		%n : Length < {
+			len :: fn(self) int { self.%first.len() }
 		}
 		%n : Index[int, %e] < {
 			index :: fn(self, i: int) %e {

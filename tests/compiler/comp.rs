@@ -30,7 +30,7 @@ fn comp_folds_aggregates() {
 		C :: comp mk()
 		MS :: comp methods()
 		print("{C.name} {C.origin.x} {C.origin.y}")
-		print("{MS.len} {MS[1].name} {MS[1].argc}")
+		print("{MS.len()} {MS[1].name} {MS[1].argc}")
 	"#};
 	check(src, ["grid 3 4", "2 neg 1"]);
 }
@@ -148,7 +148,7 @@ fn struct_fields_are_typed_asts() {
 		indoc! {r#"
 			mirror! :: fn(s: Ast) Ast {
 				f := s.items[0]
-				line := "{f.name.str()} {f.typ.str()} {f.notes.len}"
+				line := "{f.name.str()} {f.typ.str()} {f.notes.len()}"
 				`
 					print(%line)
 					show :: fn(%{..s.items}) { print(speed) }
@@ -176,7 +176,7 @@ fn fns_claims_and_notes_are_typed_asts() {
 			}
 			api! :: fn(c: Ast) Ast {
 				m := c.items[0]
-				line := "{c.name.str()} {m.name.str()} {m.items.len} {m.typ.str()}"
+				line := "{c.name.str()} {m.name.str()} {m.items.len()} {m.typ.str()}"
 				`
 					print(%line)
 					%c
@@ -200,7 +200,7 @@ fn type_info_reflects_a_definition() {
 			Color :: enum { red, green, blue }
 			comp {
 				t := type_info(Point)
-				print(t.name.str(), t.items[0].name.str(), t.items[0].typ.str(), t.items[1].notes.len)
+				print(t.name.str(), t.items[0].name.str(), t.items[0].typ.str(), t.items[1].notes.len())
 				print(type_info(Color).items[2].str())
 			}
 		"#},

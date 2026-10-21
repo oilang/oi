@@ -932,3 +932,14 @@ fn generic_claims() {
 	"#};
 	check(src, "a 5");
 }
+
+#[test]
+fn length_claims() {
+	let src = indoc! {r#"
+		size[T: Length] :: fn(x: T) int { x.len() }
+		Bag :: struct { n: int }
+		Bag : Length < { len :: fn(self) int { self.n } }
+		print(size("abc"), size([1 2]), size([1 = 2]), size(Bag.{ 4 }))
+	"#};
+	check(src, "3 2 1 4");
+}

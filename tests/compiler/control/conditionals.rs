@@ -158,6 +158,6 @@ fn header_binds_stay_in_the_construct() {
 	check("if (x := 5) > 9 { print(0) } else if x > 1 { print(x) }", "5");
 	check("if { x := 5; x > 1 } { print(x) }", "5");
 	check("match { x := 2; x } { 2 => print(x), _ => () }", "2");
-	check("loop x in { ys := [1 2]; ys } { print(x, ys.len) }", ["1 2", "2 2"]);
+	check("loop x in { ys := [1 2]; ys } { print(x, ys.len()) }", ["1 2", "2 2"]);
 	fail("if (x := 5) > 0 { print(x) }\nprint(x)", "undefined variable `x`");
 }

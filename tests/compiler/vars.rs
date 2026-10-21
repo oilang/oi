@@ -57,7 +57,7 @@ fn declare_zero() {
 			Point :: struct { x: int, y: int }
 			n: int
 			s: string
-			print(n, s.len)
+			print(n, s.len())
 			n = 7
 			p: Point
 			p.x = 5

@@ -82,9 +82,9 @@ Conn :< {
 	## Send a string.
 	pub write :: fn(self, s: string) ! {
 		sent := 0
-		discard loop sent < s.len {
+		discard loop sent < s.len() {
 			# MSG_NOSIGNAL
-			n :: unsafe send(self.fd, s.ptr.offset(sent), usize.(s.len - sent), 16384)
+			n :: unsafe send(self.fd, s.ptr.offset(sent), usize.(s.len() - sent), 16384)
 			if n < 0 { return error("write failed") }
 			sent += int.(n)
 		}

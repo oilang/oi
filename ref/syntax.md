@@ -1015,7 +1015,7 @@ main :: fn() {
 
 	# strings are immutable bytes behind a pointer+length handle
 	# (the buffer keeps a trailing NUL outside `len`, so it passes to C as-is)
-	assert!("hello".len == 5)
+	assert!("hello".len() == 5)
 
 	# `.cstr()` converts to `cstr`, a NUL-terminated pointer for C boundaries
 	# `.str()` copies back the other way
@@ -1064,13 +1064,13 @@ main :: fn() {
 	# strings are bytes, so decoding is explicit
 	assert!(snowman.str() == "\u{2603}")
 	assert!(snowman.bytes() == [u8.(0xe2), u8.(0x98), u8.(0x83)])
-	assert!("h\u{2603}i".runes().len == 3)
+	assert!("h\u{2603}i".runes().len() == 3)
 	assert!("h\u{2603}i".runes().join("") == "h\u{2603}i")
 
 	# iterating a string walks its codepoints. index it to walk the bytes.
 	value :: "h\u{2603}i"
 	loop r in value { print(r) } # h ☃ i
-	loop i in 0..value.len { print(value[i]) } # 104 226 152 131 105
+	loop i in 0..value.len() { print(value[i]) } # 104 226 152 131 105
 
 	# arrays
 
@@ -1092,7 +1092,7 @@ main :: fn() {
 	# entire arrays can be appended too
 	odd << [9 11]
 	assert!(odd.5 == 11)
-	assert!(odd.len == 6)
+	assert!(odd.len() == 6)
 
 	# arrays support dropping the commas when only literals are present
 	even := [2 4 6]
@@ -1105,7 +1105,7 @@ main :: fn() {
 
 	# arrays have fields
 	# `len` is the number of initialized elements in the array
-	assert!(even.len == 3)
+	assert!(even.len() == 3)
 
 	# array init
 	arr: []int
@@ -2217,7 +2217,7 @@ main :: fn() {
 		|> wrap("[", $, "]")
 		or log_errors("foo", $)
 	"hello" |> $ + " world"
-	[2 4 6 8] |> if $.len > 0 { print(true) }
+	[2 4 6 8] |> if $.len() > 0 { print(true) }
 
 	# any errors in the pipeline flow directly to an `or`
 	"error-only pipes"
@@ -2387,7 +2387,7 @@ main :: fn() {
 
 	# params in `[]` are comptime types/values
 	first[T] :: fn(xs: []T) ?T {
-		if xs.len == 0 { none } else { xs[0] }
+		if xs.len() == 0 { none } else { xs[0] }
 	}
 	# a value param names the type it holds, and callers pass it positionally
 	repeat[T, N: int] :: fn(x: T) [N]T { ... }

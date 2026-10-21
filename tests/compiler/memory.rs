@@ -201,7 +201,7 @@ fn tuple_frees_its_struct_elements() {
 
 #[test]
 fn omitted_handle_field_has_one_owner() {
-	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len)"]);
+	assert_clean(["Bag :: struct { items: []int }", "b := Bag.{}", "print(b.items.len())"]);
 }
 
 #[test]

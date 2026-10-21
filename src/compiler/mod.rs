@@ -1533,6 +1533,7 @@ impl<M: Module> Compiler<M> {
 				_ => &[],
 			};
 			if builtin.contains(&n)
+				|| TypeCtx::builtin_type(t) && matches!(n, "str" | "repr" | "fmt" | "debug")
 				|| structs.get(t).is_some_and(|fs| fs.iter().any(|f| f.name == n))
 				|| self.world.generic_fns.contains_key(k)
 				|| others.iter().any(|f| f.key.split('#').next() == Some(k))

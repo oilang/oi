@@ -14,7 +14,7 @@ fn only_definitions_replay() {
 #[test]
 fn raw_macro_body_replays() {
 	let src = indoc::indoc! {r#"
-		r! :: fn(body: Tokens) Ast { `%{body.items.len}` }
+		r! :: fn(body: Tokens) Ast { `%{body.items.len()}` }
 		n := r! { a "}" b }
 		print(n)
 	"#};

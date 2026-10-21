@@ -402,6 +402,18 @@ impl<'a, M: Module> Translator<'a, M> {
 					if matches!(method.as_str(), "str" | "repr") && args.is_empty() && !has_str_impl {
 						return Ok((self.derived_str(recv_val, &recv_typ, method == "repr"), Typ::Str));
 					}
+					if method == "len" && args.is_empty() {
+						let len = match &recv_typ {
+							Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
+								Some(self.array_parts(recv_val, &recv_typ).1)
+							}
+							Typ::Map(..) => self.rt_call("map_len", &[recv_val]),
+							_ => None,
+						};
+						if let Some(len) = len {
+							return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
+						}
+					}
 					if let Typ::Trait(tn) = &recv_typ {
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
 					}
@@ -639,10 +651,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// expose array/string fields
 				if let Typ::Array(_) | Typ::FixedArray(..) | Typ::Str = &typ {
 					let elem = array_elem(&typ).clone();
-					let (data, len) = self.array_parts(ptr, &typ);
-					if field == "len" {
-						return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
-					}
+					let (data, _) = self.array_parts(ptr, &typ);
 					if field == "ptr" {
 						let typ = self.types.resolve(&TypeExpr::Name(role::PTR.into()), expr.1)?;
 						return Ok((data, typ));
@@ -660,19 +669,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// expose map fields
-				if let Typ::Map(k, v) = &typ {
-					if field == "len" {
-						let len = self.rt_call("map_len", &[ptr]).unwrap();
-						return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
-					}
-					if field == "keys" || field == "values" {
-						let elem = if field == "keys" { k } else { v };
-						let typ = Typ::Array(elem.clone());
-						let header = self.map_entries(ptr, field == "keys", elem);
-						let header = self.owning(header, elem);
-						self.temp(header, &typ);
-						return Ok((header, typ));
-					}
+				if let Typ::Map(k, v) = &typ
+					&& (field == "keys" || field == "values")
+				{
+					let elem = if field == "keys" { k } else { v };
+					let typ = Typ::Array(elem.clone());
+					let header = self.map_entries(ptr, field == "keys", elem);
+					let header = self.owning(header, elem);
+					self.temp(header, &typ);
+					return Ok((header, typ));
 				}
 
 				if let Typ::Struct(sname, sfields) = &typ {

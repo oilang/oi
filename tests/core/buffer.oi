@@ -1,7 +1,7 @@
 test! "write and str" {
 	b := Buffer.{}
 	loop i in 0..100 { b.write("ab") }
-	assert! b.str().len == 200
+	assert! b.str().len() == 200
 	assert! b.str().starts_with("abab")
 	assert! "{b}".ends_with("ab")
 }

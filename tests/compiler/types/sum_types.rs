@@ -202,8 +202,8 @@ fn literals_take_the_hint_through_a_sum() {
 			Json :: :null | bool | float | string | Arr | Obj
 			a : Json : [true, 1.5]
 			m : Json : ["k" = true]
-			n := match a { x @ Arr => x.len, _ => -1 }
-			k := match m { x @ Obj => x.len, _ => -1 }
+			n := match a { x @ Arr => x.len(), _ => -1 }
+			k := match m { x @ Obj => x.len(), _ => -1 }
 			print(n, k)
 		"#},
 		"2 1",
@@ -218,7 +218,7 @@ fn recursive_members() {
 			Json :: :null | bool | float | string | Arr | [string]Json
 			size :: fn(j: Json) int {
 				match j {
-					a @ Arr => a.len,
+					a @ Arr => a.len(),
 					_ => 0,
 				}
 			}
@@ -254,8 +254,8 @@ fn container_members_match_as_types() {
 			Json :: :null | bool | float | string | []Json | [string]Json
 			show :: fn(j: Json) string {
 				match j {
-					a @ []Json => "arr of {a.len}",
-					m @ [string]Json => "map of {m.len}",
+					a @ []Json => "arr of {a.len()}",
+					m @ [string]Json => "map of {m.len()}",
 					_ => "other",
 				}
 			}

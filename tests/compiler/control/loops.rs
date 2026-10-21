@@ -131,10 +131,10 @@ fn for_struct_tuple_and_array_patterns() {
 #[test]
 fn for_each_string_bytes_and_map_entries() {
 	let src = indoc! {r#"
-		loop i in 0.."hi".len { print("hi"[i]) }
+		loop i in 0.."hi".len() { print("hi"[i]) }
 		sum := 0
 		loop (k, v) in [ "a" = 1, "bb" = 2 ] {
-			sum += k.len * v
+			sum += k.len() * v
 		}
 		sum
 	"#};

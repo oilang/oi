@@ -86,7 +86,7 @@ fn string_iterates_by_rune() {
 		indoc! {r#"
 			s :: "h\u{2603}"
 			loop r in s { print(r) }
-			loop i in 0..s.len { print(s[i]) }
+			loop i in 0..s.len() { print(s[i]) }
 		"#},
 		["h", "\u{2603}", "104", "226", "152", "131"],
 	);
@@ -119,7 +119,7 @@ fn dedent() {
 
 #[test]
 fn len_and_index() {
-	check(r#"print("hello".len)"#, "5");
+	check(r#"print("hello".len())"#, "5");
 	check(r#"print("abc"[1])"#, "98");
 	fail_rt(r#"print("abc"[9])"#, "out of range");
 }

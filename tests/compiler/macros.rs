@@ -238,7 +238,7 @@ fn introspects_names_and_items() {
 			shape! :: fn() Ast {
 				s := `Pt :: struct { x: int, y: int, z: int }`
 				fs := s.items
-				if s.name == "Pt" { `%{fs.len}` } else { `0` }
+				if s.name == "Pt" { `%{fs.len()}` } else { `0` }
 			}
 			print(pick!(Hash), pick!(Debug), shape!())
 		"#},
@@ -522,7 +522,7 @@ fn attr_macro_sees_fills() {
 		indoc! {r#"
 			mark! :: fn(input: Ast, args: Ast) Ast {
 				loop f in input.fills { print(f.name) }
-				print(input.items.len)
+				print(input.items.len())
 				input
 			}
 			@mark!(Node)
@@ -595,7 +595,7 @@ fn raw_body_crosses_a_module() {
 			"dsl/mod.oi",
 			indoc! {r"
 				module dsl
-				pub words! :: fn(body: Tokens) Ast { `%{body.items.len}` }
+				pub words! :: fn(body: Tokens) Ast { `%{body.items.len()}` }
 			"},
 		)
 		.file("main.oi", "use dsl\nprint(dsl.words! { a b { c } })")

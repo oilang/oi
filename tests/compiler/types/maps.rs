@@ -46,7 +46,7 @@ fn len_keys_values() {
 			m["a"] = 1
 			m["b"] = 2
 			m["c"] = 3
-			(m.len, m.keys.len, m.values.len, m.keys.contains("b"), m.values.contains(2))
+			(m.len(), m.keys.len(), m.values.len(), m.keys.contains("b"), m.values.contains(2))
 		"#},
 		"(3, 3, 3, true, true)",
 	);
@@ -95,7 +95,7 @@ fn bracket_literals() {
 
 #[test]
 fn empty_array_against_array_target() {
-	check(["a: []int = []", "a.len"], "0");
+	check(["a: []int = []", "a.len()"], "0");
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn delete_key() {
 			m["two"] = 2
 			m.delete["one"]
 			m.delete["missing"]
-			(m.len, m["two"])
+			(m.len(), m["two"])
 		"#},
 		"(1, 2)",
 	);
@@ -287,7 +287,7 @@ fn dot_literals() {
 			a: M = .["a" = 1]
 			b :: M.["b" = 2]
 			e: M = .[]
-			a["a"] + b["b"] + e.len
+			a["a"] + b["b"] + e.len()
 		"#},
 		"3",
 	);

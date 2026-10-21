@@ -88,7 +88,7 @@ fn every_payload_kind_is_released() {
 		P :: struct { s: string }
 		E :: enum { A(string), B }
 		xs: []any = [P.{s = "p"}, (1, "t"), [2]string.["a", "b"], E.A.("e")]
-		print(xs.len)
+		print(xs.len())
 	"#});
 }
 

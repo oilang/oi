@@ -26,9 +26,9 @@ fn varargs() {
 			loop x in xs { t = t + x }
 			t
 		}
-		between :: fn(open: string, items: ..string, close: string) string { "{open}{items.len}{close}" }
-		join :: fn(parts: ..string, sep := ",") string { "{parts.len}{sep}" }
-		count :: fn(args: ..any) int { args.len }
+		between :: fn(open: string, items: ..string, close: string) string { "{open}{items.len()}{close}" }
+		join :: fn(parts: ..string, sep := ",") string { "{parts.len()}{sep}" }
+		count :: fn(args: ..any) int { args.len() }
 		s :: sum
 		ps :: ["a", "b"]
 		print(sum(1, 2, 3), sum(), s(4, 5), count(1, "a", true))
@@ -41,7 +41,7 @@ fn varargs() {
 #[test]
 fn generic_varargs() {
 	let src = indoc! {r#"
-		count[T] :: fn(xs: ..T) int { xs.len }
+		count[T] :: fn(xs: ..T) int { xs.len() }
 		first[T] :: fn(xs: ..T) T { xs[0] }
 		print(count(1, 2, 3), count("a", "b"))
 		print(first(1, 2, 3), first("a", "b"))

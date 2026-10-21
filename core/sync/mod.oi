@@ -294,13 +294,13 @@ pub select! :: fn(arms: Ast) Ast {
 		}
 		pre << `%got: ?type(%ready or unreachable!()) = none`
 		# bodies run after the poll loop so their break/continue reach the caller's scope
-		runs << `%{tries.len} => { %x := %got or unreachable!(); %body }`
-		tries << `%{tries.len} => { %got = %ready or continue; break :poll %{tries.len} }`
+		runs << `%{tries.len()} => { %x := %got or unreachable!(); %body }`
+		tries << `%{tries.len()} => { %got = %ready or continue; break :poll %{tries.len()} }`
 		wait << `%w.watch(%sig)`
 	}
 
 	wait << `%sig.sleep()`
-	n := tries.len
+	n := tries.len()
 	pick := gensym("pick")
 
 	`{
@@ -313,7 +313,7 @@ pub select! :: fn(arms: Ast) Ast {
 			loop j in 0..%n {
 				match (k + j) % %n { %{..tries} else => () }
 			}
-			%{..if idle.len > 0 { idle } else { wait }}
+			%{..if idle.len() > 0 { idle } else { wait }}
 		}
 
 		match %pick { %{..runs} else => %fallback }

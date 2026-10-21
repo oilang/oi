@@ -58,6 +58,9 @@ pub Recv[T] :: trait { recv: fn(self) ?T }
 ## Holds no `^T`, `any`, or fn env, so it can cross threads. Checked structurally.
 pub Isolated :: trait {}
 
+## Supports reporting length.
+pub Length :: trait { len: fn(self) int }
+
 # iteration
 pub Iterator[Item] :: trait { next: fn(mut self) ?Item }
 pub Iterable[Iter] :: trait { iter: fn(self) Iter }

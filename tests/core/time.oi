@@ -22,8 +22,8 @@ test! "rendering" {
 	assert! 1500.ms().str() == "1.5s"
 	assert! 1200.us().str() == "1.2ms"
 	s :: time.Time.now().str()
-	assert! s.len == 24 && s.ends_with("Z") && s[10] == 'T'
-	assert! time.Time.now().format("%Y").len == 4
+	assert! s.len() == 24 && s.ends_with("Z") && s[10] == 'T'
+	assert! time.Time.now().format("%Y").len() == 4
 	d :: time.measure { time.sleep(1.ms()) }
 	assert! d >= 1.ms()
 }

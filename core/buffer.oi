@@ -12,10 +12,6 @@ Buffer :< {
 		self.data
 	}
 
-	pub len :: fn(self) int {
-		self.data.len
-	}
-
 	pub clear :: fn(mut self) {
 		self.data = []
 	}
@@ -40,5 +36,11 @@ Buffer : Index[int, u8] < {
 Buffer : IndexAssign[int, u8] < {
 	index_assign :: fn(mut self, i: int, v: u8) {
 		self.data[i] = v
+	}
+}
+
+Buffer : Length < {
+	len :: fn(self) int {
+		self.data.len()
 	}
 }

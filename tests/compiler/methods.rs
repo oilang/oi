@@ -147,5 +147,6 @@ fn extension_clashes_with_compiler_method() {
 #[test]
 fn extension_clashes_with_builtin_field() {
 	fail("[]T :< { len :: fn(self) int { 7 } }", "own `len`");
+	fail(r#"int :< { str :: fn(self) string { "i" } }"#, "own `str`");
 	fail("[string]int :< { keys :: fn(self) int { 7 } }", "own `keys`");
 }

@@ -25,7 +25,7 @@ fn instantiations() {
 fn first_of_array() {
 	let src = indoc! {"
 		first[T] :: fn(xs: []T) ?T {
-			if xs.len == 0 { ?T.(none) } else { ?T.(xs[0]) }
+			if xs.len() == 0 { ?T.(none) } else { ?T.(xs[0]) }
 		}
 		first([1, 2, 3])
 	"};

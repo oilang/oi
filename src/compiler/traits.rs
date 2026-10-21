@@ -35,6 +35,9 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
+	if tn == role::LENGTH {
+		return matches!(typ, Str | Array(_) | FixedArray(..) | Map(..));
+	}
 	if tn == role::NUMBER {
 		return matches!(typ, Int(_) | UInt(_) | ISize | USize | Float(_));
 	}

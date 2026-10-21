@@ -10,7 +10,7 @@ fn array_line_ends_before_a_literal() {
 	let src = indoc! {"
 		S :: struct { f: fn() int }
 		ys := [1]
-		S.{ f = fn [move ys] () int { ys.len } }.f()
+		S.{ f = fn [move ys] () int { ys.len() } }.f()
 	"};
 	check(src, "1");
 }

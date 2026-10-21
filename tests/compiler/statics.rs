@@ -18,7 +18,7 @@ fn static_is_shared_by_every_fn() {
 			bump()
 			peek()
 			idk << "baz"
-			print(counter, foo.len, idk.len)
+			print(counter, foo.len(), idk.len())
 		}
 	"#};
 	check(src, [r#"["foo", "bar"]"#, "2 0 3"]);
@@ -110,7 +110,7 @@ fn top_level_const_works_alongside_main() {
 
 		main :: fn() {
 			buf : [N]int
-			print("{GREETING} {buf.len} {A}")
+			print("{GREETING} {buf.len()} {A}")
 			print(match RED {
 				E.red => "r",
 				E.green => "g",

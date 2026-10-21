@@ -57,10 +57,10 @@ spill :: fn(path: string, s: string, mode: cstr) ! {
 	f := unsafe fopen(path.cstr(), mode)
 	check(!f.is_null(), "open", path)?
 
-	n :: unsafe fwrite(s.ptr, 1, usize.(s.len), f)
+	n :: unsafe fwrite(s.ptr, 1, usize.(s.len()), f)
 	_ := unsafe fclose(f)
 
-	if int.(n) != s.len {
+	if int.(n) != s.len() {
 		return error("short write to {path}")
 	}
 }

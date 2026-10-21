@@ -4,7 +4,7 @@ use rt
 
 string :< {
 	is_empty :: fn(self) bool {
-		self.len == 0
+		self.len() == 0
 	}
 
 	## First n characters.
@@ -16,23 +16,23 @@ string :< {
 	## Last n characters.
 	last :: fn(self, n := 1) string {
 		if n < 0 { return }
-		if n > self.len { return self }
-		self[(self.len - n)..]
+		if n > self.len() { return self }
+		self[(self.len() - n)..]
 	}
 
 	starts_with :: fn(self, prefix: string) bool {
-		prefix.len <= self.len && self[..prefix.len] == prefix
+		prefix.len() <= self.len() && self[..prefix.len()] == prefix
 	}
 
 	ends_with :: fn(self, suffix: string) bool {
-		suffix.len <= self.len && self[(self.len - suffix.len)..] == suffix
+		suffix.len() <= self.len() && self[(self.len() - suffix.len())..] == suffix
 	}
 
 	## Whether the string contains substring `sub`.
 	contains :: fn(self, sub: string) bool {
-		upper :: self.len - sub.len + 1
+		upper :: self.len() - sub.len() + 1
 		loop i in 0..upper {
-			if self[i..(i + sub.len)] == sub { return true }
+			if self[i..(i + sub.len())] == sub { return true }
 		}
 		false
 	}
@@ -40,7 +40,7 @@ string :< {
 	## Trim whitespace from either side.
 	trim :: fn(self) string {
 		a := 0
-		b := self.len
+		b := self.len()
 		loop a < b && is_space(self[a]) {
 			a += 1
 		}
@@ -62,7 +62,7 @@ string :< {
 
 	## Flip the case bit of bytes in `lo..=hi`.
 	map_ascii :: fn(self, lo: u8, hi: u8) string {
-		bytes :: loop i in 0..self.len {
+		bytes :: loop i in 0..self.len() {
 			c :: self[i]
 			if c >= lo && c <= hi { c ~ 32 } else { c }
 		}
@@ -81,10 +81,10 @@ string :< {
 		out: []string = []
 		a := 0
 		i := 0
-		loop i < self.len {
+		loop i < self.len() {
 			if self[i..].starts_with(sep) {
 				out << self[a..i]
-				i += sep.len
+				i += sep.len()
 				a = i
 			} else {
 				i += 1
@@ -116,7 +116,7 @@ pub Runes :: struct { s: string, at: int }
 
 Runes : Iterator[rune] < {
 	next :: fn(mut self) ?rune {
-		if self.at >= self.s.len do return none
+		if self.at >= self.s.len() do return none
 		lead :: int.(self.s[self.at])
 		n :: match true {
 			lead < 0x80 => 1,
@@ -124,7 +124,7 @@ Runes : Iterator[rune] < {
 			lead < 0xf0 => 3,
 			else => 4
 		}
-		if self.at + n > self.s.len do return none # truncated tail
+		if self.at + n > self.s.len() do return none # truncated tail
 		c := if n == 1 { lead } else { lead & (0x7f >> n) }
 		loop k in 1..n {
 			c = (c << 6) | (int.(self.s[self.at + k]) & 0x3f)
@@ -179,9 +179,9 @@ is_space :: fn(x: u8) bool {
 digits[T] :: fn(s: string, neg: bool) ?T {
 	wraps :: T.(1) / T.(2) == 0 # only ints wrap on overflow
 	out: T = 0
-	point := s.len
-	loop i in 0..s.len {
-		if s[i] == '.' && !wraps && point == s.len {
+	point := s.len()
+	loop i in 0..s.len() {
+		if s[i] == '.' && !wraps && point == s.len() {
 			point = i
 			continue
 		}
@@ -191,10 +191,10 @@ digits[T] :: fn(s: string, neg: bool) ?T {
 		if wraps && n / 10 != out { return }
 		out = n
 	}
-	if point == 0 || point == s.len - 1 { return }
+	if point == 0 || point == s.len() - 1 { return }
 
-	if point < s.len {
-		out / 10 ** T.(s.len - point - 1)
+	if point < s.len() {
+		out / 10 ** T.(s.len() - point - 1)
 	} else do out
 }
 
@@ -214,7 +214,7 @@ pub string16 :: struct ([]u16)
 string16 :< {
 	## Length in code units, not characters.
 	pub len :: fn(self) int {
-		self.0.len
+		self.0.len()
 	}
 
 	pub str :: fn(self) out: string {
@@ -244,11 +244,11 @@ pub Runes16 :: struct { s: []u16, at: int }
 
 Runes16 : Iterator[rune] < {
 	next :: fn(mut self) ?rune {
-		if self.at >= self.s.len do return none
+		if self.at >= self.s.len() do return none
 
 		hi :: int.(self.s[self.at])
 		self.at += 1
-		if hi < 0xd800 || hi > 0xdbff || self.at >= self.s.len do return rune.(hi)
+		if hi < 0xd800 || hi > 0xdbff || self.at >= self.s.len() do return rune.(hi)
 		lo :: int.(self.s[self.at])
 		if lo < 0xdc00 || lo > 0xdfff do return rune.(hi) # lone surrogate
 		self.at += 1

@@ -45,7 +45,7 @@ fn foreign_resolves_process_symbols() {
 #[test]
 fn list_static_compiles_in_a_module() {
 	Project::new()
-		.file("main.oi", ["use seenmod", "main :: fn() { print(seenmod.seen.len) }"])
+		.file("main.oi", ["use seenmod", "main :: fn() { print(seenmod.seen.len()) }"])
 		.file("seenmod.oi", ["module seenmod", r#"pub seen: []string = [""]"#])
 		.check("1");
 }
@@ -248,7 +248,7 @@ fn c_struct_roundtrips_fixed_array() {
 		print(Xform.size)
 		print(comp Xform.size)
 		sized: [Xform.size]u8
-		print(sized.len)
+		print(sized.len())
 	"};
 	check(src, ["[7]", "[1.5, 2.5, 3.5, 4.5]", "20", "20", "20"]);
 }
