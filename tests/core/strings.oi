@@ -65,7 +65,7 @@ test! "runes" {
 }
 
 test! "string16" {
-	s :: string16.("hé😀")
+	s: string16 = "hé😀"
 	assert! s.len() == 4
 	assert! s.0 == [104 233 0xd83d 0xde00]
 	assert! s.str() == "hé😀"

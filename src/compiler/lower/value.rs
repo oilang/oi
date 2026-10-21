@@ -333,6 +333,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.make_enum(&variants, v.disc, &[])
 			}
+			// coerce literals through `From` claims
+			(Expr::String(_) | Expr::Int(_) | Expr::Float(_), _) if self.claims(target, "core::From") => {
+				let typ = match inner {
+					Expr::String(_) => Typ::Str,
+					Expr::Int(_) => Typ::Int(64),
+					_ => Typ::Float(64),
+				};
+				let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ) else {
+					return Ok(None);
+				};
+				let val = self.lower(value, None)?.0;
+				self.emit_call(&sig, &[val]).0
+			}
 			_ => return Ok(None),
 		};
 		Ok(Some(v))

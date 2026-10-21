@@ -92,8 +92,8 @@ tags: []
 - [ ] swizzle (tried implementing, but I'm going to add core vector types instead) `odin`
 - [ ] allow fn math with arithmetic traits
 - [x] let `oi test` or at least `just test` for my own personal benefit take multiple test spec patterns
-- [ ] reedline repl niceties (`ctrl-u` is a biggie)
-- [ ] `string16` `odin`
+- [x] reedline repl niceties (`ctrl-u` is a biggie)
+- [x] `string16` `odin`
 ## consider
 - `nil`
 - fns that return things should probably error if no binds or `_` blackhole register or `discard` `nim`

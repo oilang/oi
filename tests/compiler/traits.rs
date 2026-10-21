@@ -695,6 +695,19 @@ fn a_trait_takes_type_arguments() {
 }
 
 #[test]
+fn a_literal_coerces_through_from() {
+	let src = indoc! {r#"
+		Money :: struct { cents: int }
+		Money : From[int] < { from :: fn(n: int) Self { Money.{ n * 100 } } }
+		Money : From[string] < { from :: fn(s: string) Self { Money.{ int.try_from(s) or 0 } } }
+		cents :: fn(m: Money) int { m.cents }
+		m: Money = 5
+		print(m.cents, cents("7"))
+	"#};
+	check(src, "500 7");
+}
+
+#[test]
 fn a_type_argument_fills_a_field_slot() {
 	let src = indoc! {"
 		Wrap[T] :: trait {
