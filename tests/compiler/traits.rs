@@ -710,9 +710,12 @@ fn a_literal_coerces_through_from() {
 		f: Flag = true
 		Money : From[[]int] < { from :: fn(xs: []int) Self { Money.{ xs.len() } } }
 		b: Money = .[3]
-		print(m.cents, cents("7"), g.code, f.on, b.cents)
+		P :: struct { n: int }
+		Money : From[P] < { from :: fn(p: P) Self { Money.{ p.n } } }
+		r: Money = .{ n = 2 }
+		print(m.cents, cents("7"), g.code, f.on, b.cents, r.cents)
 	"#};
-	check(src, "500 7 a true 1");
+	check(src, "500 7 a true 1 2");
 }
 
 #[test]

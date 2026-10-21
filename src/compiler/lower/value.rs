@@ -1224,6 +1224,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.construct_variant(&ename, &variant, &args, span);
 		}
 
+		// `.{}` that doesn't fit the target goes through From claims
+		let fits = |t: &Typ| match self.peeled(t) {
+			Typ::Struct(_, fs) => fields.iter().flat_map(|f| &f.0).all(|k| fs.iter().any(|f| f.name == *k)),
+			_ => false,
+		};
+		if let ("", Some(t)) = (name, target)
+			&& !fits(t)
+			&& let Some(sig) = self.pick_from(t, |p| matches!(p, Typ::Struct(..)), span)?
+		{
+			let (v, _) = self.struct_lit("", &[], fields, span, Some(access_peel(&sig.params[0].typ)))?;
+			return Ok((self.emit_call(&sig, &[v]).0, t.clone()));
+		}
+
 		for (i, (fname, value)) in fields.iter().enumerate() {
 			// ensure no duplicate named fields
 			if let Some(fname) = fname
