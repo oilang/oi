@@ -57,6 +57,10 @@ fn loose_list<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl 
 	p.separated_by(just(Token::Comma).or_not()).allow_trailing().collect()
 }
 
+fn semi<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, O> {
+	p.then_ignore(just(Token::Semicolon).or_not())
+}
+
 fn loose_list1<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	p.separated_by(just(Token::Comma).or_not())
 		.allow_trailing()
@@ -402,7 +406,7 @@ where
 
 	// blocks
 	let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
-	block.define(brace(stmt.clone().repeated().collect::<Vec<_>>()).or(do_body));
+	block.define(brace(semi(stmt.clone()).repeated().collect::<Vec<_>>()).or(do_body));
 
 	let p = Parsers {
 		access,

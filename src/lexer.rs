@@ -323,7 +323,7 @@ pub enum Token {
 	Question,
 	#[token("^")]
 	Caret,
-	#[token(";", logos::skip)]
+	#[token(";")]
 	Semicolon,
 
 	// comments

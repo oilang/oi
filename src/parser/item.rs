@@ -432,6 +432,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.or(module_decl)
 		.or(use_decl)
 		.or(p.stmt.clone())
+		.then_ignore(just(Token::Semicolon).or_not())
 		.repeated()
 		.collect()
 		.then_ignore(end())

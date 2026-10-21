@@ -490,6 +490,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.or(p.item.clone())
 				.or(p.stmt.clone()),
 		)
+		.then_ignore(just(Token::Semicolon).or_not())
 		.repeated()
 		.at_least(1)
 		.collect::<Vec<_>>()
