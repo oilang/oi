@@ -1857,9 +1857,7 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			let module = if def.module.is_empty() { "main" } else { &def.module };
-			if !self.stage0 {
-				comp::instantiate(&mut def.body, &subst, module, &self.consts, &program, &mut stage0)?;
-			}
+			comp::instantiate(&mut def.body, &subst, module, &self.consts, &program, &mut stage0)?;
 			let home = scopes[module].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();

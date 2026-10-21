@@ -56,38 +56,41 @@ pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHead
 	std::process::exit(1);
 }
 
+// Visit every comp site outside generic fns.
+fn sites(items: &mut [Spanned<Expr>], f: &mut impl FnMut(&mut Expr)) {
+	for (e, _) in items {
+		match e {
+			Expr::Fn { type_params, .. } if !type_params.is_empty() => {}
+			Expr::Comp(_) => f(e),
+			e => e.for_children(|c| match c {
+				Child::List(list) => sites(list, f),
+				Child::One(one) => sites(std::slice::from_mut(one), f),
+			}),
+		}
+	}
+}
+
 // Find the first unevaluated comp site.
 fn first_comp(items: &mut [Spanned<Expr>]) -> Option<Spanned<Expr>> {
 	let mut found = None;
-	for (e, _) in items.iter_mut().filter(|(e, _)| !generic(e)) {
-		e.walk(&mut |x| {
-			if found.is_none()
-				&& let Expr::Comp(inner) = x
-			{
-				found = Some((**inner).clone());
-			}
-		});
-	}
+	sites(items, &mut |x| {
+		if found.is_none()
+			&& let Expr::Comp(inner) = x
+		{
+			found = Some((**inner).clone());
+		}
+	});
 	found
 }
 
 // Swap comp site for its folded literal.
 fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 	let mut lit = Some(lit);
-	for (e, _) in items.iter_mut().filter(|(e, _)| !generic(e)) {
-		e.walk(&mut |x| {
-			if matches!(x, Expr::Comp(_))
-				&& let Some(lit) = lit.take()
-			{
-				*x = lit;
-			}
-		});
-	}
-}
-
-// Whether an expression has type params.
-fn generic(e: &Expr) -> bool {
-	matches!(e, Expr::Fn { type_params, .. } if !type_params.is_empty())
+	sites(items, &mut |x| {
+		if let Some(lit) = lit.take() {
+			*x = lit;
+		}
+	});
 }
 
 pub(crate) fn instantiate(
@@ -131,12 +134,6 @@ fn unquote(e: &mut Spanned<Expr>, var: &str) {
 		Child::List(list) => list.iter_mut().for_each(|e| unquote(e, var)),
 		Child::One(e) => unquote(e, var),
 	});
-}
-
-fn has_comp(e: &mut Expr) -> bool {
-	let mut found = false;
-	e.walk(&mut |x| found |= matches!(x, Expr::Comp(_)));
-	found
 }
 
 pub(super) fn is_def(e: &Expr) -> bool {
@@ -251,10 +248,10 @@ fn fold(
 	// enable comp code to call imports
 	let mut synthetic = super::expand::lend(program, |module, items| {
 		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
-		items.retain_mut(|(e, _)| match e {
+		items.retain_mut(|item| match &item.0 {
 			Expr::Fn { name, .. } => name != "main",
 			Expr::Bind { mutable: true, .. } => has_main || module != "main",
-			_ => is_def(e) && !has_comp(e),
+			e => is_def(e) && first_comp(std::slice::from_mut(item)).is_none(),
 		});
 		if module == target {
 			items.push(thunk.clone());
