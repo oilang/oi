@@ -755,7 +755,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
 				// built through `From[[]T]` fills
 				Some(t)
-					if let Some(sig) = self.sole_fill(&format!("{t}.from"))
+					if let Some(sig) = self.pick_from(t, |p| matches!(p, Typ::Array(_)), expr.1)?
 						&& let Typ::Array(elem) = access_peel(&sig.params[0].typ) =>
 				{
 					let (v, _) = self.array_lit(elems, Some(elem), expr.1)?;

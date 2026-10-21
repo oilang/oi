@@ -708,9 +708,11 @@ fn a_literal_coerces_through_from() {
 		m: Money = 5
 		g: Glyph = 'a'
 		f: Flag = true
-		print(m.cents, cents("7"), g.code, f.on)
+		Money : From[[]int] < { from :: fn(xs: []int) Self { Money.{ xs.len() } } }
+		b: Money = .[3]
+		print(m.cents, cents("7"), g.code, f.on, b.cents)
 	"#};
-	check(src, "500 7 a true");
+	check(src, "500 7 a true 1");
 }
 
 #[test]
