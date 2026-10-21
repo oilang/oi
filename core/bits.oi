@@ -1,0 +1,39 @@
+module core
+
+## A set of enum variants, one bit each.
+pub Bits[E] :: struct {
+	pub raw: u64,
+}
+
+Bits[E] : From[[]E] < {
+	from :: fn(xs: []E) out: Bits[E] {
+		loop x in xs {
+			out.raw |= u64.(1) << u64.(x)
+		}
+		out
+	}
+}
+
+Bits[E] : Contains[E] < {
+	contains :: fn(self, x: E) bool {
+		self.raw & u64.(1) << u64.(x) != 0
+	}
+}
+
+Bits[E] : BitOr < {
+	bitor :: fn(self, other: Bits[E]) Bits[E] {
+		.{ self.raw | other.raw }
+	}
+}
+
+Bits[E] : BitAnd < {
+	bitand :: fn(self, other: Bits[E]) Bits[E] {
+		.{ self.raw & other.raw }
+	}
+}
+
+Bits[E] : Sub < {
+	sub :: fn(self, other: Bits[E]) Bits[E] {
+		.{ self.raw & !other.raw }
+	}
+}
