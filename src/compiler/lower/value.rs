@@ -238,9 +238,6 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A numeric literal takes the binding's declared type directly.
 	pub(super) fn coerce_lit(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<Option<Value>, Diagnostic> {
-		if let Expr::Rune(n) = value.0 {
-			return self.coerce_lit(&(Expr::Int(n), value.1), target);
-		}
 		let (neg, inner) = match &value.0 {
 			Expr::Negative(e) => (true, &e.0),
 			v => (false, v),
@@ -299,7 +296,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			e => e,
 		};
 		let v = match (inner, target) {
-			(Expr::Int(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
+			(Expr::Int(n) | Expr::Rune(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
 				let n = n * sign;
 				let fits = match target {
 					Typ::UInt(64) => !neg || n >= 0,
@@ -312,7 +309,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				self.b.ins().iconst(cl_type(target, self.int), n)
 			}
-			(Expr::Int(n), Typ::Float(w)) => self.float_lit((n * sign) as f64, *w, value.1)?,
+			(Expr::Int(n) | Expr::Rune(n), Typ::Float(w)) => self.float_lit((n * sign) as f64, *w, value.1)?,
 			(Expr::Float(x), Typ::Float(w)) => self.float_lit(x * sign as f64, *w, value.1)?,
 			(Expr::Atom(name), Typ::Enum(typ)) => self.construct_variant(typ, name, &[], value.1)?.0,
 			(Expr::EnumShorthand { variant, args }, Typ::Enum(typ)) => {
@@ -334,10 +331,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.make_enum(&variants, v.disc, &[])
 			}
 			// coerce literals through `From` claims
-			(Expr::String(_) | Expr::Int(_) | Expr::Float(_), _) if self.claims(target, "core::From") => {
+			(Expr::String(_) | Expr::Int(_) | Expr::Float(_) | Expr::Rune(_) | Expr::Bool(_), _)
+				if self.claims(target, "core::From") =>
+			{
 				let typ = match inner {
 					Expr::String(_) => Typ::Str,
 					Expr::Int(_) => Typ::Int(64),
+					Expr::Rune(_) => Typ::Rune,
+					Expr::Bool(_) => Typ::Bool,
 					_ => Typ::Float(64),
 				};
 				let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ) else {

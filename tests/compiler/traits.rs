@@ -701,10 +701,16 @@ fn a_literal_coerces_through_from() {
 		Money : From[int] < { from :: fn(n: int) Self { Money.{ n * 100 } } }
 		Money : From[string] < { from :: fn(s: string) Self { Money.{ int.try_from(s) or 0 } } }
 		cents :: fn(m: Money) int { m.cents }
+		Glyph :: struct { code: rune }
+		Glyph : From[rune] < { from :: fn(r: rune) Self { Glyph.{ r } } }
+		Flag :: struct { on: bool }
+		Flag : From[bool] < { from :: fn(b: bool) Self { Flag.{ b } } }
 		m: Money = 5
-		print(m.cents, cents("7"))
+		g: Glyph = 'a'
+		f: Flag = true
+		print(m.cents, cents("7"), g.code, f.on)
 	"#};
-	check(src, "500 7");
+	check(src, "500 7 a true");
 }
 
 #[test]
