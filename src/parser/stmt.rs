@@ -1,4 +1,4 @@
-use super::{P, Parsers, Rec, Tokens, binder, brace, bracket, ident, loose_list, paren, spanned};
+use super::{P, Parsers, Rec, Tokens, binder, binding, brace, bracket, ident, loose_list, paren, spanned};
 use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
 use crate::lexer::Token;
 
@@ -65,24 +65,15 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 		.or(ident().map(|n| (n, None)))
 		.boxed();
 
-	let value_tail = binder([Token::Bind, Token::DoubleColon])
-		.then(value.clone())
-		.map(|(mutable, value)| (mutable, None, Some(value)));
-	let sandwich_tail = just(Token::Colon)
-		.ignore_then(p.annot.clone().validate(|t, _, emitter| {
-			if let (TypeExpr::AnonStruct(_), s) = &t {
-				emitter.emit(Rich::custom(*s, "an anonymous struct type can't be a binding's middle"));
-			}
-			t
-		}))
-		.then(binder([Token::Assign, Token::Colon]).then(value.clone()).or_not())
-		.map(|(typ, tail)| match tail {
-			Some((mutable, value)) => (mutable, Some(typ), Some(value)),
-			None => (true, Some(typ), None),
-		});
+	let annot = p.annot.clone().validate(|t, _, emitter| {
+		if let (TypeExpr::AnonStruct(_), s) = &t {
+			emitter.emit(Rich::custom(*s, "an anonymous struct type can't be a binding's middle"));
+		}
+		t
+	});
 	let bind = bind_name
 		.clone()
-		.then(value_tail.or(sandwich_tail))
+		.then(binding(annot, value.clone()))
 		.map_with(|((name, binder), (mutable, typ, value)), ex| {
 			let bind = (
 				Expr::Bind {

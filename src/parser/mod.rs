@@ -73,6 +73,23 @@ fn binder<'token, I: Tokens<'token>>(pair: [Token; 2]) -> impl Rule<'token, I, b
 	one_of(pair).map(|t| matches!(t, Token::Bind | Token::Assign))
 }
 
+// A binding's tail after its name, as (mutable, type, value).
+fn binding<'token, I: Tokens<'token>>(
+	annot: impl Rule<'token, I, Spanned<TypeExpr>>,
+	value: impl Rule<'token, I, Spanned<Expr>>,
+) -> impl Rule<'token, I, (bool, Option<Spanned<TypeExpr>>, Option<Spanned<Expr>>)> {
+	let typed = just(Token::Colon)
+		.ignore_then(annot)
+		.then(binder([Token::Assign, Token::Colon]).then(value.clone()).or_not());
+	binder([Token::Bind, Token::DoubleColon])
+		.then(value)
+		.map(|(mutable, value)| (mutable, None, Some(value)))
+		.or(typed.map(|(typ, tail)| match tail {
+			Some((mutable, value)) => (mutable, Some(typ), Some(value)),
+			None => (true, Some(typ), None),
+		}))
+}
+
 // The parsers the grammars borrow from each other.
 pub(super) struct Parsers<'token, I: Tokens<'token>> {
 	pub(super) access: P<'token, I, Access>,
@@ -271,20 +288,19 @@ where
 		expr.clone().boxed(),
 	);
 
-	// defaults
+	// bindings
+	let annot = spanned(type_expr.clone());
 	let default_value = expr.clone().map(|v| (TypeExpr::Infer(Box::new(v.clone())), Some(v))).boxed();
 	let bind_default = just(Token::Bind).ignore_then(default_value.clone()).boxed();
-
-	let param_type = just(Token::Colon)
-		.ignore_then(type_expr.clone())
-		.then(binder([Token::Assign, Token::Colon]).then(expr.clone()).or_not())
-		.map(|(typ, def)| match def {
-			Some((mutable, e)) => (typ, Some(e), mutable),
-			None => (typ, None, false),
+	let param_type = binding(annot.clone(), expr.clone())
+		.map(|(mutable, typ, default)| match typ {
+			Some((typ, _)) => (typ, default.clone(), mutable && default.is_some()),
+			None => (
+				TypeExpr::Infer(Box::new(default.clone().expect("`:=` has a value"))),
+				default,
+				mutable,
+			),
 		})
-		.or(binder([Token::Bind, Token::DoubleColon])
-			.then(default_value)
-			.map(|(mutable, (typ, default))| (typ, default, mutable)))
 		.boxed();
 	let param = just(Token::With)
 		.or_not()
@@ -355,8 +371,6 @@ where
 
 	let block_ast = block.clone().map_with(|body, ex| (Expr::Block(body), ex.span()));
 
-	// bindings
-	let annot = spanned(type_expr.clone());
 	// macro bindings
 	let hole_ident = sigil(Token::Percent)
 		.ignore_then(ident().or(brace(ident())))

@@ -156,6 +156,39 @@ assert!(n == 3)
 # while a mutable variable is lent, nothing else may touch it for the call
 # f(mut a, a) # error
 
+# binding grammar
+
+# the binding grammar is a small subset of the full language grammar
+# params, struct fields, type params, block binds, and maybe other places all use this same subset
+
+# an untyped name takes the type of the next typed name to its right
+area :: fn(w, h: int) int { w * h }
+
+# a grouped default applies to every binding, each param evaluating its own copy at the callsite
+pad :: fn(s: string, left, right := " ") string { left + s + right }
+
+# `;` is a grouping barrier
+Point :< { scale :: fn(mut self; x, y: int) { ... } }
+repeat[T; N, M: int] :: fn(x: T) [N][M]T { ... }
+
+# a name still untyped takes its type from the expected fn type, like `fn(event)` against a `Handler`
+# or `Self` as the first param of a fill in a type body
+# `self` is just a name, so `fn(self, other: Self)` grouping is valid
+Point :< { norm :: fn(this) int { this.x * this.x + this.y * this.y } }
+
+# params are internally the lhs of `(params) := $`, so they naturally support destructuring
+dot :: fn((x, y): (int, int)) int { x * x + y * y }
+
+# struct fields group too, with newlines and semicolons acting as a barrier
+Color :: struct {
+	r, g, b: u8
+	a: u8 = 255
+}
+
+# a block bind evaluates once and the other names are copies
+lo, hi := 0 # essentially `hi := lo`
+# a, b := fs.open(path)? # error, the copy into `b` would move a Drop value
+
 # implicit return
 
 add :: fn(x: int, y: int) int {
@@ -437,7 +470,7 @@ Options :: struct {
 	bar: bool
 }
 User :< {
-	with_options :: fn(self, opt: Options) {
+	with_options :: fn(self; opt: Options) {
 		print(opt)
 	}
 }
@@ -453,7 +486,7 @@ Settings :: struct {
 	idk: int
 }
 User :< {
-	with_settings :: fn(self, settings: Settings) {
+	with_settings :: fn(self; settings: Settings) {
 		print(settings)
 	}
 }
@@ -513,7 +546,7 @@ User :< {
 		self.age > 16
 	}
 	# calling a `mut self` method requires the receiver to be a `mut` binding
-	set_age :: fn(mut self, age: int) {
+	set_age :: fn(mut self; age: int) {
 		self.age = age
 	}
 }
@@ -592,13 +625,13 @@ assert!(Frac.{1, 3} < Frac.{1, 2})
 # `in` dispatches to a `Contains[T]` claim, so any type can be searched
 Bag :: struct { items: []int }
 Bag : Contains[int] < {
-	contains :: fn(self, v: int) bool { v in self.items }
+	contains :: fn(self; v: int) bool { v in self.items }
 }
 assert!(2 in Bag.{ items = [1 2 3] })
 
 # `x[i]` and `x[i] = v` dispatch to `Index[I, T]` and `IndexAssign[I, T]` claims
 Bag : Index[int, int] < {
-	index :: fn(self, i: int) int { self.items[i] }
+	index :: fn(self; i: int) int { self.items[i] }
 }
 assert!(Bag.{ items = [1 2 3] }[1] == 2)
 
@@ -612,7 +645,7 @@ assert!(Dir.down < Dir.up)
 # arithmetic fills don't need to be of the same type
 Scale :: struct { f: int }
 Scale : Mul < {
-	mul :: fn(self, other: int) Self { Self.{ self.f * other } }
+	mul :: fn(self; other: int) Self { Self.{ self.f * other } }
 }
 assert!(Scale.{3} * 2 == 2 * Scale.{3}) # + and * are commutative
 
@@ -697,10 +730,10 @@ assert!(Bike is not Fruit)
 
 # every type is `Display`, rendered by its `fmt` or `str`, or derived
 Kiwi :< { str :: fn(self) string { "kiwi" } }
-Apple :< { fmt :: fn(self, mut b: Buffer) { b.write("apple") } }
+Apple :< { fmt :: fn(self; mut b: Buffer) { b.write("apple") } }
 
 # and `Debug`, through its `debug`, or derived
-Kiwi :< { debug :: fn(self, mut b: Buffer) { b.write("Kiwi!") } }
+Kiwi :< { debug :: fn(self; mut b: Buffer) { b.write("Kiwi!") } }
 assert!("hi".repr() == "\"hi\"")
 
 ## static vs dynamic dispatch
@@ -746,7 +779,7 @@ max[T: Ord] :: fn(a: T, b: T) T {
 }
 
 # a type param may default, for when nothing at the callsite pins it
-parse_int[T = int] :: fn(s: string) ?T { ... }
+parse_int[T :: int] :: fn(s: string) ?T { ... }
 n :: parse_int("42")? # T = int
 b :: parse_int[u8]("42")? # an explicit arg or an inferred one wins
 
@@ -900,10 +933,11 @@ main :: fn() {
 
 	# swap
 	(baz, qux) := ("bazd", "quxd")
-	(baz, qux) = (qux, baz)
+	(baz qux) = (qux baz)
 
 	# destructuring
 
+	(q r) := (7 / 2, 7 % 2)
 	[first second] :: [1 2 3]
 	Point.{ x, y } :: Point.{ 1, 2 }
 	Point.{ y = b, x } := Point.{ 1, 2 }
@@ -1118,6 +1152,9 @@ main :: fn() {
 	# anonymous `.{}`, `.[]`, and `.()` resolve against the expected type
 	stooges: [3]string = .["Larry" "Curly" "Moe"]
 	stooges.2 = "Emil Sitka"
+
+	# `;` is a stronger comma, and can be used to separate rows in multi-dimensional arrays
+	identity: [2][2]int = .[1 0; 0 1]
 
 	# a fixed array coerces (and makes copy) to `[]T` where one is expected
 	roster: []string = stooges
@@ -2342,7 +2379,7 @@ main :: fn() {
 	with req do header("x", "1")
 
 	# it's a binding qualifier like `mut`, and can go wherever a name is bound
-	update :: fn(with mut self, dt: f32) { pos += vel * dt }
+	update :: fn(with mut self; dt: f32) { pos += vel * dt }
 	loop with e in entities { pos += vel * dt }
 	with a, b { }
 
@@ -2390,7 +2427,7 @@ main :: fn() {
 		if xs.len() == 0 { none } else { xs[0] }
 	}
 	# a value param names the type it holds, and callers pass it positionally
-	repeat[T, N: int] :: fn(x: T) [N]T { ... }
+	repeat[T; N: int] :: fn(x: T) [N]T { ... }
 	Matrix[R: int, C: int] :: struct { cells: [R][C]float }
 	threes := repeat[int, 3](0)
 	# generics can have trait guards
