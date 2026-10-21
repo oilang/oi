@@ -260,3 +260,12 @@ fn comp_loop_unquotes_a_struct() {
 	"#};
 	check(src, ["11 one Pt.{x = 1}", "12 two Pt.{x = 2}"]);
 }
+
+#[test]
+fn comp_loop_with_destructuring_bind() {
+	let src = indoc! {"
+		f :: fn(a: int) { comp loop (k, v) in [(1, 2) (3, 4)] { print(k + v + a) } }
+		f(10)
+	"};
+	check(src, ["13", "17"]);
+}

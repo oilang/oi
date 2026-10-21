@@ -54,7 +54,7 @@ struct Expander {
 }
 
 // Every name a pattern binds.
-fn pat_names(pat: &mut Spanned<Expr>) -> Vec<&mut String> {
+pub(super) fn pat_names(pat: &mut Spanned<Expr>) -> Vec<&mut String> {
 	let elems: Vec<&mut Spanned<Expr>> = match &mut pat.0 {
 		Expr::Ident(n) => return vec![n],
 		Expr::Tuple(fields) | Expr::StructLit { fields, .. } => fields.iter_mut().map(|(_, e)| e).collect(),

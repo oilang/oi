@@ -221,11 +221,12 @@ fn fold(
 	}
 	let span = inner.1;
 	// comp loop
-	if let Expr::For { pat, body, .. } = &mut inner.0
-		&& let Expr::Ident(var) = &pat.0
-	{
-		body.iter_mut().for_each(|e| unquote(e, var));
-		*body = vec![(Expr::Quote(std::mem::take(body)), span)];
+	if let Expr::For { pat, body, .. } = &mut inner.0 {
+		let vars = super::expand::pat_names(pat);
+		if !vars.is_empty() {
+			vars.iter().for_each(|var| body.iter_mut().for_each(|e| unquote(e, var)));
+			*body = vec![(Expr::Quote(std::mem::take(body)), span)];
+		}
 	}
 	// every needs its own name
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
