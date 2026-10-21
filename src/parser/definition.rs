@@ -367,17 +367,21 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	))
 	.map_with(|v, ex| (Expr::Return(v.map(Box::new)), ex.span()));
 	let defer_expr = just(Token::Defer)
-		.ignore_then(just(Token::And).to(When::Ok).or(just(Token::Or).to(When::Err)).or_not())
+		.ignore_then(label.or_not())
+		.then(just(Token::And).to(When::Ok).or(just(Token::Or).to(When::Err)).or_not())
 		.then(p.place.clone().or(defer_body.clone()))
 		.then(p.block.clone().or_not())
-		.map_with(|((when, body), scope), ex| {
+		.map_with(|(((label, when), body), scope), ex| {
 			let (body, when) = (Box::new(body), when.unwrap_or(When::Always));
-			let defer = (Expr::Defer { body, when }, ex.span());
+			let defer = (Expr::Defer { label, body, when }, ex.span());
 			match scope {
 				Some(scope) => (Expr::Block(std::iter::once(defer).chain(scope).collect()), ex.span()),
 				None => defer,
 			}
 		});
+	let cancel_expr = just(Token::Cancel)
+		.ignore_then(label)
+		.map_with(|label, ex| (Expr::Cancel(label), ex.span()));
 	let fallthrough_expr = just(Token::Fallthrough).map_with(|_, ex| (Expr::Fallthrough, ex.span()));
 	let discard_expr = just(Token::Discard)
 		.ignore_then(juxt_expr.clone())
@@ -525,6 +529,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		let restore = ast::assign(place.clone(), None, (Expr::Ident(old.clone()), span), span);
 		let defer = (
 			Expr::Defer {
+				label: None,
 				body: Box::new(restore),
 				when: When::Always,
 			},
@@ -609,7 +614,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		for_expr,
 		loop_expr,
 		break_expr.or(return_expr).or(defer_expr).or(discard_expr).or(fallthrough_expr),
-		continue_expr,
+		continue_expr.or(cancel_expr),
 		anon_fn.clone(),
 		bad,
 	))

@@ -198,7 +198,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A branch that is a lone `defer` arms it on the enclosing scope.
 	fn branch(&mut self, body: &[Spanned<Expr>], target: Option<&Typ>) -> Result<Option<TypedVal>, Diagnostic> {
 		match body {
-			[(Expr::Defer { body, when }, _)] => Ok(Some(self.defer(body, *when, true))),
+			[(Expr::Defer { label, body, when }, _)] => Ok(Some(self.defer(label, body, *when, true))),
 			_ => self.scoped(|s| s.block_tail(body, target)),
 		}
 	}

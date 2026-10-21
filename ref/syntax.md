@@ -2183,6 +2183,11 @@ main :: fn() {
 	data := defer f.close() { f.read()? }
 	defer cleanup() do work()
 
+	# a named defer can be disarmed with `cancel`
+	defer :rollback tx.abort()
+	tx.commit()?
+	cancel :rollback
+
 	# defers in loops run at the end of each iteration
 	loop {
 		defer print("here we go again...")

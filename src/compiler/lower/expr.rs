@@ -1039,7 +1039,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				"not at the end of an arm",
 			),
 
-			Expr::Defer { body, when } => Ok(self.defer(body, *when, false)),
+			Expr::Defer { label, body, when } => Ok(self.defer(label, body, *when, false)),
+			Expr::Cancel(label) => self.cancel(label, expr.1),
 
 			Expr::Discard(e) => {
 				self.expr(e)?;

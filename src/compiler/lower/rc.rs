@@ -11,6 +11,7 @@ pub(crate) struct Defer {
 	pub(crate) vars: HashMap<String, Local>,
 	pub(crate) when: When,
 	pub(crate) armed: Option<Variable>,
+	pub(crate) label: Option<String>,
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -521,8 +522,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// An armed defer runs only if its flag was set.
-	pub(super) fn defer(&mut self, body: &Spanned<Expr>, when: When, armed: bool) -> TypedVal {
-		let armed = armed.then(|| {
+	pub(super) fn defer(&mut self, label: &Option<String>, body: &Spanned<Expr>, when: When, armed: bool) -> TypedVal {
+		let armed = (armed || label.is_some()).then(|| {
 			let (flag, one) = (self.b.declare_var(self.int), self.b.ins().iconst(self.int, 1));
 			self.b.def_var(flag, one);
 			flag
@@ -533,8 +534,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			vars,
 			when,
 			armed,
+			label: label.clone(),
 		});
 		self.unit_value()
+	}
+
+	pub(super) fn cancel(&mut self, label: &str, span: Span) -> Result<TypedVal, Diagnostic> {
+		let named = self.defers.iter().flatten().rev().find(|d| d.label.as_deref() == Some(label));
+		let Some(flag) = named.and_then(|d| d.armed) else {
+			return fail(format!("no `defer :{label}` to cancel"), span, "not in scope");
+		};
+		let zero = self.b.ins().iconst(self.int, 0);
+		self.b.def_var(flag, zero);
+		Ok(self.unit_value())
 	}
 
 	// `$` is the returned value / error.

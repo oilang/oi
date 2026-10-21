@@ -145,6 +145,8 @@ pub enum Token {
 	Fallthrough,
 	#[token("defer")]
 	Defer,
+	#[token("cancel")]
+	Cancel,
 	#[token("discard")]
 	Discard,
 	#[token("match")]
@@ -354,6 +356,7 @@ impl fmt::Display for Token {
 			Token::Return | Token::BareReturn => write!(f, "return"),
 			Token::Fallthrough => write!(f, "fallthrough"),
 			Token::Defer => write!(f, "defer"),
+			Token::Cancel => write!(f, "cancel"),
 			Token::Discard => write!(f, "discard"),
 			Token::Match => write!(f, "match"),
 			Token::Trait => write!(f, "trait"),

@@ -83,11 +83,14 @@ pub enum Expr {
 
 	Return(Option<Box<Spanned<Expr>>>),
 
-	// `defer [and|or] expr`
+	// `defer [:name] [and|or] expr`
 	Defer {
+		label: Option<String>,
 		body: Box<Spanned<Expr>>,
 		when: When,
 	},
+	// `cancel :name`
+	Cancel(String),
 
 	Fallthrough,
 
@@ -526,6 +529,7 @@ impl Expr {
 			| Expr::Dollar
 			| Expr::Foreign
 			| Expr::Continue(_)
+			| Expr::Cancel(_)
 			| Expr::Fallthrough
 			| Expr::Unquote(_)
 			| Expr::TypeAlias { .. }

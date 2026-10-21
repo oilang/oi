@@ -129,3 +129,21 @@ fn block_form_scopes_the_defer_and_yields_the_block() {
 	);
 	check(["f :: fn() { defer print 1", " print(0) }", "f()"], ["0", "1"]);
 }
+
+#[test]
+fn cancel_disarms_a_named_defer() {
+	let src = indoc! {r#"
+		i := 0
+		loop {
+			i += 1
+			defer :log print(i)
+			if i == 1 {
+				cancel :log
+			}
+			if i == 2 { break }
+		}
+		print("done")
+	"#};
+	check(src, ["2", "done"]);
+	fail("cancel :log", "no `defer :log` to cancel");
+}
