@@ -1227,7 +1227,33 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& let Some((key, arr)) = t.keyed()
 		{
 			let (ptr, elem) = (self.zero(t), array_elem(arr));
-			for (k, v) in entries {
+			let given: Vec<_> = (entries.iter())
+				.filter_map(|(k, _)| match &k.0 {
+					Expr::EnumShorthand { variant: n, .. } | Expr::Field { field: n, .. } | Expr::Ident(n) => Some(n),
+					_ => None,
+				})
+				.collect();
+			let missing: Vec<_> = (self.variants_of(&key).into_iter())
+				.filter(|v| !given.contains(&&v.name))
+				.map(|v| v.name)
+				.collect();
+
+			// defaults for any missing variants
+			let mut entries = entries.to_vec();
+			if let Some(at) = entries.iter().position(|(k, _)| matches!(&k.0, Expr::Ident(n) if n == "_")) {
+				let (k, v) = entries.remove(at);
+				let fill = |variant| ((Expr::EnumShorthand { variant, args: vec![] }, k.1), v.clone());
+				entries.extend(missing.into_iter().map(fill));
+			} else if !entries.is_empty() && !missing.is_empty() {
+				let missing: Vec<_> = missing.iter().map(|n| format!("`.{n}`")).collect();
+				return fail(
+					format!("missing {}", missing.join(", ")),
+					span,
+					"or fill the rest with `_ = v`",
+				);
+			}
+
+			for (k, v) in &entries {
 				let idx = self.key_slot(k, &key)?;
 				let val = self.stored(v, elem, &format!("element of {elem} array"), "an array")?;
 				let val = self.copy_in(val, elem);

@@ -772,6 +772,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
 				Some(t) if elems.is_empty() && t.keyed().is_some() => self.map_lit(&[], expr.1, Some(t)),
+				Some(t) if let Some((_, Typ::FixedArray(elem, n))) = t.keyed() => {
+					Ok((self.fixed_lit(elems, Some((elem, *n)), expr.1)?.0, t.clone()))
+				}
 				// built through `From[[]T]` fills
 				Some(t)
 					if let Some(sig) = self.pick_from(t, |p| matches!(p, Typ::Array(_)), expr.1)?
