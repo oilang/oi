@@ -28,5 +28,5 @@ Status :: enum { ok = 200 missing = 404 }
 
 test! "holy (get it?) enum sets" {
 	s: [Status]() = .[.ok]
-	assert! .ok in s && !(.missing in s) && (s | .[.missing]).len() == 2
+	assert! .ok in s && !(.missing in s) && (s | .[.missing]).len() == 2 && (s | .[.missing]).raw == 0b11
 }

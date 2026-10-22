@@ -113,7 +113,7 @@ pub(super) fn array_elem(typ: &Typ) -> &Typ {
 pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
 	match typ {
 		Typ::Bool => Some(runtime::Tag::Bool),
-		Typ::Int(_) | Typ::ISize | Typ::Enum(_) => Some(runtime::Tag::Int),
+		Typ::Int(_) | Typ::ISize => Some(runtime::Tag::Int),
 		Typ::UInt(_) | Typ::USize => Some(runtime::Tag::UInt),
 		Typ::Float(_) => Some(runtime::Tag::Float),
 		Typ::Str => Some(runtime::Tag::Str),

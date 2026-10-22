@@ -8,7 +8,7 @@ pub Bits[E] :: struct {
 Bits[E] : From[[]E] < {
 	from :: fn(xs: []E) out: Self {
 		loop x in xs {
-			out.raw |= u64.(1) << int.(x)
+			out.raw |= u64.(1) << x.index()
 		}
 		out
 	}
@@ -16,7 +16,7 @@ Bits[E] : From[[]E] < {
 
 Bits[E] : Contains[E] < {
 	contains :: fn(self; x: E) bool {
-		self.raw & u64.(1) << int.(x) != 0
+		self.raw & u64.(1) << x.index() != 0
 	}
 }
 

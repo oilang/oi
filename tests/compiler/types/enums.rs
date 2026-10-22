@@ -115,8 +115,9 @@ fn discriminants() {
 			Opt :: enum { nope some(int) }
 			x: E
 			print(int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), ord(Opt.some.(1)), Color.blue.str())
+			print(ord(Status.err), Status.err.index(), ord('A'), ord(true))
 		"},
-		"2 500 200 a 2 1 blue",
+		["2 500 200 a 2 1 blue", "500 1 65 1"],
 	);
 }
 
@@ -489,6 +490,14 @@ fn enum_indexed_arrays() {
 			loop (e, w) in ws { print(e, w) }
 		"#},
 		[r#"[0, 5, 0] 5 3 ["x", "", "z"]"#, "a x", "b ", "c z"],
+	);
+	check(
+		indoc! {"
+			S :: enum { ok = 200, missing = 404 }
+			xs: [S]int = .[.missing = 4]
+			loop (s, x) in xs { print(s, x) }
+		"},
+		["ok 0", "missing 4"],
 	);
 	fail(
 		indoc! {"

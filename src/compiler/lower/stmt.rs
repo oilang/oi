@@ -203,7 +203,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.cow_array(ptr, &elem);
 					}
 					let idx = match &key {
-						Some(k) => self.check_typed(index, k, "not a key")?,
+						Some(k) => self.key_slot(index, k)?,
 						None => self.int_value(index, "array index")?,
 					};
 					let idx = self.intcast(idx, self.int, true);

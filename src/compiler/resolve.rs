@@ -262,10 +262,7 @@ impl TypeCtx<'_> {
 				{
 					let elem = Box::new(self.resolve(elem, span)?);
 					// enum indices
-					let ordinal = |vs: &&Vec<VariantInfo>| {
-						vs.iter().enumerate().all(|(i, v)| v.payload.is_empty() && v.disc == i as i64)
-					};
-					let variants = self.enums.borrow().get(&k.key()).filter(ordinal).map(Vec::len);
+					let variants = self.enums.borrow().get(&k.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
 						// enum sets
@@ -273,7 +270,7 @@ impl TypeCtx<'_> {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}
-						Typ::Enum(e) if let Some(n) = self.enums.borrow().get(&e).filter(ordinal).map(Vec::len) => Ok(
+						Typ::Enum(e) if let Some(n) = variants => Ok(
 							Typ::Annotated(vec![format!("[{e}]")], Box::new(Typ::FixedArray(elem, n))),
 						),
 						_ => Ok(Typ::Map(Box::new(k), elem)),

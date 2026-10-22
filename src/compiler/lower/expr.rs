@@ -415,6 +415,11 @@ impl<'a, M: Module> Translator<'a, M> {
 							return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 						}
 					}
+					if method == "index" && args.is_empty() && recv_typ.is_enumish() && recv_typ != Typ::Any {
+						let tag = self.enum_tag(&recv_typ, recv_val);
+						let tag = self.intcast(tag, types::I64, true);
+						return Ok((self.enum_index(&recv_typ, tag), Typ::Int(64)));
+					}
 					if let Typ::Trait(tn) = &recv_typ {
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
 					}
@@ -802,7 +807,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						Ok((self.unmap_bits(raw, &v), v))
 					}
 					t if let Some((key, arr)) = t.keyed() => {
-						let idx = self.check_typed(index, &key, "not a key")?;
+						let idx = self.key_slot(index, &key)?;
 						Ok((self.load_index((ptr, arr), idx, collection.1), array_elem(arr).clone()))
 					}
 					Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {

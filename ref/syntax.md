@@ -1873,6 +1873,8 @@ main :: fn() {
 	# `ord` gives the discriminant, which defaults to declaration position
 	assert!(ord(Color.blue) == 2)
 	assert!(ord(Status.not_found) == 404)
+	# `.index()` gives the declaration position
+	assert!(Status.not_found.index() == 1)
 
 	# enums are int-backed by default
 	assert!(int.(Status.ok) == 200)

@@ -1214,7 +1214,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			if let Some(k) = &key {
 				let val = s.copy_in(item, elem);
 				typ = Typ::Tuple(vec![(None, k.clone()), (None, typ)]);
-				item = s.frame_slots(&[iv, val]);
+				let disc = s.enum_disc(k, iv);
+				item = s.frame_slots(&[disc, val]);
 				s.temp(item, &typ);
 			}
 

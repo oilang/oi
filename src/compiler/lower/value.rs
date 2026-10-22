@@ -416,6 +416,39 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some(v.payload[0].clone())
 	}
 
+	// A variant's declaration position, from its tag.
+	pub(super) fn enum_index(&mut self, typ: &Typ, tag: Value) -> Value {
+		let discs = self.variants_of(typ).iter().map(|v| v.disc).zip(0..).collect();
+		self.remap(tag, discs)
+	}
+
+	// The tag at a declaration position.
+	pub(super) fn enum_disc(&mut self, typ: &Typ, ord: Value) -> Value {
+		let ords = (0..).zip(self.variants_of(typ).iter().map(|v| v.disc)).collect();
+		self.remap(ord, ords)
+	}
+
+	// Map `val` through `pairs`, as an add when they're evenly offset.
+	fn remap(&mut self, val: Value, pairs: Vec<(i64, i64)>) -> Value {
+		let offset = pairs.first().map_or(0, |(from, to)| to - from);
+		if pairs.iter().all(|(from, to)| to - from == offset) {
+			return if offset == 0 { val } else { self.b.ins().iadd_imm(val, offset) };
+		}
+		let mut out = self.b.ins().iconst(self.int, 0);
+		for (from, to) in pairs {
+			let (hit, to) = (self.b.ins().icmp_imm(IntCC::Equal, val, from), self.b.ins().iconst(self.int, to));
+			out = self.b.ins().select(hit, to, out);
+		}
+		out
+	}
+
+	// An enum-indexed array's slot for `index`.
+	pub(super) fn key_slot(&mut self, index: &Spanned<Expr>, key: &Typ) -> Result<Value, Diagnostic> {
+		let tag = self.check_typed(index, key, "not a key")?;
+		let tag = self.intcast(tag, self.int, true);
+		Ok(self.enum_index(key, tag))
+	}
+
 	// The tag of an enum value.
 	pub(super) fn enum_tag(&mut self, typ: &Typ, val: Value) -> Value {
 		if *typ == Typ::Any {
@@ -1172,7 +1205,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			let (ptr, elem) = (self.zero(t), array_elem(arr));
 			for (k, v) in entries {
-				let idx = self.check_typed(k, &key, "not a key")?;
+				let idx = self.key_slot(k, &key)?;
 				let val = self.stored(v, elem, &format!("element of {elem} array"), "an array")?;
 				let val = self.copy_in(val, elem);
 				self.store_index((ptr, arr), idx, val, k.1);
