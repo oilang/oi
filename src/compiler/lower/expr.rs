@@ -610,16 +610,24 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& !self.vars.contains_key(name)
 					&& let Ok(t) = self.types.named(name, tuple.1)
 				{
+					// trait consts
 					if let Some(c) = self.types.consts.map.get(&format!("{t}::{field}")).cloned() {
-						return self.check_expr(&c, &t);
+						let declared = (self.types.traits.iter())
+							.filter(|(tn, _)| self.claims(&t, tn))
+							.find_map(|(_, tr)| Some((tr.2.iter().find(|f| f.name == *field)?, tr.4)))
+							.and_then(|(f, home)| self.types.with_scope(home).resolve(&f.typ, f.span).ok());
+						return self.check_expr(&c, &declared.unwrap_or(t));
 					}
+
 					if field == "count" && self.plain_enum(&t) {
 						let n = self.variants_of(&t).len() as i64;
 						return Ok((self.b.ins().iconst(self.int, n), Typ::Int(64)));
 					}
+
 					if let Some(v) = self.numeric_bound(&t, field) {
 						return Ok((v, t));
 					}
+
 					if field == "size"
 						&& let Some((n, _)) = t.c_size_align(&self.types)
 					{

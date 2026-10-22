@@ -967,8 +967,8 @@ fn ordinal_claims() {
 		}
 		P :: enum { a b c }
 		last[T: Ordinal] :: fn() ?T { T.from_index(T.count - 1) }
-		print(ord(Dir.{180}), last[Dir]()?.deg, last[P](), last[bool]())
+		print(ord(Dir.{180}), last[Dir]()?.deg, last[P](), last[bool](), last[u8](), rune.count)
 	"};
-	check(src, "180 270 some.(c) some.(true)");
+	check(src, "180 270 some.(c) some.(true) some.(255) 1114112");
 	fail("print(ord(1))", "does not claim `core::Ordinal`");
 }

@@ -85,6 +85,14 @@ bool : Ordinal < {
 	}
 }
 
+u8 : Ordinal < {
+	count :: 256
+	index :: fn(self) int do int.(self)
+	from_index :: fn(i: int) ?u8 {
+		if i in 0..256 { u8.(i) } else { none }
+	}
+}
+
 rune : Ordinal < {
 	count :: 0x110000
 	index :: fn(self) int do int.(self)
