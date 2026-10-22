@@ -293,6 +293,7 @@ impl Typ {
 				format!("fn({}) {}", keys(&mut params.iter().map(|p| &p.typ)), ret.key())
 			}
 			Typ::Annotated(anns, t) => format!("{}{}", marks(anns), t.key()),
+			Typ::Struct(name, _) => name.clone(),
 			Typ::Sum(name, _) if !name.is_empty() => name.clone(),
 			Typ::Sum(_, variants) => variants
 				.iter()
@@ -331,7 +332,8 @@ impl fmt::Display for Typ {
 			Typ::Array(e) => write!(f, "[]{e}"),
 			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
 			Typ::Enum(name) => write!(f, "{}", sugar(name).as_deref().unwrap_or(name)),
-			Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Trait(name) => write!(f, "{name}"),
+			Typ::Struct(name, _) => write!(f, "{}", sugar(name).as_deref().unwrap_or(name)),
+			Typ::TupleStruct(name, _) | Typ::Trait(name) => write!(f, "{name}"),
 			Typ::Sum(name, _) if !name.is_empty() => write!(f, "{name}"),
 			Typ::Sum(_, variants) => {
 				let members: Vec<_> = (variants.iter())
@@ -489,6 +491,9 @@ pub(crate) fn sugar(name: &str) -> Option<String> {
 	let args = |base: &str| name.strip_prefix(base)?.strip_prefix('[')?.strip_suffix(']');
 	if let Some(inner) = args(role::OPTION) {
 		return Some(format!("?{inner}"));
+	}
+	if let Some(inner) = args(role::BITS) {
+		return Some(format!("[{inner}]()"));
 	}
 	let parts = args(role::RESULT)?;
 	Some(match parts.strip_suffix(", Error") {

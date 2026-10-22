@@ -364,6 +364,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.truncate(wide, target, to_signed)
 			}
 			(_, Int(_) | UInt(_) | ISize | USize | Rune) => self.truncate(val, target, signed),
+			(UInt(64), Typ::Struct(n, _)) if n.starts_with(role::BITS) => self.ld_word(val, 0),
 			_ => {
 				let label = if typ == Str {
 					format!("`{target}.try_from(...)` parses strings")

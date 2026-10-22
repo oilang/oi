@@ -20,13 +20,12 @@ test! "enum sets" {
 	assert! (p | q).len() == 3 && (p & q).collect() == [.exec]
 	assert! (loop e in p - q do e) == [.read]
 	assert! p.str() == "{{.read .exec}}"
-	b: Bits[Perm] = p
-	assert! b.raw == 0b101
+	assert! (u64.(p) == 0b101)
 }
 
 Status :: enum { ok = 200 missing = 404 }
 
 test! "holy (get it?) enum sets" {
 	s: [Status]() = .[.ok]
-	assert! .ok in s && !(.missing in s) && (s | .[.missing]).len() == 2 && (s | .[.missing]).raw == 0b11
+	assert! .ok in s && !(.missing in s) && (s | .[.missing]).len() == 2 && u64.(s | .[.missing]) == 0b11
 }

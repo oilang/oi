@@ -2,7 +2,7 @@ module core
 
 ## A set of enum variants, one bit each.
 pub Bits[E] :: struct {
-	pub raw: u64,
+	raw: u64,
 }
 
 Bits[E] : From[[]E] < {
