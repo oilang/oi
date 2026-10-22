@@ -22,6 +22,9 @@ f32 :< {
 ## Any int or float, of any width.
 pub Number :: trait {}
 
+## Any int, of any width.
+pub Integer :: trait {}
+
 ## Floating point, of any width.
 pub Float :: trait {}
 float :< Float

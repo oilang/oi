@@ -622,8 +622,9 @@ impl<'a, M: Module> Translator<'a, M> {
 						return self.check_expr(&c, &declared.unwrap_or(t));
 					}
 
-					if field == "count" && self.plain_enum(&t) {
-						let n = self.variants_of(&t).len() as i64;
+					if field == "count"
+						&& let Some(n) = self.types.assoc_int(name, field)
+					{
 						return Ok((self.b.ins().iconst(self.int, n), Typ::Int(64)));
 					}
 

@@ -29,6 +29,7 @@ pub(crate) const ALLOCATOR: &str = "core::Allocator";
 pub(crate) const DISPLAY: &str = "core::Display";
 pub(crate) const DEBUG: &str = "core::Debug";
 pub(crate) const NUMBER: &str = "core::Number";
+pub(crate) const INTEGER: &str = "core::Integer";
 pub(crate) const LENGTH: &str = "core::Length";
 pub(crate) const ORDINAL: &str = "core::Ordinal";
 pub(crate) const ISOLATED_TRAIT: &str = "core::Isolated";

@@ -383,13 +383,17 @@ impl TypeCtx<'_> {
 	}
 
 	// `T.size`, `T.count`, or an int assoc const.
-	fn assoc_int(&self, name: &str, field: &str) -> Option<i64> {
+	pub fn assoc_int(&self, name: &str, field: &str) -> Option<i64> {
 		let t = self.named(name, Span::default()).ok()?;
 		let variants = self.enums.borrow().get(&t.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
 		match (field, variants, self.consts.map.get(&format!("{t}::{field}"))) {
 			("size", ..) => Some(t.c_size_align(self)?.0.into()),
 			("count", Some(n), _) => Some(n as i64),
 			(.., Some((Expr::Int(n), _))) => Some(*n),
+			("count", ..) => t
+				.int_bounds()
+				.and_then(|(lo, hi)| hi.checked_sub(lo)?.checked_add(1))
+				.filter(|n| *n > 0),
 			_ => None,
 		}
 	}

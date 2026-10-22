@@ -85,11 +85,11 @@ bool : Ordinal < {
 	}
 }
 
-u8 : Ordinal < {
-	count :: 256
-	index :: fn(self) int do int.(self)
-	from_index :: fn(i: int) ?u8 {
-		if i in 0..256 { u8.(i) } else { none }
+[T: Integer] T : Ordinal < {
+	index :: fn(self) int do int.(self) - int.(T.min)
+	ord :: fn(self) int do int.(self)
+	from_index :: fn(i: int) ?T {
+		if i in 0..T.count { T.(i + int.(T.min)) } else { none }
 	}
 }
 
