@@ -189,6 +189,10 @@ Color :: struct {
 lo, hi := 0 # essentially `hi := lo`
 # a, b := fs.open(path)? # error, the copy into `b` would move a Drop value
 
+# `Linear` types never implicitly drop, every path must move it into a consumer
+tx := db.begin()
+tx.commit() # `commit :: fn(move self)`, and only Tx's own methods may `discard self`
+
 # implicit return
 
 add :: fn(x: int, y: int) int {

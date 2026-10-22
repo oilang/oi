@@ -75,6 +75,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub addressed: HashSet<String>,
 	pub aliases: Vec<Variable>,
 	pub flagged: Vec<Variable>,
+	pub linear: Vec<(Variable, Spanned<String>)>,
 	pub withs: Vec<String>,
 }
 

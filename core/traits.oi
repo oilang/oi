@@ -58,6 +58,10 @@ pub Recv[T] :: trait { recv: fn(self) ?T }
 ## Holds no `^T`, `any`, or fn env, so it can cross threads. Checked structurally.
 pub Isolated :: trait {}
 
+## A resource with no implicit drop.
+## It must be moved into a consumer, and only its own methods can `discard` it.
+pub Linear :: trait {}
+
 ## Supports reporting length.
 pub Length :: trait { len: fn(self) int }
 

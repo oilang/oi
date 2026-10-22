@@ -2140,6 +2140,7 @@ impl<M: Module> Compiler<M> {
 			addressed: HashSet::new(),
 			aliases: vec![],
 			flagged: vec![],
+			linear: vec![],
 			withs: types.scope.withs.clone(),
 		};
 
@@ -2167,6 +2168,9 @@ impl<M: Module> Compiler<M> {
 			trans.b.def_var(var, val);
 			if *access == Access::Move || (def.decls.get(i).is_some_and(|p| p.mutable) && trans.is_affine(typ)) {
 				trans.own_local(var, typ);
+				if let Some(p) = def.decls.get(i).filter(|_| trans.is_linear(typ)) {
+					trans.linear.push((var, (name.clone(), p.span)));
+				}
 			}
 			let mutable = *access == Access::Mut;
 			let local = Local {

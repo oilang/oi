@@ -90,8 +90,12 @@ impl<'a, M: Module> Translator<'a, M> {
 						true => val,
 						false => self.copy_bind(val, &typ),
 					};
+					let linear = self.is_linear(&typ);
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					self.bind_local(name, final_val, typ, *mutable);
+					if linear {
+						self.linear.push((self.vars[name].var, (name.clone(), stmt.1)));
+					}
 				}
 
 				// pattern bindings
@@ -398,6 +402,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					last = match stmt_target {
 						Some(t) => self.check_expr(stmt, t)?,
 						None => self.expr(stmt)?,
+					};
+					if !want && self.is_linear(&last.1) {
+						return fail(
+							format!("{} is linear and must be consumed", last.1),
+							stmt.1,
+							"dropped here",
+						);
 					}
 				}
 			}

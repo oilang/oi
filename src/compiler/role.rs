@@ -31,6 +31,7 @@ pub(crate) const DEBUG: &str = "core::Debug";
 pub(crate) const NUMBER: &str = "core::Number";
 pub(crate) const LENGTH: &str = "core::Length";
 pub(crate) const ISOLATED_TRAIT: &str = "core::Isolated";
+pub(crate) const LINEAR: &str = "core::Linear";
 
 // types
 pub(crate) const OPTION: &str = "core::Option";

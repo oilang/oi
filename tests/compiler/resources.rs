@@ -496,3 +496,25 @@ fn destructuring_a_drop_field_consumes_its_owner() {
 		"which claims Drop",
 	);
 }
+
+const TX: &str = indoc! {r#"
+	Tx :: struct { id: int }
+	Tx : Linear < {}
+	Tx :< {
+		commit :: fn(move self) {
+			print("commit", self.id)
+			discard self
+		}
+	}
+"#};
+
+#[test]
+fn linear_values_end_only_through_a_consumer() {
+	check([TX, "main :: fn() { t := Tx.{id = 1}; t.commit() }"], "commit 1");
+	let early = "f :: fn(b: bool) { t := Tx.{id = 1}; if b { return }; t.commit() }";
+	fail([TX, early, "f(false)"], "`t` is linear and must be consumed");
+	fail(
+		[TX, "main :: fn() { discard Tx.{id = 1} }"],
+		"only `Tx`'s own methods can discard it",
+	);
+}

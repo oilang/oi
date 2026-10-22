@@ -1066,7 +1066,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Cancel(label) => self.cancel(label, expr.1),
 
 			Expr::Discard(e) => {
-				self.expr(e)?;
+				let (v, t) = self.expr(e)?;
+				if self.is_linear(&t) {
+					if self.self_type.as_deref() != t.nominal() {
+						return fail(
+							format!("only `{t}`'s own methods can discard it"),
+							expr.1,
+							"still linear",
+						);
+					}
+					self.move_resource(e, &t)?;
+					self.untemp(v);
+					self.release_value(v, &t);
+				}
 				Ok(self.unit_value())
 			}
 

@@ -23,7 +23,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn is_resource_seen(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
 		match typ.unkeyed() {
 			Typ::Struct(_, fields) => {
-				self.claims(typ, "Drop") || fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
+				let claimed = self.claims(typ, "Drop") || self.claims(typ, role::LINEAR);
+				claimed || fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
 			Typ::Map(_, val) => self.is_resource_seen(val, seen),
@@ -38,6 +39,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					.any(|v| v.payload.iter().any(|t| self.is_resource_seen(t, seen)))
 			}
 			_ => false,
+		}
+	}
+
+	// Whether a type claims `Linear`, or holds something that does.
+	pub(crate) fn is_linear(&self, typ: &Typ) -> bool {
+		match typ.unkeyed() {
+			Typ::Array(elem) | Typ::FixedArray(elem, _) | Typ::Map(_, elem) => self.is_linear(elem),
+			t => self.claims(typ, role::LINEAR) || t.slots().is_some_and(|ts| ts.iter().any(|t| self.is_linear(t))),
 		}
 	}
 
@@ -512,6 +521,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			for i in (0..self.scopes[s].len()).rev() {
 				let (var, t) = self.scopes[s][i].clone();
+				if self.is_linear(&t) {
+					let named = self.linear.iter().find(|(v, _)| *v == var);
+					let (what, span) = named.map_or(("a temporary".into(), Span::default()), |(_, (n, s))| {
+						(format!("`{n}`"), *s)
+					});
+					return fail(
+						format!("{what} is linear and must be consumed"),
+						span,
+						"move it into a fn that consumes it",
+					);
+				}
 				let v = self.b.use_var(var);
 				match self.flagged.contains(&var) {
 					true => self.when(v, |s| s.release_value(v, &t)),
