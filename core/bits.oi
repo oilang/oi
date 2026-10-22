@@ -37,3 +37,43 @@ Bits[E] : Sub < {
 		.{ self.raw & !other.raw }
 	}
 }
+
+Bits[E] :< {
+	## The variants in the set, in declaration order.
+	pub collect :: fn(self) []E {
+		table: [E]bool
+		loop (e, _) in table {
+			if !(e in self) do continue
+			e
+		}
+	}
+}
+
+Bits[E] : Display < {
+	str :: fn(self) string {
+		names := loop e in self do ".{e}"
+		"{{" + names.join(" ") + "}}"
+	}
+}
+
+Bits[E] : Length < {
+	len :: fn(self) int {
+		self.collect().len()
+	}
+}
+
+BitsIter[E] :: struct { items: []E, at: int }
+
+BitsIter[E] : Iterator[E] < {
+	next :: fn(mut self) ?E {
+		if self.at == self.items.len() do return none
+		self.at += 1
+		self.items[self.at - 1]
+	}
+}
+
+Bits[E] : Iterable[BitsIter[E]] < {
+	iter :: fn(self) BitsIter[E] {
+		.{ self.collect(), 0 }
+	}
+}

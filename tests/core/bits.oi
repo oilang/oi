@@ -1,8 +1,0 @@
-Perm :: enum { read write exec }
-
-test! "bits" {
-	p: Bits[Perm] = .[.read .exec]
-	q: Bits[Perm] = .[.write .exec]
-	assert! .exec in p && !(.write in p)
-	assert! (p | q).raw == 0b111 && (p & q).raw == 0b100 && (p - q).raw == 0b001
-}

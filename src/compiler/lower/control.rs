@@ -1065,7 +1065,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		(val, typ): TypedVal,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (it, it_typ) = match self.find_fill(&format!("{}.iter", typ.key()), 0, &typ) {
+		let iter =
+			(self.find_fill(&format!("{}.iter", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, "iter"));
+		let (it, it_typ) = match iter {
 			Some(sig) if self.claims(&typ, role::ITERABLE) => self.emit_call(&sig, &[val]),
 			_ => (val, typ),
 		};

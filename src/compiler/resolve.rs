@@ -265,8 +265,14 @@ impl TypeCtx<'_> {
 					let ordinal = |vs: &&Vec<VariantInfo>| {
 						vs.iter().enumerate().all(|(i, v)| v.payload.is_empty() && v.disc == i as i64)
 					};
+					let variants = self.enums.borrow().get(&k.key()).filter(ordinal).map(Vec::len);
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
+						// enum sets
+						Typ::Enum(_) if elem.is_unit() && variants.is_some_and(|n| n <= 64) => {
+							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
+							self.resolve(&bits, span)
+						}
 						Typ::Enum(e) if let Some(n) = self.enums.borrow().get(&e).filter(ordinal).map(Vec::len) => Ok(
 							Typ::Annotated(vec![format!("[{e}]")], Box::new(Typ::FixedArray(elem, n))),
 						),

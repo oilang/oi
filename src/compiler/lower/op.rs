@@ -774,8 +774,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let elem = match rhs_typ {
 			Typ::Array(ref e) => (**e).clone(),
 			Typ::Map(ref k, _) => {
-				let (key, _) = self.check_expr(lhs, k)?;
-				let (tag, bits) = (map_key_tag(k).expect("map keys are taggable"), self.map_bits(key));
+				let (tag, bits) = self.map_key(lhs, k)?;
 				let slot = self.stack_slot(8);
 				return Ok((self.map_rt("find", rhs_val, tag, bits, &[slot]), Typ::Bool));
 			}
