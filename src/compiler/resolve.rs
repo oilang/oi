@@ -263,14 +263,10 @@ impl TypeCtx<'_> {
 					let elem = Box::new(self.resolve(elem, span)?);
 					// enum indices
 					let variants = self.enums.borrow().get(&k.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
-					let count = variants.or_else(|| match self.consts.map.get(&format!("{k}::count")) {
-						Some((Expr::Int(n), _)) => usize::try_from(*n).ok(),
-						_ => None,
-					});
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
 						// ordinal sets
-						_ if elem.is_unit() && count.is_some_and(|n| n <= 64) => {
+						_ if elem.is_unit() && self.assoc_int(name, "count").is_some() => {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}
@@ -369,16 +365,32 @@ impl TypeCtx<'_> {
 
 	// Fold a fixed-array length.
 	fn array_len(&self, (e, span): &Spanned<Expr>) -> Result<usize, Diagnostic> {
-		if let Expr::Ident(path) = e
-			&& let Some((name, "size")) = path.split_once('.')
-			&& let Ok(t) = self.named(name, *span)
-			&& let Some((size, _)) = t.c_size_align(self)
-		{
-			return Ok(size as usize);
-		}
-		match fold_const(e, self.consts.map, self.scope) {
+		let mut e = e.clone();
+		e.walk(&mut |e| {
+			let path = match e {
+				Expr::Ident(path) => path.clone(),
+				Expr::Field { tuple, field } if let Expr::Ident(name) = &tuple.0 => format!("{name}.{field}"),
+				_ => return,
+			};
+			if let Some(n) = path.split_once('.').and_then(|(name, field)| self.assoc_int(name, field)) {
+				*e = Expr::Int(n);
+			}
+		});
+		match fold_const(&e, self.consts.map, self.scope) {
 			Some(Expr::Int(n)) if n >= 0 => Ok(n as usize),
 			_ => fail("an array length must be a constant", *span, "not a constant int"),
+		}
+	}
+
+	// `T.size`, `T.count`, or an int assoc const.
+	fn assoc_int(&self, name: &str, field: &str) -> Option<i64> {
+		let t = self.named(name, Span::default()).ok()?;
+		let variants = self.enums.borrow().get(&t.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
+		match (field, variants, self.consts.map.get(&format!("{t}::{field}"))) {
+			("size", ..) => Some(t.c_size_align(self)?.0.into()),
+			("count", Some(n), _) => Some(n as i64),
+			(.., Some((Expr::Int(n), _))) => Some(*n),
+			_ => None,
 		}
 	}
 

@@ -41,7 +41,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			});
 			// arrays
 			let len = select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident));
-			let len = spanned(len).or(unquote.clone());
+			let len = spanned(len).or(paren(expr.clone())).or(unquote.clone());
 			let array = just(Token::LBracket)
 				.ignore_then(len.or_not())
 				.then_ignore(just(Token::RBracket))

@@ -2,13 +2,14 @@ module core
 
 ## A set of ordinals, one bit each.
 pub Bits[E: Ordinal] :: struct {
-	raw: u64,
+	words: [((E.count + 63) / 64)]u64,
 }
 
 Bits[E] : From[[]E] < {
 	from :: fn(xs: []E) out: Self {
 		loop x in xs {
-			out.raw |= u64.(1) << x.index()
+			i :: x.index()
+			out.words[i / 64] |= u64.(1) << i % 64
 		}
 		out
 	}
@@ -16,25 +17,26 @@ Bits[E] : From[[]E] < {
 
 Bits[E] : Contains[E] < {
 	contains :: fn(self; x: E) bool {
-		self.raw & u64.(1) << x.index() != 0
+		i :: x.index()
+		self.words[i / 64] & u64.(1) << i % 64 != 0
 	}
 }
 
 Bits[E] : BitOr < {
 	bitor :: fn(self, other: Self) Self {
-		.{ self.raw | other.raw }
+		.{ self.words | other.words }
 	}
 }
 
 Bits[E] : BitAnd < {
 	bitand :: fn(self, other: Self) Self {
-		.{ self.raw & other.raw }
+		.{ self.words & other.words }
 	}
 }
 
 Bits[E] : Sub < {
 	sub :: fn(self, other: Self) Self {
-		.{ self.raw & !other.raw }
+		.{ (self.words | other.words) - other.words }
 	}
 }
 
@@ -42,7 +44,7 @@ Bits[E] :< {
 	## The members of the set, in index order.
 	pub collect :: fn(self) []E {
 		loop i in 0..E.count {
-			if self.raw & u64.(1) << i == 0 do continue
+			if self.words[i / 64] & u64.(1) << i % 64 == 0 do continue
 			E.from_index(i) or continue
 		}
 	}
