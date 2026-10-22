@@ -245,7 +245,12 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 			struct_field.clone().map(Member::Field),
 		))))
 		.map_with(|(((name, type_params), supers), members), ex| {
-			let (fields, methods, _) = split_members(members);
+			let (fields, mut methods, _) = split_members(members);
+			for (method, _) in &mut methods {
+				if let Expr::Fn { params, .. } = method {
+					Param::type_receiver(params);
+				}
+			}
 			(
 				Expr::TraitDef {
 					name,

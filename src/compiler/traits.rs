@@ -135,7 +135,7 @@ pub(crate) fn fill_from_decl(
 	if params.is_empty() && !params_tuple {
 		let ps = (dps.iter().enumerate())
 			.map(|(i, d)| {
-				let name = if d.name == "self" {
+				let name = if i == 0 && d.is_receiver() {
 					d.name.clone()
 				} else {
 					format!("${i}")
@@ -151,8 +151,8 @@ pub(crate) fn fill_from_decl(
 		return Ok((ps, dps.len() != 1, ret));
 	}
 	let omitted = |p: &Param| matches!(&p.typ, TypeExpr::Name(n) if n == "$?");
-	// a spelled-out header of the wrong arity is left for the signature check to report
-	if params.len() != dps.len() && params.iter().any(omitted) {
+	// a spelled-out header of the wrong arity, receiver aside, is left for the signature check to report
+	if params.len() != dps.len() && params.iter().skip(1).any(omitted) {
 		return arity_err("this fn literal", dps.len(), params.len(), "param", span);
 	}
 	let ps = (params.iter().enumerate())
@@ -249,7 +249,7 @@ pub(super) fn check_impls<'p>(
 			let hook = hook_method(&tn);
 			let well_formed = methods.iter().any(|m| {
 				matches!(&m.0, Expr::Fn { name, params, .. }
-					if *name == hook && params.len() == 1 && params[0].name == "self" && params[0].access == Access::Mut)
+					if *name == hook && params.len() == 1 && params[0].is_receiver() && params[0].access == Access::Mut)
 			});
 			if !well_formed {
 				let msg = format!("`impl {tn} for {typ}` must define `fn {hook}(mut self)`");
@@ -400,12 +400,12 @@ pub(super) fn check_impls<'p>(
 			}
 			let (params, ret, body, default) = if let (Some(field), Some(lent)) = (via, &lent) {
 				let s = |e| (e, span);
-				// a method without `self` belongs to the lent type, not the instance
-				let lent_fn = params.first().is_none_or(|p| p.name != "self");
+				// a method without a receiver belongs to the lent type, not the instance
+				let lent_fn = params.first().is_none_or(|p| !p.is_receiver());
 				let recv = match lent_fn {
 					true => Expr::Ident(lent.clone()),
 					false => Expr::Field {
-						tuple: Box::new(s(Expr::Ident("self".into()))),
+						tuple: Box::new(s(Expr::Ident(params[0].name.clone()))),
 						field: field.into(),
 					},
 				};

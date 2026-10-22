@@ -366,8 +366,6 @@ where
 						typed = Some(param.clone());
 					} else if let Some(t) = &typed {
 						(param.typ, param.default, param.mutable) = (t.typ.clone(), t.default.clone(), t.mutable);
-					} else if param.name == "self" {
-						param.typ = TypeExpr::Name("Self".into());
 					}
 				}
 				group

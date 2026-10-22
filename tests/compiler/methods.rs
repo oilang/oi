@@ -16,6 +16,22 @@ fn instance_method() {
 }
 
 #[test]
+fn receiver_is_any_name() {
+	let src = indoc! {"
+		Point :: struct { x: int, y: int }
+		Point :< {
+			norm :: fn(this) int { this.x * this.x + this.y * this.y }
+			shift :: fn(mut me; dx: int) { me.x += dx }
+		}
+		p := Point.{3, 4}
+		p.shift(1)
+		f :: p.norm
+		print(p.norm(), f())
+	"};
+	check(src, "32 32");
+}
+
+#[test]
 fn static_method() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }

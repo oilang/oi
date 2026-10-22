@@ -762,15 +762,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		(d.variants.iter().any(|v| v.name == variant) && !self.has_fill(&q, variant)).then(|| (q, d.clone()))
 	}
 	pub(super) fn has_fill(&self, name: &str, method: &str) -> bool {
-		let k = format!("{}.{method}", rc::base_name(name));
+		let base = rc::base_name(name);
+		let k = format!("{base}.{method}");
+		let receives = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) | TypeExpr::Generic(n, _) if n == base);
 		self.funcs
 			.get(&k)
-			.is_some_and(|f| f.params.first().is_none_or(|p| p.name.as_deref() != Some("self")))
+			.is_some_and(|f| f.params.first().is_none_or(|p| p.typ.key() != base))
 			|| self
 				.world
 				.generic_fns
 				.get(&k)
-				.is_some_and(|d| d.params.first().is_none_or(|p| p.name != "self"))
+				.is_some_and(|d| d.params.first().is_none_or(|p| !receives(&p.typ)))
 	}
 
 	// Build generic enum.

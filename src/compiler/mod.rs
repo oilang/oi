@@ -902,7 +902,7 @@ impl<M: Module> Compiler<M> {
 				let msg = format!("duplicate fill `{key}`");
 				return fail(msg, m.1, "one fill per name");
 			}
-			let (params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
+			let (mut params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
 				// trait args name the trait's params, not the fill's
 				Some(&(n, dps, dret)) => {
 					let (dps, dret) = subst_sig(dps, dret, claim.targs);
@@ -914,6 +914,7 @@ impl<M: Module> Compiler<M> {
 				}
 				None => (params.clone(), *params_tuple, ret.clone()),
 			};
+			Param::type_receiver(&mut params);
 
 			if type_params.is_empty() && mtp.is_empty() {
 				others.push(FnItem::new(key, scope, (params, params_tuple, ret), body));
@@ -2169,7 +2170,7 @@ impl<M: Module> Compiler<M> {
 			}
 			let mutable = *access == Access::Mut;
 			let local = Local {
-				boxed: mutable && name != "self",
+				boxed: mutable && !(i == 0 && def.self_type == Some(typ.key().as_str())),
 				..Local::plain(var, typ.clone(), mutable)
 			};
 			trans.vars.insert(name.clone(), local.clone());

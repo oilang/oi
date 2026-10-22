@@ -969,6 +969,17 @@ impl Param {
 			annotations: vec![],
 		}
 	}
+
+	// Whether a fill method's first param is supposed to be its receiver.
+	pub fn is_receiver(&self) -> bool {
+		matches!(&self.typ, TypeExpr::Name(n) if n == "Self" || n == "$?")
+	}
+
+	pub fn type_receiver(params: &mut [Param]) {
+		if let Some(first) = params.first_mut().filter(|p| p.is_receiver()) {
+			first.typ = TypeExpr::Name("Self".into());
+		}
+	}
 }
 
 // A value attached to a definition or field.

@@ -700,7 +700,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// an uncalled method is a closure over its receiver
 					if !sfields.iter().any(|f| f.name == *field)
 						&& let Some(sig) = self.funcs.get(&format!("{sname}.{field}")).cloned()
-						&& sig.params.first().is_some_and(|p| p.name.as_deref() == Some("self"))
+						&& sig.params.first().is_some_and(|p| p.typ == typ)
 					{
 						let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
 						let recv = format!("$recv{}", self.vars.len());
