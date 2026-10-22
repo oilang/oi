@@ -41,3 +41,38 @@ module core
 		out
 	}
 }
+
+## Map union, `other` wins on shared keys.
+[K]V : BitOr < {
+	bitor :: fn(self, other: Self) out: Self {
+		loop k in self.keys do out[k] = self[k]
+		loop k in other.keys do out[k] = other[k]
+		out
+	}
+}
+
+[K]V : BitAnd < {
+	bitand :: fn(self, other: Self) out: Self {
+		loop k in self.keys {
+			if k in other do out[k] = self[k]
+		}
+		out
+	}
+}
+
+[K]V : Sub < {
+	sub :: fn(self, other: Self) out: Self {
+		loop k in self.keys {
+			if !(k in other) do out[k] = self[k]
+		}
+		out
+	}
+}
+
+## Build a set from its keys.
+[K]V : From[[]K] < {
+	from :: fn(keys: []K) out: Self {
+		loop k in keys do out[k] = ()
+		out
+	}
+}

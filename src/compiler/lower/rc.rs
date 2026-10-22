@@ -702,7 +702,11 @@ impl<'a, M: Module> Translator<'a, M> {
 // A generic instance's base name
 // ex: `Box[int]` -> `Box`.
 pub(super) fn base_name(name: &str) -> &str {
-	name.split('[').next().unwrap_or(name)
+	match name.strip_prefix('[') {
+		Some(rest) if rest.starts_with(']') => "array",
+		Some(rest) if !rest.starts_with(|c: char| c.is_ascii_digit()) => "map",
+		_ => name.split('[').next().unwrap_or(name),
+	}
 }
 
 // The bindings owned by each scope.

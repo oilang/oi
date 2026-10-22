@@ -1,0 +1,11 @@
+test! "sets" {
+	a: [int]() = .[1 2 3]
+	b: [int]() = .[2 3 4]
+	assert! 1 in a && !(4 in a)
+	u := a | b
+	assert! u.len() == 4 && 4 in u
+	i := a & b
+	assert! i.len() == 2 && 2 in i && !(1 in i)
+	d := a - b
+	assert! d.len() == 1 && 1 in d
+}

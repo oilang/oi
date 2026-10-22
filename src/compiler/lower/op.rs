@@ -453,7 +453,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 
-		if let Some(name) = lt.nominal() {
+		if let Some(name) = lt.nominal().or(matches!(lt, Typ::Map(..)).then_some("map")) {
 			// overloads
 			let key = format!("{name}.{method}");
 			let plain = self.fill(&lt, tn, method, 2);
@@ -773,9 +773,15 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let elem = match rhs_typ {
 			Typ::Array(ref e) => (**e).clone(),
+			Typ::Map(ref k, _) => {
+				let (key, _) = self.check_expr(lhs, k)?;
+				let (tag, bits) = (map_key_tag(k).expect("map keys are taggable"), self.map_bits(key));
+				let slot = self.stack_slot(8);
+				return Ok((self.map_rt("find", rhs_val, tag, bits, &[slot]), Typ::Bool));
+			}
 			_ => {
 				return fail(
-					format!("right side of `in` must be an array, Str or a `Contains` type, got {rhs_typ}"),
+					format!("right side of `in` must be an array, map, Str or a `Contains` type, got {rhs_typ}"),
 					rhs.1,
 					"not an array or string",
 				);
