@@ -408,6 +408,7 @@ impl<'a, M: Module> Translator<'a, M> {
 								Some(self.array_parts(recv_val, &recv_typ).1)
 							}
 							Typ::Map(..) => self.rt_call("map_len", &[recv_val]),
+							t if let Some((_, arr)) = t.keyed() => Some(self.array_parts(recv_val, arr).1),
 							_ => None,
 						};
 						if let Some(len) = len {
@@ -754,6 +755,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Some(t @ Typ::FixedArray(..)) if elems.is_empty() => Ok((self.zero_or_err(t, expr.1)?, t.clone())),
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
 				Some(t @ Typ::Map(..)) if elems.is_empty() => self.map_lit(&[], expr.1, Some(t)),
+				Some(t) if elems.is_empty() && t.keyed().is_some() => self.map_lit(&[], expr.1, Some(t)),
 				// built through `From[[]T]` fills
 				Some(t)
 					if let Some(sig) = self.pick_from(t, |p| matches!(p, Typ::Array(_)), expr.1)?
@@ -798,6 +800,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						let (tag, bits) = self.map_key(index, &k)?;
 						let raw = self.map_rt("get", ptr, tag, bits, &[]);
 						Ok((self.unmap_bits(raw, &v), v))
+					}
+					t if let Some((key, arr)) = t.keyed() => {
+						let idx = self.check_typed(index, &key, "not a key")?;
+						Ok((self.load_index((ptr, arr), idx, collection.1), array_elem(arr).clone()))
 					}
 					Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 						let (idx, ityp) = self.expr(index)?;

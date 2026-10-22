@@ -210,8 +210,20 @@ impl Typ {
 	pub fn newtype(&self) -> Option<&Typ> {
 		match self {
 			Typ::TupleStruct(_, fields) if fields.len() == 1 => Some(&fields[0].1),
+			Typ::Annotated(_, t) if self.keyed().is_some() => Some(t),
 			_ => None,
 		}
+	}
+
+	// An enum-indexed array's key enum and fixed array.
+	pub fn keyed(&self) -> Option<(Typ, &Typ)> {
+		let Typ::Annotated(anns, t) = self else { return None };
+		let name = anns[0].strip_prefix('[')?.strip_suffix(']')?;
+		Some((Typ::Enum(name.into()), t))
+	}
+
+	pub fn unkeyed(&self) -> &Typ {
+		self.keyed().map_or(self, |(_, t)| t)
 	}
 
 	// The declared name of a struct or enum.
@@ -335,6 +347,9 @@ impl fmt::Display for Typ {
 			}
 			Typ::Error => write!(f, "Error"),
 			Typ::Annotated(anns, t) if matches!(**t, Typ::Bool) => write!(f, "{}", anns[0]),
+			Typ::Annotated(anns, _) if let Some((_, Typ::FixedArray(e, _))) = self.keyed() => {
+				write!(f, "{}{e}", anns[0])
+			}
 			Typ::Annotated(anns, t) => write!(f, "{}{t}", marks(anns)),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				let shown: Vec<_> = (params.iter())

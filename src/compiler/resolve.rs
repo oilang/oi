@@ -261,8 +261,15 @@ impl TypeCtx<'_> {
 					&& let Ok(k) = self.named(name, span)
 				{
 					let elem = Box::new(self.resolve(elem, span)?);
+					// enum indices
+					let ordinal = |vs: &&Vec<VariantInfo>| {
+						vs.iter().enumerate().all(|(i, v)| v.payload.is_empty() && v.disc == i as i64)
+					};
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
+						Typ::Enum(e) if let Some(n) = self.enums.borrow().get(&e).filter(ordinal).map(Vec::len) => Ok(
+							Typ::Annotated(vec![format!("[{e}]")], Box::new(Typ::FixedArray(elem, n))),
+						),
 						_ => Ok(Typ::Map(Box::new(k), elem)),
 					};
 				}

@@ -1132,6 +1132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.iter_loop(label, pat, body, (val, typ), span);
 		}
 		let zero = self.b.ins().iconst(self.int, 0);
+		let (key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
 		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 				let (data, len) = self.array_parts(val, &typ);
@@ -1173,6 +1174,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				item = s.frame_slots(&[key, val]);
 				s.temp(item, &typ);
 			}
+
+			// enum keys
+			if let Some(k) = &key {
+				let val = s.copy_in(item, elem);
+				typ = Typ::Tuple(vec![(None, k.clone()), (None, typ)]);
+				item = s.frame_slots(&[iv, val]);
+				s.temp(item, &typ);
+			}
+
 			let n = s.scopes.last().map_or(0, Vec::len);
 			s.bind_pat(pat, item, &typ, Some(false))?;
 			if !owns {

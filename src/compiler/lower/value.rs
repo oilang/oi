@@ -1165,6 +1165,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		target: Option<&Typ>,
 	) -> Result<TypedVal, Diagnostic> {
+		if let Some(t) = target
+			&& let Some((key, arr)) = t.keyed()
+		{
+			let (ptr, elem) = (self.zero(t), array_elem(arr));
+			for (k, v) in entries {
+				let idx = self.check_typed(k, &key, "not a key")?;
+				let val = self.stored(v, elem, &format!("element of {elem} array"), "an array")?;
+				let val = self.copy_in(val, elem);
+				self.store_index((ptr, arr), idx, val, k.1);
+			}
+			self.temp(ptr, t);
+			return Ok((ptr, t.clone()));
+		}
 		let (key_typ, mut val_typ, mut first_bits) = match target {
 			Some(Typ::Map(k, v)) => ((**k).clone(), Some((**v).clone()), None),
 			_ => match entries.first() {

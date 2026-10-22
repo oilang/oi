@@ -21,7 +21,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	fn is_resource_seen(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
-		match typ {
+		match typ.unkeyed() {
 			Typ::Struct(_, fields) => {
 				self.claims(typ, "Drop") || fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
@@ -43,7 +43,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether a scope must release a value of this type.
 	pub(super) fn needs_release(&self, typ: &Typ) -> bool {
-		let parts = match typ {
+		let parts = match typ.unkeyed() {
 			Typ::FixedArray(elem, _) => self.slot_owns(elem),
 			t => t.slots().is_some_and(|ts| ts.iter().any(|t| self.slot_owns(t))),
 		};
@@ -190,6 +190,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Emit one release for an owned value.
 	pub(super) fn release_value(&mut self, val: Value, typ: &Typ) {
+		let typ = typ.unkeyed();
 		if let Some((_, release)) = handle_fns(typ) {
 			if let Typ::Array(elem) = typ
 				&& self.slot_owns(elem)
@@ -664,7 +665,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.untemp(val);
 			return val;
 		}
-		match typ {
+		match typ.unkeyed() {
 			Typ::FixedArray(elem, n) => {
 				let dst = self.stack_slot((*n as i64 * self.elem_stride(elem)) as u32);
 				self.fixed_move(dst, val, elem, *n, false)
@@ -689,7 +690,7 @@ pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 
 // An inline value's element type and count within its owner.
 pub(super) fn inline(typ: &Typ) -> Option<(Typ, usize)> {
-	match typ {
+	match typ.unkeyed() {
 		Typ::FixedArray(elem, n) => Some(((**elem).clone(), *n)),
 		t => Some((Typ::Int(64), t.slots()?.len())),
 	}

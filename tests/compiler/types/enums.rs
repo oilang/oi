@@ -475,3 +475,27 @@ fn variant_holes_from_a_macro() {
 		["A", "7"],
 	);
 }
+
+#[test]
+fn enum_indexed_arrays() {
+	check(
+		indoc! {r#"
+			E :: enum { a b c }
+			xs: [E]int = .[]
+			xs[.b] = 4
+			xs[.b] += 1
+			ws: [E]string = .[.a = "x", .c = "z"]
+			print(xs, xs[.b], xs.len(), ws)
+			loop (e, w) in ws { print(e, w) }
+		"#},
+		[r#"[0, 5, 0] 5 3 ["x", "", "z"]"#, "a x", "b ", "c z"],
+	);
+	fail(
+		indoc! {"
+			E :: enum { a b }
+			xs: [E]int = .[]
+			print(xs[1])
+		"},
+		"expected E, got int",
+	);
+}

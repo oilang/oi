@@ -786,6 +786,7 @@ pub fn pin(place: &mut Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	}
 	if let Expr::Index { index, .. } = &mut place.0
 		&& !matches!(index.0, Expr::Ident(_) | Expr::Int(_) | Expr::String(_) | Expr::Atom(_))
+		&& !matches!(&index.0, Expr::EnumShorthand { args, .. } if args.is_empty())
 	{
 		let name = format!("$i{}_{}", index.1.start, index.1.end);
 		let ident = (Expr::Ident(name.clone()), index.1);

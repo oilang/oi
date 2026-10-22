@@ -166,6 +166,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						continue;
 					}
 					let (ptr, typ) = self.deref(ptr, &typ);
+					let (key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
 					let elem = match &typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						Typ::Str => {
@@ -197,7 +198,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					if matches!(typ, Typ::Array(_)) {
 						self.cow_array(ptr, &elem);
 					}
-					let idx = self.int_value(index, "array index")?;
+					let idx = match &key {
+						Some(k) => self.check_typed(index, k, "not a key")?,
+						None => self.int_value(index, "array index")?,
+					};
 					let idx = self.intcast(idx, self.int, true);
 					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
 					let val = self.copy_in(val, &elem);
@@ -426,7 +430,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Lower a value for a store into the desired slot.
-	fn stored(&mut self, value: &Spanned<Expr>, want: &Typ, what: &str, place: &str) -> Result<Value, Diagnostic> {
+	pub(super) fn stored(
+		&mut self,
+		value: &Spanned<Expr>,
+		want: &Typ,
+		what: &str,
+		place: &str,
+	) -> Result<Value, Diagnostic> {
 		let (val, vtyp) = self.check_expr(value, want)?;
 		if &vtyp != want {
 			return fail(format!("cannot assign {vtyp} to {what}"), value.1, "type mismatch");

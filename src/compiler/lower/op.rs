@@ -693,6 +693,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if lt == rt
 					&& (l.is_enumish()
 						|| eq_slots(l).is_some()
+						|| l.keyed().is_some()
 						|| matches!(l, Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..))) =>
 			{
 				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedLessThanOrEqual);
