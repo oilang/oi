@@ -270,9 +270,10 @@ impl TypeCtx<'_> {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}
-						Typ::Enum(e) if let Some(n) = variants => Ok(
-							Typ::Annotated(vec![format!("[{e}]")], Box::new(Typ::FixedArray(elem, n))),
-						),
+						Typ::Enum(e) if let Some(n) = variants => Ok(Typ::Annotated(
+							vec![format!("[{e}]")],
+							Box::new(Typ::FixedArray(elem, n)),
+						)),
 						_ => Ok(Typ::Map(Box::new(k), elem)),
 					};
 				}

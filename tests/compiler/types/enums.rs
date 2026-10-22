@@ -114,10 +114,10 @@ fn discriminants() {
 			E :: enum { a = 5, b c }
 			Opt :: enum { nope some(int) }
 			x: E
-			print(int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), ord(Opt.some.(1)), Color.blue.str())
-			print(ord(Status.err), Status.err.index(), ord('A'), ord(true))
+			print(int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), Color.blue.str())
+			print(ord(Status.err), Status.err.index(), Status.from_index(1), Status.from_index(2), ord('A'))
 		"},
-		["2 500 200 a 2 1 blue", "500 1 65 1"],
+		["2 500 200 a 2 blue", "500 1 some.(err) none 65"],
 	);
 }
 

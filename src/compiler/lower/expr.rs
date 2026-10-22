@@ -367,6 +367,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(instance) = self.enum_instance(recv)
 					&& !self.has_fill(&instance, method)
 				{
+					let typ = Typ::Enum(instance.clone());
+					if method == "from_index" && args.len() == 1 && self.plain_enum(&typ) {
+						return self.enum_from_index(typ, args);
+					}
 					return self.construct_variant(&instance, method, args, expr.1);
 				}
 				if let Some((n, d)) = self.generic_variant(recv, method) {
@@ -415,10 +419,13 @@ impl<'a, M: Module> Translator<'a, M> {
 							return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 						}
 					}
-					if method == "index" && args.is_empty() && recv_typ.is_enumish() && recv_typ != Typ::Any {
+					if matches!(method.as_str(), "index" | "ord") && args.is_empty() && self.plain_enum(&recv_typ) {
 						let tag = self.enum_tag(&recv_typ, recv_val);
-						let tag = self.intcast(tag, types::I64, true);
-						return Ok((self.enum_index(&recv_typ, tag), Typ::Int(64)));
+						let mut tag = self.intcast(tag, types::I64, true);
+						if method == "index" {
+							tag = self.enum_index(&recv_typ, tag);
+						}
+						return Ok((tag, Typ::Int(64)));
 					}
 					if let Typ::Trait(tn) = &recv_typ {
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
@@ -605,6 +612,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					if let Some(c) = self.types.consts.map.get(&format!("{t}::{field}")).cloned() {
 						return self.check_expr(&c, &t);
+					}
+					if field == "count" && self.plain_enum(&t) {
+						let n = self.variants_of(&t).len() as i64;
+						return Ok((self.b.ins().iconst(self.int, n), Typ::Int(64)));
 					}
 					if let Some(v) = self.numeric_bound(&t, field) {
 						return Ok((v, t));

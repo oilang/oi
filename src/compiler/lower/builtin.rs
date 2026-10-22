@@ -57,28 +57,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some((self.typeid_of(&t), Typ::TypeId)))
 			}
 
-			"ord" => {
-				let [arg] = args else {
-					return fail("`ord` takes 1 argument", span, "wrong number of arguments");
-				};
-				let (val, typ) = self.expr(arg)?;
-				let val = match typ {
-					Typ::Rune | Typ::Bool => self.intcast(val, types::I64, false),
-					_ if typ.is_enumish() => {
-						let tag = self.enum_tag(&typ, val);
-						self.intcast(tag, types::I64, true)
-					}
-					_ => {
-						return fail(
-							format!("`ord` expects an Ordinal, got {typ}"),
-							span,
-							"not an enum, sum, rune, or bool",
-						);
-					}
-				};
-				Ok(Some((val, Typ::Int(64))))
-			}
-
 			"type_info" => {
 				let [(Expr::Ident(name), at)] = args else {
 					return fail("`type_info` takes one type name", span, "expected a struct or enum");

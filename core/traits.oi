@@ -62,6 +62,37 @@ pub Isolated :: trait {}
 ## It must be moved into a consumer, and only its own methods can `discard` it.
 pub Linear :: trait {}
 
+## A finite, positive domain.
+## Fieldless enums claim it implicitly.
+pub Ordinal :: trait {
+	count: int
+	index: fn(self) int
+	from_index: fn(i: int) ?Self
+	ord :: fn(self) int { self.index() }
+}
+
+## Get the internal value of an ordinal type.
+## ex: enum's discriminant, rune's codepoint
+pub ord[T: Ordinal] :: fn(x: T) int do x.ord()
+
+bool : Ordinal < {
+	count :: 2
+	index :: fn(self) int {
+		if self { 1 } else { 0 }
+	}
+	from_index :: fn(i: int) ?bool {
+		if i == 0 || i == 1 { i == 1 } else { none }
+	}
+}
+
+rune : Ordinal < {
+	count :: 0x110000
+	index :: fn(self) int do int.(self)
+	from_index :: fn(i: int) ?rune {
+		if i in 0..0x110000 { rune.(i) } else { none }
+	}
+}
+
 ## Supports reporting length.
 pub Length :: trait { len: fn(self) int }
 

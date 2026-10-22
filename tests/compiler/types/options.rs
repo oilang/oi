@@ -7,10 +7,10 @@ fn basics() {
 		indoc! {"
 			o: ?int
 			Box :: struct { val: ?int }
-			print(?int.(42), ?int.(none), o, Box.{ val = ?int.(42) }.val, ord(?int.(42)), ord(?int.(none)))
+			print(?int.(42), ?int.(none), o, Box.{ val = ?int.(42) }.val)
 			print(?int.(42) == ?int.(42), ?int.(42) == ?int.(7), ?int.(none) == ?int.(42), ?int.(none) != ?int.(42))
 		"},
-		["some.(42) none none some.(42) 1 0", "true false false true"],
+		["some.(42) none none some.(42)", "true false false true"],
 	);
 }
 

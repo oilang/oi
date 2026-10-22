@@ -633,6 +633,18 @@ Bag : Contains[int] < {
 }
 assert!(2 in Bag.{ items = [1 2 3] })
 
+# `ord` dispatches to an `Ordinal` claim
+Dir :: struct { deg: int }
+Dir : Ordinal < {
+	count :: 4
+	index :: fn(self) int { self.deg / 90 }
+	from_index :: fn(i: int) ?Dir {
+		if i >= 0 && i < 4 { Dir.{ i * 90 } } else { none }
+	}
+	ord :: fn(self) int do self.deg
+}
+assert! ord(Dir.{180}) == 180
+
 # `x[i]` and `x[i] = v` dispatch to `Index[I, T]` and `IndexAssign[I, T]` claims
 Bag : Index[int, int] < {
 	index :: fn(self; i: int) int { self.items[i] }
@@ -1871,10 +1883,12 @@ main :: fn() {
 	}
 
 	# `ord` gives the discriminant, which defaults to declaration position
-	assert!(ord(Color.blue) == 2)
-	assert!(ord(Status.not_found) == 404)
-	# `.index()` gives the declaration position
-	assert!(Status.not_found.index() == 1)
+	assert! ord(Color.blue) == 2
+	assert! ord(Status.not_found) == 404
+	# fieldless enums are `Ordinal`
+	assert! Status.not_found.index() == 1
+	assert! Status.from_index(1) == Status.not_found
+	assert! Status.count == 3
 
 	# enums are int-backed by default
 	assert!(int.(Status.ok) == 200)

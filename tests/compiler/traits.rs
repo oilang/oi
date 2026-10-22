@@ -954,3 +954,21 @@ fn length_claims() {
 	"#};
 	check(src, "3 2 1 4");
 }
+
+#[test]
+fn ordinal_claims() {
+	let src = indoc! {"
+		Dir :: struct { deg: int }
+		Dir : Ordinal < {
+			count :: 4
+			index :: fn(self) int { self.deg / 90 }
+			from_index :: fn(i: int) ?Dir { if i < 4 { Dir.{ i * 90 } } else { none } }
+			ord :: fn(self) int { self.deg }
+		}
+		P :: enum { a b c }
+		last[T: Ordinal] :: fn() ?T { T.from_index(T.count - 1) }
+		print(ord(Dir.{180}), last[Dir]()?.deg, last[P](), last[bool]())
+	"};
+	check(src, "180 270 some.(c) some.(true)");
+	fail("print(ord(1))", "does not claim `core::Ordinal`");
+}

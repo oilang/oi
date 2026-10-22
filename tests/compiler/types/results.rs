@@ -6,10 +6,10 @@ fn basics() {
 	check(
 		indoc! {r#"
 			Box :: struct { val: !int }
-			print(!int.(42), !int.(error("oops")), Box.{ val = !int.(42) }.val, ord(!int.(42)), ord(!int.(error("oops"))))
+			print(!int.(42), !int.(error("oops")), Box.{ val = !int.(42) }.val)
 			print(!int.(42) == !int.(42), !int.(42) == !int.(7), !int.(42) == !int.(error("oops")), !int.(42) != !int.(error("oops")))
 		"#},
-		[r#"ok.(42) err.("oops") ok.(42) 0 1"#, "true false false true"],
+		[r#"ok.(42) err.("oops") ok.(42)"#, "true false false true"],
 	);
 }
 

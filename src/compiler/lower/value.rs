@@ -416,6 +416,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some(v.payload[0].clone())
 	}
 
+	// Fieldless enums claim `Ordinal` implicitly.
+	pub(super) fn plain_enum(&self, typ: &Typ) -> bool {
+		matches!(typ, Typ::Enum(_)) && !enum_boxed(&self.variants_of(typ))
+	}
+
+	// Get an enum value from a given index.
+	pub(super) fn enum_from_index(&mut self, typ: Typ, args: &[Spanned<Expr>]) -> Result<TypedVal, Diagnostic> {
+		let index = self.check_typed(&args[0], &Typ::Int(64), "not an int")?;
+		let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(&typ));
+		let n = self.variants_of(&typ).len() as i64;
+		let in_range = self.b.ins().icmp_imm(IntCC::UnsignedLessThan, index, n);
+		let disc = self.enum_disc(&typ, index);
+		let (some, none) = (self.make_option(&opt, Some(disc)), self.make_option(&opt, None));
+		Ok((self.b.ins().select(in_range, some, none), opt))
+	}
+
 	// A variant's declaration position, from its tag.
 	pub(super) fn enum_index(&mut self, typ: &Typ, tag: Value) -> Value {
 		let discs = self.variants_of(typ).iter().map(|v| v.disc).zip(0..).collect();
@@ -432,11 +448,18 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn remap(&mut self, val: Value, pairs: Vec<(i64, i64)>) -> Value {
 		let offset = pairs.first().map_or(0, |(from, to)| to - from);
 		if pairs.iter().all(|(from, to)| to - from == offset) {
-			return if offset == 0 { val } else { self.b.ins().iadd_imm(val, offset) };
+			return if offset == 0 {
+				val
+			} else {
+				self.b.ins().iadd_imm(val, offset)
+			};
 		}
 		let mut out = self.b.ins().iconst(self.int, 0);
 		for (from, to) in pairs {
-			let (hit, to) = (self.b.ins().icmp_imm(IntCC::Equal, val, from), self.b.ins().iconst(self.int, to));
+			let (hit, to) = (
+				self.b.ins().icmp_imm(IntCC::Equal, val, from),
+				self.b.ins().iconst(self.int, to),
+			);
 			out = self.b.ins().select(hit, to, out);
 		}
 		out

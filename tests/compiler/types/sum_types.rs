@@ -12,9 +12,9 @@ fn atom_sum_basics() {
 			e : Status : :err
 			y: :ok | :err : :ok
 			print(f(), x, z, Res.{ s = :err }.s, y)
-			print(x == z, x == e, x != e, ord(x), ord(e))
+			print(x == z, x == e, x != e)
 		"},
-		["err ok ok err ok", "true false true 0 1"],
+		["err ok ok err ok", "true false true"],
 	);
 }
 
@@ -102,9 +102,9 @@ fn tight_prefix_precedence() {
 			x : V : :other
 			y : V = :none
 			y = [1, 2]
-			print(ord(x), ord(y))
+			print(x, y)
 		"},
-		"2 1",
+		"other [1, 2]",
 	);
 }
 
@@ -123,9 +123,9 @@ fn general_basics() {
 			v : V : :none
 			w : V = :none
 			w = 5
-			print(x, z, r, make(), Box.{ id = "hey" }.id, v, w, ord(r))
+			print(x, z, r, make(), Box.{ id = "hey" }.id, v, w, r == "hi")
 		"#},
-		"7 0 hi 42 hey none 5 1",
+		"7 0 hi 42 hey none 5 true",
 	);
 }
 
@@ -164,9 +164,9 @@ fn set_identity() {
 				n @ int => n + 1,
 				string => 0,
 			}
-			print(n, a == b, ord(a), ord(b), z == "", ord(d), c == d)
+			print(n, a == b, z == "", d == :ok, c == d)
 		"#},
-		"8 true 0 1 true 1 true",
+		"8 true true true true",
 	);
 }
 
@@ -187,9 +187,9 @@ fn sum_alias_splices() {
 			}
 			e : V : :err
 			n : V : 5
-			print(kind(7), kind("hi"), ord(e), ord(n))
+			print(kind(7), kind("hi"), e == :err, n == 5)
 		"#},
-		"1 3 1 2",
+		"1 3 true true",
 	);
 }
 
