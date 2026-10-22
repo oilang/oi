@@ -266,7 +266,7 @@ impl TypeCtx<'_> {
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
 						// ordinal sets
-						_ if elem.is_unit() && self.assoc_int(name, "count").is_some() => {
+						_ if elem.is_unit() && self.assoc_int(name, "count").is_some_and(|n| n <= 1 << 16) => {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}

@@ -419,7 +419,10 @@ impl<'a, M: Module> Translator<'a, M> {
 							return Ok((self.intcast(len, types::I64, true), Typ::Int(64)));
 						}
 					}
-					if matches!(method.as_str(), "index" | "ord") && args.is_empty() && self.plain_enum(&recv_typ) {
+					if matches!(method.as_str(), "index" | "ord")
+						&& args.is_empty() && self.plain_enum(&recv_typ)
+						&& method_owner(&recv_typ).is_none_or(|o| !self.funcs.contains_key(&format!("{o}.{method}")))
+					{
 						let tag = self.enum_tag(&recv_typ, recv_val);
 						let mut tag = self.intcast(tag, types::I64, true);
 						if method == "index" {

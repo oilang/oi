@@ -113,11 +113,12 @@ fn discriminants() {
 			Backed : u8 : enum { ok = 200, err = 250 }
 			E :: enum { a = 5, b c }
 			Opt :: enum { nope some(int) }
+			E :< { index :: fn(self) int do 9 }
 			x: E
-			print(int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), Color.blue.str())
+			print(E.c.index(), int.(Color.blue), int.(Status.err), u8.(Backed.ok), x, ord(Color.blue), Color.blue.str())
 			print(ord(Status.err), Status.err.index(), Status.from_index(1), Status.from_index(2), ord('A'))
 		"},
-		["2 500 200 a 2 blue", "500 1 some.(err) none 65"],
+		["9 2 500 200 a 2 blue", "500 1 some.(err) none 65"],
 	);
 }
 

@@ -40,13 +40,22 @@ Bits[E] : Sub < {
 	}
 }
 
+Bits[E] : Not < {
+	not :: fn(self) out: Self {
+		loop i in 0..out.words.len() {
+			out.words[i] = !self.words[i]
+		}
+		if E.count % 64 != 0 {
+			out.words[out.words.len() - 1] &= (u64.(1) << E.count % 64) - 1
+		}
+		out
+	}
+}
+
 Bits[E] :< {
 	## The members of the set, in index order.
 	pub collect :: fn(self) []E {
-		loop i in 0..E.count {
-			if self.words[i / 64] & u64.(1) << i % 64 == 0 do continue
-			E.from_index(i) or continue
-		}
+		loop e in self do e
 	}
 }
 
@@ -58,23 +67,28 @@ Bits[E] : Display < {
 }
 
 Bits[E] : Length < {
-	len :: fn(self) int {
-		self.collect().len()
+	len :: fn(self) out: int {
+		loop _ in self do out += 1
+		out
 	}
 }
 
-BitsIter[E] :: struct { items: []E, at: int }
+BitsIter[E] :: struct { set: Bits[E], at: int }
 
 BitsIter[E] : Iterator[E] < {
 	next :: fn(mut self) ?E {
-		if self.at == self.items.len() do return none
-		self.at += 1
-		self.items[self.at - 1]
+		loop self.at < E.count {
+			self.at += 1
+			if self.set.words[(self.at - 1) / 64] & u64.(1) << (self.at - 1) % 64 != 0 {
+				return E.from_index(self.at - 1)
+			}
+		}
+		none
 	}
 }
 
 Bits[E] : Iterable[BitsIter[E]] < {
 	iter :: fn(self) BitsIter[E] {
-		.{ self.collect(), 0 }
+		.{ self, 0 }
 	}
 }

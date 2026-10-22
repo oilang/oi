@@ -53,6 +53,11 @@ fn len_keys_values() {
 }
 
 #[test]
+fn rune_keys() {
+	check("m: [rune]int = .{}; m['☃'] = 2; (m['☃'], 'a' in m)", "(2, false)");
+}
+
+#[test]
 fn tuple_keys_fail_for_now() {
 	// TODO: actually implement complex keys and fix test
 	assert!(
