@@ -1,7 +1,7 @@
 module core
 
-## A set of enum variants, one bit each.
-pub Bits[E] :: struct {
+## A set of ordinals, one bit each.
+pub Bits[E: Ordinal] :: struct {
 	raw: u64,
 }
 
@@ -39,12 +39,11 @@ Bits[E] : Sub < {
 }
 
 Bits[E] :< {
-	## The variants in the set, in declaration order.
+	## The members of the set, in index order.
 	pub collect :: fn(self) []E {
-		table: [E]bool
-		loop (e, _) in table {
-			if !(e in self) do continue
-			e
+		loop i in 0..E.count {
+			if self.raw & u64.(1) << i == 0 do continue
+			E.from_index(i) or continue
 		}
 	}
 }

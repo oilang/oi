@@ -263,10 +263,14 @@ impl TypeCtx<'_> {
 					let elem = Box::new(self.resolve(elem, span)?);
 					// enum indices
 					let variants = self.enums.borrow().get(&k.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
+					let count = variants.or_else(|| match self.consts.map.get(&format!("{k}::count")) {
+						Some((Expr::Int(n), _)) => usize::try_from(*n).ok(),
+						_ => None,
+					});
 					return match k {
 						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
-						// enum sets
-						Typ::Enum(_) if elem.is_unit() && variants.is_some_and(|n| n <= 64) => {
+						// ordinal sets
+						_ if elem.is_unit() && count.is_some_and(|n| n <= 64) => {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}

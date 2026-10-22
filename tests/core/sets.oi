@@ -29,3 +29,19 @@ test! "holy (get it?) enum sets" {
 	s: [Status]() = .[.ok]
 	assert! .ok in s && !(.missing in s) && (s | .[.missing]).len() == 2 && u64.(s | .[.missing]) == 0b11
 }
+
+Quad :: struct { deg: int }
+
+Quad : Ordinal < {
+	count :: 4
+	index :: fn(self) int do self.deg / 90
+	from_index :: fn(i: int) ?Quad { if i < 4 { Quad.{ i * 90 } } else { none } }
+}
+
+test! "ordinal sets" {
+	b: [bool]() = .[true]
+	q: [Quad]() = .[Quad.{90} Quad.{270}]
+	assert! true in b && !(false in b)
+	assert! Quad.{270} in q && !(Quad.{0} in q) && (loop x in q do x.deg) == [90 270]
+}
+
