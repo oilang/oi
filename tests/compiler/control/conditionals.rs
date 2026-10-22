@@ -149,8 +149,10 @@ fn header_bind_unwraps() {
 		b: ?int = none
 		if v := a { print(v) } else { print("none") }
 		if v := b { print(v) } else { print("none") }
+		if (v := a) && v > 0 && (w := a) { print(v + w) }
+		if (v := a) && (w := b) { print(v + w) } else { print("none") }
 	"#};
-	check(src, ["3", "none"]);
+	check(src, ["3", "none", "6", "none"]);
 }
 
 #[test]

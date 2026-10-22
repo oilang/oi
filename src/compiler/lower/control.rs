@@ -37,6 +37,15 @@ fn infallible(cond: &Expr) -> bool {
 	}
 }
 
+// Whether a condition contains a header chain.
+fn chained(cond: &Expr) -> bool {
+	match cond {
+		Expr::Bind { .. } | Expr::PatBind { .. } => true,
+		Expr::Binary(BinOp::And, lhs, rhs) => chained(&lhs.0) || chained(&rhs.0),
+		_ => false,
+	}
+}
+
 impl<'a, M: Module> Translator<'a, M> {
 	// Lower branching control flow constructs.
 	pub(super) fn branching(
@@ -101,6 +110,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		let cond = self.header(cond)?;
+		if let Expr::Binary(BinOp::And, lhs, rhs) = &cond.0
+			&& chained(&cond.0)
+		{
+			let inner = Expr::If {
+				cond: rhs.clone(),
+				then: then.to_vec(),
+				els: els.map(<[_]>::to_vec),
+			};
+			return self.conditional(lhs, &[(inner, cond.1)], els, target, span, want);
+		}
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
 				s.expr(cond)?;
