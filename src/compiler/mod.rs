@@ -925,6 +925,7 @@ impl<M: Module> Compiler<M> {
 			let self_typ = match (typ, type_params) {
 				("array", [elem, ..]) => TypeExpr::Array(Box::new(named(elem))),
 				("map", [key, value, ..]) => TypeExpr::Map(Box::new(named(key)), Box::new(named(value))),
+				("map", [key]) => TypeExpr::Map(Box::new(named(key)), Box::new(TypeExpr::Name("()".into()))),
 				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
 					TypeExpr::Generic(typ.to_string(), type_params.iter().map(named).collect())
 				}

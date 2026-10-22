@@ -309,13 +309,14 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then(bracket(list(spanned(p.type_expr.clone()))).or_not())
 		.map(|(name, args)| (name, args.unwrap_or_default()));
 	// arrays and maps
-	let kv = bracket(ident().or_not()).then(ident());
+	let unit = just(Token::LParen).then(just(Token::RParen)).to("()".to_string());
+	let kv = bracket(ident().or_not()).then(ident().or(unit));
 	let bracket_head =
 		(p.type_params.clone().then(kv.clone()))
 			.or(kv.map(|kv| (vec![], kv)))
 			.map(|(mut ps, (k, v))| {
 				let typ = if k.is_some() { "map" } else { "array" };
-				for name in [v].into_iter().chain(k) {
+				for name in [v].into_iter().chain(k).filter(|n| n != "()") {
 					let p = match ps.iter().position(|p| p.name == name) {
 						Some(i) => ps.remove(i),
 						None => TypeParam {

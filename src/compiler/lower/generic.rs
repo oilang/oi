@@ -51,6 +51,9 @@ impl<'d> Infer<'d> {
 				.iter()
 				.zip(fields)
 				.try_for_each(|((_, elem), (_, found))| self.unify(elem, found)),
+			(TypeExpr::Name(unit), found) if unit == "()" && !found.is_unit() => {
+				Err(format!("expected (), got {found}"))
+			}
 			(TypeExpr::Annotated(_, inner), Typ::Annotated(_, found)) => self.unify(inner, found),
 			(TypeExpr::Annotated(_, inner), found) => self.unify(inner, found),
 			(TypeExpr::Fn(params, ret), Typ::Fn(found, found_ret)) if params.len() == found.len() => {

@@ -8,4 +8,5 @@ test! "sets" {
 	assert! i.len() == 2 && 2 in i && !(1 in i)
 	d := a - b
 	assert! d.len() == 1 && 1 in d
+	assert! (loop k in d do k) == [1]
 }

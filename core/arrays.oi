@@ -69,8 +69,8 @@ module core
 	}
 }
 
-## Build a set from its keys.
-[K]V : From[[]K] < {
+## Build a set from an array of its keys.
+[K]() : From[[]K] < {
 	from :: fn(keys: []K) out: Self {
 		loop k in keys do out[k] = ()
 		out

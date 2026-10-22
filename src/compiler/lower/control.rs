@@ -1150,13 +1150,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
 			return self.iter_loop(label, pat, body, (val, typ), span);
 		}
+
 		let zero = self.b.ins().iconst(self.int, 0);
 		let (key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
 		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
+			// arrays
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 				let (data, len) = self.array_parts(val, &typ);
 				(len, (data, array_elem(&typ).clone()), None)
 			}
+
+			// sets
+			Typ::Map(k, v) if v.is_unit() => {
+				let keys = self.map_entries(val, true, &k);
+				self.temp(keys, &Typ::Array(k.clone()));
+				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));
+				(len, (kdata, *k), None)
+			}
+
+			// maps
 			Typ::Map(k, v) => {
 				let (keys, vals) = (self.map_entries(val, true, &k), self.map_entries(val, false, &v));
 				let vals = self.owning(vals, &v);
@@ -1166,10 +1178,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				let vdata = self.array_data(vals);
 				(len, (kdata, *k), Some((vdata, *v)))
 			}
+
 			_ => {
 				return fail(format!("cannot iterate over {typ}"), span, "not iterable");
 			}
 		};
+
 		let counter = self.b.declare_var(self.b.func.dfg.value_type(zero));
 		self.b.def_var(counter, zero);
 
