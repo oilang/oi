@@ -59,6 +59,17 @@ fn comp_if_is_conditional_compilation() {
 }
 
 #[test]
+fn comp_if_on_a_type_param() {
+	let src = indoc! {r#"
+		B[E] :: struct { e: E }
+		B[E] :< { g :: fn(self) { comp if E == () { print("unit") } else { print(self.e + 1) } } }
+		B.{ e = 1 }.g()
+		B.{ e = () }.g()
+	"#};
+	check(src, ["2", "unit"]);
+}
+
+#[test]
 fn comp_site_in_a_fn_the_program_calls() {
 	let src = indoc! {"
 		f :: fn(x: int) {

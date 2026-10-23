@@ -505,7 +505,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(rt) =
 					(bound.as_ref().map(|(_, t)| t.clone())).or_else(|| self.types.named(&sname, expr.1).ok())
 					&& let Some((k, def)) = (self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
-						.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("{}.{method}", p.name)))
+						.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("[{}].{method}", p.name)))
 				{
 					let (k, def) = (k.clone(), def.clone());
 					let targs = match bound {
@@ -521,15 +521,6 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& args.is_empty()
 				{
 					return Ok((self.derived_str(*v, t, method == "repr"), Typ::Str));
-				}
-				if bound.is_some() && matches!(method.as_str(), "fmt" | "debug") {
-					let derived = if method == "fmt" {
-						role::FMT_DERIVED
-					} else {
-						role::DEBUG_DERIVED
-					};
-					let def = self.world.generic_fns[derived].clone();
-					return self.call_generic(derived, &def, type_args, args, bound.zip(recv_expr), expr.1);
 				}
 
 				// make fn fields callable
@@ -1169,7 +1160,7 @@ fn method_owner(typ: &Typ) -> Option<String> {
 		Typ::Array(_) => "array".into(),
 		Typ::Map(..) => "map".into(),
 		Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize => typ.to_string(),
-		Typ::Rune | Typ::Str | Typ::CStr | Typ::Ast => typ.to_string(),
+		Typ::Rune | Typ::Str | Typ::CStr | Typ::Ast | Typ::Atom | Typ::Tuple(_) => typ.to_string(),
 		_ => return None,
 	})
 }

@@ -88,16 +88,16 @@ module core
 
 [K]V : Display < {
 	fmt :: fn(self; mut b: Buffer) {
-		set :: type(self.values[0]) == type(())
+		set :: comp V == ()
 		b.write(if set { "{{" } else { "[" })
 
 		start :: b.len()
 		loop k in self.keys {
 			if b.len() > start do b.write(if set { " " } else { ", " })
-			debug_derived(k, mut b)
+			k.debug(mut b)
 			if !set {
 				b.write(" = ")
-				debug_derived(self[k], mut b)
+				self[k].debug(mut b)
 			}
 		}
 

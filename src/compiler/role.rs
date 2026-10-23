@@ -48,8 +48,6 @@ pub(crate) const ALLOC: &str = "core::Alloc";
 // fns
 pub(crate) const ZERO: &str = "core::zero";
 pub(crate) const ALLOC_SHIM: &str = "core::alloc_shim";
-pub(crate) const FMT_DERIVED: &str = "core::fmt_derived";
-pub(crate) const DEBUG_DERIVED: &str = "core::debug_derived";
 pub(crate) const STR_CONTAINS: &str = "string.contains";
 pub(crate) const ORIGIN: &str = "core::origin";
 pub(crate) const RAISE: &str = "core::raise";

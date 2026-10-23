@@ -123,7 +123,7 @@ pub Write[T] :: trait { write: fn(mut self; v: T) }
 @implicit
 pub Display :: trait {
 	fmt :: fn(self; mut b: Buffer) {
-		fmt_derived(self, mut b)
+		b.write(__render(self))
 	}
 
 	str :: fn(self) string {
@@ -133,16 +133,13 @@ pub Display :: trait {
 	}
 }
 
-## The derived render, for types without their own `fmt` or `str`.
-pub fmt_derived[T] :: fn(v: T, mut b: Buffer) {
-	b.write(__render(v))
-}
+[T] T : Display < {}
 
 ## Every type debugs, through its own `debug` or the derived printer.
 @implicit
 pub Debug :: trait {
 	debug :: fn(self; mut b: Buffer) {
-		debug_derived(self, mut b)
+		b.write(__repr(self))
 	}
 
 	repr :: fn(self) string {
@@ -152,10 +149,7 @@ pub Debug :: trait {
 	}
 }
 
-## Derived debug renderer.
-pub debug_derived[T] :: fn(v: T, mut b: Buffer) {
-	b.write(__repr(v))
-}
+[T] T : Debug < {}
 
 # conversions
 

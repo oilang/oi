@@ -880,12 +880,14 @@ impl<M: Module> Compiler<M> {
 			// key claims by type+name to handle generics
 			let key = match claim.generic && type_params.is_empty() {
 				true => format!("{typ}.{name}#{}", others.len()),
+				// blanket claims
+				false if type_params.iter().any(|p| p.name == typ) => format!("[{typ}].{name}"),
 				false if claim.ext => {
 					let entry = (scope.module.clone(), public, m.1);
 					self.world.extensions.entry(format!("{typ}.{name}")).or_default().push(entry);
 					format!("{typ}.{name}${}", scope.module.replace('.', "$"))
 				}
-				// a repeated claim
+				// repeated claims
 				false if claim.generic && self.world.generic_fns.contains_key(&format!("{typ}.{name}")) => {
 					format!("{typ}.{name}#{}", self.world.generic_fns.len())
 				}
@@ -1889,11 +1891,10 @@ impl<M: Module> Compiler<M> {
 				continue;
 			};
 			let module = if def.module.is_empty() { "main" } else { &def.module };
-			comp::instantiate(&mut def.body, &subst, module, &self.consts, &program, &mut stage0)?;
 			let home = scopes[module].at(def.span);
-			let me = (def.self_typ.as_ref())
-				.map(|te| base.with_type_params(&subst).with_scope(home).resolve(te, def.span))
-				.transpose()?;
+			let types = base.with_type_params(&subst).with_scope(home);
+			comp::instantiate(&mut def.body, &types, module, &self.consts, &program, &mut stage0)?;
+			let me = (def.self_typ.as_ref()).map(|te| types.resolve(te, def.span)).transpose()?;
 			let self_key = me.as_ref().map(Typ::key);
 			subst.extend(me.map(|t| ("Self".to_string(), t)));
 			let types = base.with_type_params(&subst).with_scope(home);

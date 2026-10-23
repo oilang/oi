@@ -4,12 +4,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, Child, Expr, Span, Spanned, TypeExpr};
+use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
 
-use super::{Compiler, Typ, role, type_expr};
+use super::{Compiler, Typ, TypeCtx, role, type_expr};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
@@ -57,11 +57,11 @@ pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHead
 	std::process::exit(1);
 }
 
-// Visit every comp site outside generic fns.
+// Visit every comp site outside generic fns and claims.
 fn sites(items: &mut [Spanned<Expr>], f: &mut impl FnMut(&mut Expr)) {
 	for (e, _) in items {
 		match e {
-			Expr::Fn { type_params, .. } if !type_params.is_empty() => {}
+			Expr::Fn { type_params, .. } | Expr::Claim { type_params, .. } if !type_params.is_empty() => {}
 			Expr::Comp(_) => f(e),
 			e => e.for_children(|c| match c {
 				Child::List(list) => sites(list, f),
@@ -96,16 +96,24 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 
 pub(crate) fn instantiate(
 	body: &mut [Spanned<Expr>],
-	subst: &HashMap<String, Typ>,
+	types: &TypeCtx,
 	target: &str,
 	consts: &HashMap<String, Spanned<Expr>>,
 	program: &Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
+	let as_type = |(e, span): &Spanned<Expr>| match e {
+		Expr::Tuple(fs) if fs.is_empty() => Some(Typ::unit()),
+		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
+	};
 	while let Some(mut inner) = first_comp(body) {
 		inner.0.walk(&mut |e| {
-			if let Expr::Ident(n) = e
-				&& let Some(TypeExpr::Name(to)) = subst.get(n).and_then(type_expr)
+			if let Expr::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r) = e
+				&& let (Some(lt), Some(rt)) = (as_type(l), as_type(r))
+			{
+				*e = Expr::Bool((lt == rt) == (*op == BinOp::Eq));
+			} else if let Expr::Ident(n) = e
+				&& let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
 			}
@@ -218,6 +226,9 @@ fn fold(
 			_ => return Err(Diagnostic::new("`comp if` needs a bool condition", span.into_range())),
 		};
 		return Ok(super::expand::one(arm, span).0);
+	}
+	if let Expr::Bool(_) = inner.0 {
+		return Ok(inner.0);
 	}
 	let span = inner.1;
 	// comp loop
