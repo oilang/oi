@@ -21,7 +21,7 @@ pub Alloc :: struct {
 Alloc :< {
 	## Hand back everything allocated so far, for allocators that free everything at once.
 	pub free_all :: fn(self) {
-		_ := self.proc(self.data, .free_all, 0, 0, ptr(0), 0)
+		_ := self.proc(self.data, .free_all, 0, 0, ptr.(0), 0)
 	}
 }
 
@@ -38,11 +38,11 @@ pub alloc_shim[T: Allocator] :: fn(data: ptr, mode: AllocMode, size: int, align:
 		.alloc => unsafe T.(data).alloc(size, align),
 		.free => {
 			unsafe T.(data).free(old, old_size)
-			ptr(0)
+			ptr.(0)
 		},
 		.free_all => {
 			unsafe T.(data).free_all()
-			ptr(0)
+			ptr.(0)
 		},
 	}
 }
@@ -74,7 +74,7 @@ Arena :: struct {
 # Straight from the system heap, since `ctx.alloc` may be the arena itself.
 raw :: fn(size: int) ptr {
 	sys :: system_allocator()
-	sys.proc(sys.data, .alloc, size, 8, ptr(0), 0)
+	sys.proc(sys.data, .alloc, size, 8, ptr.(0), 0)
 }
 
 # A chunk opens with its next chunk and its size.

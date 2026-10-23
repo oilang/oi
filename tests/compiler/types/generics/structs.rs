@@ -78,9 +78,9 @@ fn tuple_args_make_distinct_instances() {
 fn generic_tuple_struct() {
 	let src = indoc! {r#"
 		B[T] :: struct (T)
-		b :: B[int](3)
+		b :: B[int].(3)
 		c : B[string] = .("x")
 		print(b, c)
 	"#};
-	check(src, r#"B[int](3) B[string]("x")"#);
+	check(src, r#"B[int].(3) B[string].("x")"#);
 }

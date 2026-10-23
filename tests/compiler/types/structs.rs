@@ -401,7 +401,7 @@ fn typed_literals() {
 			f :: fn() !Point { .{ y = 3 } }
 			print(p, r.x, f(), !Point.{ x = 4 }, Q.{}, M.{1, "a"}, M.{}, ?Point.{}, int.{})
 		"#},
-		r#"some.(Point.{x = 1, y = 0}) 2 ok.(Point.{x = 0, y = 3}) ok.(Point.{x = 4, y = 0}) Point.{x = 0, y = 0} M(1, "a") M(0, "") none 0"#,
+		r#"some.(Point.{x = 1, y = 0}) 2 ok.(Point.{x = 0, y = 3}) ok.(Point.{x = 4, y = 0}) Point.{x = 0, y = 0} M.(1, "a") M.(0, "") none 0"#,
 	);
 	fail("print(^int.{})", "a reference must be initialized");
 }

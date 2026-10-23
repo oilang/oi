@@ -18,7 +18,7 @@ fn struct_casts() {
 	check(
 		indoc! {"
 			Money :: struct (int)
-			m :: Money(5)
+			m :: Money.(5)
 			print(Money.(500).0, Money.(m).0)
 		"},
 		"500 5",
@@ -99,8 +99,8 @@ fn from_claim_converts() {
 		indoc! {"
 			Celsius :: struct (float)
 			Fahrenheit :: struct (float)
-			Celsius : From[Fahrenheit] < { from :: fn(f: Fahrenheit) Self { Celsius((f.0 - 32.0) / 1.8) } }
-			c := Celsius.(Fahrenheit(212.0))
+			Celsius : From[Fahrenheit] < { from :: fn(f: Fahrenheit) Self { Celsius.((f.0 - 32.0) / 1.8) } }
+			c := Celsius.(Fahrenheit.(212.0))
 			print(c.0)
 		"},
 		"100.0",

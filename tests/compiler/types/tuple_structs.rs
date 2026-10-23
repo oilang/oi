@@ -15,7 +15,7 @@ fn zero_values() {
 			print(m.0, p.x, f.y, u.0)
 			print(m, p)
 		"},
-		["0 0.0 false 0", "Money(0) Point(x = 0.0, y = 0.0)"],
+		["0 0.0 false 0", "Money.(0) Point.(x = 0.0, y = 0.0)"],
 	);
 }
 
@@ -31,8 +31,8 @@ fn construct() {
 		indoc! {"
 			Money :: struct (int)
 			Point :: struct (x: float, y: float)
-			p :: Point(x = 1.0, y = 2.0)
-			print(Money(500).0, Point(1.0, 2.0).y, p.0 == p.x)
+			p :: Point.{ x = 1.0, y = 2.0 }
+			print(Money.(500).0, Point.(1.0, 2.0).y, p.0 == p.x)
 		"},
 		"500 2.0 true",
 	);
@@ -44,7 +44,7 @@ fn nominal_in_signatures() {
 		indoc! {"
 			Money :: struct (int)
 			pay :: fn(m: Money) int { m.0 }
-			pay(Money(500))
+			pay(Money.(500))
 		"},
 		"500",
 	);
@@ -65,10 +65,10 @@ fn methods_and_self() {
 			Money :: struct (int)
 			Money :< {
 				double :: fn(self) Self {
-					Money(self.0 * 2)
+					Money.(self.0 * 2)
 				}
 			}
-			Money(5).double().0
+			Money.(5).double().0
 		"},
 		"10",
 	);
@@ -80,18 +80,18 @@ fn field_and_self_assign() {
 		Pair :: struct (int, string)
 		Pair :< {
 			set :: fn(mut self; n: int) { self.0 = n }
-			reset :: fn(mut self) { self = Pair(0, "z") }
+			reset :: fn(mut self) { self = Pair.(0, "z") }
 		}
 		Money :: struct (int)
-		p := Pair(1, "a")
+		p := Pair.(1, "a")
 		p.set(5)
 		print(p)
 		p.reset()
-		m := Money(1)
+		m := Money.(1)
 		m.0 = 4
 		print(p, m)
 	"#};
-	check(src, [r#"Pair(5, "a")"#, r#"Pair(0, "z") Money(4)"#]);
+	check(src, [r#"Pair.(5, "a")"#, r#"Pair.(0, "z") Money.(4)"#]);
 }
 
 #[test]
@@ -104,8 +104,8 @@ fn str_override() {
 					"money!"
 				}
 			}
-			print(Money(5))
-			Money(5).str()
+			print(Money.(5))
+			Money.(5).str()
 		"#},
 		["money!", "money!"],
 	);
@@ -116,7 +116,7 @@ fn construct_into_sum_member() {
 	check(
 		indoc! {r#"
 			UserId :: struct (int | string)
-			UserId("abc").0
+			UserId.("abc").0
 		"#},
 		"abc",
 	);
@@ -127,14 +127,14 @@ fn wrong_arity_and_type() {
 	fail(
 		indoc! {"
 			Money :: struct (int)
-			Money(1, 2)
+			Money.(1, 2)
 		"},
 		"",
 	);
 	fail(
 		indoc! {r#"
 			Money :: struct (int)
-			Money("x")
+			Money.("x")
 		"#},
 		"",
 	);
@@ -145,8 +145,8 @@ fn equality_compares_inner() {
 	check(
 		indoc! {"
 			Money :: struct (int)
-			print(Money(5) == Money(5))
-			Money(5) == Money(6)
+			print(Money.(5) == Money.(5))
+			Money.(5) == Money.(6)
 		"},
 		["true", "false"],
 	);
@@ -157,7 +157,7 @@ fn wraps_an_array() {
 	check(
 		indoc! {"
 			Handle :: struct ([]int)
-			h :: Handle([1, 2, 3])
+			h :: Handle.([1, 2, 3])
 			g :: h
 			g.0[1]
 		"},
@@ -202,7 +202,7 @@ fn ops_pass_through_in_own_methods() {
 				str :: fn(self) string { "${self.0}" }
 				double :: fn(self) Self { self * 2 }
 			}
-			print(Money(5).double())
+			print(Money.(5).double())
 		"#},
 		"$10",
 	);
@@ -213,7 +213,7 @@ fn ops_stay_closed_outside() {
 	fail(
 		indoc! {"
 			Money :: struct (int)
-			Money(5) * 2
+			Money.(5) * 2
 		"},
 		"cannot apply `*` to Money",
 	);
@@ -225,13 +225,14 @@ fn unary_claims_dispatch() {
 		indoc! {"
 			Flag :: struct (bool)
 			Flag : Not < {
-				not :: fn(self) Self { Flag(!self.0) }
+				not :: fn(self) Self { Flag.(!self.0) }
 			}
 			Money :: struct (int)
 			Money : Neg < {
-				neg :: fn(self) Self { Money(-self.0) }
+				neg :: fn(self) Self { Money.(-self.0) }
 			}
-			print((-Money(5)).0, (!Flag(true)).0)
+			f := Flag.(true)
+			print((-Money.(5)).0, (!f).0)
 		"},
 		"-5 false",
 	);

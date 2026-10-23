@@ -5,7 +5,7 @@ test! "a hooked logger sees everything at or above its level" {
 	hook :: fn [mut seen] (data: ptr, level: Level, msg: string) () {
 		seen = seen + "[{level}] {msg}\n"
 	}
-	ctx :: .{ ..ctx, log = Logger.{ proc = hook, data = ptr(0), level = .warn } }
+	ctx :: .{ ..ctx, log = Logger.{ proc = hook, data = ptr.(0), level = .warn } }
 	log.debug("quiet")
 	log.info("quiet")
 	log.warn("careful")

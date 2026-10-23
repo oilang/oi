@@ -68,7 +68,7 @@ sock :: fn(host: string, port: int, serve: bool) !i32 {
 Listener :< {
 	## Block until a client connects.
 	pub accept :: fn(self) !Conn {
-		fd :: unsafe accept(self.fd, ptr(0), ptr(0))
+		fd :: unsafe accept(self.fd, ptr.(0), ptr.(0))
 		if fd < 0 { return error("accept failed") }
 		Conn.{ fd }
 	}

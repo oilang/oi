@@ -414,16 +414,16 @@ q :: Point.{ 3, y = 1 }
 # a struct can take a tuple body instead of a record body
 Money :: struct (int)
 Point :: struct (x: float, y: float)
-m :: Money(500)
-p :: Point(1.0, 2.0)
-p :: Point(x = 1.0, y = 2.0) # named call args work too
+m :: Money.(500)
+p :: Point.(1.0, 2.0)
+p :: Point.{ x = 1.0, y = 2.0 } # named fields work too
 assert!(p.0 == p.x)
 print(m.0) # 500
 
 # these types are distinct, unlike type aliases
 pay :: fn(m: Money) {}
 # pay(500) # error: expected Money, got int
-pay(Money(500))
+pay(Money.(500))
 
 # can receive methods
 Money :< {
@@ -435,8 +435,8 @@ Money :< {
 		self * 2
 	}
 }
-print(Money(5)) # $5
-print(Money(5).double()) # $10
+print(Money.(5)) # $5
+print(Money.(5).double()) # $10
 
 # tuple structs are nominal step-bros of type aliases
 # transparent types

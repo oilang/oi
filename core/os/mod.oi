@@ -34,7 +34,7 @@ pub set_env :: fn(name: string, value: string) {
 
 ## Get the working directory.
 pub cwd :: fn() string {
-	p :: unsafe getcwd(ptr(0), 0)
+	p :: unsafe getcwd(ptr.(0), 0)
 	s :: unsafe cstr.(p).str()
 	unsafe free(p)
 	s

@@ -235,7 +235,7 @@ string16 : From[string] < {
 				units << u16.(0xdc00 | (c & 0x3ff))
 			}
 		}
-		string16(units)
+		string16.(units)
 	}
 }
 

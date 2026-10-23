@@ -180,7 +180,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::TupleStruct(name, fields) => {
 				let name = display_name(name).to_string();
 				let body = Typ::Tuple(fields.clone());
-				self.write_lit(&name, sink);
+				self.write_lit(&format!("{name}."), sink);
 				match typ.newtype() {
 					Some(_) => {
 						let boxed = self.heap_slots(&[val]);

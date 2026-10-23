@@ -963,7 +963,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut vals = Vec::with_capacity(fields.len());
 		for ((_, ft), slot) in fields.iter().zip(&slots) {
 			vals.push(match *slot {
-				Some(arg) if name == role::PTR => self.ptr_arg(arg)?,
 				Some(arg) => self.check_typed(arg, ft, "type mismatch")?,
 				None => self.zero_or_err(ft, span)?,
 			});

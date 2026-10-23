@@ -151,7 +151,7 @@ fn an_installed_allocator_sees_every_allocation() {
 
 		main :: fn() {
 			xs := [ 1 2 3 ]
-			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr(0) } }
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			xs << 4
 			print(xs, count > 0)
 		}
@@ -168,7 +168,7 @@ fn an_allocator_claimer_installs_as_ctx_alloc() {
 			alloc :: fn(mut self; size: int, align: int) ptr {
 				self.hits = self.hits + 1
 				sys :: system_allocator()
-				sys.proc(sys.data, .alloc, size, align, ptr(0), 0)
+				sys.proc(sys.data, .alloc, size, align, ptr.(0), 0)
 			}
 		}
 

@@ -49,7 +49,7 @@ fn string_from_ptr_copies() {
 	check(r#"print(unsafe "hello".ptr.string(4))"#, "hell");
 	check(r#"print(unsafe "hello".ptr.offset(1).string(2))"#, "el");
 	check(
-		r#"print(ptr(0).is_null(), unsafe { ptr(0).string(4) } == "")"#,
+		r#"print(ptr.(0).is_null(), unsafe { ptr.(0).string(4) } == "")"#,
 		"true true",
 	);
 }

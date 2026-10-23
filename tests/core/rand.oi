@@ -15,6 +15,6 @@ test! "seeding replays the sequence" {
 
 test! "a hooked generator replaces the default" {
 	fixed :: @c fn(data: ptr) u64 { 7 }
-	ctx :: .{ ..ctx, rand = Rng.{ proc = fixed, data = ptr(0) } }
+	ctx :: .{ ..ctx, rand = Rng.{ proc = fixed, data = ptr.(0) } }
 	assert! rand.int() == 7
 }

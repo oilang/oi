@@ -220,7 +220,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
 		}
-		let (val, typ) = self.check_expr(value, target)?;
+		let hint = match target {
+			Typ::TupleStruct(_, fields) if fields.len() == 1 => &fields[0].1,
+			t => t,
+		};
+		let (val, typ) = self.check_expr(value, hint)?;
 		if typ == *target {
 			return Ok((val, target.clone()));
 		}
@@ -252,6 +256,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			self.require_unsafe("cstr cast", span)?;
 			return Ok((val, Typ::CStr));
+		}
+		if let (Typ::TupleStruct(p, _), Typ::Fn(params, ret)) = (target, &typ)
+			&& p == role::PTR
+		{
+			check_c_sig(self.types, "@c fn", params, ret, value.1)?;
+			return Ok((self.ld_word(val, 0), target.clone()));
 		}
 		if let (Typ::Array(e), Typ::Str) = (target, &typ)
 			&& **e == Typ::UInt(8)

@@ -61,7 +61,7 @@ ptr :< {
 
 	## The pointer `n` bytes further along.
 	pub offset :: fn(self; n: int) ptr {
-		ptr(self.0 + usize.(n))
+		ptr.(self.0 + usize.(n))
 	}
 
 	## Whether this is a null pointer.

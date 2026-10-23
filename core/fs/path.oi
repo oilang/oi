@@ -4,12 +4,12 @@ module fs
 pub Path :: struct (string)
 
 Path : From[string] < {
-	from :: fn(s: string) Self { Path(s) }
+	from :: fn(s: string) Self { Path.(s) }
 }
 
 Path : Div[string] < {
 	div :: fn(self; sub: string) Self {
-		if self.0.ends_with("/") { Path(self.0 + sub) } else { Path("{self.0}/{sub}") }
+		if self.0.ends_with("/") { Path.(self.0 + sub) } else { Path.("{self.0}/{sub}") }
 	}
 }
 
@@ -21,7 +21,7 @@ Path :< {
 	pub parent :: fn(self) ?Path {
 		n :: self.0.len() - self.name().len()
 		if n == 0 do return none
-		Path(if n == 1 { "/" } else { self.0[..(n - 1)] })
+		Path.(if n == 1 { "/" } else { self.0[..(n - 1)] })
 	}
 
 	## The last component.

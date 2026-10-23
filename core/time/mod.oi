@@ -155,6 +155,6 @@ pub measure :: fn(f: fn()) Duration {
 pub sleep :: fn(d: Duration) {
 	p := unsafe malloc(Spec.size)
 	unsafe p.write(Spec.{ d.ns / 1000000000, d.ns % 1000000000 })
-	_ := unsafe nanosleep(p, ptr(0))
+	_ := unsafe nanosleep(p, ptr.(0))
 	unsafe free(p)
 }

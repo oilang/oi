@@ -108,19 +108,6 @@ impl<M: Module> Translator<'_, M> {
 		cell
 	}
 
-	// A fn value's bare address.
-	pub(super) fn ptr_arg(&mut self, arg: &Spanned<Expr>) -> Result<Value, Diagnostic> {
-		let (val, typ) = self.check_expr(arg, &Typ::USize)?;
-		match typ {
-			Typ::USize | Typ::Annotated(..) => Ok(val),
-			Typ::Fn(params, ret) => {
-				check_c_sig(self.types, "@c fn", &params, &ret, arg.1)?;
-				Ok(self.ld_word(val, 0))
-			}
-			t => fail(format!("expected usize, got {t}"), arg.1, "type mismatch"),
-		}
-	}
-
 	fn oi_struct(&self, typ: &Typ) -> bool {
 		matches!(typ, Typ::Struct(name, _) if !is_c_struct(self.types.consts.anns, name))
 	}
