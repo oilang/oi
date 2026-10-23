@@ -62,7 +62,7 @@ fn rejections() {
 	);
 	fail(
 		["Pair[A, B] :: struct { a: A, b: B }", "print(Pair[int, string].a)"],
-		"is a type, not a value",
+		"cannot access a field of typeid",
 	);
 }
 

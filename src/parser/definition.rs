@@ -283,6 +283,14 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 	let match_pat = struct_pat.or(type_pat).or(p.expr.clone()).boxed();
 
+	let slice_type = just(Token::LBracket)
+		.then(none_of([Token::RBracket]).or_not())
+		.then(just(Token::RBracket))
+		.then(p.adjacent.clone())
+		.rewind()
+		.ignore_then(p.type_expr.clone())
+		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
+
 	let if_expr = recursive(|if_expr| {
 		just(Token::If)
 			.ignore_then(just(Token::With).or_not())
@@ -610,7 +618,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		group,
 		tuple,
 		map,
-		array,
+		slice_type.or(array),
 		p.block_ast.clone(),
 		if_expr,
 		match_expr,

@@ -379,9 +379,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		rhint: impl FnOnce(&mut Self, &Typ) -> Typ,
 	) -> Result<(TypedVal, TypedVal), Diagnostic> {
 		let typename = TypeExpr::from_expr(&l.0).is_some_and(|te| {
-			!matches!(&l.0, Expr::Ident(n) if self.vars.contains_key(n)) && self.types.resolve(&te, l.1).is_ok()
+			!matches!(&l.0, Expr::Ident(n) if self.vars.contains_key(n))
+				&& self.types.resolve(&te, l.1).is_ok_and(|t| !matches!(t, Typ::Const(_)))
 		});
-		if (l.0.anon() || typename) && !r.0.anon() {
+		if typename {
+			return Ok((self.check_expr(l, &Typ::TypeId)?, self.check_expr(r, &Typ::TypeId)?));
+		}
+		if l.0.anon() && !r.0.anon() {
 			let rhs = self.expr(r)?;
 			let hint = rhint(self, &rhs.1);
 			return Ok((self.check_expr(l, &hint)?, rhs));

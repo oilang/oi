@@ -119,8 +119,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().symbol_value(self.int, gv)
 	}
 
-	// A `@nozero` type, or a struct carrying one.
+	// A `@nozero` type, or a type carrying one.
 	pub(super) fn nozero<'t>(&self, typ: &'t Typ) -> Option<&'t str> {
+		if let Typ::FixedArray(elem, _) = typ {
+			return self.nozero(elem);
+		}
 		let name = typ.nominal()?;
 		if has_ann(self.types.consts.anns, rc::base_name(name), role::NOZERO) {
 			return Some(name);
@@ -244,6 +247,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		if *target == Typ::TypeId
 			&& let Some(te) = TypeExpr::from_expr(&value.0)
+				.or_else(|| matches!(&value.0, Expr::Tuple(f) if f.is_empty()).then(TypeExpr::unit))
 			&& !matches!(&value.0, Expr::Ident(n) if self.vars.contains_key(n))
 			&& let Ok(t) = self.types.resolve(&te, value.1)
 		{

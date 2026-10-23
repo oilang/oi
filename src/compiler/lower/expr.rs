@@ -107,7 +107,12 @@ impl<'a, M: Module> Translator<'a, M> {
 							Some(c) => self.expr(&c),
 							None => match self.types.type_params.get(name) {
 								Some(&Typ::Const(n)) => Ok((self.b.ins().iconst(self.int, n), Typ::Int(64))),
-								_ => self.through_with(expr)?.ok_or(e).and_then(|m| self.lower(&m, hint)),
+								_ => match self.through_with(expr)? {
+									Some(m) => self.lower(&m, hint),
+									None => self
+										.lower(&(Expr::TypePat(TypeExpr::Name(name.clone())), expr.1), hint)
+										.map_err(|_| e),
+								},
 							},
 						}
 					}
@@ -1091,10 +1096,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1.into_range(),
 			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
-			Expr::TypePat(te) => Err(Diagnostic::new(
-				format!("`{}` is a type, not a value", self.types.resolve(te, expr.1)?),
-				expr.1.into_range(),
-			)),
+			Expr::TypePat(te) => Ok((self.typeid_of(&self.types.resolve(te, expr.1)?), Typ::TypeId)),
 			Expr::Return(_) | Expr::Break(..) | Expr::Continue(_) => fail(
 				"`return`, `break`, and `continue` never produce a value",
 				expr.1,

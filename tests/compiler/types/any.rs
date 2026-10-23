@@ -165,3 +165,16 @@ fn type_of_static_in_signatures() {
 		"3 4",
 	);
 }
+
+#[test]
+fn types_are_typeid_values() {
+	let src = indoc! {r#"
+		B[E] :: struct { e: E }
+		B[E] :< { g :: fn(self) { comp if E == []int { print("ints") } else { print("other") } } }
+		a: any = [1]
+		t: typeid = ()
+		print(typeid.(a) == []int, typeid.(a) == [2]int, t == (), int == (), []())
+		B.{ e = [1] }.g()
+	"#};
+	check(src, ["true false true false []()", "ints"]);
+}
