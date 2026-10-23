@@ -395,7 +395,7 @@ pub(super) fn check_impls<'p>(
 			}
 			// check whether an overlapping fill is already present
 			let key = (typ.to_string(), name.clone());
-			if !defaults.contains_key(&key)
+			if (body.is_empty() || !defaults.contains_key(&key))
 				&& let Some(f) = others.iter().find(|f| f.key == format!("{typ}.{name}"))
 			{
 				same_sig(name, sig(&f.params, &f.ret)?, sig(params, ret)?, span)?;

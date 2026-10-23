@@ -1190,9 +1190,27 @@ impl<M: Module> Compiler<M> {
 					fills,
 					..
 				} => {
-					let claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
+					let mut claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
 						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
 						.collect();
+
+					// a claim implies each supertrait its defaults cover
+					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn { body, .. } if body.is_empty());
+					for i in 0..claimed.len() {
+						let Some((supers, _, _, ms, _)) = traits.get(claimed[i].0.as_str()) else {
+							continue;
+						};
+						let by = |m: &Spanned<Expr>| {
+							given(m) || ms.iter().any(|d| given(d) && d.0.def_name() == m.0.def_name())
+						};
+						for sup in supers {
+							let covered = |t: &TraitItem| t.2.iter().all(|f| f.default.is_some()) && t.3.iter().all(by);
+							if traits.get(sup.as_str()).is_some_and(covered) && claimed.iter().all(|(c, _)| c != sup) {
+								claimed.push((sup.clone(), &[]));
+							}
+						}
+					}
+
 					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
 					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());

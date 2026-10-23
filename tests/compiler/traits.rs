@@ -64,6 +64,22 @@ fn supertraits() {
 }
 
 #[test]
+fn defaults_claim_supertraits() {
+	let src = indoc! {r#"
+		Show :: trait { show: fn(self) string }
+		Named : Show : trait {
+			name: fn(self) string
+			show :: fn(self) string { "<{self.name()}>" }
+		}
+		Dog :: struct {}
+		Dog : Named < { name :: fn(self) string { "dog" } }
+		print(Dog is Show, Dog.{}.show())
+	"#};
+	check(src, "true <dog>");
+	fail(&src.replace("show ::", "loud ::"), "must also implement `Show`");
+}
+
+#[test]
 fn default_methods() {
 	let src = indoc! {r#"
 		Animal :: trait {
