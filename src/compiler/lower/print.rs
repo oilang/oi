@@ -185,7 +185,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::Fn(..) | Typ::Closure(..) => self.write_lit("<fn>", sink),
-			Typ::Map(..) => self.write_lit("<map>", sink),
+			Typ::Map(..) => match self.str_impl("map", val, typ) {
+				Some(s) => self.raw(s, sink),
+				None => self.write_lit("<map>", sink),
+			},
 			Typ::Ast => {
 				let s = self.ast_method(val, "str", None);
 				self.emit_print(s, &Typ::Str, quote, sink)

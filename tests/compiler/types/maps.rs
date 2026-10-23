@@ -53,6 +53,17 @@ fn len_keys_values() {
 }
 
 #[test]
+fn prints_literal_shaped() {
+	let src = indoc! {r#"
+		m := ["a" = ["b"]]
+		s: [string]() = .["c"]
+		print(m, s, m.str())
+	"#};
+	check(src, r#"["a" = ["b"]] {"c"} ["a" = ["b"]]"#);
+	assert_eq!(leaks(src), 0);
+}
+
+#[test]
 fn rune_keys() {
 	check("m: [rune]int = .{}; m['☃'] = 2; (m['☃'], 'a' in m)", "(2, false)");
 }

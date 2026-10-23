@@ -85,3 +85,22 @@ module core
 		out
 	}
 }
+
+[K]V : Display < {
+	fmt :: fn(self; mut b: Buffer) {
+		set :: type(self.values[0]) == type(())
+		b.write(if set { "{{" } else { "[" })
+
+		start :: b.len()
+		loop k in self.keys {
+			if b.len() > start do b.write(if set { " " } else { ", " })
+			debug_derived(k, mut b)
+			if !set {
+				b.write(" = ")
+				debug_derived(self[k], mut b)
+			}
+		}
+
+		b.write(if set { "}}" } else { "]" })
+	}
+}

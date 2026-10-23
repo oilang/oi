@@ -70,7 +70,9 @@ Bits[E] :< {
 
 Bits[E] : Display < {
 	str :: fn(self) string {
-		names := loop e in self do ".{e}"
+		names := loop e in self {
+			if E is Integer || type(e) == bool || type(e) == rune { e.str() } else { ".{e}" }
+		}
 		"{{" + names.join(" ") + "}}"
 	}
 }
