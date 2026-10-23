@@ -413,7 +413,7 @@ fn via_delegation() {
 fn embedded_field_satisfies_requirement() {
 	let src = indoc! {r#"
 		Meta :: struct { kind: string, id: int }
-		Enemy :: struct { Meta, hp: int }
+		Enemy :: struct { Meta; hp: int }
 		Enemy : Animal < { speak :: fn(self) string { "rawr" } }
 		zoo : []Animal : [ Enemy.{ Meta = Meta.{ kind = "goblin" } } ]
 		loop a in zoo { print("a {a.kind} says {a.speak()}") }
@@ -827,7 +827,7 @@ fn boxed_error_outlives_its_scope() {
 #[test]
 fn embedded_err_promotes_error_claim() {
 	let src = indoc! {r#"
-		Parse :: struct { Err, line: int }
+		Parse :: struct { Err; line: int }
 		Parse :< { message :: fn(self) string { "parse error at line {self.line}" } }
 		Io :: struct { Err }
 		boom :: fn(n: int) !int {
@@ -843,7 +843,7 @@ fn embedded_err_promotes_error_claim() {
 fn embedded_trait_object_promotes_its_claim() {
 	let src = indoc! {r#"
 		Io :: struct { Error }
-		Ctx :: struct { Error, where: string }
+		Ctx :: struct { Error; where: string }
 		Ctx : Error < { message :: fn(self) string { "{self.where}: {self.Error.message()}" } }
 		boom :: fn(n: int) !int {
 			if n == 0 { return Io.{ Error = error("disk on fire") } }
@@ -859,7 +859,7 @@ fn embedding_promotes_a_parameterized_claim() {
 	let src = indoc! {r#"
 		P :: struct { b: int }
 		P : From[int] < { from :: fn(v: int) P { P.{ v } } }
-		C :: struct { P, c: int }
+		C :: struct { P; c: int }
 		print(C.from(7).P.b)
 	"#};
 	check(src, "7");

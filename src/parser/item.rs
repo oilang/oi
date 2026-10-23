@@ -1,6 +1,6 @@
 use super::{
-	Member, P, Parsers, Rec, Rule, Tokens, brace, bracket, fn_def, ident, list, list1, loose_list, named_ret, paren,
-	spanned, split_members, trailing_list, trailing_list1,
+	Member, P, Parsers, Rec, Rule, Tokens, brace, bracket, fn_def, group_untyped, ident, list, list1, loose_list,
+	named_ret, paren, spanned, split_members, trailing_list, trailing_list1,
 };
 use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem, Vis};
 use crate::lexer::Token;
@@ -10,7 +10,14 @@ use chumsky::prelude::*;
 // A `{}` body of doc-carrying members.
 fn doc_body<'token, I: Tokens<'token>, O>(member: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	let docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
-	brace(loose_list(docs.clone().ignore_then(member)).then_ignore(docs))
+	brace(
+		docs.clone()
+			.ignore_then(member)
+			.separated_by(one_of([Token::Comma, Token::Semicolon]).or_not())
+			.allow_trailing()
+			.collect()
+			.then_ignore(docs),
+	)
 }
 
 // The item definition grammar.
@@ -49,7 +56,16 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	let struct_field = just(Token::Pub)
 		.or_not()
 		.then(ident())
-		.then(p.param_type.clone())
+		.then(
+			p.param_type.clone().or(p
+				.same_line
+				.clone()
+				.then(just(Token::Comma))
+				.then(p.same_line.clone())
+				.then(ident())
+				.rewind()
+				.to((TypeExpr::Name("$?".into()), None, false))),
+		)
 		.then(
 			p.same_line
 				.clone()
@@ -66,7 +82,10 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		})
 		.boxed();
 	let struct_field = p.param_hole.clone().or(struct_field).boxed();
-	anon_fields.define(loose_list(struct_field.clone()));
+	anon_fields.define(loose_list(struct_field.clone()).map(|mut fields| {
+		group_untyped(&mut fields);
+		fields
+	}));
 	// associated consts
 	let member = struct_field.clone().map(|f| match f.default {
 		Some(v) if !f.mutable => Member::Fn((

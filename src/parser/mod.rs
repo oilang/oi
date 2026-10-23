@@ -145,6 +145,18 @@ enum Member {
 	Variant(EnumVariant),
 }
 
+// Give each untyped param the type and default of the nearest typed one to its right.
+fn group_untyped(group: &mut [Param]) {
+	let mut typed: Option<Param> = None;
+	for param in group.iter_mut().rev() {
+		if !matches!(&param.typ, TypeExpr::Name(n) if n == "$?") {
+			typed = Some(param.clone());
+		} else if let Some(t) = &typed {
+			(param.typ, param.default, param.mutable) = (t.typ.clone(), t.default.clone(), t.mutable);
+		}
+	}
+}
+
 fn split_members(members: Vec<Member>) -> (Vec<Param>, Vec<Spanned<Expr>>, Vec<EnumVariant>) {
 	let (mut fields, mut fns, mut variants) = (vec![], vec![], vec![]);
 	for m in members {
@@ -154,6 +166,7 @@ fn split_members(members: Vec<Member>) -> (Vec<Param>, Vec<Spanned<Expr>>, Vec<E
 			Member::Variant(v) => variants.push(v),
 		}
 	}
+	group_untyped(&mut fields);
 	(fields, fns, variants)
 }
 
@@ -359,15 +372,7 @@ where
 		let params: Vec<Param> = groups
 			.into_iter()
 			.flat_map(|mut group| {
-				// param grouping
-				let mut typed: Option<Param> = None;
-				for param in group.iter_mut().rev() {
-					if !matches!(&param.typ, TypeExpr::Name(n) if n == "$?") {
-						typed = Some(param.clone());
-					} else if let Some(t) = &typed {
-						(param.typ, param.default, param.mutable) = (t.typ.clone(), t.default.clone(), t.mutable);
-					}
-				}
+				group_untyped(&mut group);
 				group
 			})
 			.collect();

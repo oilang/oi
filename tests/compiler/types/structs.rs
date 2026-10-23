@@ -236,8 +236,8 @@ fn embedded_two_levels() {
 	let src = indoc! {"
 		A :: struct { x: int }
 		A :< { hi :: fn(self) int { self.x + 1 } }
-		B :: struct { A, y: int }
-		C :: struct { B, z: int }
+		B :: struct { A; y: int }
+		C :: struct { B; z: int }
 		c := C.{ x = 1, y = 2, z = 3 }
 		print(c.x)
 		print(c.hi())
@@ -264,7 +264,7 @@ fn embedded_ambiguous_field() {
 	fail(
 		"A :: struct { x: int }
 		B :: struct { x: int }
-		C :: struct { A, B }
+		C :: struct { A; B }
 		C.{}.x",
 		"`x` is ambiguous, found in embedded `A` and `B`",
 	);
@@ -448,4 +448,34 @@ fn field_index_assign() {
 		b.xs[0] = 1
 	"};
 	fail(src, "cannot assign to element of immutable `b`");
+}
+
+#[test]
+fn field_grouping() {
+	check(
+		indoc! {r#"
+			Color :: struct {
+				r, g, b: u8
+				a: u8 = 255
+			}
+			Pad :: struct { x, y := 7 }
+			get :: fn(p: struct {x, y: int}) int { p.y }
+			Tagged :: struct {
+				Pad,
+				tag: string
+			}
+			c :: Color.{}
+			print(c.r, c.b, c.a, Pad.{}.x, get(.{1, 2}), Tagged.{}.y)
+		"#},
+		"0 0 255 7 2 7",
+	);
+	fail(
+		indoc! {r#"
+			S :: struct {
+				a, b
+				c: int
+			}
+		"#},
+		"unknown type `b`",
+	);
 }

@@ -54,7 +54,7 @@ fn a_ctx_write_stays_in_the_callee() {
 #[test]
 fn a_ctx_fn_reads_its_ctx_type() {
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		@ctx(none)
 		half :: fn(x: float) float { x / 2.0 }
 		@ctx(GameCtx)
@@ -81,7 +81,7 @@ fn a_contextless_fn_cant_pass_ctx_on() {
 #[test]
 fn a_call_narrows_the_ctx_to_the_callees() {
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		show :: fn() { print([ctx.thread]) }
 		@ctx(GameCtx)
 		step :: fn() { show() }
@@ -92,7 +92,7 @@ fn a_call_narrows_the_ctx_to_the_callees() {
 	assert_clean(src);
 
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		@ctx(GameCtx)
 		step :: fn() {}
 		step()
@@ -103,7 +103,7 @@ fn a_call_narrows_the_ctx_to_the_callees() {
 #[test]
 fn a_closure_takes_the_narrowest_ctx_it_needs() {
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		each :: fn(xs: []int, f: fn(x: int)) { loop x in xs { f(x) } }
 		@ctx(GameCtx) run :: fn(f: @ctx(GameCtx) fn(x: int)) { f(1) }
 		@ctx(GameCtx) tick :: fn() {
@@ -119,7 +119,7 @@ fn a_closure_takes_the_narrowest_ctx_it_needs() {
 #[test]
 fn ctx_with_plain_fns() {
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		@ctx(GameCtx) run :: fn(f: @ctx(GameCtx) fn(x: int) int) { print(f(1), ctx.dt) }
 		show :: fn(x: int) int { x + ctx.thread }
 		ctx :: GameCtx.{ Context = Context.{ ..ctx, thread = 4 }, dt = 0.5 }
@@ -131,7 +131,7 @@ fn ctx_with_plain_fns() {
 	check(src, ["5 0.5", "11 0.5"]);
 
 	let src = indoc! {"
-		GameCtx :: struct { Context, dt: float }
+		GameCtx :: struct { Context; dt: float }
 		@ctx(GameCtx) step :: fn() {}
 		g : fn() = step
 	"};
