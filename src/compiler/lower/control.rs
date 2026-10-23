@@ -371,7 +371,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(name) = &arm.binding
 					&& cap.is_none()
 				{
-					s.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
+					let narrowed = match &arm.patterns[..] {
+						[(Expr::EnumShorthand { variant, .. } | Expr::Field { field: variant, .. }, _)]
+							if s.variants_of(&st).iter().any(|v| v.name == *variant && !v.payload.is_empty()) =>
+						{
+							st.refined(variant)
+						}
+						_ => st.clone(),
+					};
+					s.vars.insert(name.clone(), Local::plain(sv_var, narrowed, false));
 				}
 				for ((base, base_typ), list) in cap.iter().chain(&binds) {
 					for (name, typ, off) in list {

@@ -622,6 +622,20 @@ impl TypeCtx<'_> {
 			// an omitted param type that no expected fn type filled in
 			return fail("parameter needs a type", span, "nothing here supplies one");
 		}
+		// payload variants refine their enum
+		if let Some((head, variant)) = name.rsplit_once('.')
+			&& let Ok(Typ::Enum(e)) = self.named(head, span)
+			&& let Some(v) = self.enums.borrow()[&e].iter().find(|v| v.name == variant).cloned()
+		{
+			return match v.payload.is_empty() {
+				true => fail(
+					format!("`{name}` has no fields to be a type"),
+					span,
+					"use the enum type",
+				),
+				false => Ok(Typ::Enum(e).refined(variant)),
+			};
+		}
 		if let Some((m, t)) = name.split_once('.').filter(|_| !name.contains("::")) {
 			let Some(vis) = self.scope.visible.get(m) else {
 				return fail(format!("unknown module `{m}`"), span, "not imported");

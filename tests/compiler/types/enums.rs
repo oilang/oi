@@ -516,3 +516,32 @@ fn enum_indexed_arrays() {
 		"expected E, got int",
 	);
 }
+
+#[test]
+fn variant_types() {
+	let shape = indoc! {"
+		Shape :: enum {
+			circle { radius: f64 }
+			triangle(f64, f64, f64)
+			point
+		}
+		area :: fn(c: Shape.circle) f64 { c.radius * c.radius }
+		perimeter :: fn(t: Shape.triangle) f64 { t.0 + t.1 + t.2 }
+	"};
+	check(
+		[
+			shape,
+			indoc! {"
+			loop s in .[Shape.circle.{ radius = 2.0 }, .triangle.(3.0, 4.0, 5.0), .point] {
+				print(match s { c @ .circle => area(c), t @ .triangle => perimeter(t), _ => 0.0 })
+			}
+			print(area(.circle.{ radius = 1.0 }))
+		"},
+		],
+		["4.0", "12.0", "0.0", "1.0"],
+	);
+	fail(
+		[shape, "s: Shape = .point", "area(s)"],
+		"expected Shape.circle argument, got Shape",
+	);
+}

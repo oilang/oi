@@ -226,6 +226,17 @@ impl Typ {
 		self.keyed().map_or(self, |(_, t)| t)
 	}
 
+	// A payload variant as a refinement of its enum.
+	pub fn refined(&self, variant: &str) -> Typ {
+		Typ::Annotated(vec![format!(".{variant}")], Box::new(self.clone()))
+	}
+
+	// A refined type's variant and enum.
+	pub fn variant(&self) -> Option<(&str, &Typ)> {
+		let Typ::Annotated(anns, t) = self else { return None };
+		Some((anns[0].strip_prefix('.')?, t))
+	}
+
 	// The declared name of a struct or enum.
 	pub fn nominal(&self) -> Option<&str> {
 		match self {
@@ -355,6 +366,7 @@ impl fmt::Display for Typ {
 			Typ::Annotated(anns, _) if let Some((_, Typ::FixedArray(e, _))) = self.keyed() => {
 				write!(f, "{}{e}", anns[0])
 			}
+			Typ::Annotated(anns, t) if self.variant().is_some() => write!(f, "{t}{}", anns[0]),
 			Typ::Annotated(anns, t) => write!(f, "{}{t}", marks(anns)),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				let shown: Vec<_> = (params.iter())

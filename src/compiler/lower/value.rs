@@ -378,9 +378,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.types.enums.borrow().get(name).cloned().unwrap_or_default()
 	}
 
-	// See through `^T`.
+	// See through `^T` and variant refinements.
 	pub(super) fn peeled(&self, typ: &Typ) -> Typ {
 		match peel(typ) {
+			t if let Some((_, base)) = t.variant() => base.clone(),
 			Typ::Struct(n, f) if f.is_empty() => {
 				Typ::Struct(n.clone(), self.types.structs.get(n).cloned().unwrap_or_default())
 			}
@@ -1016,6 +1017,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((self.ld_word(val, 0), target.clone()));
 		}
+		// a variant's constructor builds the refined type
+		if let Some((variant, base)) = target.variant() {
+			let (val, vt) = self.lower(value, Some(base))?;
+			let built = matches!(&value.0,
+				Expr::EnumShorthand { variant: v, .. }
+				| Expr::StructLit { name: v, .. }
+				| Expr::Cast { target: (TypeExpr::Name(v), _), .. } if v.rsplit('.').next() == Some(variant));
+			return Ok((val, if built && vt == *base { target.clone() } else { vt }));
+		}
 		let (val, vt) = self.lower(value, Some(target))?;
 		if *target == Typ::Any {
 			self.move_resource(value, &vt)?;
@@ -1027,6 +1037,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn coerce(&mut self, val: Value, from: &Typ, to: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
 		if from == to {
 			return Ok((val, from.clone()));
+		}
+		if from.variant().is_some_and(|(_, base)| base == to) {
+			return Ok((val, to.clone()));
 		}
 		if let Typ::Trait(tn) = to {
 			return self.make_trait_object(val, from, tn, span);
