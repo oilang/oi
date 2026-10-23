@@ -6,6 +6,15 @@ test! "write and str" {
 	assert! "{b}".ends_with("ab")
 }
 
+test! "write runes and bytes" {
+	b := Buffer.{}
+	b.write('{')
+	b.write('é')
+	b.write(u8.(33))
+	b.write([]u8.("ok"))
+	assert! b.str() == "{{é!ok"
+}
+
 test! "bytes and len" {
 	b := Buffer.{}
 	b.write("hi")

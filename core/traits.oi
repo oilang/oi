@@ -116,6 +116,9 @@ pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 
 # rendering
 
+## Accepts written values, like a buffer or an output stream.
+pub Write[T] :: trait { write: fn(mut self; v: T) }
+
 ## Every type renders, through its own `fmt` or `str`, or the derived printer.
 @implicit
 pub Display :: trait {
