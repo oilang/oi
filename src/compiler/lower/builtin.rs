@@ -100,7 +100,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let field = |n: &str, e| (Some(n.to_string()), (e, span));
 		let fields = [
 			field("file", Expr::String(file.to_string())),
-			field("line", Expr::Int(line as i64)),
+			field("line", Expr::Int(line as i128)),
 		];
 		self.struct_lit(role::SRC, &[], &fields, span, None)
 	}
@@ -356,7 +356,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			(_, Float(_)) => {
 				let val = self.widen_f16(val, &typ);
 				let to_signed = !matches!(target, UInt(_) | USize);
-				let wide = if to_signed {
+				let wide = if matches!(target, Int(128) | UInt(128)) {
+					let val = self.numcast(val, &typ, &Float(64));
+					let signed = self.b.ins().iconst(self.int, to_signed as i64);
+					self.rt_call("float_to_wide", &[val, signed]).unwrap()
+				} else if to_signed {
 					self.b.ins().fcvt_to_sint_sat(self.int, val)
 				} else {
 					self.b.ins().fcvt_to_uint_sat(self.int, val)

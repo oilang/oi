@@ -369,7 +369,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					(Expr::Field { tuple, field }, *at)
 				})),
 				Typ::FixedArray(_, n) => out.extend((0..*n).map(|f| {
-					let (collection, index) = (ident(), Box::new((Expr::Int(f as i64), *at)));
+					let (collection, index) = (ident(), Box::new((Expr::Int(f as i128), *at)));
 					(Expr::Index { collection, index }, *at)
 				})),
 				Typ::Array(_) => out.push((Expr::Spread(ident()), *at)),

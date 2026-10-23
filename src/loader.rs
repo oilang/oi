@@ -10,7 +10,7 @@ use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
-use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis};
+use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
 use crate::compiler::{builtin, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{lex_at, prescan, splice_raw};
@@ -251,7 +251,7 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) -> Option<i64> {
 	let TypeExpr::Name(n) = t else { return None };
 	match fold_const(&Expr::Ident(n.clone()), consts, scope)? {
-		Expr::Int(v) => Some(v),
+		Expr::Int(v) => int_word(v),
 		_ => None,
 	}
 }
@@ -590,7 +590,7 @@ impl Loader {
 					.try_fold(0, |acc, t| Some(acc | flag(t, &self.program.consts, &m.scope)?))
 			{
 				self.define(m, name, true, public, span)?;
-				self.program.consts.insert(name.clone(), (Expr::Int(v), span));
+				self.program.consts.insert(name.clone(), (Expr::Int(v.into()), span));
 				continue;
 			}
 			let mut assoc_types = vec![];

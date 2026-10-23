@@ -57,7 +57,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((v, t.clone()));
 		}
 		match &expr.0 {
-			Expr::Int(n) => Ok((self.b.ins().iconst(types::I64, *n), Typ::Int(64))),
+			Expr::Int(n) => match int_word(*n) {
+				Some(bits) => Ok((self.b.ins().iconst(types::I64, bits), Typ::Int(64))),
+				None => fail(format!("{n} is out of range for int"), expr.1, "needs a wider type"),
+			},
 			Expr::Rune(n) => Ok((self.b.ins().iconst(types::I32, *n), Typ::Rune)),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float(64))),
@@ -320,11 +323,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				// a lone value arg parsed as an index, because only the resolver knows what a name is
 				if let Expr::Index { collection, index } = &callee.0
 					&& let (Expr::Ident(n), Expr::Int(v)) = (&collection.0, &index.0)
+					&& let Some(v) = int_word(*v)
 					&& !self.vars.contains_key(n)
 					&& let Some(def) = self.world.generic_fns.get(self.qualify(n).as_ref()).cloned()
 				{
 					let key = self.qualify(n).to_string();
-					return self.call_generic(&key, &def, &[(TypeExpr::Const(*v), index.1)], args, None, expr.1);
+					return self.call_generic(&key, &def, &[(TypeExpr::Const(v), index.1)], args, None, expr.1);
 				}
 				let (val, typ) = self.expr(callee)?;
 				self.call_value(&typ.to_string(), Callee::Object(val), &typ, args, None, expr.1)
@@ -567,6 +571,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						Some(fs) => self.check_expr(value, &fs[i].1)?,
 						None => self.expr(value)?,
 					};
+					let typ = word_slot(typ, value.1)?;
 					self.move_resource(value, &typ)?;
 					let val = self.copy_in(val, &typ);
 					self.st(ptr, (i * 8) as i32, val);
@@ -1145,7 +1150,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => return None,
 		};
 		if let Some((min, max)) = t.int_bounds() {
-			return Some(self.b.ins().iconst(cl_type(t, self.int), if hi { max } else { min }));
+			return Some(self.int_const(cl_type(t, self.int), if hi { max } else { min }));
 		}
 		let ins = self.b.ins();
 		Some(match t {

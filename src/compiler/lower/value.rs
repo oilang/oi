@@ -178,7 +178,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Atom => self.atom_const(""),
 			Typ::Int(_) | Typ::UInt(_) | Typ::Rune | Typ::Bool | Typ::ISize | Typ::USize | Typ::CStr | Typ::TypeId => {
-				self.b.ins().iconst(cl_type(typ, self.int), 0)
+				self.int_const(cl_type(typ, self.int), 0)
 			}
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
@@ -290,15 +290,32 @@ impl<'a, M: Module> Translator<'a, M> {
 						"not integral",
 					);
 				}
-				int = Expr::Int(*x as i64);
+				int = Expr::Int(*x as i128);
+				&int
+			}
+			Expr::Rune(c)
+				if matches!(
+					target,
+					Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune | Typ::Float(_)
+				) =>
+			{
+				int = Expr::Int(*c as i128);
 				&int
 			}
 			e => e,
 		};
 		let v = match (inner, target) {
-			(Expr::Int(n) | Expr::Rune(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
-				let n = n * sign;
+			(Expr::Int(n), Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Rune) => {
+				let wide = matches!(target, Typ::Int(128) | Typ::UInt(128));
+				// narrower targets check the 64-bit word
+				let (lit, n) = match int_word(*n) {
+					Some(word) if !wide => (*n, word.wrapping_mul(sign).into()),
+					_ => (*n, n.wrapping_mul(sign.into())),
+				};
 				let fits = match target {
+					Typ::UInt(128) => !neg || lit == 0,
+					Typ::Int(128) => lit >= 0 || neg && lit == i128::MIN,
+					_ if int_word(lit).is_none() => false,
 					Typ::UInt(64) => !neg || n >= 0,
 					Typ::USize => n >= 0,
 					Typ::Rune => u32::try_from(n).ok().and_then(char::from_u32).is_some(),
@@ -307,9 +324,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !fits {
 					return Err(oob(n));
 				}
-				self.b.ins().iconst(cl_type(target, self.int), n)
+				self.int_const(cl_type(target, self.int), n)
 			}
-			(Expr::Int(n) | Expr::Rune(n), Typ::Float(w)) => self.float_lit((n * sign) as f64, *w, value.1)?,
+			(Expr::Int(n), Typ::Float(w)) => self.float_lit(*n as f64 * sign as f64, *w, value.1)?,
 			(Expr::Float(x), Typ::Float(w)) => self.float_lit(x * sign as f64, *w, value.1)?,
 			(Expr::Atom(name), Typ::Enum(typ)) => self.construct_variant(typ, name, &[], value.1)?.0,
 			(Expr::EnumShorthand { variant, args }, Typ::Enum(typ)) => {

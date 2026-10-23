@@ -152,7 +152,7 @@ pub(super) fn is_def(e: &Expr) -> bool {
 
 pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 	match tag {
-		TAG_INT => Expr::Int(v),
+		TAG_INT => Expr::Int(v.into()),
 		TAG_FLOAT => Expr::Float(f64::from_bits(v as u64)),
 		TAG_BOOL => Expr::Bool(v != 0),
 		// SAFETY: `v` is a str handle the runtime just produced

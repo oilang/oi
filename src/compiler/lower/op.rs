@@ -359,6 +359,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			(Typ::Float(a), Typ::Float(b)) if a > b => self.b.ins().fdemote(cl, val),
 			(Typ::Float(_), _) => self.b.ins().fpromote(cl, val),
+			(Typ::Int(128) | Typ::UInt(128), Typ::Float(_)) => {
+				let signed = self.b.ins().iconst(self.int, matches!(from, Typ::Int(_)) as i64);
+				let wide = self.rt_call("wide_to_float", &[val, signed]).unwrap();
+				self.numcast(wide, &Typ::Float(64), to)
+			}
 			(Typ::UInt(_) | Typ::USize, Typ::Float(_)) => self.b.ins().fcvt_from_uint(cl, val),
 			(_, Typ::Float(_)) => self.b.ins().fcvt_from_sint(cl, val),
 			(Typ::UInt(_), _) => self.intcast(val, cl, false),
@@ -398,10 +403,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	// An expression known at comptime to be a plain int.
 	fn const_int(&self, e: &Spanned<Expr>) -> Option<i64> {
 		match &e.0 {
-			Expr::Int(n) => Some(*n),
+			Expr::Int(n) => int_word(*n),
 			Expr::Negative(inner) => self.const_int(inner).map(i64::wrapping_neg),
 			Expr::Ident(name) => match self.types.consts.map.get(self.qualify(name).as_ref())? {
-				(Expr::Int(n), _) => Some(*n),
+				(Expr::Int(n), _) => int_word(*n),
 				_ => None,
 			},
 			_ => None,
@@ -616,6 +621,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				cl => self.intcast(out, cl, matches!(kind, NumKind::Int)),
 			}
 		});
+		if matches!(op, BinOp::Div | BinOp::Mod) && cl_type(&lt, self.int) == types::I128 {
+			let signed = self.b.ins().iconst(self.int, matches!(kind, NumKind::Int) as i64);
+			let rem = self.b.ins().iconst(self.int, (op == BinOp::Mod) as i64);
+			return Ok((self.rt_call("div_wide", &[lv, rv, signed, rem]).unwrap(), lt));
+		}
 		let b = self.b.ins();
 		let out = match (op, kind) {
 			(BinOp::Pow, _) => pow.unwrap(),

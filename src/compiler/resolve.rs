@@ -15,7 +15,7 @@ pub(super) fn build_variants(variants: &[EnumVariant], types: TypeCtx) -> Result
 		.map(|v| {
 			let disc = match &v.disc {
 				Some((e, span)) => match fold_const(e, types.consts.map, types.scope) {
-					Some(Expr::Int(n)) => n,
+					Some(Expr::Int(n)) if let Some(n) = int_word(n) => n,
 					_ => {
 						return fail("a discriminant must be a constant int", *span, "not a constant int");
 					}
@@ -30,7 +30,7 @@ pub(super) fn build_variants(variants: &[EnumVariant], types: TypeCtx) -> Result
 			let payload = v
 				.payload
 				.iter()
-				.map(|(te, span)| types.resolve(te, *span))
+				.map(|(te, span)| word_slot(types.resolve(te, *span)?, *span))
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(VariantInfo {
 				name: v.name.clone(),
@@ -76,8 +76,8 @@ pub(super) fn apply_backing(
 			let msg = format!("enum backing type `{bt}` is unsupported");
 			return fail(msg, span, "not an enum-able type");
 		};
-		let hi = if hi < lo { i64::MAX } else { hi };
-		if let Some(v) = variants.iter().find(|v| v.disc < lo || v.disc > hi) {
+		let hi = if hi < lo { i128::MAX } else { hi };
+		if let Some(v) = variants.iter().find(|v| !(lo..=hi).contains(&v.disc.into())) {
 			let msg = format!("discriminant `{}` is out of range for its backing type", v.disc);
 			return fail(msg, span, "out of range");
 		}
@@ -166,7 +166,7 @@ impl<'a> TypeCtx<'a> {
 	pub fn field(&self, p: &Param) -> Result<FieldDef, Diagnostic> {
 		Ok(FieldDef {
 			name: p.name.clone(),
-			typ: self.resolve(&p.typ, p.span)?,
+			typ: word_slot(self.resolve(&p.typ, p.span)?, p.span)?,
 			default: p.default.clone(),
 			embedded: embedded(p),
 			annotations: qualify_anns(self.scope, &p.annotations),
@@ -215,15 +215,27 @@ pub(crate) fn builtin(name: &str) -> Option<Typ> {
 	})
 }
 
+// Aggregate slots.
+pub(crate) fn word_slot(typ: Typ, span: Span) -> Result<Typ, Diagnostic> {
+	match typ {
+		Typ::Int(128) | Typ::UInt(128) => fail(
+			format!("`{typ}` can't live in an aggregate yet"),
+			span,
+			"only a local, param, return or array element",
+		),
+		_ => Ok(typ),
+	}
+}
+
 // A sized numeric type.
 pub(crate) fn sized(name: &str, span: Span) -> Option<Result<Typ, Diagnostic>> {
 	let width: u16 = name.get(1..)?.parse().ok()?;
 	let kind = name.as_bytes()[0];
 	Some(match kind {
-		b'i' | b'u' if width == 0 || width > 64 => {
+		b'i' | b'u' if width == 0 || (width > 64 && width != 128) => {
 			let label = if kind == b'i' { "integer" } else { "unsigned integer" };
 			let msg = format!("{label} width {width} out of range");
-			fail(msg, span, "width must be 1-64")
+			fail(msg, span, "width must be 1-64 or 128")
 		}
 		b'i' => Ok(Typ::Int(width)),
 		b'u' => Ok(Typ::UInt(width)),
@@ -247,7 +259,7 @@ impl TypeCtx<'_> {
 			TypeExpr::Tuple(elems) => {
 				let fields = elems
 					.iter()
-					.map(|(n, e)| Ok((n.clone(), self.resolve(e, span)?)))
+					.map(|(n, e)| Ok((n.clone(), word_slot(self.resolve(e, span)?, span)?)))
 					.collect::<Result<Vec<_>, _>>()?;
 				Ok(Typ::Tuple(fields))
 			}
@@ -302,7 +314,7 @@ impl TypeCtx<'_> {
 			TypeExpr::TupleStruct(name, fields) => {
 				let fields = fields
 					.iter()
-					.map(|(n, te)| Ok((n.clone(), self.resolve(te, span)?)))
+					.map(|(n, te)| Ok((n.clone(), word_slot(self.resolve(te, span)?, span)?)))
 					.collect::<Result<_, Diagnostic>>()?;
 				Ok(Typ::TupleStruct(name.clone(), fields))
 			}
@@ -373,7 +385,7 @@ impl TypeCtx<'_> {
 				_ => return,
 			};
 			if let Some(n) = path.split_once('.').and_then(|(name, field)| self.assoc_int(name, field)) {
-				*e = Expr::Int(n);
+				*e = Expr::Int(n.into());
 			}
 		});
 		match fold_const(&e, self.consts.map, self.scope) {
@@ -389,10 +401,10 @@ impl TypeCtx<'_> {
 		match (field, variants, self.consts.map.get(&format!("{t}::{field}"))) {
 			("size", ..) => Some(t.c_size_align(self)?.0.into()),
 			("count", Some(n), _) => Some(n as i64),
-			(.., Some((Expr::Int(n), _))) => Some(*n),
+			(.., Some((Expr::Int(n), _))) => int_word(*n),
 			("count", ..) => t
 				.int_bounds()
-				.and_then(|(lo, hi)| hi.checked_sub(lo)?.checked_add(1))
+				.and_then(|(lo, hi)| i64::try_from(hi.checked_sub(lo)?.checked_add(1)?).ok())
 				.filter(|n| *n > 0),
 			_ => None,
 		}
@@ -413,7 +425,7 @@ impl TypeCtx<'_> {
 			(Ok(typ), _) => typ,
 			(Err(e), TypeExpr::Name(n)) if value => {
 				match fold_const(&Expr::Ident(n.clone()), self.consts.map, self.scope) {
-					Some(Expr::Int(v)) => Typ::Const(v),
+					Some(Expr::Int(v)) if let Some(v) = int_word(v) => Typ::Const(v),
 					_ => return Err(e),
 				}
 			}

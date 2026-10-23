@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Capture, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr};
+use crate::ast::{Capture, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, int_word};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
@@ -921,7 +921,7 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 #[unsafe(export_name = "oi_ast_int")]
 pub(crate) extern "C" fn rt_ast_int(a: *mut Spanned<Expr>) -> i64 {
 	match unsafe { &(*a).0 } {
-		Expr::Int(n) => *n,
+		Expr::Int(n) if let Some(n) = int_word(*n) => n,
 		_ => flag("`.int()` needs an Ast holding an Int literal", 0),
 	}
 }

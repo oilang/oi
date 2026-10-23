@@ -14,7 +14,7 @@ use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, M
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::BinaryFormat;
 
-use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam, int_word};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
@@ -714,6 +714,7 @@ fn isa(pic: bool) -> Arc<dyn TargetIsa> {
 	let mut flag_builder = settings::builder();
 	flag_builder.set("use_colocated_libcalls", "false").unwrap();
 	flag_builder.set("is_pic", if pic { "true" } else { "false" }).unwrap();
+	flag_builder.set("enable_llvm_abi_extensions", "true").unwrap();
 	cranelift_native::builder()
 		.unwrap_or_else(|e| panic!("unsupported host: {e}"))
 		.finish(settings::Flags::new(flag_builder))
@@ -963,7 +964,7 @@ impl<M: Module> Compiler<M> {
 			Expr::Float(v) if matches!(want, Typ::Float(32)) => (f32::to_bits(*v as f32) as i64).to_le_bytes(),
 			Expr::Float(v) => v.to_bits().to_le_bytes(),
 			Expr::Bool(b) => (*b as i64).to_le_bytes(),
-			Expr::Int(n) => n.to_le_bytes(),
+			Expr::Int(n) => int_word(*n).expect("checked against the trait").to_le_bytes(),
 			_ => unreachable!("trait consts are literals"),
 		};
 		define_data(m, sym, bytes.to_vec())
@@ -1740,7 +1741,7 @@ impl<M: Module> Compiler<M> {
 						if let Expr::Cast { args, .. } = &lit
 							&& let [(Expr::Atom(a), _)] = &args[..]
 						{
-							lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait"));
+							lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
 						}
 						let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
 						const_slots.push((at, self.const_cell(&sym, &lit, &want)));

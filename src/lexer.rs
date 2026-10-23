@@ -56,11 +56,9 @@ fn lex_long(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
 	None
 }
 
-// A radix literal is a bit pattern, so the whole 64-bit range is in range.
-fn parse_radix(lex: &mut Lexer<Token>, radix: u32) -> Option<i64> {
-	u64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix)
-		.ok()
-		.map(|n| n as i64)
+// Bit pattern, so the whole 128-bit range lexes.
+fn parse_radix(digits: &str, radix: u32) -> Option<i128> {
+	u128::from_str_radix(&digits.replace('_', ""), radix).ok().map(|n| n as i128)
 }
 
 // One escape, where `i` is the backslash's byte offset into a string and `it` sits just past it.
@@ -112,11 +110,11 @@ pub enum Token {
 	// literals
 	#[regex(r"(true|false)", |lex| lex.slice().parse().ok())]
 	Bool(bool),
-	#[regex(r"[0-9][0-9_]*", |lex| lex.slice().replace('_', "").parse().ok())]
-	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_radix(lex, 16))]
-	#[regex(r"0[bB][01][01_]*", |lex| parse_radix(lex, 2))]
-	#[regex(r"0[oO][0-7][0-7_]*", |lex| parse_radix(lex, 8))]
-	Int(i64),
+	#[regex(r"[0-9][0-9_]*", |lex| parse_radix(lex.slice(), 10))]
+	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_radix(&lex.slice()[2..], 16))]
+	#[regex(r"0[bB][01][01_]*", |lex| parse_radix(&lex.slice()[2..], 2))]
+	#[regex(r"0[oO][0-7][0-7_]*", |lex| parse_radix(&lex.slice()[2..], 8))]
+	Int(i128),
 	#[regex(r"'([^'\\]|\\.)*'", lex_rune)]
 	Rune(i64),
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
@@ -346,7 +344,8 @@ impl fmt::Display for Token {
 			Token::BlockComment | Token::Comment | Token::DocBreak => write!(f, "comment"),
 			Token::Doc(_) => write!(f, "doc"),
 			Token::Bool(b) => write!(f, "{b}"),
-			Token::Int(n) | Token::Rune(n) => write!(f, "{n}"),
+			Token::Int(n) => write!(f, "{n}"),
+			Token::Rune(n) => write!(f, "{n}"),
 			Token::Float(s) => write!(f, "{s}"),
 			Token::String(s) => write!(f, "\"{s}\""),
 			Token::RawString(s) => write!(f, "r\"{s}\""),

@@ -155,6 +155,40 @@ pub extern "C" fn write(tag: i64, bits: i64, width: i64, quote: i64, sink: i64) 
 	emit(sink, &s);
 }
 
+#[unsafe(export_name = "oi_write_wide")]
+pub extern "C" fn write_wide(n: i128, signed: i64, sink: i64) {
+	let s = if signed != 0 {
+		n.to_string()
+	} else {
+		(n as u128).to_string()
+	};
+	emit(sink, &s);
+}
+
+// Handle ops cranelift doesn't do for us.
+#[unsafe(export_name = "oi_div_wide")]
+pub extern "C" fn div_wide(a: i128, b: i128, signed: i64, rem: i64) -> i128 {
+	if b == 0 {
+		fatal!("division by zero");
+	}
+	match (signed != 0, rem != 0) {
+		(true, false) => a.wrapping_div(b),
+		(true, true) => a.wrapping_rem(b),
+		(false, false) => ((a as u128) / (b as u128)) as i128,
+		(false, true) => ((a as u128) % (b as u128)) as i128,
+	}
+}
+
+#[unsafe(export_name = "oi_wide_to_float")]
+pub extern "C" fn wide_to_float(a: i128, signed: i64) -> f64 {
+	if signed != 0 { a as f64 } else { a as u128 as f64 }
+}
+
+#[unsafe(export_name = "oi_float_to_wide")]
+pub extern "C" fn float_to_wide(x: f64, signed: i64) -> i128 {
+	if signed != 0 { x as i128 } else { x as u128 as i128 }
+}
+
 // Write the ", " separator before every element but the first.
 #[unsafe(export_name = "oi_write_sep")]
 pub extern "C" fn write_sep(i: i64, sink: i64) {

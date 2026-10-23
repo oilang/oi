@@ -446,7 +446,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// An rc'd `any`, with typeid and payload.
 	pub(super) fn any_box(&mut self, id: Value, val: Value, typ: &Typ) -> Value {
 		let desc = self.any_desc(typ);
-		let boxp = self.rc_alloc(16, &[desc]);
+		let boxp = self.rc_alloc(8 + elem_size(typ).max(8), &[desc]);
 		let val = self.copy_in(val, typ);
 		self.store_slots(boxp, &[id, val]);
 		self.temp(boxp, &Typ::Any);
@@ -456,8 +456,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// An `any` lent to a read-only param, built in the frame around the caller's value.
 	pub(super) fn lent_any(&mut self, arg: &Spanned<Expr>) -> Result<Value, Diagnostic> {
 		let (val, typ) = self.lower(arg, Some(&Typ::Any))?;
-		// a move-only payload can't clone, so it still moves into a heap box
-		if typ == Typ::Any || self.is_affine(&typ) {
+		// box move-only and large values on the heap
+		if typ == Typ::Any || self.is_affine(&typ) || elem_size(&typ) > 8 {
 			self.move_resource(arg, &typ)?;
 			return Ok(self.coerce(val, &typ, &Typ::Any, arg.1)?.0);
 		}

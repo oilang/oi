@@ -191,8 +191,8 @@ impl Typ {
 		}
 	}
 
-	// Bounds of an int type, as i64 bits.
-	pub fn int_bounds(&self) -> Option<(i64, i64)> {
+	// Bounds of an int type, as i128 bits.
+	pub fn int_bounds(&self) -> Option<(i128, i128)> {
 		match self {
 			Typ::Int(width) => Some((int_min(*width), int_max(*width))),
 			Typ::UInt(width) => Some((0, uint_max(*width))),
@@ -417,7 +417,7 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 		Typ::Array(e) => TypeExpr::Array(Box::new(type_expr(e)?)),
 		Typ::FixedArray(e, n) => TypeExpr::FixedArray(
 			Box::new(type_expr(e)?),
-			Box::new((Expr::Int(*n as i64), Span::default())),
+			Box::new((Expr::Int(*n as i128), Span::default())),
 		),
 		Typ::Map(k, v) => TypeExpr::Map(Box::new(type_expr(k)?), Box::new(type_expr(v)?)),
 		Typ::Tuple(fs) => TypeExpr::Tuple(
@@ -469,17 +469,17 @@ pub(crate) fn access_wrap(access: Access, typ: Typ) -> Typ {
 	}
 }
 
-// Bounds of a `width`-bit int, as i64 bits.
-pub(crate) fn int_min(width: u16) -> i64 {
-	i64::MIN >> (64 - width)
+// Bounds of a `width`-bit int, as i128 bits.
+pub(crate) fn int_min(width: u16) -> i128 {
+	i128::MIN >> (128 - width)
 }
 
-pub(crate) fn int_max(width: u16) -> i64 {
-	i64::MAX >> (64 - width)
+pub(crate) fn int_max(width: u16) -> i128 {
+	i128::MAX >> (128 - width)
 }
 
-pub(crate) fn uint_max(width: u16) -> i64 {
-	(u64::MAX >> (64 - width)) as i64
+pub(crate) fn uint_max(width: u16) -> i128 {
+	(u128::MAX >> (128 - width)) as i128
 }
 
 pub(crate) fn oi_symbol(name: &str) -> String {
@@ -512,7 +512,8 @@ pub(crate) fn cl_int_for_width(w: u16) -> types::Type {
 		1..=8 => types::I8,
 		9..=16 => types::I16,
 		17..=32 => types::I32,
-		_ => types::I64,
+		33..=64 => types::I64,
+		_ => types::I128,
 	}
 }
 

@@ -1,5 +1,5 @@
 use super::{P, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, spanned};
-use crate::ast::{Access, Expr, Param, Spanned, TypeExpr};
+use crate::ast::{Access, Expr, Param, Spanned, TypeExpr, int_word};
 use crate::lexer::Token;
 
 use chumsky::prelude::*;
@@ -12,7 +12,10 @@ pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
 
 // Generic type params.
 pub(super) fn type_args<'token, I: Tokens<'token>>(te: P<'token, I, TypeExpr>) -> P<'token, I, Vec<Spanned<TypeExpr>>> {
-	bracket(list1(spanned(select! { Token::Int(n) => TypeExpr::Const(n) }.or(te)))).boxed()
+	bracket(list1(spanned(
+		select! { Token::Int(n) if int_word(n).is_some() => TypeExpr::Const(n as i64) }.or(te),
+	)))
+	.boxed()
 }
 
 // Can be settled by the parser without the resolver.

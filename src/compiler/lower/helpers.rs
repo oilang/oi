@@ -162,6 +162,16 @@ impl<M: Module> Translator<'_, M> {
 		self.b.ins().load(cl_type(typ, self.int), MemFlags::new(), base, off)
 	}
 
+	// cranelift has no 128-bit immediates
+	pub(super) fn int_const(&mut self, ty: types::Type, n: i128) -> Value {
+		if ty != types::I128 {
+			return self.b.ins().iconst(ty, n as i64);
+		}
+		let lo = self.b.ins().iconst(types::I64, n as i64);
+		let hi = self.b.ins().iconst(types::I64, (n >> 64) as i64);
+		self.b.ins().iconcat(lo, hi)
+	}
+
 	pub(super) fn st(&mut self, base: Value, off: i32, val: Value) {
 		self.b.ins().store(MemFlags::new(), val, base, off);
 	}
@@ -175,7 +185,8 @@ impl<M: Module> Translator<'_, M> {
 
 	// A fresh frame block holding the given values.
 	pub(super) fn frame_slots(&mut self, vals: &[Value]) -> Value {
-		let ptr = self.stack_slot(vals.len() as u32 * 8);
+		let size = vals.iter().map(|v| self.b.func.dfg.value_type(*v).bytes().max(8)).sum();
+		let ptr = self.stack_slot(size);
 		self.store_slots(ptr, vals);
 		ptr
 	}

@@ -222,6 +222,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_frag(runtime::Tag::UInt, n, 0, quote, sink);
 			}
 
+			Typ::Int(128) | Typ::UInt(128) => {
+				let signed = self.b.ins().iconst(self.int, matches!(typ, Typ::Int(_)) as i64);
+				let sink = self.b.ins().iconst(self.int, sink as i64);
+				self.rt_call("write_wide", &[val, signed, sink]);
+			}
+
 			_ => {
 				let tag = match typ {
 					Typ::CStr => runtime::Tag::UInt,

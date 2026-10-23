@@ -37,7 +37,7 @@ impl<'d> Infer<'d> {
 			(TypeExpr::Array(elem) | TypeExpr::Variadic(elem), Typ::Array(found)) => self.unify(elem, found),
 			(TypeExpr::FixedArray(elem, len), Typ::FixedArray(found, found_len)) => {
 				match &len.0 {
-					Expr::Int(len) if *len != *found_len as i64 => return Ok(()),
+					Expr::Int(len) if *len != *found_len as i128 => return Ok(()),
 					Expr::Ident(param) => self.unify(&TypeExpr::Name(param.clone()), &Typ::Const(*found_len as i64))?,
 					_ => {}
 				}

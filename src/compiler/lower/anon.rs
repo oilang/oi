@@ -55,6 +55,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			check_reserved(name, span)?;
 
 			let local = self.local(name, span.into_range())?;
+			word_slot(local.typ.clone(), span)?;
 			if isolated && boxed {
 				let msg = format!("`mut {name}` can't cross threads");
 				return fail(msg, span, "it shares the binding");

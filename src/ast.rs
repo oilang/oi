@@ -10,7 +10,7 @@ pub type Bounds<'a> = (Option<&'a Spanned<Expr>>, Option<&'a Spanned<Expr>>, boo
 pub enum Expr {
 	// literals
 	Bool(bool),
-	Int(i64),
+	Int(i128),
 	Rune(i64),
 	Float(f64),
 	String(String),
@@ -761,6 +761,11 @@ impl UseItem {
 	pub fn remote(&self) -> &Spanned<String> {
 		self.rename_of.as_ref().unwrap_or(&self.local)
 	}
+}
+
+// An int literal as a 64-bit word.
+pub fn int_word(n: i128) -> Option<i64> {
+	i64::try_from(n).ok().or_else(|| u64::try_from(n).ok().map(|bits| bits as i64))
 }
 
 // `name` or `name.field`
