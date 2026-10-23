@@ -394,7 +394,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		&mut self,
 		name: &str,
 		params: &[FnParam],
-		recv: Option<Value>,
+		mut recv: Option<Value>,
 		recv_expr: Option<&Spanned<Expr>>,
 		args: &[Spanned<Expr>],
 		span: Span,
@@ -433,7 +433,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				return arity_err(&format!("`{name}`"), want, args.len(), "argument", span);
 			}
 		}
+
 		let slots: Vec<_> = named.unwrap_or_else(|| (0..names.len()).map(|i| args.get(i)).collect());
+		let mut lent = Vec::new();
 		match recv_expr {
 			Some(re) => {
 				self.check_args(&access, recv_expr, &slots)?;
@@ -441,10 +443,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.move_out(re, access_peel(&params[0].typ))?;
 					self.untemp(recv.unwrap());
 				}
+				// `mut self` without inline slots
+				if access[0] == Access::Mut && access_peel(&params[0].typ).slots().is_none() {
+					let (cell, _, entry) = self.arg_value(Access::Mut, re, None)?;
+					lent.extend(entry);
+					recv = Some(cell);
+				}
 			}
 			None => self.check_args(&access[self_n..], None, &slots)?,
 		}
-		let mut lent = Vec::new();
+
 		let mut given: Vec<Option<TypedVal>> = Vec::with_capacity(slots.len());
 		for (i, p) in params.iter().enumerate().skip(self_n) {
 			given.push(match slots[i - self_n] {
@@ -459,6 +467,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => None,
 			});
 		}
+
 		let vals = self.fill_args(name, params, recv.into_iter().collect(), &slots, given, span)?;
 		Ok((vals, lent))
 	}

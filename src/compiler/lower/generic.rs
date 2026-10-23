@@ -156,6 +156,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
+		let (mut lent, mut given) = (Vec::new(), Vec::new());
 		if let Some(((rval, rtyp), rexpr)) = &recv {
 			let rparam = declared.next().unwrap();
 			infer.bind(&rparam.typ, rtyp, span)?;
@@ -163,9 +164,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.move_out(rexpr, rtyp)?;
 				self.untemp(*rval);
 			}
-			vals.push(*rval);
+			match rparam.access == Access::Mut && rtyp.slots().is_none() {
+				true => {
+					let (cell, _, entry) = self.arg_value(Access::Mut, rexpr, None)?;
+					lent.extend(entry);
+					vals.push(cell);
+				}
+				false => vals.push(*rval),
+			}
 		}
-		let (mut lent, mut given) = (Vec::new(), Vec::new());
 		for ((arg, param), &access) in slots.iter().zip(declared).zip(&access[self_n..]) {
 			let Some(arg) = arg else {
 				given.push(None);

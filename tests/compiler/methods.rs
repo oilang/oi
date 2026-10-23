@@ -69,6 +69,34 @@ fn qualified_mut_self() {
 }
 
 #[test]
+fn scalar_mut_self() {
+	let src = indoc! {"
+		int :< {
+			bump :: fn(mut self) do self += 1
+			add[U] :: fn(mut self, by: U) do self += by
+		}
+		Down :: enum { none some(int) }
+		Down : Iterator[int] < {
+			next :: fn(mut self) ?int {
+				match self {
+					.none => none,
+					.some.(n) => {
+						self = if n > 1 do Down.some.(n - 1) else do Down.none
+						n
+					}
+				}
+			}
+		}
+		n := 1
+		n.bump()
+		n.add(3)
+		loop i in Down.some.(2) { n += i }
+		print(n)
+	"};
+	check(src, "8");
+}
+
+#[test]
 fn self_outside_impl() {
 	fail("Self.{}", "no enclosing impl");
 }

@@ -2218,7 +2218,7 @@ impl<M: Module> Compiler<M> {
 			}
 			let mutable = *access == Access::Mut;
 			let local = Local {
-				boxed: mutable && !(i == 0 && def.self_type == Some(typ.key().as_str())),
+				boxed: mutable && !(i == 0 && def.self_type == Some(typ.key().as_str()) && typ.slots().is_some()),
 				..Local::plain(var, typ.clone(), mutable)
 			};
 			trans.vars.insert(name.clone(), local.clone());

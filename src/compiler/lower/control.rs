@@ -1083,6 +1083,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let opt = next.ret.clone();
 
+		// `mut self` without inline slots
+		let it = match next.access[0] == Access::Mut && it_typ.slots().is_none() {
+			true => self.frame_slots(&[it]),
+			false => it,
+		};
+
 		let (header, exit) = (self.b.create_block(), self.b.create_block());
 		self.b.ins().jump(header, &[]);
 
