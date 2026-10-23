@@ -208,12 +208,11 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.boxed();
 
 	// a lexer error token
-	let bad = select! { Token::Error(text) => text }
-		.try_map(|text, span| {
-			let brace = text.starts_with('"') && text.contains(['{', '}']);
-			let hint = if brace { ", write `{{` or `}}` for a literal brace" } else { "" };
-			Err(Rich::custom(span, format!("unexpected character `{text}`{hint}")))
-		});
+	let bad = select! { Token::Error(text) => text }.try_map(|text, span| {
+		let brace = text.starts_with('"') && text.contains(['{', '}']);
+		let hint = brace.then_some(", write `{{` or `}}` for a literal brace").unwrap_or_default();
+		Err(Rich::custom(span, format!("unexpected character `{text}`{hint}")))
+	});
 
 	// grouping before tuple rule to avoid making 1ples
 	let group = paren(p.place.clone().or(p.expr.clone()));

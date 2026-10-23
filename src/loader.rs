@@ -593,6 +593,7 @@ impl Loader {
 				self.program.consts.insert(name.clone(), (Expr::Int(v.into()), span));
 				continue;
 			}
+
 			let mut assoc_types = vec![];
 			match &mut item.0 {
 				Expr::Fn { name, .. }
@@ -685,6 +686,10 @@ impl Loader {
 					fills,
 					..
 				} => {
+					// `u64` is keyed as `uint`
+					if let Some(Ok(sized)) = sized(typ, span) {
+						*typ = sized.key();
+					}
 					if !main
 						&& !crate::compiler::TypeCtx::builtin_type(typ)
 						&& type_params.iter().all(|p| p.name != *typ)
@@ -703,6 +708,7 @@ impl Loader {
 				}
 				_ => {}
 			}
+
 			m.items.push(item);
 			m.items.append(&mut assoc_types);
 		}

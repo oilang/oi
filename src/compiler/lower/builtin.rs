@@ -11,6 +11,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		// user fns shadow builtins
+		let qualified = self.qualify(name);
+		if self.funcs.contains_key(&*qualified) || self.world.generic_fns.contains_key(&*qualified) {
+			return Ok(None);
+		}
+
 		match name {
 			"error" => {
 				if args.len() != 1 {

@@ -260,3 +260,13 @@ fn named_result_cannot_shadow_a_param() {
 	"};
 	fail(src, "duplicate argument `n`");
 }
+
+#[test]
+fn user_fn_shadows_builtin() {
+	let src = indoc! {"
+		error :: fn(code: int) int { code + 1 }
+		type[T] :: fn(x: T) T { x }
+		(error(41), type(7))
+	"};
+	check(src, "(42, 7)");
+}
