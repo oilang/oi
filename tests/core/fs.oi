@@ -24,4 +24,6 @@ test! "path" {
 	rc : fs.Path : "/.rc"
 	assert! rc.parent() == fs.Path.("/") && rc.ext() == none
 	assert! fs.exists(p"fs.oi")
+	tmp :: "/tmp"
+	assert! !fs.exists("{tmp}/oi_nope")
 }

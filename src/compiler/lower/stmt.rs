@@ -253,6 +253,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				Expr::Return(value) => {
 					// a bare `return` reads its named result after defers run, `$` before
+					let owned = self.scopes.clone();
 					let held = match value.as_deref() {
 						Some(e @ (Expr::Ident(_), span)) if *span == stmt.1 => {
 							let dollar = self.expr(e)?;
@@ -282,6 +283,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(defers) = held {
 						self.defers = defers;
 					}
+					self.scopes = owned;
 					return Ok(None);
 				}
 
@@ -480,7 +482,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The first return fixes the fn's type, and later returns must agree.
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
-		if self.deferring {
+		if self.deferring.is_some() {
 			return fail(
 				"cannot return from a defer body",
 				span,

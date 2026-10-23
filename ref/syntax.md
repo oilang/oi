@@ -192,6 +192,9 @@ lo, hi := 0 # essentially `hi := lo`
 # `Linear` types never implicitly drop, every path must move it into a consumer
 tx := db.begin()
 tx.commit() # `commit :: fn(move self)`, and only Tx's own methods may `discard self`
+# a plain `defer` may consume it, since it runs on every exit
+tx2 := db.begin()
+defer tx2.commit()
 
 # implicit return
 
@@ -991,7 +994,7 @@ main :: fn() {
 	countdown := 10..9..0
 
 	# paths
-	# `fs.Path` is `/`-separated, and string literals coerce into it
+	# `fs.Path` is `/`-separated, and any string arg converts through its `From[string]`
 	# `p"..."` resolves against the dir of the file it's written in, at compile time
 	hero := fs.read_bytes(p"art/hero.png")
 	conf : fs.Path : p"conf"

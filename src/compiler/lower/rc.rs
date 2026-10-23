@@ -12,6 +12,7 @@ pub(crate) struct Defer {
 	pub(crate) when: When,
 	pub(crate) armed: Option<Variable>,
 	pub(crate) label: Option<String>,
+	pub(crate) depth: usize,
 }
 
 impl<'a, M: Module> Translator<'a, M> {
@@ -514,6 +515,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Emit releases for every scope deeper than `depth`, running its defers first.
 	pub(super) fn release_scopes(&mut self, depth: usize, ret: Option<TypedVal>) -> Result<(), Diagnostic> {
+		let owned = self.scopes.clone();
 		for s in (depth..self.scopes.len()).rev() {
 			for i in (0..self.defers[s].len()).rev() {
 				let d = self.defers[s][i].clone();
@@ -539,6 +541,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 		}
+		self.scopes = owned;
 		Ok(())
 	}
 
@@ -556,6 +559,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			when,
 			armed,
 			label: label.clone(),
+			depth: self.scopes.len() - 1,
 		});
 		self.unit_value()
 	}
@@ -572,6 +576,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// `$` is the returned value / error.
 	pub(super) fn run_defer(&mut self, mut d: Defer, ret: Option<&TypedVal>) -> Result<(), Diagnostic> {
+		// only a defer that always runs may move its scope's locals
+		let owner = if d.when == When::Always && d.armed.is_none() {
+			d.depth
+		} else {
+			usize::MAX
+		};
+
 		// unarmed paths never def the flag, so it reads 0. disarm for the next loop iteration
 		if let Some(flag) = d.armed.take() {
 			let armed = self.b.use_var(flag);
@@ -610,7 +621,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let saved = (
 			std::mem::replace(&mut self.vars, d.vars.into()),
 			std::mem::take(&mut self.loops), // `break` must not reach an enclosing loop
-			std::mem::replace(&mut self.deferring, true),
+			self.deferring.replace(owner),
 			std::mem::replace(&mut self.dollar, dollar),
 		);
 		let out = self.scoped(|s| s.block_tail(std::slice::from_ref(&d.body), None).map(|_| Some(s.unit_value())));
@@ -623,20 +634,17 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Transfer ownership of a local binding.
 	pub fn move_local(&mut self, name: &str, local: &Local, span: Range<usize>) -> Result<Value, Diagnostic> {
-		if self.deferring {
+		let depth = self.scopes.iter().position(|s| s.iter().any(|(v, _)| *v == local.var));
+		if self.deferring.is_some_and(|owner| depth.is_some_and(|d| d != owner)) {
 			return Err(
 				Diagnostic::new("cannot move a local out of a defer body", span).with_label("runs on every exit")
 			);
 		}
 		if self.needs_release(&local.typ) {
-			let depth = self
-				.scopes
-				.iter()
-				.position(|s| s.iter().any(|(v, _)| *v == local.var))
-				.ok_or_else(|| {
-					Diagnostic::new(format!("cannot move `{name}`, it is borrowed here"), span.clone())
-						.with_label("only an owned binding can be moved")
-				})?;
+			let depth = depth.ok_or_else(|| {
+				Diagnostic::new(format!("cannot move `{name}`, it is borrowed here"), span.clone())
+					.with_label("only an owned binding can be moved")
+			})?;
 			if let Some(frame) = self.loops.iter().rfind(|f| f.top.is_some())
 				&& depth < frame.depth
 			{

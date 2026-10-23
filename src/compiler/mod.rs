@@ -2170,7 +2170,7 @@ impl<M: Module> Compiler<M> {
 			unsafely: 0,
 			scopes: vec![vec![]],
 			defers: vec![vec![]],
-			deferring: false,
+			deferring: None,
 			temps: HashMap::new(),
 			self_type: def.self_type.map(str::to_owned),
 			is_main: def.is_main,

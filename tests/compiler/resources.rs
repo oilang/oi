@@ -513,6 +513,11 @@ fn linear_values_end_only_through_a_consumer() {
 	check([TX, "main :: fn() { t := Tx.{id = 1}; t.commit() }"], "commit 1");
 	let early = "f :: fn(b: bool) { t := Tx.{id = 1}; if b { return }; t.commit() }";
 	fail([TX, early, "f(false)"], "`t` is linear and must be consumed");
+	let guard = "f :: fn(b: bool) { t := Tx.{id = 1}; defer t.commit(); if b { return }; print(\"tail\") }";
+	check(
+		[TX, guard, "main :: fn() { f(true); f(false) }"],
+		"commit 1\ntail\ncommit 1",
+	);
 	fail(
 		[TX, "main :: fn() { discard Tx.{id = 1} }"],
 		"only `Tx`'s own methods can discard it",

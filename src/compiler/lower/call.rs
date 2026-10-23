@@ -500,6 +500,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						)
 					}
 				};
+				let from = (&typ != want && self.claims(want, "core::From"))
+					.then(|| self.find_fill(&format!("{want}.from"), 0, &typ))
+					.flatten();
+				let (val, typ) = from.map_or((val, typ), |sig| self.emit_call(&sig, &[val]));
 				if self.param_access(p) == Access::Move {
 					self.untemp(val);
 				}
