@@ -52,6 +52,7 @@ fn type_mismatch() {
 fn unexpected_token() {
 	fail("2 +", "expected");
 	fail(r"\", r"unexpected character `\`");
+	fail(r#"print("{")"#, "write `{{` or `}}` for a literal brace");
 }
 
 #[test]

@@ -6,6 +6,9 @@ name = "oi"
 version = "0.2.0"
 edition = "2024"
 
+[profile.dev.package."*"]
+opt-level = 3
+
 [dependencies]
 ariadne = "0.6.0"
 chumsky = { version = "0.13.0", features = ["pratt"] }

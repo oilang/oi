@@ -22,6 +22,13 @@ Bits[E] : Contains[E] < {
 	}
 }
 
+Bits[E] : IndexAssign[E, ()] < {
+	index_assign :: fn(mut self; x: E, v: ()) {
+		i :: x.index()
+		self.words[i / 64] |= u64.(1) << i % 64
+	}
+}
+
 Bits[E] : BitOr < {
 	bitor :: fn(self, other: Self) Self {
 		.{ self.words | other.words }

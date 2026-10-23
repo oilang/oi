@@ -66,3 +66,9 @@ test! "enum sets past 64 variants" {
 	s: [Wide]() = .[.v1 .v69]
 	assert! .v69 in s && !(.v5 in s) && (s | .[.v65]).len() == 3 && (s - .[.v1]).str() == "{{.v69}}" && (!s).len() == 68
 }
+
+test! "enum set insert" {
+	s: [Perm]() = .[]
+	s[.write] = ()
+	assert! .write in s && s.len() == 1
+}
