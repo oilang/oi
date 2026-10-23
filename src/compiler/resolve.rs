@@ -720,7 +720,7 @@ impl TypeCtx<'_> {
 						| Typ::TupleStruct(..)
 						| Typ::Str | Typ::Enum(_)
 						| Typ::Sum(..) | Typ::Tuple(_)
-						| Typ::Ref(_)
+						| Typ::Ref(_) | Typ::Trait(_)
 				);
 				if p.access == Access::Mut && !lendable {
 					let msg = "this type can't be a `mut` parameter";

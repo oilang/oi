@@ -460,6 +460,22 @@ fn dyn_trait_param_and_default() {
 }
 
 #[test]
+fn mut_trait_objects_write_through() {
+	let src = indoc! {r#"
+		Sink :: trait { put: fn(mut self; s: string) }
+		Log :: struct { lines: []string }
+		Log : Sink < { put :: fn(mut self; s: string) do self.lines << s }
+		Wrap :: struct { log: Log }
+		put :: fn(mut s: Sink) do s.put("a")
+		w := Wrap.{Log.{[]}}
+		put(mut w.log)
+		print(w.log.lines)
+	"#};
+	check(src, r#"["a"]"#);
+	assert_clean(src);
+}
+
+#[test]
 fn trait_typed_struct_field() {
 	let src = indoc! {r#"
 		Pen :: struct { pet: Animal }

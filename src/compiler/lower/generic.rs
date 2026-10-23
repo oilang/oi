@@ -167,7 +167,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let types = self.types.with_type_params(&infer.subst).with_scope(self.home_scope(def));
 			let want = types.resolve(&param.typ, arg.1).ok();
 			let (val, typ, entry) = self.arg_value(access, arg, want.as_ref())?;
-			lent.extend(entry.map(|e| (val, e)));
+			lent.extend(entry);
 			infer.bind(&param.typ, &typ, arg.1)?;
 			given.push(Some((val, typ)));
 		}

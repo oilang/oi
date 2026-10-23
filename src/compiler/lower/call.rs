@@ -71,6 +71,9 @@ pub(super) fn arg_slots<'e>(
 // Arg values and what they lend.
 type CallArgs = (Vec<Value>, Vec<(Value, Lent)>);
 
+// An arg value, its type, and the cell it lends.
+type ArgValue = (Value, Typ, Option<(Value, Lent)>);
+
 // How a value call reaches its code.
 pub(super) enum Callee {
 	// a fn value
@@ -450,7 +453,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if p.escapes {
 						closure_escape(&typ, arg.1.into_range(), &format!("passed to `{name}`, which keeps it"))?;
 					}
-					lent.extend(entry.map(|e| (val, e)));
+					lent.extend(entry);
 					Some((val, typ))
 				}
 				None => None,
@@ -537,11 +540,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		access: Access,
 		arg: &Spanned<Expr>,
 		want: Option<&Typ>,
-	) -> Result<(Value, Typ, Option<Lent>), Diagnostic> {
+	) -> Result<ArgValue, Diagnostic> {
 		let arg = arg_inner(arg);
 		if access == Access::Mut {
 			let (cell, typ, entry) = self.lend_mut(arg)?;
-			return Ok((cell, typ, Some(entry)));
+			if let Some(to @ Typ::Trait(tn)) = want
+				&& matches!(typ, Typ::Struct(..))
+				&& self.claims(&typ, tn)
+			{
+				let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
+				let (slot, data) = (self.stack_slot(24), self.ld_word(cell, 0));
+				let obj = self.b.ins().iadd_imm(slot, 8);
+				self.store_slots(slot, &[obj, vtable, data]);
+				return Ok((slot, to.clone(), Some((cell, entry))));
+			}
+			return Ok((cell, typ, Some((cell, entry))));
 		}
 		// a read-only `any` or `..any` varargs borrows the caller's values from the frame
 		match (access, want, &arg.0) {
