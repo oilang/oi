@@ -2,7 +2,8 @@
 
 // traits
 pub(crate) const EQ: &str = "core::Eq";
-pub(crate) const ORD: &str = "core::Ord";
+pub(crate) const PARTIAL_CMP: &str = "core::PartialCmp";
+pub(crate) const CMP: &str = "core::Cmp";
 pub(crate) const NEG: &str = "core::Neg";
 pub(crate) const ADD: &str = "core::Add";
 pub(crate) const SUB: &str = "core::Sub";

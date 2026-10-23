@@ -101,15 +101,15 @@ fn default_value_args() {
 #[test]
 fn bounds() {
 	let src = indoc! {"
-		biggest[T: Ord] :: fn(a: T, b: T) T {
+		biggest[T: Cmp] :: fn(a: T, b: T) T {
 			if a > b { a } else { b }
 		}
 		biggest(3, 7)
 	"};
 	check(src, "7");
-	check(["Ord :: trait {}", "int :< Ord", src], "7");
-	fail(["Ord :: trait {}", src], "does not claim");
-	fail(src.replace("Ord", "Odr").as_str(), "unknown trait");
+	check(["Cmp :: trait {}", "int :< Cmp", src], "7");
+	fail(["Cmp :: trait {}", src], "does not claim");
+	fail(src.replace("Cmp", "Cpm").as_str(), "unknown trait");
 }
 
 #[test]

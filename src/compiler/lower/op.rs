@@ -709,7 +709,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						|| l.keyed().is_some()
 						|| matches!(l, Typ::Array(_) | Typ::FixedArray(..) | Typ::Map(..))) =>
 			{
-				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedLessThanOrEqual);
+				let reversed = matches!(icc, IntCC::SignedGreaterThan | IntCC::SignedGreaterThanOrEqual);
 				let negated = matches!(
 					icc,
 					IntCC::NotEqual | IntCC::SignedLessThanOrEqual | IntCC::SignedGreaterThanOrEqual
@@ -719,17 +719,22 @@ impl<'a, M: Module> Translator<'a, M> {
 					let eq = self.emit_val_eq(lv, rv, l, &lt.to_string(), span)?;
 					self.b.ins().icmp_imm(cc, eq, 0)
 				} else if l.nominal().is_some()
-					&& let Some(sig) = self.fill(l, role::ORD, "lt", 2)
+					&& let Some(sig) = self.fill(l, role::PARTIAL_CMP, "partial_cmp", 2)
 				{
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };
-					let less = self.emit_call(&sig, &[a, b]).0;
-					self.b.ins().icmp_imm(cc, less, 0)
+					let (order, opt) = self.emit_call(&sig, &[a, b]);
+					let inner = self.types.option_inner(&opt).expect("partial_cmp returns ?Ordering");
+					let some = self.enum_tag(&opt, order);
+					let some = self.b.ins().icmp_imm(IntCC::NotEqual, some, 0);
+					let rank = self.opt_payload(order, &opt, &inner, 8);
+					let hit = self.b.ins().icmp_imm(IntCC::SignedLessThan, rank, 1 + negated as i64);
+					self.b.ins().band(some, hit)
 				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || rc::opt_niche(l)) {
 					self.b.ins().icmp(icc, lv, rv)
 				} else {
 					let claimable = matches!(l, Typ::Struct(..)) || matches!(l, Typ::Enum(n) if sugar(n).is_none());
 					let label = match claimable {
-						true => format!("claim `Ord` for `{lt}` to define ordering"),
+						true => format!("claim `Cmp` for `{lt}` to define ordering"),
 						false => "only `==` and `!=` are supported".into(),
 					};
 					return fail(format!("cannot compare {lt} and {rt}"), span, label);

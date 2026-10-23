@@ -48,14 +48,14 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 		tn,
 		role::NEG | role::ADD | role::SUB | role::MUL | role::DIV | role::MOD | role::POW
 	);
-	if !(arith || matches!(tn, role::EQ | role::ORD) || role::BITWISE.contains(&tn)) {
+	if !(arith || matches!(tn, role::EQ | role::CMP | role::PARTIAL_CMP) || role::BITWISE.contains(&tn)) {
 		return false;
 	}
 	match typ {
 		Int(_) => true,
 		UInt(_) | ISize | USize => tn != role::NEG,
 		Float(_) => tn != role::MOD && !role::BITWISE.contains(&tn),
-		Bool | Atom => matches!(tn, role::EQ | role::ORD),
+		Bool | Atom => matches!(tn, role::EQ | role::CMP | role::PARTIAL_CMP),
 		Str => matches!(tn, role::EQ | role::ADD),
 		_ => false,
 	}

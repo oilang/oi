@@ -925,7 +925,7 @@ fn generic_claims() {
 		Box[T] : Add < {
 			add :: fn(self, o: Self) Self { Box.{ v = self.v + o.v } }
 		}
-		Box[T: Ord] : Eq < {
+		Box[T: Cmp] : Eq < {
 			eq :: { !(self.v < $.1.v) && !($.1.v < self.v) }
 		}
 		Foo :: struct { x: int }

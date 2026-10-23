@@ -620,9 +620,14 @@ Point : Neg < {
 }
 assert!(-Point.{1, 2} == Point.{-1, -2})
 
-# `Ord` orders a type with a single `lt`. `< > <= >=` all derive from it
-Frac : Ord < {
-	lt :: fn(self, other: Self) bool { self.num * other.den < other.num * self.den }
+# `< > <= >=` all derive from `PartialCmp`, where `none` means incomparable and makes each false
+# a total order claims `Cmp`, whose defaults fill `PartialCmp` and `Eq` too
+Frac : Cmp < {
+	cmp :: fn(self, other: Self) Ordering {
+		lhs :: self.num * other.den
+		rhs :: other.num * self.den
+		if lhs < rhs { .less } else if lhs > rhs { .greater } else { .equal }
+	}
 }
 assert!(Frac.{1, 3} < Frac.{1, 2})
 
@@ -653,8 +658,10 @@ assert!(Bag.{ items = [1 2 3] }[1] == 2)
 
 # enums can claim operator traits too
 Dir :: enum { up, down }
-Dir : Ord < {
-	lt :: fn(self, other: Self) bool { other == .up }
+Dir : PartialCmp < {
+	partial_cmp :: fn(self, other: Self) ?Ordering {
+		if self == other { .equal } else if self == .down { .less } else { .greater }
+	}
 }
 assert!(Dir.down < Dir.up)
 
@@ -786,11 +793,13 @@ Range : Iterator < {
 ## supertraits
 
 # require another trait alongside this one
-# every Ord is also an Eq
-Ord : Eq : trait {
+# every Cmp is also a PartialCmp and an Eq
+Cmp : PartialCmp, Eq : trait {
 	cmp: fn(self, other: Self) Ordering
+	partial_cmp :: fn(self, other: Self) ?Ordering do self.cmp(other)
+	eq :: fn(self, other: Self) bool do self.cmp(other) == .equal
 }
-max[T: Ord] :: fn(a: T, b: T) T {
+max[T: Cmp] :: fn(a: T, b: T) T {
 	if a.cmp(b) == .greater { a } else { b }
 }
 
@@ -2451,7 +2460,7 @@ main :: fn() {
 	Matrix[R, C: int] :: struct { cells: [R][C]float }
 	threes := repeat[int, 3](0)
 	# generics can have trait guards
-	max[T: Ord] :: fn(a: T, b: T) T {
+	max[T: Cmp] :: fn(a: T, b: T) T {
 		if a > b { a } else { b }
 	}
 

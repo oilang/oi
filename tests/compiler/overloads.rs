@@ -53,11 +53,15 @@ fn eq_is_structural_by_default() {
 }
 
 #[test]
-fn orderings_derive_from_ord() {
+fn orderings_derive_from_cmp() {
 	let src = indoc! {"
 		Frac :: struct { num: int, den: int }
-		Frac : Ord < {
-			lt :: fn(self, other: Self) bool { self.num * other.den < other.num * self.den }
+		Frac : Cmp < {
+			cmp :: fn(self, other: Self) Ordering {
+				lhs :: self.num * other.den
+				rhs :: other.num * self.den
+				if lhs < rhs { .less } else if lhs > rhs { .greater } else { .equal }
+			}
 		}
 		a :: Frac.{1, 3}
 		b :: Frac.{1, 2}
@@ -65,6 +69,15 @@ fn orderings_derive_from_ord() {
 		print(a > b, a >= b, a <= a, a >= a)
 	"};
 	check(src, ["true true true true", "false false true true"]);
+
+	let src = indoc! {"
+		P :: struct { x: int }
+		P : PartialCmp < {
+			partial_cmp :: fn(self, o: Self) ?Ordering { if self.x == o.x { .equal } else { none } }
+		}
+		print(P.{1} < P.{2}, P.{1} <= P.{1}, P.{1} >= P.{2})
+	"};
+	check(src, "false true false");
 }
 
 #[test]
@@ -73,7 +86,7 @@ fn unordered_struct_is_rejected() {
 		Point :: struct { x: int, y: int }
 		Point.{1, 2} < Point.{3, 4}
 	"};
-	fail(src, "claim `Ord` for `Point` to define ordering");
+	fail(src, "claim `Cmp` for `Point` to define ordering");
 }
 
 #[test]
@@ -115,7 +128,7 @@ fn enum_claims_beat_structural_defaults() {
 	let src = indoc! {"
 		Rev :: enum { a, b }
 		Rev : Eq < { eq :: fn(self, other: Self) bool { true } }
-		Rev : Ord < { lt :: fn(self, other: Self) bool { true } }
+		Rev : PartialCmp < { partial_cmp :: fn(self, other: Self) ?Ordering { .less } }
 		P :: struct { x: int }
 		E :: enum { a(P), b }
 		print(Rev.a == Rev.b, Rev.b < Rev.a)

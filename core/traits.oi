@@ -4,7 +4,13 @@ module core
 
 # comparison
 pub Eq :: trait { eq: fn(self, other: Self) bool }
-pub Ord :: trait { lt: fn(self, other: Self) bool }
+pub Ordering :: enum { less, equal, greater }
+pub PartialCmp :: trait { partial_cmp: fn(self, other: Self) ?Ordering }
+pub Cmp : PartialCmp, Eq : trait {
+	cmp: fn(self, other: Self) Ordering
+	partial_cmp :: fn(self, other: Self) ?Ordering do self.cmp(other)
+	eq :: fn(self, other: Self) bool do self.cmp(other) == .equal
+}
 
 # arithmetic
 pub Neg :: trait {

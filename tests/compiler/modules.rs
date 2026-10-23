@@ -19,8 +19,8 @@ fn import_missing() {
 
 #[test]
 fn import_trait() {
-	check(["use core.{ Ord }", "print(int is Ord)"], "true");
-	check(["use core.{ Order :: Ord }", "print(int is Order)"], "true");
+	check(["use core.{ Cmp }", "print(int is Cmp)"], "true");
+	check(["use core.{ Order :: Cmp }", "print(int is Order)"], "true");
 }
 
 #[test]

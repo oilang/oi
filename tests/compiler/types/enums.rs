@@ -149,7 +149,7 @@ fn payload_rejections() {
 	);
 	fail(
 		["Opt :: enum { nope some(int) }", "Opt.some.(1) < Opt.some.(2)"],
-		"claim `Ord` for `Opt` to define ordering",
+		"claim `Cmp` for `Opt` to define ordering",
 	);
 	fail("A :: enum { wrap(NoSuchType) }", "unknown type");
 }

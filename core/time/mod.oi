@@ -80,8 +80,8 @@ Duration : Mul[int] < {
 Duration : Mul[float] < {
 	mul :: fn(self; k: float) Self { .{ int.(round(float.(self.ns) * k)) } }
 }
-Duration : Ord < {
-	lt :: fn(self, o: Self) bool { self.ns < o.ns }
+Duration : Cmp < {
+	cmp :: fn(self, o: Self) Ordering { if self.ns < o.ns { .less } else if self.ns > o.ns { .greater } else { .equal } }
 }
 
 ## Monotonic time.
@@ -112,8 +112,8 @@ Instant : Sub[Duration] < {
 Instant : Add[Duration] < {
 	add :: fn(self; d: Duration) Self { .{ self.ns + d.ns } }
 }
-Instant : Ord < {
-	lt :: fn(self, o: Self) bool { self.ns < o.ns }
+Instant : Cmp < {
+	cmp :: fn(self, o: Self) Ordering { if self.ns < o.ns { .less } else if self.ns > o.ns { .greater } else { .equal } }
 }
 
 ## Clock time, in nanoseconds since the Unix epoch.
