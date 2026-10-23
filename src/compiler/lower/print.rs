@@ -18,13 +18,26 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.rt_call("write", &[tag, bits, width, quote, sink_v]);
 	}
 
-	// A named type's Display fill.
-	fn str_impl(&mut self, name: &str, val: Value, typ: &Typ) -> Option<Value> {
-		let base = rc::base_name(name);
-		let sig = (self.funcs.get(&format!("{name}.str")).cloned())
-			.or_else(|| self.recv_instance(&format!("{base}.str"), typ))?;
-		let derived = sig.default && self.funcs.get(&format!("{name}.fmt")).is_some_and(|f| f.default);
-		(!derived && sig.params.len() == 1 && sig.ret == Typ::Str).then(|| self.emit_call(&sig, &[val]).0)
+	// A type's `fmt` into the sink, or its `str` as a fallback.
+	fn fmt_impl(&mut self, name: &str, val: Value, typ: &Typ, sink: runtime::Sink) -> bool {
+		let own = |s: &mut Self, m: &str| {
+			let sig = (s.funcs.get(&format!("{name}.{m}")).cloned())
+				.or_else(|| s.recv_instance(&format!("{}.{m}", rc::base_name(name)), typ))?;
+			(!sig.default).then_some(sig)
+		};
+		if let Some(sig) = own(self, "fmt") {
+			let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{}[string]", role::SINK, role::WRITE)));
+			let id = self.b.ins().iconst(self.int, sink as i64);
+			let data = self.lent_block(&[], &[id]);
+			let obj = self.lent_object(vtable, data);
+			self.emit_call(&sig, &[val, obj]);
+		} else if let Some(sig) = own(self, "str").filter(|sig| sig.params.len() == 1 && sig.ret == Typ::Str) {
+			let s = self.emit_call(&sig, &[val]).0;
+			self.raw(s, sink);
+		} else {
+			return false;
+		}
+		true
 	}
 
 	// Universal `str`, or `repr` when quoted.
@@ -134,6 +147,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, sink: runtime::Sink) {
+		let own = match typ {
+			Typ::Sum(n, _) => Some(n.as_str()),
+			Typ::Rune => Some("rune"),
+			Typ::Map(..) => Some("map"),
+			_ => typ.nominal(),
+		};
+		if own.is_some_and(|name| self.fmt_impl(name, val, typ, sink)) {
+			return;
+		}
 		match typ {
 			Typ::Tuple(fields) => self.print_fields((val, typ), 0, fields, ["(", ")"], sink),
 
@@ -148,9 +170,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::Struct(sname, fields) => {
-				if let Some(s) = self.str_impl(sname, val, typ) {
-					return self.raw(s, sink);
-				}
 				// less-noisy anonymous struct names
 				let anon = sname.starts_with("struct{");
 				let sname = if anon { "" } else { display_name(sname) };
@@ -159,9 +178,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::TupleStruct(name, fields) => {
-				if let Some(s) = self.str_impl(name, val, typ) {
-					return self.raw(s, sink);
-				}
 				let name = display_name(name).to_string();
 				let body = Typ::Tuple(fields.clone());
 				self.write_lit(&name, sink);
@@ -177,18 +193,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Typ::Atom => self.raw(val, sink),
 
-			Typ::Enum(name) | Typ::Sum(name, _) => {
-				if let Some(s) = self.str_impl(name, val, typ) {
-					return self.raw(s, sink);
-				}
-				self.call_variant(&typ.clone(), val, quote, sink);
-			}
+			Typ::Enum(_) | Typ::Sum(..) => self.call_variant(&typ.clone(), val, quote, sink),
 
 			Typ::Fn(..) | Typ::Closure(..) => self.write_lit("<fn>", sink),
-			Typ::Map(..) => match self.str_impl("map", val, typ) {
-				Some(s) => self.raw(s, sink),
-				None => self.write_lit("<map>", sink),
-			},
+			Typ::Map(..) => self.write_lit("<map>", sink),
 			Typ::Ast => {
 				let s = self.ast_method(val, "str", None);
 				self.emit_print(s, &Typ::Str, quote, sink)
@@ -218,9 +226,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::Rune => {
-				if let Some(s) = self.str_impl("rune", val, typ) {
-					return self.raw(s, sink);
-				}
 				let n = self.b.ins().uextend(self.int, val);
 				self.emit_frag(runtime::Tag::UInt, n, 0, quote, sink);
 			}

@@ -666,8 +666,16 @@ impl TypeCtx<'_> {
 			let msg = format!("`{name}` needs type arguments");
 			return fail(msg, span, format!("try `{name}[...]`"));
 		}
-		if self.traits.contains_key(name) {
-			return Ok(Typ::Trait(name.to_string()));
+		if let Some((_, params, ..)) = self.traits.get(name) {
+			if params.is_empty() {
+				return Ok(Typ::Trait(name.to_string()));
+			}
+			let Some(args) = params.iter().map(|p| Some(p.default.clone()?.0)).collect() else {
+				let name = display_name(name);
+				let msg = format!("`{name}` needs type arguments");
+				return fail(msg, span, format!("try `{name}[...]`"));
+			};
+			return self.resolve(&TypeExpr::Generic(name.to_string(), args), span);
 		}
 		fail(format!("unknown type `{name}`"), span, "not a known type")
 	}

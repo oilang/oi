@@ -753,10 +753,10 @@ assert!(Bike is not Fruit)
 
 # every type is `Display`, rendered by its `fmt` or `str`, or derived
 Kiwi :< { str :: fn(self) string { "kiwi" } }
-Apple :< { fmt :: fn(self; mut b: Buffer) { b.write("apple") } }
+Apple :< { fmt :: fn(self; mut w: Write) { w.write("apple") } }
 
 # and `Debug`, through its `debug`, or derived
-Kiwi :< { debug :: fn(self; mut b: Buffer) { b.write("Kiwi!") } }
+Kiwi :< { debug :: fn(self; mut w: Write) { w.write("Kiwi!") } }
 assert!("hi".repr() == "\"hi\"")
 
 ## static vs dynamic dispatch

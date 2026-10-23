@@ -87,20 +87,19 @@ module core
 }
 
 [K]V : Display < {
-	fmt :: fn(self; mut b: Buffer) {
+	fmt :: fn(self; mut w: Write) {
 		set :: comp V == ()
-		b.write(if set { "{{" } else { "[" })
-
-		start :: b.len()
+		w.write(if set { "{{" } else { "[" })
+		sep := ""
 		loop k in self.keys {
-			if b.len() > start do b.write(if set { " " } else { ", " })
-			k.debug(mut b)
+			w.write(sep)
+			k.debug(mut w)
 			if !set {
-				b.write(" = ")
-				self[k].debug(mut b)
+				w.write(" = ")
+				self[k].debug(mut w)
 			}
+			sep = if set { " " } else { ", " }
 		}
-
-		b.write(if set { "}}" } else { "]" })
+		w.write(if set { "}}" } else { "]" })
 	}
 }

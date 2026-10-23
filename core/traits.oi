@@ -117,13 +117,13 @@ pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 # rendering
 
 ## Accepts written values, like a buffer or an output stream.
-pub Write[T] :: trait { write: fn(mut self; v: T) }
+pub Write[T :: string] :: trait { write: fn(mut self; v: T) }
 
 ## Every type renders, through its own `fmt` or `str`, or the derived printer.
 @implicit
 pub Display :: trait {
-	fmt :: fn(self; mut b: Buffer) {
-		b.write(__render(self))
+	fmt :: fn(self; mut w: Write) {
+		w.write(__render(self))
 	}
 
 	str :: fn(self) string {
@@ -138,8 +138,8 @@ pub Display :: trait {
 ## Every type debugs, through its own `debug` or the derived printer.
 @implicit
 pub Debug :: trait {
-	debug :: fn(self; mut b: Buffer) {
-		b.write(__repr(self))
+	debug :: fn(self; mut w: Write) {
+		w.write(__repr(self))
 	}
 
 	repr :: fn(self) string {

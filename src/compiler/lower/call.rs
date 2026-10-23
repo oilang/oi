@@ -549,10 +549,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				&& self.claims(&typ, tn)
 			{
 				let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
-				let (slot, data) = (self.stack_slot(24), self.ld_word(cell, 0));
-				let obj = self.b.ins().iadd_imm(slot, 8);
-				self.store_slots(slot, &[obj, vtable, data]);
-				return Ok((slot, to.clone(), Some((cell, entry))));
+				let data = self.ld_word(cell, 0);
+				return Ok((self.lent_object(vtable, data), to.clone(), Some((cell, entry))));
 			}
 			return Ok((cell, typ, Some((cell, entry))));
 		}
@@ -583,6 +581,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Pass the address of the caller's binding.
+	pub(super) fn lent_object(&mut self, vtable: Value, data: Value) -> Value {
+		let slot = self.stack_slot(24);
+		let obj = self.b.ins().iadd_imm(slot, 8);
+		self.store_slots(slot, &[obj, vtable, data]);
+		slot
+	}
+
 	pub(super) fn lend_mut(&mut self, inner: &Spanned<Expr>) -> Result<(Value, Typ, Lent), Diagnostic> {
 		let (cur, typ, entry) = match &inner.0 {
 			Expr::Slice { collection, range } => {

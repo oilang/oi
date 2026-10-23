@@ -208,7 +208,7 @@ fn display_objects_render_their_own_way() {
 fn fmt_overrides_display() {
 	let src = indoc! {r#"
 		Hex :: struct { n: int }
-		Hex :< { fmt :: fn(self; mut b: Buffer) { b.write("0x{self.n}") } }
+		Hex :< { fmt :: fn(self; mut w: Write) { w.write("0x{self.n}") } }
 		h :: Hex.{255}
 		print(h, "{h}", h.str())
 		loop x in Display.[h] { print(x) }
@@ -221,7 +221,7 @@ fn every_type_is_debug() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, s: string }
 		Hex :: struct { n: int }
-		Hex :< { debug :: fn(self; mut b: Buffer) { b.write("Hex({self.n})") } }
+		Hex :< { debug :: fn(self; mut w: Write) { w.write("Hex({self.n})") } }
 		print("hi".repr(), 3.repr(), Point.{1, "a"}.repr(), Hex.{255}.repr())
 	"#};
 	check(src, r#""hi" 3 Point.{x = 1, s = "a"} Hex(255)"#);
@@ -484,12 +484,14 @@ fn generic_trait_objects() {
 		N : Conv[int] < { conv :: fn(self) int do self.n * 2 }
 		s :: fn(c: Conv[string]) string do c.conv()
 		i :: fn(c: Conv[int]) int do c.conv()
-		put :: fn(mut w: Write[string]) do w.write("hi")
+		put :: fn(mut w: Write) do w.write("hi")
 		b := Buffer.{}
 		put(mut b)
 		print(s(N.{3}), i(N.{4}), b.str())
 	"#};
 	check(src, "n3 8 hi");
+
+	fail("f :: fn(c: Contains) {}", "`Contains` needs type arguments");
 }
 
 #[test]

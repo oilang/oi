@@ -23,3 +23,8 @@ put :: fn(sink: isize, args: []any, end: string) {
 }
 
 emit :: fn(sink: isize, s: string) { unsafe rt.oi_write_str(4, s, 0, 0, sink) }
+
+Sink :: struct { id: isize }
+Sink : Write[string] < {
+	write :: fn(mut self; s: string) do emit(self.id, s)
+}
