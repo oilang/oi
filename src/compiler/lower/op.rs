@@ -718,7 +718,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let IntCC::Equal | IntCC::NotEqual = icc {
 					let eq = self.emit_val_eq(lv, rv, l, &lt.to_string(), span)?;
 					self.b.ins().icmp_imm(cc, eq, 0)
-				} else if l.nominal().is_some()
+				} else if (l.nominal().is_some() || matches!(l, Typ::Map(..)))
 					&& let Some(sig) = self.fill(l, role::PARTIAL_CMP, "partial_cmp", 2)
 				{
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };

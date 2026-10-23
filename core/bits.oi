@@ -40,6 +40,15 @@ Bits[E] : Sub < {
 	}
 }
 
+## Treats <, <=, >, >= as subset/superset.
+Bits[E] : PartialCmp < {
+	partial_cmp :: fn(self, other: Self) ?Ordering {
+		within :: (self - other).len() == 0
+		covers :: (other - self).len() == 0
+		if within && covers { .equal } else if within { .less } else if covers { .greater } else { none }
+	}
+}
+
 Bits[E] : Not < {
 	not :: fn(self) out: Self {
 		loop i in 0..out.words.len() {

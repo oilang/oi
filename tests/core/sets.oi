@@ -13,6 +13,16 @@ test! "sets" {
 	assert! (loop k in d do k) == [1]
 }
 
+test! "subsets" {
+	a: [int]() = .[1 2]
+	b: [int]() = .[1 2 3]
+	assert! a <= b && a < b && b > a && a <= a && !(a < a)
+	assert! !(a <= .[3]) && !(a >= .[3])
+	p: [Perm]() = .[.read]
+	q: [Perm]() = .[.read .exec]
+	assert! p < q && q >= p && !(p <= .[.write]) && !(p > .[.write])
+}
+
 test! "enum sets" {
 	p: [Perm]() = .[.read .exec]
 	q: [Perm]() = .[.write .exec]
