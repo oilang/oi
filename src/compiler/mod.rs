@@ -1730,13 +1730,18 @@ impl<M: Module> Compiler<M> {
 				continue;
 			}
 			let styp = base.named(&name, Span::default())?;
-			let param = [("self".into(), styp.clone(), Access::Read)];
+			let cell = styp.slots().is_none();
+			let recv = if cell { Typ::ISize } else { styp.clone() };
+			let param = [("self".into(), recv, Access::Read)];
 			let def = FnDef {
 				params: &param,
 				..FnDef::default()
 			};
 			let (mut trans, block) = self.translator(&def, &funcs, base);
-			let val = trans.b.block_params(block)[0];
+			let mut val = trans.b.block_params(block)[0];
+			if cell {
+				val = trans.b.ins().load(cl_type(&styp, trans.int), MemFlags::new(), val, 0);
+			}
 			let s = trans.derived_str(val, &styp, false);
 			trans.emit_return(s, Typ::Str, Span::default())?;
 			trans.b.finalize();
@@ -1798,9 +1803,14 @@ impl<M: Module> Compiler<M> {
 				let gv = self.module.declare_data_in_data(cell, &mut desc);
 				desc.write_data_addr(off as u32, gv, 2);
 			}
+			let cell = base.named(&typ, Span::default())?.slots().is_none();
 			for (i, sig) in methods.iter().enumerate() {
 				self.out.wanted.push(sig.id);
-				let fref = self.module.declare_func_in_data(sig.id, &mut desc);
+				let id = match cell && sig.access[0] != Access::Mut {
+					true => self.cell_thunk(sig.id, &format!("{typ}_{tn}#{i}")),
+					false => sig.id,
+				};
+				let fref = self.module.declare_func_in_data(id, &mut desc);
 				desc.write_function_addr((i * 8) as u32, fref);
 			}
 			let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);
@@ -2116,6 +2126,26 @@ impl<M: Module> Compiler<M> {
 				}
 			}
 		}
+	}
+
+	// Load the receiver out of its cell, then call `target`.
+	fn cell_thunk(&mut self, target: FuncId, name: &str) -> FuncId {
+		let int = self.module.target_config().pointer_type();
+		self.ctx.func.signature = self.module.declarations().get_function_decl(target).signature.clone();
+		let recv = std::mem::replace(&mut self.ctx.func.signature.params[0], AbiParam::new(int)).value_type;
+		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
+		let block = b.create_block();
+		b.append_block_params_for_function_params(block);
+		b.switch_to_block(block);
+		b.seal_block(block);
+		let mut args = b.block_params(block).to_vec();
+		args[0] = b.ins().load(recv, MemFlags::new(), args[0], 0);
+		let callee = self.module.declare_func_in_func(target, b.func);
+		let call = b.ins().call(callee, &args);
+		let rets = b.inst_results(call).to_vec();
+		b.ins().return_(&rets);
+		b.finalize();
+		self.finish_fn(&oi_symbol(&format!("{name}#cell")))
 	}
 
 	fn finish_fn(&mut self, name: &str) -> FuncId {

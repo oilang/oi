@@ -1160,23 +1160,31 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.heap_slots(&[proc, val]))
 	}
 
-	// Box a struct behind its vtable.
+	// Box a claimer behind its vtable.
 	fn make_trait_object(&mut self, val: Value, vt: &Typ, tn: &str, span: Span) -> Result<TypedVal, Diagnostic> {
 		// already the right trait object, pass it through
 		if matches!(vt, Typ::Trait(n) if n == tn) {
 			return Ok((val, vt.clone()));
 		}
-		let Typ::Struct(name, _) = vt else {
-			return fail(
-				"only structs can be trait objects yet",
-				span,
-				format!("`{vt}` is not a struct"),
-			);
-		};
-		if !self.world.trait_impls.contains(&(name.clone(), tn.to_string())) {
-			return fail(format!("`{name}` doesn't implement `{tn}`"), span, "no matching impl");
+		if !self.world.trait_impls.contains(&(vt.key(), tn.to_string())) {
+			return fail(format!("`{vt}` doesn't implement `{tn}`"), span, "no matching impl");
 		}
+		self.check_cell_object(vt, tn, span)?;
 		Ok((self.box_trait_object(val, vt, tn), Typ::Trait(tn.to_string())))
+	}
+
+	// Reject a cell-backed object whose trait returns `Self`.
+	pub(super) fn check_cell_object(&self, typ: &Typ, tn: &str, span: Span) -> Result<(), Diagnostic> {
+		let ((_, _, _, tmethods, _), _) = self.types.trait_instance(tn);
+		let reboxes = trait_fns(tmethods).any(|(_, _, ret)| matches!(ret, Some((te, _)) if mentions(te, "Self")));
+		if typ.slots().is_none() && reboxes {
+			return fail(
+				format!("a `{typ}` can't be a `{tn}` object yet"),
+				span,
+				"a method returns `Self`",
+			);
+		}
+		Ok(())
 	}
 
 	// Whether `typ` claims std `Error`, boxing into the open `Error` type.
@@ -1193,7 +1201,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn box_trait_object(&mut self, val: Value, typ: &Typ, tn: &str) -> Value {
 		let sym = oi_symbol(&format!("vtable_{}_{tn}", typ.key()));
 		let vtable = self.data_addr(&sym);
-		let val = self.copy_in(val, typ);
+		let mut val = self.copy_in(val, typ);
+		// stash a value without inline slots in a cell
+		if typ.slots().is_none() {
+			let cell = self.call_alloc_bytes(elem_size(typ).max(8));
+			self.st(cell, 0, val);
+			val = cell;
+		}
 		self.box_with(vtable, val)
 	}
 

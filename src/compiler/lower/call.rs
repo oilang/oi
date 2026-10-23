@@ -558,11 +558,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		if access == Access::Mut {
 			let (cell, typ, entry) = self.lend_mut(arg)?;
 			if let Some(to @ Typ::Trait(tn)) = want
-				&& matches!(typ, Typ::Struct(..))
 				&& self.claims(&typ, tn)
 			{
+				self.check_cell_object(&typ, tn, arg.1)?;
 				let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
-				let data = self.ld_word(cell, 0);
+				let data = if typ.slots().is_some() {
+					self.ld_word(cell, 0)
+				} else {
+					cell
+				};
 				return Ok((self.lent_object(vtable, data), to.clone(), Some((cell, entry))));
 			}
 			return Ok((cell, typ, Some((cell, entry))));

@@ -495,6 +495,27 @@ fn generic_trait_objects() {
 }
 
 #[test]
+fn scalar_trait_objects() {
+	let src = indoc! {r#"
+		int : Write[string] < { write :: fn(mut self; s: string) do self += s.len() }
+		Shape :: trait { area: fn(self) float }
+		float : Shape < { area :: fn(self) float do self * self }
+		put :: fn(mut w: Write) do w.write("hello")
+		n := 1
+		put(mut n)
+		x : Shape = 3.0
+		print(n, x.area(), x)
+	"#};
+	check(src, "6 9.0 3.0");
+	let twice = [
+		"Twice :: trait { twice: fn(self) Self }",
+		"int : Twice < { twice :: fn(self) Self do self }",
+		"x : Twice = 1",
+	];
+	fail(twice, "can't be a `Twice` object yet");
+}
+
+#[test]
 fn trait_typed_struct_field() {
 	let src = indoc! {r#"
 		Pen :: struct { pet: Animal }

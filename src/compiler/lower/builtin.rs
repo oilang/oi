@@ -328,6 +328,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let zero = self.b.ins().iconst(self.int, 0);
 			self.st(obj, -16, zero);
 			data = self.unbox_ret(data, target);
+		} else if *typ != Typ::Any && target.slots().is_none() {
+			data = self.ld_typ(data, 0, target);
 		}
 
 		let some = self.make_option(&opt, Some(data));
