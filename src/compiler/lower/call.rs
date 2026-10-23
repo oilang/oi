@@ -974,7 +974,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, _, _, tmethods, _) = self.types.traits[tn];
+		let ((_, _, _, tmethods, _), sub) = self.types.trait_instance(tn);
+		let types = self.types.with_type_params(&sub);
 		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "method", method, span));
 		};
@@ -997,16 +998,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		// the receiver slot is the erased data pointer, the rest resolve like any signature
 		let mut typs = vec![FnParam::new(Typ::Trait(tn.into()))];
 		for p in params.iter().skip(1) {
-			typs.push(FnParam::of(
-				p,
-				access_wrap(p.access, self.types.resolve(&p.typ, p.span)?),
-			));
+			typs.push(FnParam::of(p, access_wrap(p.access, types.resolve(&p.typ, p.span)?)));
 		}
 
 		let ret = match ret {
 			_ if bare => Typ::Trait(tn.into()),
 			_ if opt => self.types.core_enum(role::OPTION, &[Typ::Trait(tn.into())]),
-			Some((te, s)) => self.types.resolve(te, *s)?,
+			Some((te, s)) => types.resolve(te, *s)?,
 			None => Typ::unit(),
 		};
 		let (vtable, data) = self.unbox(boxv);
@@ -1041,7 +1039,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		field: &str,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (_, _, tfields, tmethods, _) = self.types.traits[tn];
+		let ((_, _, tfields, tmethods, _), _) = self.types.trait_instance(tn);
 		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "field", field, span));
 		};

@@ -191,6 +191,13 @@ impl<'a> TypeCtx<'a> {
 	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
 		TypeCtx { type_params, ..self }
 	}
+
+	// A trait object's trait and its bound params.
+	pub fn trait_instance(&self, tn: &str) -> (&'a TraitItem<'a>, HashMap<String, Typ>) {
+		let item = &self.traits[tn.split('[').next().unwrap_or(tn)];
+		let args = self.generics.instance_args(tn).unwrap_or_default();
+		(item, item.1.iter().map(|p| p.name.clone()).zip(args).collect())
+	}
 }
 
 // The fixed-name builtin types.
@@ -354,6 +361,10 @@ impl TypeCtx<'_> {
 				if let Some(def) = self.generics.enums.get(name) {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate_enum(name, def, &subst, span);
+				}
+				if let Some((_, params, ..)) = self.traits.get(name.as_str()) {
+					let subst = self.generic_subst(name, params, args, span)?;
+					return Ok(Typ::Trait(self.register_instance(name, params, &subst)));
 				}
 				if let Some((params, te)) = self.generics.aliases.get(name) {
 					let type_params = &self.generic_subst(name, params, args, span)?;

@@ -1547,6 +1547,14 @@ impl<M: Module> Compiler<M> {
 		let promoted = promote_embeds(&structs, &mut self.world.trait_impls, &trait_bodies, scope_of);
 		trait_bodies.extend(promoted);
 
+		// generic claims
+		for b in trait_bodies.iter().filter(|b| !b.args.is_empty()) {
+			let te = TypeExpr::Generic(b.trait_name.clone(), b.args.iter().map(|a| a.0.clone()).collect());
+			if let Typ::Trait(inst) = base.with_scope(b.scope).resolve(&te, b.span)? {
+				self.world.trait_impls.insert((b.typ.to_string(), inst));
+			}
+		}
+
 		check_impls(trait_bodies, &self.world, base, &mut others, &mut self.consts)?;
 
 		boxed.into_iter().try_for_each(|e| build_enum(&structs, e))?;
@@ -1740,14 +1748,30 @@ impl<M: Module> Compiler<M> {
 			if is_hook_trait(&tn) {
 				continue;
 			}
-			let (_, tparams, tfields, tmethods, _) = traits[tn.as_str()];
-			if tparams.iter().any(|p| p.default.is_none()) {
+			let ((_, tparams, tfields, tmethods, _), sub) = base.trait_instance(&tn);
+			if sub.is_empty() && tparams.iter().any(|p| p.default.is_none()) {
 				continue;
 			}
-			let methods: Vec<&str> = trait_fns(tmethods).map(|(n, ..)| n).collect();
-			if methods.iter().any(|n| !funcs.contains_key(&format!("{typ}.{n}"))) {
+
+			// an instance picks the claim whose sig fits
+			let types = base.with_type_params(&sub);
+			let fill = |(n, params, ret): TraitFn| {
+				let key = format!("{typ}.{n}");
+				if sub.is_empty() {
+					return funcs.get(&key);
+				}
+				let ret = ret.as_ref().map_or(Ok(Typ::unit()), |(te, sp)| types.resolve(te, *sp));
+				let want = (params.iter().skip(1).map(|p| types.param(&p.typ, p.span)).chain([ret]))
+					.collect::<Result<Vec<_>, _>>()
+					.ok()?;
+				let fits = |s: &FnSig| s.params.iter().skip(1).map(|p| access_peel(&p.typ)).chain([&s.ret]).eq(&want);
+				(funcs.iter().find(|(k, s)| k.starts_with(&format!("{key}#")) && fits(s))).map(|(_, s)| s)
+			};
+
+			let Some(methods) = trait_fns(tmethods).map(fill).collect::<Option<Vec<_>>>() else {
 				continue;
-			}
+			};
+
 			let mut bytes = vec![0u8; (methods.len() + tfields.len() + 1) * 8];
 			let mut const_slots = Vec::new();
 			// associated types have no runtime slot, so they leave a hole
@@ -1774,10 +1798,9 @@ impl<M: Module> Compiler<M> {
 				let gv = self.module.declare_data_in_data(cell, &mut desc);
 				desc.write_data_addr(off as u32, gv, 2);
 			}
-			for (i, name) in methods.iter().enumerate() {
-				let id = funcs[&format!("{typ}.{name}")].id;
-				self.out.wanted.push(id);
-				let fref = self.module.declare_func_in_data(id, &mut desc);
+			for (i, sig) in methods.iter().enumerate() {
+				self.out.wanted.push(sig.id);
+				let fref = self.module.declare_func_in_data(sig.id, &mut desc);
 				desc.write_function_addr((i * 8) as u32, fref);
 			}
 			let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);

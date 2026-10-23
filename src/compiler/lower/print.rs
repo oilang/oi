@@ -200,7 +200,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Ref(_) => self.call_variant(typ, val, quote, sink),
 
 			Typ::Trait(tn) => {
-				let (_, _, tfields, tmethods, _) = self.types.traits[tn.as_str()];
+				let ((_, _, tfields, tmethods, _), _) = self.types.trait_instance(tn);
 				let slot = (trait_fns(tmethods).count() + tfields.len()) * 8;
 				let (vtable, data) = self.unbox(val);
 				let fnptr = self.ld_word(vtable, slot as i32);

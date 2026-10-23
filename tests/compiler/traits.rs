@@ -476,6 +476,23 @@ fn mut_trait_objects_write_through() {
 }
 
 #[test]
+fn generic_trait_objects() {
+	let src = indoc! {r#"
+		Conv[T] :: trait { conv: fn(self) T }
+		N :: struct { n: int }
+		N : Conv[string] < { conv :: fn(self) string do "n{self.n}" }
+		N : Conv[int] < { conv :: fn(self) int do self.n * 2 }
+		s :: fn(c: Conv[string]) string do c.conv()
+		i :: fn(c: Conv[int]) int do c.conv()
+		put :: fn(mut w: Write[string]) do w.write("hi")
+		b := Buffer.{}
+		put(mut b)
+		print(s(N.{3}), i(N.{4}), b.str())
+	"#};
+	check(src, "n3 8 hi");
+}
+
+#[test]
 fn trait_typed_struct_field() {
 	let src = indoc! {r#"
 		Pen :: struct { pet: Animal }
