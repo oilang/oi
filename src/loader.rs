@@ -13,7 +13,7 @@ use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
 use crate::compiler::{builtin, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::lexer::{lex_at, prescan, splice_raw};
+use crate::lexer::{Token, lex_at, prescan, splice_raw};
 use crate::parser::parser;
 
 static CORE: Dir = include_dir!("$CARGO_MANIFEST_DIR/core");
@@ -318,9 +318,20 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 }
 
 // Lex and parse one file's source at its base offset.
-pub fn parse_file(src: &str, base: usize, raw: &HashSet<String>) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
+pub fn parse_file(
+	file: &str,
+	src: &str,
+	base: usize,
+	raw: &HashSet<String>,
+) -> Result<Vec<Spanned<Expr>>, Vec<Diagnostic>> {
+	let file = std::path::absolute(file).unwrap_or_default();
 	let toks = splice_raw(lex_at(src, base), raw, src, base)
-		.map_err(|span| vec![err("unterminated raw macro body", span, "this `{` never closes")])?;
+		.map_err(|span| vec![err("unterminated raw macro body", span, "this `{` never closes")])?
+		.into_iter()
+		.map(|(tok, span)| match tok {
+			Token::PathString(p) => (Token::String(file.with_file_name(p).display().to_string()), span),
+			tok => (tok, span),
+		});
 	let eoi = (base + src.len()..base + src.len()).into();
 	parser(src, base)
 		.parse(Stream::from_iter(toks).map(eoi, |t| t))
@@ -760,7 +771,10 @@ impl Loader {
 		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.program.map.push(file, src)).collect();
 		let (map, raw) = (&self.program.map, &self.raw_macros);
 		let parsed: Vec<_> = std::thread::scope(|s| {
-			let jobs: Vec<_> = bases.iter().map(|&b| s.spawn(move || parse_file(map.src(b), b, raw))).collect();
+			let jobs: Vec<_> = bases
+				.iter()
+				.map(|&b| s.spawn(move || parse_file(map.locate_span(b..b).0, map.src(b), b, raw)))
+				.collect();
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
 		});
 		for (result, base) in parsed.into_iter().zip(bases) {

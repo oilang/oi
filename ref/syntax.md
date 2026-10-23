@@ -991,7 +991,14 @@ main :: fn() {
 	countdown := 10..9..0
 
 	# paths
-	# TODO: path literal
+	# `fs.Path` is `/`-separated, and string literals coerce into it
+	# `p"..."` resolves against the dir of the file it's written in, at compile time
+	hero := fs.read_bytes(p"art/hero.png")
+	conf : fs.Path : p"conf"
+	cfg :: conf / "app.toml"
+	cfg.parent() == conf
+	cfg.name() == "app.toml"
+	cfg.ext() == "toml"
 
 	# numbers
 

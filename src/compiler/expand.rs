@@ -901,7 +901,7 @@ pub(crate) extern "C" fn rt_ast_gensym(s: *const runtime::StrHeader) -> *mut Spa
 #[unsafe(export_name = "oi_ast_parse")]
 pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Spanned<Expr> {
 	let src = unsafe { runtime::str_string(s) };
-	let node = match crate::loader::parse_file(&src, 0, &HashSet::new()) {
+	let node = match crate::loader::parse_file("", &src, 0, &HashSet::new()) {
 		Ok(stmts) => one(stmts, Span::default()),
 		Err(ds) => flag(ds.first().map_or("parse failed", Diagnostic::message), empty()),
 	};

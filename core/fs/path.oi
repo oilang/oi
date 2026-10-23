@@ -1,0 +1,38 @@
+module fs
+
+## A platform-agnostic, `/`-separated filesystem path.
+pub Path :: struct (string)
+
+Path : From[string] < {
+	from :: fn(s: string) Self { Path(s) }
+}
+
+Path : Div[string] < {
+	div :: fn(self; sub: string) Self {
+		if self.0.ends_with("/") { Path(self.0 + sub) } else { Path("{self.0}/{sub}") }
+	}
+}
+
+Path :< {
+	pub str :: fn(self) string { self.0 }
+	cstr :: fn(self) cstr { self.0.cstr() }
+
+	## The containing directory.
+	pub parent :: fn(self) ?Path {
+		n :: self.0.len() - self.name().len()
+		if n == 0 do return none
+		Path(if n == 1 { "/" } else { self.0[..(n - 1)] })
+	}
+
+	## The last component.
+	pub name :: fn(self) string {
+		self.0.split("/").last() or { "" }
+	}
+
+	## The extension after the name's last `.`, if any.
+	pub ext :: fn(self) ?string {
+		parts :: self.name().split(".")
+		if parts.len() < 2 || parts[0] == "" do return none
+		parts.last()
+	}
+}

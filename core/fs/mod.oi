@@ -17,12 +17,12 @@ c_remove : fn(path: cstr) i32 : foreign
 @link.{name = "mkdir"}
 c_mkdir : fn(path: cstr, mode: u32) i32 : foreign
 
-check :: fn(ok: bool, what: string, path: string) ! {
+check :: fn(ok: bool, what: string, path: Path) ! {
 	if !ok do return error("cannot {what} {path}")
 }
 
 ## Read a file's contents as raw bytes.
-pub read_bytes :: fn(path: string) ![]u8 {
+pub read_bytes :: fn(path: Path) ![]u8 {
 	f := unsafe fopen(path.cstr(), "rb")
 	check(!f.is_null(), "open", path)?
 
@@ -38,22 +38,22 @@ pub read_bytes :: fn(path: string) ![]u8 {
 }
 
 ## Read a file's contents as a string.
-pub read :: fn(path: string) !string {
+pub read :: fn(path: Path) !string {
 	bytes := read_bytes(path)?
 	string.(bytes)
 }
 
 ## Write to a file, replacing its contents.
-pub write :: fn(path: string, s: string) ! {
+pub write :: fn(path: Path, s: string) ! {
 	spill(path, s, "wb")
 }
 
 ## Append to a file, creating it if needed.
-pub append :: fn(path: string, s: string) ! {
+pub append :: fn(path: Path, s: string) ! {
 	spill(path, s, "ab")
 }
 
-spill :: fn(path: string, s: string, mode: cstr) ! {
+spill :: fn(path: Path, s: string, mode: cstr) ! {
 	f := unsafe fopen(path.cstr(), mode)
 	check(!f.is_null(), "open", path)?
 
@@ -66,22 +66,22 @@ spill :: fn(path: string, s: string, mode: cstr) ! {
 }
 
 ## Whether a file or directory exists.
-pub exists :: fn(path: string) bool {
+pub exists :: fn(path: Path) bool {
 	unsafe access(path.cstr(), 0) == 0
 }
 
 ## Delete a file or empty directory.
-pub remove :: fn(path: string) ! {
+pub remove :: fn(path: Path) ! {
 	check(unsafe c_remove(path.cstr()) == 0, "remove", path)?
 }
 
 ## Create a directory.
-pub mkdir :: fn(path: string) ! {
+pub mkdir :: fn(path: Path) ! {
 	check(unsafe c_mkdir(path.cstr(), 0o755) == 0, "create", path)?
 }
 
 ## Get list of entries in a directory.
-pub list :: fn(path: string) ![]string {
+pub list :: fn(path: Path) ![]string {
 	d := unsafe opendir(path.cstr())
 	check(!d.is_null(), "open", path)?
 

@@ -126,6 +126,8 @@ pub enum Token {
 	#[regex(r#"r"{3,}"#, |lex| lex_long(lex, false))]
 	#[regex(r#"r"[^"]*""#, |lex| lex.slice()[2..lex.slice().len() - 1].to_string())]
 	RawString(String),
+	#[regex(r#"p"[^"]*""#, |lex| lex.slice()[2..lex.slice().len() - 1].to_string())]
+	PathString(String),
 	#[regex(r":\p{XID_Continue}+", |lex| lex.slice()[1..].to_string())]
 	Atom(String),
 
@@ -349,6 +351,7 @@ impl fmt::Display for Token {
 			Token::Float(s) => write!(f, "{s}"),
 			Token::String(s) => write!(f, "\"{s}\""),
 			Token::RawString(s) => write!(f, "r\"{s}\""),
+			Token::PathString(s) => write!(f, "p\"{s}\""),
 			Token::Fn => write!(f, "fn"),
 			Token::Struct => write!(f, "struct"),
 			Token::Enum => write!(f, "enum"),
