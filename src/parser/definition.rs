@@ -779,7 +779,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				5,
 				just(Token::Is)
 					.ignore_then(just(Token::Ident("not".into())).or_not())
-					.then(ident()),
+					.then(ident().or(dot().ignore_then(ident()).map(|variant| format!(".{variant}")))),
 				|lhs, (not, trait_name): (Option<Token>, String), ex| {
 					(
 						Expr::Is {

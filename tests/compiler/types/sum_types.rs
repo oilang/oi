@@ -328,3 +328,16 @@ fn sums_as_errors() {
 	);
 	check([types, "f :: fn() (A | B)!int { 2 }"], "")
 }
+
+#[test]
+fn is_variant() {
+	check(
+		indoc! {"
+			Id :: int | string
+			id: Id = 7
+			x: ?int = 3
+			print(id is int, id is not string, x is .some, x is .none)
+		"},
+		"true true true false",
+	);
+}

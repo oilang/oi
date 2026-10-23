@@ -138,6 +138,24 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
 				}
 				let (obj, vt) = self.expr(subject)?;
+				let cc = match negated {
+					true => IntCC::NotEqual,
+					false => IntCC::Equal,
+				};
+				let (sv, st) = self.deref(obj, &vt);
+				if st.is_enumish() {
+					let pat = match trait_name.strip_prefix('.') {
+						Some(variant) => Expr::Atom(variant.into()),
+						None => Expr::Ident(trait_name.clone()),
+					};
+					let (disc, binds) = self.enum_pattern(&(pat, expr.1), &st)?;
+					if !binds.is_empty() {
+						return fail(format!("`{st}` is checked by its variants"), expr.1, "ex: `.some`");
+					}
+					let tag = self.enum_tag(&st, sv);
+					let hit = self.b.ins().icmp_imm(cc, tag, disc);
+					return Ok((self.b.ins().uextend(self.int, hit), Typ::Bool));
+				}
 				let tn = match &vt {
 					Typ::Trait(tn) => tn.clone(),
 					Typ::Error => role::ERROR.to_string(),
@@ -155,10 +173,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
 				let got = self.ld_word(obj, 0);
-				let cc = match negated {
-					true => IntCC::NotEqual,
-					false => IntCC::Equal,
-				};
 				let hit = self.b.ins().icmp(cc, got, want);
 				Ok((self.b.ins().uextend(self.int, hit), Typ::Bool))
 			}

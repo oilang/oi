@@ -1991,6 +1991,8 @@ main :: fn() {
 	# member values coerce when the type is known from context
 	id: Id = 7
 	id = "abc123"
+	# on a value, `is` checks the active member or variant
+	assert! id is string && Option.some(5) is .some
 
 	# sum types may be used in type signatures
 	lookup :: fn(id: Id) User | :missing { :missing }
