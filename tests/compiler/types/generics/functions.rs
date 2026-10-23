@@ -33,6 +33,17 @@ fn first_of_array() {
 }
 
 #[test]
+fn infer_from_map() {
+	let src = indoc! {r#"
+		pick[K, V] :: fn(m: [K]V, key: K) V { m[key] }
+		size[K, V] :: fn(m: [K]V) int { m.len() }
+		m := ["a" = 1.5, "b" = 2.5]
+		(pick(m, "b"), size(m), size([1 = true]))
+	"#};
+	check(src, "(2.5, 2, 1)");
+}
+
+#[test]
 fn omitted_return_type_is_unit() {
 	let src = indoc! {r#"
 		show[T] :: fn(x: T) { print("{x}") }

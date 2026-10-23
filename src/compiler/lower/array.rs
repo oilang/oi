@@ -118,7 +118,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Fresh rc'd heap buffer holding `vals`.
-	fn heap_alloc(&mut self, vals: Vec<Value>, elem: &Typ) -> (Value, Value) {
+	pub(super) fn heap_alloc(&mut self, vals: Vec<Value>, elem: &Typ) -> (Value, Value) {
 		let n = vals.len();
 		let data = self.rc_alloc(n as i64 * self.elem_stride(elem), &[]);
 		self.store_all(data, vals, elem);

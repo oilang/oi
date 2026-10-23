@@ -292,6 +292,9 @@ impl Typ {
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => {
 				format!("fn({}) {}", keys(&mut params.iter().map(|p| &p.typ)), ret.key())
 			}
+			Typ::Annotated(_, t) if let (Some((k, _)), Typ::FixedArray(e, _)) = (self.keyed(), &**t) => {
+				format!("[{}]{}", k.key(), e.key())
+			}
 			Typ::Annotated(anns, t) => format!("{}{}", marks(anns), t.key()),
 			Typ::Struct(name, _) => name.clone(),
 			Typ::Sum(name, _) if !name.is_empty() => name.clone(),

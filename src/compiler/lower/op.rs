@@ -461,7 +461,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 
-		if let Some(name) = lt.nominal().or(matches!(lt, Typ::Map(..)).then_some("map")) {
+		if let Some(name) = lt
+			.nominal()
+			.or((matches!(lt, Typ::Map(..)) || lt.keyed().is_some()).then_some("map"))
+		{
 			// overloads
 			let key = format!("{name}.{method}");
 			let plain = self.fill(&lt, tn, method, 2);
@@ -787,6 +790,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			let v = self.expr(lhs)?;
 			return self.emit_contains(rhs_val, &rhs_typ, v, lhs.1);
+		}
+
+		// enum-indexed arrays
+		if let Some((key, _)) = rhs_typ.keyed() {
+			self.check_typed(lhs, &key, "not a key")?;
+			return Ok((self.b.ins().iconst(self.int, 1), Typ::Bool));
 		}
 
 		let elem = match rhs_typ {

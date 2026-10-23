@@ -72,3 +72,10 @@ test! "enum set insert" {
 	s[.write] = ()
 	assert! .write in s && s.len() == 1
 }
+
+test! "enum arrays act as maps" {
+	a: [Status]int = .[.ok = 1, .missing = 2]
+	b: [Status]int = .[.ok = 10, .missing = 20]
+	assert! .missing in a && a.keys == [.ok .missing]
+	assert! (a | b) == b && (a & b) == a
+}

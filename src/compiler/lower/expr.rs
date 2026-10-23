@@ -673,6 +673,19 @@ impl<'a, M: Module> Translator<'a, M> {
 					return self.trait_field(ptr, tn, field, expr.1);
 				}
 
+				if let Some((key, _)) = typ.keyed()
+					&& field == "keys"
+				{
+					let discs = self
+						.variants_of(&key)
+						.iter()
+						.map(|v| self.b.ins().iconst(self.int, v.disc))
+						.collect();
+					let (data, len) = self.heap_alloc(discs, &key);
+					let typ = Typ::Array(Box::new(key));
+					return Ok((self.make_array(data, len, &typ), typ));
+				}
+
 				// expose array/string fields
 				if let Typ::Array(_) | Typ::FixedArray(..) | Typ::Str = &typ {
 					let elem = array_elem(&typ).clone();

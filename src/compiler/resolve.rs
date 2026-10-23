@@ -343,6 +343,10 @@ impl TypeCtx<'_> {
 				check_ann_typ(*self, &names, &inner, span)?;
 				Ok(Typ::Annotated(names, Box::new(inner)))
 			}
+			TypeExpr::Map(k, v) if let TypeExpr::Name(name) = &**k => self.resolve(
+				&TypeExpr::FixedArray(v.clone(), Box::new((Expr::Ident(name.clone()), span))),
+				span,
+			),
 			TypeExpr::Map(k, v) => Ok(Typ::Map(
 				Box::new(self.resolve(k, span)?),
 				Box::new(self.resolve(v, span)?),

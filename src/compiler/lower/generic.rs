@@ -43,9 +43,17 @@ impl<'d> Infer<'d> {
 				}
 				self.unify(elem, found)
 			}
+			(TypeExpr::FixedArray(val, key), Typ::Map(found_key, found_val)) if let Expr::Ident(key) = &key.0 => {
+				self.unify(&TypeExpr::Name(key.clone()), found_key)?;
+				self.unify(val, found_val)
+			}
 			(TypeExpr::Map(key, val), Typ::Map(found_key, found_val)) => {
 				self.unify(key, found_key)?;
 				self.unify(val, found_val)
+			}
+			(TypeExpr::Map(key, val), found) if let Some((found_key, arr)) = found.keyed() => {
+				self.unify(key, &found_key)?;
+				self.unify(val, array_elem(arr))
 			}
 			(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => elems
 				.iter()
