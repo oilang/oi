@@ -958,6 +958,7 @@ pub struct Param {
 	pub public: bool,
 	pub with: bool,
 	pub annotations: Vec<Annotation>,
+	pub pattern: Option<Box<Spanned<Expr>>>,
 }
 
 impl Param {
@@ -972,6 +973,7 @@ impl Param {
 			public: false,
 			with: false,
 			annotations: vec![],
+			pattern: None,
 		}
 	}
 

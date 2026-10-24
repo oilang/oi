@@ -215,7 +215,19 @@ fn shadow_params(params: &[Param], mut body: Vec<Spanned<Expr>>) -> Vec<Spanned<
 		.iter()
 		.filter(|p| p.with)
 		.map(|p| (Expr::With(vec![(Expr::Ident(p.name.clone()), p.span)]), p.span));
-	body.splice(0..0, copies.chain(withs));
+	let pats = params.iter().filter_map(|p| {
+		let value = Box::new((Expr::Ident(p.name.clone()), p.span));
+		let pat = p.pattern.clone()?;
+		Some((
+			Expr::PatBind {
+				pat,
+				value,
+				mutable: Some(false),
+			},
+			p.span,
+		))
+	});
+	body.splice(0..0, pats.chain(copies).chain(withs));
 	body
 }
 
@@ -360,7 +372,16 @@ where
 		mutable,
 		..Param::new(format!("%{name}"), typ, ex.span())
 	});
-	let param = name_hole.or(param_hole.clone()).or(param).boxed();
+	let pat = stmt::patterns();
+	let pat_param = pat.clone().then_ignore(just(Token::Colon)).then(type_expr.clone());
+	let pat_param = pat_param.map_with(|(pattern, typ), ex| {
+		let span: Span = ex.span();
+		Param {
+			pattern: Some(Box::new(pattern)),
+			..Param::new(format!("${}", span.start), typ, span)
+		}
+	});
+	let param = name_hole.or(param_hole.clone()).or(pat_param).or(param).boxed();
 	// NOTE: a trailing comma forces a tuple even for one param
 	let params = paren(
 		(param.separated_by(just(Token::Comma)).collect::<Vec<_>>())
@@ -437,7 +458,6 @@ where
 	let def_name = ident().or(hole_ident.clone()).boxed();
 	let path = ident().separated_by(just(Token::Dot)).at_least(1).collect::<Vec<_>>();
 	let lit_path = path.map(|p| p.join(".")).or(hole_ident.clone()).boxed();
-	let pat = stmt::patterns();
 
 	let macro_def = ident()
 		.then_ignore(adjacent)

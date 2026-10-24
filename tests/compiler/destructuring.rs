@@ -94,3 +94,12 @@ fn fail_array_bind() {
 	fail_rt("[a b] :: [1]", "out of range");
 	fail("[a b] :: 5", "cannot destructure");
 }
+
+#[test]
+fn param_patterns() {
+	let src = indoc! {"
+		f :: fn((a, b): (int, int), k: int) int { (a + b) * k }
+		print(f((1, 2), 10))
+	"};
+	check(src, "30");
+}
