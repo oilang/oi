@@ -109,3 +109,8 @@ fn underscore_assign_drops() {
 	check(["_ = 1 + 2", r#"print("ok")"#], "ok");
 	check("_ = 3", "3");
 }
+
+#[test]
+fn block_bind_copies_the_first() {
+	check(["lo, hi := 0", "hi += 5", "print(lo, hi)"], "0 5");
+}

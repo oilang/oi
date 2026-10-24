@@ -1,4 +1,4 @@
-use super::{P, Parsers, Rec, Tokens, binder, binding, brace, bracket, ident, loose_list, paren, spanned};
+use super::{P, Parsers, Rec, Tokens, binder, binding, brace, bracket, ident, list1, loose_list, paren, spanned};
 use crate::ast::{self, BinOp, Expr, Spanned, TypeExpr};
 use crate::lexer::Token;
 
@@ -71,25 +71,29 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 		}
 		t
 	});
-	let bind = bind_name
-		.clone()
+
+	let bind = list1(bind_name.clone())
 		.then(binding(annot, value.clone()))
-		.map_with(|((name, binder), (mutable, typ, value)), ex| {
-			let bind = (
-				Expr::Bind {
-					mutable,
-					name,
-					typ,
-					value: value.map(Box::new),
-				},
-				ex.span(),
-			);
-			match binder {
-				Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
-				None => bind,
+		.map_with(|(names, (mutable, typ, mut value)), ex| {
+			for (name, binder) in names {
+				let bind = (
+					Expr::Bind {
+						mutable,
+						name,
+						typ: typ.clone(),
+						value: value.map(Box::new),
+					},
+					ex.span(),
+				);
+				value = Some(match binder {
+					Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
+					None => bind,
+				});
 			}
+			value.unwrap()
 		})
 		.boxed();
+
 	let destructure = pat
 		.then(
 			binder([Token::Bind, Token::DoubleColon])
@@ -108,6 +112,7 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 			)
 		})
 		.boxed();
+
 	(bind, destructure)
 }
 

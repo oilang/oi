@@ -523,3 +523,11 @@ fn linear_values_end_only_through_a_consumer() {
 		"only `Tx`'s own methods can discard it",
 	);
 }
+
+#[test]
+fn block_bind_of_a_drop_value_fails() {
+	fail(
+		[FILE, "a, b := File.{fd = 1}"],
+		"`File` is move-only, so `b` can't copy it",
+	);
+}

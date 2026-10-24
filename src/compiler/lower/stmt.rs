@@ -83,6 +83,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					self.self_name = None;
 					if let Some(v) = value {
+						if matches!(v.0, Expr::Bind { .. }) && (self.is_affine(&typ) || self.is_linear(&typ)) {
+							return fail(
+								format!("`{typ}` is move-only, so `{name}` can't copy it"),
+								stmt.1,
+								"grouped here",
+							);
+						}
 						self.move_resource(v, &typ)?;
 					}
 					// zeros are already owned
