@@ -286,6 +286,27 @@ pub(crate) fn wrapped_def(e: &mut Expr) -> Option<(Option<Vis>, &mut String)> {
 	}
 }
 
+// Split a bind group, copying literals.
+fn split_group(mut item: Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	if let (Expr::Pub(vis, inner), span) = item {
+		return split_group(*inner)
+			.into_iter()
+			.map(|b| (Expr::Pub(vis, Box::new(b)), span))
+			.collect();
+	}
+	let Expr::Bind { value, .. } = &mut item.0 else {
+		return vec![item];
+	};
+	let Some((Expr::Bind { name, value: prev, .. }, span)) = value.as_deref() else {
+		return vec![item];
+	};
+	let ident = Box::new((Expr::Ident(name.clone()), *span));
+	let copy = prev.as_ref().map(|v| if is_const_value(&v.0) { v.clone() } else { ident });
+	let mut binds = split_group(*std::mem::replace(value, copy).unwrap());
+	binds.push(item);
+	binds
+}
+
 // Unit and struct literals also count as const values.
 fn is_const_value(e: &Expr) -> bool {
 	match e {
@@ -777,11 +798,18 @@ impl Loader {
 				.collect();
 			jobs.into_iter().map(|j| j.join().unwrap()).collect()
 		});
+
+		// scripts lower groups as statements
+		let script = name == "main" && !parsed.iter().flatten().flatten().any(|i| i.0.def_name() == Some("main"));
 		for (result, base) in parsed.into_iter().zip(bases) {
-			let items = result.map_err(|ds| self.report(ds))?;
+			let mut items = result.map_err(|ds| self.report(ds))?;
+			if !script {
+				items = items.into_iter().flat_map(split_group).collect();
+			}
 			let scope = self.add_file(&mut module, &mut imports, items).map_err(|d| self.report([d]))?;
 			module.scope.files.push((base..base + self.program.map.src(base).len(), scope));
 		}
+
 		self.seal(module, imports)
 	}
 
