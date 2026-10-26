@@ -41,11 +41,19 @@ impl<'a, M: Module> Translator<'a, M> {
 					typ,
 					value,
 				} => {
-					// a bind whose name resolves as a type is an alias
+					// type aliases
 					if !*mutable
-						&& typ.is_none() && value.as_ref().is_some_and(|v| TypeExpr::from_expr(&v.0).is_some())
-						&& self.types.resolve(&TypeExpr::Name(name.clone()), stmt.1).is_ok()
+						&& typ.is_none() && let Some(v) = value
+						&& let Some(te) = match &v.0 {
+							Expr::Call { name, args, .. } if name == "type" && args.len() == 1 => {
+								Some(TypeExpr::Infer(Box::new(args[0].clone())))
+							}
+							e => TypeExpr::from_expr(e),
+						} && let Ok(aliased) = self.resolve_local(&te, v.1)
 					{
+						let mut params = self.types.type_params.clone();
+						params.insert(name.clone(), aliased);
+						self.types.type_params = Box::leak(Box::new(params));
 						continue;
 					}
 					if *mutable {

@@ -154,6 +154,22 @@ fn type_of_is_static() {
 }
 
 #[test]
+fn local_type_binds_alias() {
+	check(
+		indoc! {"
+			main :: fn() {
+				x := 3
+				t :: type(x)
+				b :: []t
+				y: b = .[1, 2]
+				print(y)
+			}
+		"},
+		"[1, 2]",
+	);
+}
+
+#[test]
 fn type_of_static_in_signatures() {
 	check(
 		indoc! {"
