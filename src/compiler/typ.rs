@@ -39,7 +39,23 @@ pub(crate) enum Typ {
 	Ast,
 	Any,
 	TypeId,
-	Const(i64),
+	Const(Box<Expr>),
+}
+
+// Spell a comptime value back out, for instance names.
+fn lit_text(e: &Expr) -> String {
+	let list = |es: &mut dyn Iterator<Item = &Spanned<Expr>>| es.map(|e| lit_text(&e.0)).collect::<Vec<_>>().join(", ");
+	match e {
+		Expr::Int(n) => n.to_string(),
+		Expr::Float(x) => x.to_string(),
+		Expr::Bool(b) => b.to_string(),
+		Expr::String(s) => format!("{s:?}"),
+		Expr::Atom(a) => format!(":{a}"),
+		Expr::Array(es) => format!("[{}]", list(&mut es.iter())),
+		Expr::StructLit { name, fields, .. } => format!("{name}.{{{}}}", list(&mut fields.iter().map(|(_, v)| v))),
+		Expr::Cast { args, .. } => list(&mut args.iter()),
+		e => format!("{e:?}"),
+	}
 }
 
 // Annotation names.
@@ -383,7 +399,7 @@ impl fmt::Display for Typ {
 			Typ::Ast => write!(f, "Ast"),
 			Typ::Any => write!(f, "any"),
 			Typ::TypeId => write!(f, "typeid"),
-			Typ::Const(n) => write!(f, "{n}"),
+			Typ::Const(lit) => f.write_str(&lit_text(lit)),
 		}
 	}
 }

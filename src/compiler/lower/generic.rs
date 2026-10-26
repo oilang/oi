@@ -38,7 +38,10 @@ impl<'d> Infer<'d> {
 			(TypeExpr::FixedArray(elem, len), Typ::FixedArray(found, found_len)) => {
 				match &len.0 {
 					Expr::Int(len) if *len != *found_len as i128 => return Ok(()),
-					Expr::Ident(param) => self.unify(&TypeExpr::Name(param.clone()), &Typ::Const(*found_len as i64))?,
+					Expr::Ident(param) => self.unify(
+						&TypeExpr::Name(param.clone()),
+						&Typ::Const(Box::new(Expr::Int(*found_len as i128))),
+					)?,
 					_ => {}
 				}
 				self.unify(elem, found)

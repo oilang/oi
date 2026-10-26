@@ -70,3 +70,24 @@ fn a_value_param_infers_from_a_fixed_array() {
 	"};
 	check(src, "3");
 }
+
+#[test]
+fn a_value_param_takes_any_comptime_value() {
+	let src = indoc! {r#"
+		greet[S: string] :: fn() string { S }
+		Config :: struct { n: int }
+		pool[C: Config] :: fn() int { C.n }
+		size[N: int] :: fn() string { comp if N > 2 { "big" } else { "small" } }
+		sq :: fn(x: int) int { x * x }
+		print(greet["hi"](), pool[Config.{n = 3}](), size[1 + 1](), size[sq(2)]())
+	"#};
+	check(src, "hi 3 small big");
+}
+
+#[test]
+fn a_value_arg_must_match_its_bound() {
+	fail(
+		["greet[S: string] :: fn() string { S }", "print(greet[3]())"],
+		"`S` is a `string` parameter",
+	);
+}

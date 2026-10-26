@@ -1413,10 +1413,12 @@ impl<M: Module> Compiler<M> {
 				_ => None,
 			})
 			.collect();
+		let stage0 = RefCell::new(stage0);
 		let consts = Consts {
 			map: &const_map,
 			anns: &const_anns,
 			binds: &binds,
+			comp: Some((&program, &stage0)),
 		};
 
 		let no_structs = HashMap::new();
@@ -1926,7 +1928,7 @@ impl<M: Module> Compiler<M> {
 			let module = if def.module.is_empty() { "main" } else { &def.module };
 			let home = scopes[module].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
-			comp::instantiate(&mut def.body, &types, module, &self.consts, &program, &mut stage0)?;
+			comp::instantiate(&mut def.body, &types, module, &self.consts)?;
 			let me = (def.self_typ.as_ref()).map(|te| types.resolve(te, def.span)).transpose()?;
 			let self_key = me.as_ref().map(Typ::key);
 			subst.extend(me.map(|t| ("Self".to_string(), t)));

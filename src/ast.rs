@@ -675,7 +675,7 @@ pub enum TypeExpr {
 	AnonStruct(Vec<Param>),
 	Variadic(Box<TypeExpr>),
 	Unquote(Box<Spanned<Expr>>),
-	Const(i64),
+	Value(Box<Spanned<Expr>>),
 	Infer(Box<Spanned<Expr>>),
 }
 
@@ -708,7 +708,7 @@ impl TypeExpr {
 			TypeExpr::Name(_)
 			| TypeExpr::AtomSum(_)
 			| TypeExpr::Unquote(_)
-			| TypeExpr::Const(_)
+			| TypeExpr::Value(_)
 			| TypeExpr::Infer(_) => {}
 		}
 		f(self);

@@ -103,6 +103,7 @@ pub(crate) struct Consts<'a> {
 	pub map: &'a HashMap<String, Spanned<Expr>>,
 	pub anns: &'a HashMap<String, Vec<Annotation>>,
 	pub binds: &'a HashMap<String, Spanned<TypeExpr>>,
+	pub comp: Option<(&'a Program, &'a RefCell<Option<Compiler>>)>,
 }
 
 // The named types in scope for resolution.
@@ -139,6 +140,7 @@ impl<'a> TypeCtx<'a> {
 				map: &NO_CONSTS.0,
 				anns: &NO_CONSTS.1,
 				binds: &NO_CONSTS.2,
+				comp: None,
 			},
 			scope: &NO_SCOPE,
 			depth: 0,
@@ -274,7 +276,7 @@ impl TypeCtx<'_> {
 			TypeExpr::Unquote(_) => fail("unquote outside a macro template", span, "stray unquote"),
 			TypeExpr::Infer(e) => super::static_typ(&e.0, self, e.1),
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
-			TypeExpr::Const(n) => Ok(Typ::Const(*n)),
+			TypeExpr::Value(arg) => self.value_arg(arg),
 			TypeExpr::FixedArray(elem, len) => {
 				if let Expr::Ident(name) = &len.0
 					&& let Ok(k) = self.named(name, span)
@@ -283,7 +285,7 @@ impl TypeCtx<'_> {
 					// enum indices
 					let variants = self.enums.borrow().get(&k.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
 					return match k {
-						Typ::Const(n) => Ok(Typ::FixedArray(elem, n as usize)),
+						Typ::Const(lit) if let Expr::Int(n) = *lit => Ok(Typ::FixedArray(elem, n as usize)),
 						// ordinal sets
 						_ if elem.is_unit() && self.assoc_int(name, "count").is_some_and(|n| n <= 1 << 16) => {
 							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
@@ -437,21 +439,43 @@ impl TypeCtx<'_> {
 	pub fn arg_typ(&self, p: &TypeParam, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
 		let value = self.value_param(p);
 		let typ = match (self.resolve(te, span), te) {
-			(Ok(typ), _) => typ,
-			(Err(e), TypeExpr::Name(n)) if value => {
-				match fold_const(&Expr::Ident(n.clone()), self.consts.map, self.scope) {
-					Some(Expr::Int(v)) if let Some(v) = int_word(v) => Typ::Const(v),
-					_ => return Err(e),
-				}
+			(_, TypeExpr::AtomSum(atoms)) if value && atoms.len() == 1 => {
+				Typ::Const(Box::new(Expr::Atom(atoms[0].clone())))
 			}
+			(Ok(typ), _) => typ,
+			(Err(_), TypeExpr::Name(n)) if value => self.value_arg(&(Expr::Ident(n.clone()), span))?,
 			(Err(e), _) => return Err(e),
 		};
-		if value == matches!(typ, Typ::Const(_)) {
-			return Ok(typ);
+		match (value, typ) {
+			(true, Typ::Const(lit)) => {
+				let bound = p.bound.as_deref().unwrap_or_default();
+				let want = (self.named(bound, span))
+					.or_else(|e| builtin(bound.rsplit("::").next().unwrap_or(bound)).ok_or(e))?;
+				if super::static_typ(&lit, self, span).is_ok_and(|t| t == want) {
+					return Ok(Typ::Const(lit));
+				}
+				let msg = || format!("`{}` is a `{want}` parameter", p.name);
+				Ok(Typ::Const(Box::new(typed_lit(*self, (*lit, span), &want, msg)?.0)))
+			}
+			(false, typ) if !matches!(typ, Typ::Const(_)) => Ok(typ),
+			(_, typ) => {
+				let msg = format!("`{}` is a {} parameter", p.name, if value { "value" } else { "type" });
+				fail(msg, span, format!("got `{typ}`"))
+			}
 		}
-		let kind = if value { "value" } else { "type" };
-		let msg = format!("`{}` is a {kind} parameter", p.name);
-		fail(msg, span, format!("got `{typ}`"))
+	}
+
+	// Fold a bracket value arg to a literal.
+	fn value_arg(&self, arg: &Spanned<Expr>) -> Result<Typ, Diagnostic> {
+		let lit = match (fold_const(&arg.0, self.consts.map, self.scope), self.consts.comp) {
+			(Some(lit), _) => lit,
+			(None, Some((program, stage0))) => {
+				let module = Some(self.scope.module.as_str()).filter(|m| !m.is_empty()).unwrap_or("main");
+				super::comp::fold(arg.clone(), module, self.consts.map, program, &mut stage0.borrow_mut())?
+			}
+			(None, None) => return fail("a value argument must be a constant", arg.1, "not a constant"),
+		};
+		Ok(Typ::Const(Box::new(lit)))
 	}
 
 	// Resolve `args` against `params`.

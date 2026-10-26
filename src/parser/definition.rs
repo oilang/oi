@@ -131,7 +131,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let struct_body = brace(loose_list(struct_field_entry.clone()));
 
 	// explicit generic args
-	let call_type_args = types::type_args(p.type_expr.clone());
+	let call_type_args = types::type_args(p.type_expr.clone(), p.expr.clone());
 
 	// struct literals
 	let struct_lit = p

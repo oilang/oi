@@ -99,9 +99,8 @@ pub(crate) fn instantiate(
 	types: &TypeCtx,
 	target: &str,
 	consts: &HashMap<String, Spanned<Expr>>,
-	program: &Program,
-	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
+	let (program, stage0) = types.consts.comp.expect("lowering always has a stage 0 host");
 	let as_type = |(e, span): &Spanned<Expr>| match e {
 		Expr::Tuple(fs) if fs.is_empty() => Some(Typ::unit()),
 		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
@@ -113,12 +112,16 @@ pub(crate) fn instantiate(
 			{
 				*e = Expr::Bool((lt == rt) == (*op == BinOp::Eq));
 			} else if let Expr::Ident(n) = e
+				&& let Some(Typ::Const(lit)) = types.type_params.get(n)
+			{
+				*e = (**lit).clone();
+			} else if let Expr::Ident(n) = e
 				&& let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
 			}
 		});
-		let lit = fold(inner, target, consts, program, stage0)?;
+		let lit = fold(inner, target, consts, program, &mut stage0.borrow_mut())?;
 		patch_first(body, lit);
 	}
 	Ok(())
@@ -206,7 +209,7 @@ fn reify(span: Span) -> Expr {
 }
 
 // Compile and run a single comp site, folding it to its reified literal.
-fn fold(
+pub(crate) fn fold(
 	mut inner: Spanned<Expr>,
 	target: &str,
 	consts: &HashMap<String, Spanned<Expr>>,

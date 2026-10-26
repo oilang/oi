@@ -1,5 +1,5 @@
 use super::{P, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, paren, spanned};
-use crate::ast::{Access, Expr, Param, Spanned, TypeExpr, int_word};
+use crate::ast::{Access, Expr, Param, Spanned, TypeExpr};
 use crate::lexer::Token;
 
 use chumsky::prelude::*;
@@ -11,16 +11,18 @@ pub(super) fn result_of(ok: TypeExpr, err: Option<TypeExpr>) -> TypeExpr {
 }
 
 // Generic type params.
-pub(super) fn type_args<'token, I: Tokens<'token>>(te: P<'token, I, TypeExpr>) -> P<'token, I, Vec<Spanned<TypeExpr>>> {
-	bracket(list1(spanned(
-		select! { Token::Int(n) if int_word(n).is_some() => TypeExpr::Const(n as i64) }.or(te),
-	)))
-	.boxed()
+pub(super) fn type_args<'token, I: Tokens<'token>>(
+	te: P<'token, I, TypeExpr>,
+	expr: P<'token, I, Spanned<Expr>>,
+) -> P<'token, I, Vec<Spanned<TypeExpr>>> {
+	let arg_end = one_of([Token::Comma, Token::RBracket]).rewind();
+	let value = expr.map(|e| TypeExpr::Value(Box::new(e)));
+	bracket(list1(spanned(te.then_ignore(arg_end).or(value)))).boxed()
 }
 
 // Can be settled by the parser without the resolver.
 pub(super) fn settled(args: &[Spanned<TypeExpr>]) -> bool {
-	args.len() > 1 || !matches!(args[0].0, TypeExpr::Const(_))
+	args.len() > 1 || !matches!(args[0].0, TypeExpr::Value(_))
 }
 
 // The type-expression grammar, boxed so its types stop at this fn boundary.
@@ -94,7 +96,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			// generic structs
 			let generic_instance = dotted_name
 				.clone()
-				.then(type_args(te.clone().boxed()))
+				.then(type_args(te.clone().boxed(), expr.clone()))
 				.filter(|(_, args)| settled(args))
 				.map(|(name, args)| TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect()));
 

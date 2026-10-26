@@ -106,7 +106,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						match visible.then(|| self.types.consts.map.get(key.as_ref()).cloned()).flatten() {
 							Some(c) => self.expr(&c),
 							None => match self.types.type_params.get(name) {
-								Some(&Typ::Const(n)) => Ok((self.b.ins().iconst(self.int, n), Typ::Int(64))),
+								Some(Typ::Const(lit)) => self.lower(&((**lit).clone(), expr.1), hint),
 								_ => match self.through_with(expr)? {
 									Some(m) => self.lower(&m, hint),
 									None => self
@@ -332,13 +332,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Apply { callee, args } => {
 				// a lone value arg parsed as an index, because only the resolver knows what a name is
 				if let Expr::Index { collection, index } = &callee.0
-					&& let (Expr::Ident(n), Expr::Int(v)) = (&collection.0, &index.0)
-					&& let Some(v) = int_word(*v)
+					&& let Expr::Ident(n) = &collection.0
 					&& !self.vars.contains_key(n)
 					&& let Some(def) = self.world.generic_fns.get(self.qualify(n).as_ref()).cloned()
 				{
-					let key = self.qualify(n).to_string();
-					return self.call_generic(&key, &def, &[(TypeExpr::Const(v), index.1)], args, None, expr.1);
+					let (key, arg) = (self.qualify(n).to_string(), [(TypeExpr::Value(index.clone()), index.1)]);
+					return self.call_generic(&key, &def, &arg, args, None, expr.1);
 				}
 				let (val, typ) = self.expr(callee)?;
 				self.call_value(&typ.to_string(), Callee::Object(val), &typ, args, None, expr.1)
