@@ -85,6 +85,15 @@ fn a_value_param_takes_any_comptime_value() {
 }
 
 #[test]
+fn a_value_arg_sees_the_enclosing_params() {
+	let src = indoc! {r"
+		sum[N: int] :: fn() int { comp if N == 0 { 0 } else { N + sum[N - 1]() } }
+		print(sum[3]())
+	"};
+	check(src, "6");
+}
+
+#[test]
 fn a_value_arg_must_match_its_bound() {
 	fail(
 		["greet[S: string] :: fn() string { S }", "print(greet[3]())"],

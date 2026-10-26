@@ -467,6 +467,14 @@ impl TypeCtx<'_> {
 
 	// Fold a bracket value arg to a literal.
 	fn value_arg(&self, arg: &Spanned<Expr>) -> Result<Typ, Diagnostic> {
+		let mut arg = arg.clone();
+		arg.0.walk(&mut |e| {
+			if let Expr::Ident(n) = e
+				&& let Some(Typ::Const(lit)) = self.type_params.get(n)
+			{
+				*e = (**lit).clone();
+			}
+		});
 		let lit = match (fold_const(&arg.0, self.consts.map, self.scope), self.consts.comp) {
 			(Some(lit), _) => lit,
 			(None, Some((program, stage0))) => {
