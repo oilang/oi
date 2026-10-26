@@ -920,6 +920,7 @@ pub struct TypeParam {
 	pub name: String,
 	pub bound: Option<String>,
 	pub bound_args: Vec<Spanned<TypeExpr>>,
+	pub value_type: Option<TypeExpr>,
 	pub default: Option<Spanned<TypeExpr>>,
 }
 

@@ -429,6 +429,9 @@ impl TypeCtx<'_> {
 
 	// A bound that names a type rather than a trait makes the param a value.
 	pub fn value_param(&self, p: &TypeParam) -> bool {
+		if p.value_type.is_some() {
+			return true;
+		}
 		p.bound.as_deref().is_some_and(|b| {
 			!self.traits.contains_key(b)
 				&& (self.named(b, Span::default()).is_ok() || Self::builtin_type(b.rsplit("::").next().unwrap_or(b)))
@@ -449,8 +452,11 @@ impl TypeCtx<'_> {
 		match (value, typ) {
 			(true, Typ::Const(lit)) => {
 				let bound = p.bound.as_deref().unwrap_or_default();
-				let want = (self.named(bound, span))
-					.or_else(|e| builtin(bound.rsplit("::").next().unwrap_or(bound)).ok_or(e))?;
+				let want = (p
+					.value_type
+					.as_ref()
+					.map_or_else(|| self.named(bound, span), |te| self.resolve(te, span)))
+				.or_else(|e| builtin(bound.rsplit("::").next().unwrap_or(bound)).ok_or(e))?;
 				if super::static_typ(&lit, self, span).is_ok_and(|t| t == want) {
 					return Ok(Typ::Const(lit));
 				}

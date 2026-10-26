@@ -411,17 +411,19 @@ where
 	let fn_ret = ident().then(typed.or(bound_ret)).or_not().then(ret.clone()).boxed();
 
 	// generics
-	let bound = dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not());
+	let bound = (dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not()))
+		.map(|(bound, args)| (Some(bound), args.unwrap_or_default(), None))
+		.or(type_expr.clone().map(|typ| (None, vec![], Some(typ))));
 	let type_param = ident()
 		.then(just(Token::Colon).ignore_then(bound).or_not())
 		.then(just(Token::DoubleColon).ignore_then(spanned(type_expr.clone())).or_not())
 		.map(|((name, bound), default)| {
-			let (bound, args) = bound.unzip();
-			let bound_args = args.flatten().unwrap_or_default();
+			let (bound, bound_args, value_type) = bound.unwrap_or_default();
 			TypeParam {
 				name,
 				bound,
 				bound_args,
+				value_type,
 				default,
 			}
 		});

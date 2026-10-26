@@ -94,6 +94,14 @@ fn a_value_arg_sees_the_enclosing_params() {
 }
 
 #[test]
+fn a_value_param_takes_any_type_as_its_bound() {
+	check(
+		["second[X: []int] :: fn() int { X[1] }", "print(second[.[1, 2, 3]]())"],
+		"2",
+	);
+}
+
+#[test]
 fn a_value_arg_must_match_its_bound() {
 	fail(
 		["greet[S: string] :: fn() string { S }", "print(greet[3]())"],
