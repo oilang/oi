@@ -182,6 +182,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Bool => (comp::TAG_BOOL, val),
 			Typ::Str => (comp::TAG_STR, val),
 			Typ::Atom => (comp::TAG_ATOM, val),
+			Typ::TypeId => (comp::TAG_TYPE, val),
 			Typ::Int(_) | Typ::ISize | Typ::UInt(_) | Typ::USize => (comp::TAG_INT, self.scalar_bits(val, typ)),
 			Typ::Float(32 | 64) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			t if t.is_unit() => (comp::TAG_UNIT, self.b.ins().iconst(self.int, 0)),

@@ -216,7 +216,7 @@ pub(crate) fn builtin(name: &str) -> Option<Typ> {
 		"cstr" => Typ::CStr,
 		"atom" => Typ::Atom,
 		"any" => Typ::Any,
-		"typeid" => Typ::TypeId,
+		"typeid" | "type" => Typ::TypeId,
 		"()" => Typ::unit(),
 		"Error" => Typ::Error,
 		"Ast" => Typ::Ast,
@@ -475,7 +475,10 @@ impl TypeCtx<'_> {
 			}
 			(None, None) => return fail("a value argument must be a constant", arg.1, "not a constant"),
 		};
-		Ok(Typ::Const(Box::new(lit)))
+		match lit {
+			Expr::TypePat(te) => self.resolve(&te, arg.1),
+			lit => Ok(Typ::Const(Box::new(lit))),
+		}
 	}
 
 	// Resolve `args` against `params`.

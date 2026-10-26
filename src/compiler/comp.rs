@@ -9,7 +9,7 @@ use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
 
-use super::{Compiler, Typ, TypeCtx, role, type_expr};
+use super::{Compiler, Typ, TypeCtx, role, type_expr, typeid};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
@@ -25,6 +25,7 @@ pub(crate) const TAG_ARRAY: i64 = 5;
 pub(crate) const TAG_AST: i64 = 6;
 pub(crate) const TAG_AST_SEQ: i64 = 7;
 pub(crate) const TAG_ATOM: i64 = 8;
+pub(crate) const TAG_TYPE: i64 = 9;
 
 enum Entry {
 	Scalar(i64, i64),
@@ -176,7 +177,7 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 	}
 }
 
-fn reify(span: Span) -> Expr {
+fn reify(span: Span, any_types: &[Typ]) -> Expr {
 	STACK
 		.with_borrow_mut(|stack| {
 			let mut exprs: Vec<Expr> = Vec::new();
@@ -189,6 +190,10 @@ fn reify(span: Span) -> Expr {
 					Entry::Scalar(TAG_AST_SEQ, n) => {
 						let at = exprs.len() - n as usize;
 						super::expand::one(exprs.split_off(at).into_iter().map(|e| (e, span)).collect(), span).0
+					}
+					Entry::Scalar(TAG_TYPE, id) => {
+						let typ = any_types.iter().find(|t| typeid(t) == id).expect("a yielded type has an id");
+						Expr::TypePat(type_expr(typ).unwrap_or_else(|| TypeExpr::Name(typ.to_string())))
 					}
 					Entry::Scalar(tag, v) => scalar(tag, v),
 					Entry::Struct(name, nfields) => {
@@ -283,8 +288,9 @@ pub(crate) fn fold(
 	compiler.run_stage0(&synthetic, vec![name.clone()])?;
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
+	let lit = reify(span, &compiler.out.any_types);
 	*stage0 = Some(compiler);
-	Ok(reify(span))
+	Ok(lit)
 }
 
 // Fold every `comp` site, and every call in annotation position, to a literal.

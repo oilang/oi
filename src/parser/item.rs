@@ -207,7 +207,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	// type aliases
 	fn expr_shaped(t: &TypeExpr) -> bool {
 		match t {
-			TypeExpr::Name(_) => true,
+			TypeExpr::Name(_) | TypeExpr::Value(_) => true,
 			TypeExpr::AtomSum(atoms) => atoms.len() == 1,
 			TypeExpr::Tuple(ts) => ts.iter().all(|(n, t)| n.is_none() && expr_shaped(t)),
 			TypeExpr::Generic(_, args) => matches!(args.as_slice(), [a] if expr_shaped(a)),

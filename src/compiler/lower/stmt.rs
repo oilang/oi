@@ -48,6 +48,12 @@ impl<'a, M: Module> Translator<'a, M> {
 							Expr::Call { name, args, .. } if name == "type" && args.len() == 1 => {
 								Some(TypeExpr::Infer(Box::new(args[0].clone())))
 							}
+							Expr::Call { name, .. }
+								if (self.funcs.get(self.qualify(name).as_ref()))
+									.is_some_and(|f| f.ret == Typ::TypeId) =>
+							{
+								Some(TypeExpr::Value(v.clone()))
+							}
 							e => TypeExpr::from_expr(e),
 						} && let Ok(aliased) = self.resolve_local(&te, v.1)
 					{

@@ -292,3 +292,17 @@ fn comp_folds_generic_instances_called_from_comptime() {
 	"#};
 	check(src, ["x", "y", "x = 3", "y = 4", "5"]);
 }
+
+#[test]
+fn type_fns() {
+	let src = indoc! {"
+		Int :: fn(bits: int) type { if bits <= 8 { u8 } else { u16 } }
+		Buf[T] :: struct { items: []T }
+		x: Int(8) = 3
+		main :: fn() {
+			t :: Int(9)
+			print(x, type(x), t, type(Buf[Int(16)].{}))
+		}
+	"};
+	check(src, "3 u8 u16 Buf[u16]");
+}

@@ -104,6 +104,17 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			let type_of = (ident().filter(|n: &String| n == "type"))
 				.ignore_then(paren(expr.clone()))
 				.map(|e| TypeExpr::Infer(Box::new(e)));
+			// type fn calls
+			let call = spanned(
+				(dotted_name.clone().then_ignore(same_line.clone()))
+					.then(paren(loose_list(expr.clone())))
+					.map(|(name, args)| Expr::Call {
+						name,
+						type_args: vec![],
+						args,
+					}),
+			)
+			.map(|call| TypeExpr::Value(Box::new(call)));
 
 			choice((
 				hole,
@@ -117,6 +128,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				anon_struct,
 				type_of,
 				generic_instance,
+				call,
 				name,
 				tuple,
 				array,
