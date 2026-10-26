@@ -102,6 +102,18 @@ fn a_value_param_takes_any_type_as_its_bound() {
 }
 
 #[test]
+fn an_anon_value_arg_takes_its_bound() {
+	check(
+		[
+			"Mode :: enum { a, b }",
+			"pick[M: Mode] :: fn() Mode { M }",
+			"print(pick[.b]())",
+		],
+		"b",
+	);
+}
+
+#[test]
 fn a_value_arg_must_match_its_bound() {
 	fail(
 		["greet[S: string] :: fn() string { S }", "print(greet[3]())"],

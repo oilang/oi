@@ -441,6 +441,19 @@ impl TypeCtx<'_> {
 	// Resolve one bracket argument.
 	pub fn arg_typ(&self, p: &TypeParam, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
 		let value = self.value_param(p);
+		// anon args take the bound
+		let te = &match te {
+			TypeExpr::Value(arg) if value => {
+				let mut arg = arg.clone();
+				match &mut arg.0 {
+					Expr::EnumShorthand { variant, args } if args.is_empty() => arg.0 = Expr::Atom(variant.clone()),
+					Expr::StructLit { name, .. } if name.is_empty() => *name = p.bound.clone().unwrap_or_default(),
+					_ => {}
+				}
+				TypeExpr::Value(arg)
+			}
+			te => te.clone(),
+		};
 		let typ = match (self.resolve(te, span), te) {
 			(_, TypeExpr::AtomSum(atoms)) if value && atoms.len() == 1 => {
 				Typ::Const(Box::new(Expr::Atom(atoms[0].clone())))
