@@ -306,3 +306,16 @@ fn type_fns() {
 	"};
 	check(src, "3 u8 u16 Buf[u16]");
 }
+
+#[test]
+fn type_fns_return_instances() {
+	let src = indoc! {"
+		Buf[T] :: struct { x: T }
+		V[N: int] :: struct { xs: [N]int }
+		B :: fn() type { Buf[V[2]] }
+		show :: fn(b: Buf[V[2]]) { print(b) }
+		b: B() = .{}
+		show(b)
+	"};
+	check(src, "Buf[V[2]].{x = V[2].{xs = [0, 0]}}");
+}

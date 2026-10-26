@@ -611,6 +611,7 @@ struct Artifacts {
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	env_drops: Vec<(String, Typ)>,
 	any_types: Vec<Typ>,
+	instances: HashMap<String, Vec<Typ>>,
 	descs: HashMap<String, DataId>,
 	string_idx: usize,
 	atoms: HashSet<String>,
@@ -1948,6 +1949,7 @@ impl<M: Module> Compiler<M> {
 		}
 
 		self.hoisted = funcs;
+		self.out.instances = generics.instance_args.take();
 
 		Ok(id)
 	}

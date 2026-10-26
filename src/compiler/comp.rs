@@ -177,7 +177,15 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 	}
 }
 
-fn reify(span: Span, any_types: &[Typ]) -> Expr {
+// Spell a yielded type.
+fn spell(typ: &Typ, instances: &HashMap<String, Vec<Typ>>) -> TypeExpr {
+	match typ.nominal().and_then(|n| Some((n.split_once('[')?.0, instances.get(n)?))) {
+		Some((base, args)) => TypeExpr::Generic(base.into(), args.iter().map(|a| spell(a, instances)).collect()),
+		None => type_expr(typ).unwrap_or_else(|| TypeExpr::Name(typ.to_string())),
+	}
+}
+
+fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -> Expr {
 	STACK
 		.with_borrow_mut(|stack| {
 			let mut exprs: Vec<Expr> = Vec::new();
@@ -193,7 +201,7 @@ fn reify(span: Span, any_types: &[Typ]) -> Expr {
 					}
 					Entry::Scalar(TAG_TYPE, id) => {
 						let typ = any_types.iter().find(|t| typeid(t) == id).expect("a yielded type has an id");
-						Expr::TypePat(type_expr(typ).unwrap_or_else(|| TypeExpr::Name(typ.to_string())))
+						Expr::TypePat(spell(typ, instances))
 					}
 					Entry::Scalar(tag, v) => scalar(tag, v),
 					Entry::Struct(name, nfields) => {
@@ -288,7 +296,7 @@ pub(crate) fn fold(
 	compiler.run_stage0(&synthetic, vec![name.clone()])?;
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
-	let lit = reify(span, &compiler.out.any_types);
+	let lit = reify(span, &compiler.out.any_types, &compiler.out.instances);
 	*stage0 = Some(compiler);
 	Ok(lit)
 }

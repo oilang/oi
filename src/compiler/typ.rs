@@ -462,6 +462,7 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 				.collect::<Option<_>>()?,
 			Box::new(type_expr(r)?),
 		),
+		Typ::Const(lit) => TypeExpr::Value(Box::new(((**lit).clone(), Span::default()))),
 		_ => return None,
 	})
 }

@@ -97,7 +97,6 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			let generic_instance = dotted_name
 				.clone()
 				.then(type_args(te.clone().boxed(), expr.clone()))
-				.filter(|(_, args)| settled(args))
 				.map(|(name, args)| TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect()));
 
 			let hole = unquote.clone().map(|u| TypeExpr::Unquote(Box::new(u)));
