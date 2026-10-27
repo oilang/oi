@@ -138,6 +138,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		(!unit).then(|| self.b.inst_results(call)[0])
 	}
 
+	// Fold a call to a comp function to its literal.
+	pub(super) fn comp_call(
+		&mut self,
+		key: &str,
+		call: &Spanned<Expr>,
+		hint: Option<&Typ>,
+	) -> Result<Option<TypedVal>, Diagnostic> {
+		if self.comptime || !has_ann(self.types.consts.anns, key, "comp") {
+			return Ok(None);
+		}
+		let lit = self.types.fold(call)?;
+		self.lower(&(lit, call.1), hint).map(Some)
+	}
+
 	// Type arguments only mean something on a generic fn.
 	pub(super) fn check_type_args(
 		&self,

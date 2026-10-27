@@ -309,7 +309,9 @@ fn qualify_anns(scope: &Scope, anns: &[Annotation]) -> Vec<Annotation> {
 	let mut anns = anns.to_vec();
 	for a in &mut anns {
 		match &mut a.0 {
-			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. } if name != "unsafe" => {
+			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. }
+				if name != "unsafe" && name != "comp" =>
+			{
 				*name = role::marker(name).map_or_else(|| scope.qualify_name(name), String::from)
 			}
 			_ => {}
@@ -385,7 +387,7 @@ impl<'a> TypeCtx<'a> {
 		for a in self.consts.anns.values().flatten().chain(field_anns).chain(&generic_field_anns) {
 			match &a.0 {
 				Expr::StructLit { name, fields, .. } => self.check_struct_lit(name, fields, a.1)?,
-				Expr::Ident(name) if name == "unsafe" => {}
+				Expr::Ident(name) if name == "unsafe" || name == "comp" => {}
 				Expr::Ident(name) => match self.consts.map.get(name) {
 					Some((Expr::StructLit { name, fields, .. }, _)) => self.check_struct_lit(name, fields, a.1)?,
 					Some((Expr::Tuple(fields), _)) if fields.is_empty() => {}

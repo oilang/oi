@@ -36,19 +36,24 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	// fn defs
 	let func = item_head
 		.clone()
+		.then(spanned(just(Token::Comp).to(Expr::Ident("comp".into()))).or_not())
 		.then_ignore(just(Token::Fn))
 		.then(p.params.clone())
 		.then(p.fn_ret.clone())
 		.then(p.block.clone())
 		.then_ignore(just(Token::Pipeline).not())
-		.validate(|(((head, params), (bound, ret)), body), ex, emitter| {
+		.validate(|((((head, comp), params), (bound, ret)), body), ex, emitter| {
 			if let Some((name, ((_, at), _))) = &bound
 				&& params.0.iter().any(|p| p.name == *name)
 			{
 				emitter.emit(Rich::custom(*at, format!("duplicate argument `{name}`")));
 			}
 			let ret = bound.as_ref().map(|(_, (typ, _))| typ.clone()).or(ret);
-			fn_def(head, Some(params), ret, named_ret(bound, body, ex.span()), ex.span())
+			let f = fn_def(head, Some(params), ret, named_ret(bound, body, ex.span()), ex.span());
+			match comp {
+				Some(c) => (Expr::Annotated(vec![c], Box::new(f)), ex.span()),
+				None => f,
+			}
 		})
 		.boxed();
 
@@ -416,7 +421,10 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	let public = vis
 		.clone()
 		.then(def.clone().or(use_decl.clone()).or(p.bind.clone()).or(p.macro_def.clone()))
-		.map_with(|(v, d), ex| (Expr::Pub(v, Box::new(d)), ex.span()))
+		.map_with(|(v, d), ex| match d {
+			(Expr::Annotated(anns, d), _) => (Expr::Annotated(anns, Box::new((Expr::Pub(v, d), ex.span()))), ex.span()),
+			d => (Expr::Pub(v, Box::new(d)), ex.span()),
+		})
 		.boxed();
 	// annotations
 	let annotated = p
@@ -424,7 +432,14 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.clone()
 		.then(vis.or_not())
 		.then(def.clone().or(p.bind.clone()))
-		.map_with(|((anns, public), item), ex| {
+		.map_with(|((mut anns, public), item), ex| {
+			let item = match item {
+				(Expr::Annotated(inner, item), _) => {
+					anns.extend(inner);
+					*item
+				}
+				item => item,
+			};
 			let item = match public {
 				Some(v) => (Expr::Pub(v, Box::new(item)), ex.span()),
 				None => item,

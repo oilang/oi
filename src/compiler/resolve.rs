@@ -486,6 +486,14 @@ impl TypeCtx<'_> {
 
 	// Fold a bracket value arg to a literal.
 	fn value_arg(&self, arg: &Spanned<Expr>) -> Result<Typ, Diagnostic> {
+		match self.fold(arg)? {
+			Expr::TypePat(te) => self.resolve(&te, arg.1),
+			lit => Ok(Typ::Const(Box::new(lit))),
+		}
+	}
+
+	// Fold a comptime expression to a literal.
+	pub fn fold(&self, arg: &Spanned<Expr>) -> Result<Expr, Diagnostic> {
 		let mut arg = arg.clone();
 		arg.0.walk(&mut |e| {
 			if let Expr::Ident(n) = e
@@ -494,17 +502,13 @@ impl TypeCtx<'_> {
 				*e = (**lit).clone();
 			}
 		});
-		let lit = match (fold_const(&arg.0, self.consts.map, self.scope), self.consts.comp) {
-			(Some(lit), _) => lit,
+		match (fold_const(&arg.0, self.consts.map, self.scope), self.consts.comp) {
+			(Some(lit), _) => Ok(lit),
 			(None, Some((program, stage0))) => {
 				let module = Some(self.scope.module.as_str()).filter(|m| !m.is_empty()).unwrap_or("main");
-				super::comp::fold(arg.clone(), module, self.consts.map, program, &mut stage0.borrow_mut())?
+				super::comp::fold(arg, module, self.consts.map, program, &mut stage0.borrow_mut())
 			}
-			(None, None) => return fail("a value argument must be a constant", arg.1, "not a constant"),
-		};
-		match lit {
-			Expr::TypePat(te) => self.resolve(&te, arg.1),
-			lit => Ok(Typ::Const(Box::new(lit))),
+			(None, None) => fail("a value argument must be a constant", arg.1, "not a constant"),
 		}
 	}
 

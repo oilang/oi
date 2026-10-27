@@ -329,3 +329,16 @@ fn type_fns_take_bracket_args() {
 	"};
 	check(src, "3");
 }
+
+#[test]
+fn comp_fns() {
+	let src = indoc! {"
+		Tag :: struct {}
+		Arr :: comp fn(t: type, n: int) type { [n]t }
+		@Tag fib :: comp fn(n: int) int { if n < 2 { n } else { fib(n - 1) + fib(n - 2) } }
+		@Tag N :: comp fib(3)
+		x: Arr(int, 2) = .[1, 2]
+		print(x, fib(20), N)
+	"};
+	check(src, "[1, 2] 6765 2");
+}

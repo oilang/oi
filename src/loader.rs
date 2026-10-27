@@ -490,7 +490,7 @@ impl Loader {
 			};
 			if !anns.is_empty()
 				&& item.0.def_name().is_none()
-				&& !matches!(&item.0, Expr::Bind { value: Some(v), .. } if matches!(v.0, Expr::Foreign))
+				&& !matches!(&item.0, Expr::Bind { value: Some(v), .. } if matches!(v.0, Expr::Foreign | Expr::Comp(_)))
 			{
 				return Err(err(
 					"annotations only attach to definitions",
@@ -690,6 +690,7 @@ impl Loader {
 							let v = v.clone();
 							self.define(m, name, true, public, span)?;
 							self.program.consts.insert(name.clone(), v);
+							self.program.annotations.entry(name.clone()).or_default().extend(anns);
 							continue;
 						}
 						(_, _, Some(v)) if TypeExpr::from_expr(&v.0).is_some() => {

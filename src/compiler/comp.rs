@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr};
+use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
@@ -221,6 +221,42 @@ fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -
 		.expect("a comp site always yields exactly one value")
 }
 
+// Point a comptime call at a generic-equivalent copy.
+fn comp_copy(call: &mut Spanned<Expr>, target: &str, program: &Program) -> Option<(String, Spanned<Expr>)> {
+	let Expr::Call { name, type_args, args } = &mut call.0 else {
+		return None;
+	};
+	let scope = &program.modules.iter().find(|m| m.name == target)?.scope;
+	let key = scope.at(call.1).qualify_name(name);
+	super::has_ann(&program.annotations, &key, "comp").then_some(())?;
+	let module = module_of(&key).unwrap_or("main");
+	let items = &program.modules.iter().find(|m| m.name == module)?.items;
+	let (Expr::Fn { params, ret, body, .. }, span) = items.iter().find(|i| i.0.def_name() == Some(&key))? else {
+		return None;
+	};
+	let type_params = (params.iter())
+		.map(|p| TypeParam {
+			name: p.name.clone(),
+			value_type: (!matches!(&p.typ, TypeExpr::Name(t) if t == "type")).then(|| p.typ.clone()),
+			..TypeParam::default()
+		})
+		.collect();
+	*type_args = std::mem::take(args)
+		.into_iter()
+		.map(|(arg, span)| (TypeExpr::Value(Box::new((arg, span))), span))
+		.collect();
+	*name = format!("{key}#comp{}", SITE.fetch_add(1, Ordering::Relaxed));
+	let copy = Expr::Fn {
+		name: name.clone(),
+		type_params,
+		params: vec![],
+		params_tuple: true,
+		ret: ret.clone(),
+		body: body.clone(),
+	};
+	Some((module.into(), (copy, *span)))
+}
+
 // Compile and run a single comp site, folding it to its reified literal.
 pub(crate) fn fold(
 	mut inner: Spanned<Expr>,
@@ -255,6 +291,7 @@ pub(crate) fn fold(
 			*body = vec![(Expr::Quote(std::mem::take(body)), span)];
 		}
 	}
+	let copy = comp_copy(&mut inner, target, program);
 	// every needs its own name
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (
@@ -286,6 +323,7 @@ pub(crate) fn fold(
 		if module == target {
 			items.push(thunk.clone());
 		}
+		items.extend(copy.iter().filter(|(m, _)| m == module).map(|(_, f)| f.clone()));
 	});
 	(synthetic.annotations.values_mut()).for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
 	synthetic.consts = (consts.iter())

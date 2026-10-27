@@ -288,6 +288,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					let callee = self.read_local(&local);
 					return self.call_value(name, Callee::Object(callee), &local.typ, args, None, expr.1);
 				}
+				if let Some(out) = self.comp_call(&qn, expr, hint)? {
+					return Ok(out);
+				}
 				match self.builtin_call(name, args, expr.1)? {
 					Some(result) => Ok(result),
 					None => match self.funcs.get(&qn).cloned() {
@@ -356,6 +359,17 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				// access to an imported module's function
 				if let Some((module, target)) = self.import_item(&recv.0, method, expr.1)? {
+					let Expr::Ident(m) = &recv.0 else {
+						unreachable!("an import is a name")
+					};
+					let call = Expr::Call {
+						name: format!("{m}.{method}"),
+						type_args: type_args.clone(),
+						args: args.clone(),
+					};
+					if let Some(out) = self.comp_call(&format!("{module}::{target}"), &(call, expr.1), hint)? {
+						return Ok(out);
+					}
 					return self.module_call(&module, &target, type_args, args, expr.1);
 				}
 
