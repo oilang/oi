@@ -105,11 +105,13 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				.map(|e| TypeExpr::Infer(Box::new(e)));
 			// type fn calls
 			let call = spanned(
-				(dotted_name.clone().then_ignore(same_line.clone()))
+				(dotted_name.clone())
+					.then(type_args(te.clone().boxed(), expr.clone()).or_not())
+					.then_ignore(same_line.clone())
 					.then(paren(loose_list(expr.clone())))
-					.map(|(name, args)| Expr::Call {
+					.map(|((name, type_args), args)| Expr::Call {
 						name,
-						type_args: vec![],
+						type_args: type_args.unwrap_or_default(),
 						args,
 					}),
 			)
@@ -126,8 +128,8 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				atom,
 				anon_struct,
 				type_of,
-				generic_instance,
 				call,
+				generic_instance,
 				name,
 				tuple,
 				array,

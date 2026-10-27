@@ -319,3 +319,13 @@ fn type_fns_return_instances() {
 	"};
 	check(src, "Buf[V[2]].{x = V[2].{xs = [0, 0]}}");
 }
+
+#[test]
+fn type_fns_take_bracket_args() {
+	let src = indoc! {"
+		Arr[N: int] :: fn() type { [N]int }
+		x: Arr[3]() = .[1, 2, 3]
+		print(x.len())
+	"};
+	check(src, "3");
+}
