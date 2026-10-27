@@ -54,6 +54,9 @@ fn lit_text(e: &Expr) -> String {
 		Expr::Array(es) => format!("[{}]", list(&mut es.iter())),
 		Expr::StructLit { name, fields, .. } => format!("{name}.{{{}}}", list(&mut fields.iter().map(|(_, v)| v))),
 		Expr::Cast { args, .. } => list(&mut args.iter()),
+		Expr::EnumShorthand { variant, args } if args.is_empty() => format!(":{variant}"),
+		Expr::EnumShorthand { variant, args } => format!(".{variant}.({})", list(&mut args.iter())),
+		Expr::DotTuple(es) => format!(".({})", list(&mut es.iter())),
 		e => format!("{e:?}"),
 	}
 }

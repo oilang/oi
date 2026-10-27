@@ -674,6 +674,7 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 			Ok(Typ::Array(Box::new(elem)))
 		}
 		Expr::StructLit { name, .. } if !name.is_empty() => types.resolve(&TypeExpr::Name(name.clone()), span),
+		Expr::Cast { target, .. } => types.resolve(&target.0, span),
 		Expr::Ident(n) if let Some((te, s)) = types.consts.binds.get(&types.scope.qualify_name(n)) => {
 			types.nested(n, span, "types itself")?.resolve(te, *s)
 		}

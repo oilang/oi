@@ -436,7 +436,7 @@ where
 				.flat_map(|mut group: Vec<TypeParam>| {
 					for at in (1..group.len()).rev() {
 						let (bare, next) = (&group[at - 1], &group[at]);
-						if bare.bound.is_none() && bare.default.is_none() {
+						if bare.bound.is_none() && bare.value_type.is_none() && bare.default.is_none() {
 							group[at - 1] = TypeParam {
 								name: bare.name.clone(),
 								..next.clone()

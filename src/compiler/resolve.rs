@@ -446,8 +446,15 @@ impl TypeCtx<'_> {
 			TypeExpr::Value(arg) if value => {
 				let mut arg = arg.clone();
 				match &mut arg.0 {
-					Expr::EnumShorthand { variant, args } if args.is_empty() => arg.0 = Expr::Atom(variant.clone()),
 					Expr::StructLit { name, .. } if name.is_empty() => *name = p.bound.clone().unwrap_or_default(),
+					Expr::EnumShorthand { .. } | Expr::DotTuple(_) => {
+						let bound = TypeExpr::Name(p.bound.clone().unwrap_or_default());
+						let target = (p.value_type.clone().unwrap_or(bound), arg.1);
+						arg.0 = Expr::Cast {
+							target,
+							args: vec![(*arg).clone()],
+						};
+					}
 					_ => {}
 				}
 				TypeExpr::Value(arg)

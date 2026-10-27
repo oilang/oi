@@ -258,8 +258,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label(format!("doesn't fit in {target}"))
 		};
 		if let Some(some) = self.types.option_inner(target) {
-			if matches!(inner, Expr::Ident(n) | Expr::EnumShorthand { variant: n, .. } if n == "none") {
-				return Ok(Some(self.make_option(target, None)));
+			match inner {
+				Expr::Ident(n) | Expr::EnumShorthand { variant: n, .. } if n == "none" => {
+					return Ok(Some(self.make_option(target, None)));
+				}
+				Expr::EnumShorthand { variant, args }
+					if variant == "some"
+						&& let [arg] = &args[..] =>
+				{
+					let v = self.check_typed(arg, &some, "type mismatch")?;
+					self.move_resource(arg, &some)?;
+					return Ok(Some(self.make_option(target, Some(v))));
+				}
+				_ => {}
 			}
 			let v = self.coerce_lit(value, &some)?;
 			return Ok(v.map(|v| self.make_option(target, Some(v))));

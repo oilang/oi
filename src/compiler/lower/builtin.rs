@@ -186,12 +186,40 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Int(_) | Typ::ISize | Typ::UInt(_) | Typ::USize => (comp::TAG_INT, self.scalar_bits(val, typ)),
 			Typ::Float(32 | 64) => (comp::TAG_FLOAT, self.scalar_bits(val, typ)),
 			t if t.is_unit() => (comp::TAG_UNIT, self.b.ins().iconst(self.int, 0)),
+			Typ::Tuple(fs) => {
+				let fs: Vec<_> = fs.iter().map(|(_, t)| t.clone()).collect();
+				return self.comp_anon(val, typ, "", &fs, span);
+			}
+			Typ::Enum(_) => {
+				let (done, tag, mut err) = (self.b.create_block(), self.enum_tag(typ, val), None);
+				for v in self.variants_of(typ) {
+					self.on_variant(tag, v.disc, done, |s| {
+						err = err.take().or(s.comp_anon(val, typ, &v.name, &v.payload, span).err())
+					});
+				}
+				self.enter(done);
+				return err.map_or(Ok(()), Err);
+			}
 			_ => {
 				return fail(comp::UNREIFIABLE, span, "not comptime-reifiable");
 			}
 		};
 		let tag_v = self.b.ins().iconst(self.int, tag);
 		self.extern_call(comp::RT_COMP_YIELD, &[tag_v, bits], None);
+		Ok(())
+	}
+
+	// Yield a variant, or a tuple when `variant` is empty.
+	fn comp_anon(&mut self, val: Value, typ: &Typ, variant: &str, fs: &[Typ], span: Span) -> Result<(), Diagnostic> {
+		let base = if variant.is_empty() { 0 } else { 8 };
+		for (i, ft) in fs.iter().enumerate() {
+			let fv = self.opt_payload(val, typ, ft, base + (i * 8) as i32);
+			self.comp_yield(fv, ft, span)?;
+		}
+		let (name, n) = (self.str_const(variant), self.b.ins().iconst(self.int, fs.len() as i64));
+		self.extern_call(comp::RT_COMP_STRUCT, &[name, n], None);
+		let (tag, id) = (self.b.ins().iconst(self.int, comp::TAG_ANON), self.typeid_of(typ));
+		self.extern_call(comp::RT_COMP_YIELD, &[tag, id], None);
 		Ok(())
 	}
 

@@ -26,6 +26,7 @@ pub(crate) const TAG_AST: i64 = 6;
 pub(crate) const TAG_AST_SEQ: i64 = 7;
 pub(crate) const TAG_ATOM: i64 = 8;
 pub(crate) const TAG_TYPE: i64 = 9;
+pub(crate) const TAG_ANON: i64 = 10;
 
 enum Entry {
 	Scalar(i64, i64),
@@ -181,11 +182,15 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 fn spell(typ: &Typ, instances: &HashMap<String, Vec<Typ>>) -> TypeExpr {
 	match typ.nominal().and_then(|n| Some((n.split_once('[')?.0, instances.get(n)?))) {
 		Some((base, args)) => TypeExpr::Generic(base.into(), args.iter().map(|a| spell(a, instances)).collect()),
+		None if let Typ::Tuple(fs) = typ => {
+			TypeExpr::Tuple(fs.iter().map(|(n, t)| (n.clone(), spell(t, instances))).collect())
+		}
 		None => type_expr(typ).unwrap_or_else(|| TypeExpr::Name(typ.to_string())),
 	}
 }
 
 fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -> Expr {
+	let of = |id| any_types.iter().find(|t| typeid(t) == id).expect("a yielded type has an id");
 	STACK
 		.with_borrow_mut(|stack| {
 			let mut exprs: Vec<Expr> = Vec::new();
@@ -199,9 +204,21 @@ fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -
 						let at = exprs.len() - n as usize;
 						super::expand::one(exprs.split_off(at).into_iter().map(|e| (e, span)).collect(), span).0
 					}
-					Entry::Scalar(TAG_TYPE, id) => {
-						let typ = any_types.iter().find(|t| typeid(t) == id).expect("a yielded type has an id");
-						Expr::TypePat(spell(typ, instances))
+					Entry::Scalar(TAG_TYPE, id) => Expr::TypePat(spell(of(id), instances)),
+					Entry::Scalar(TAG_ANON, id) => {
+						let Some(Expr::StructLit { name, fields, .. }) = exprs.pop() else {
+							unreachable!("fields come first")
+						};
+						let args = fields.into_iter().map(|(_, f)| f).collect();
+						let anon = match name.is_empty() {
+							true => Expr::DotTuple(args),
+							false => Expr::EnumShorthand { variant: name, args },
+						};
+						let target = (spell(of(id), instances), span);
+						Expr::Cast {
+							target,
+							args: vec![(anon, span)],
+						}
 					}
 					Entry::Scalar(tag, v) => scalar(tag, v),
 					Entry::Struct(name, nfields) => {
@@ -377,6 +394,17 @@ pub(crate) fn eval(
 				return Err(err.expect("a stuck pass saw an error"));
 			}
 		}
+
+		// const binds
+		for (item, _) in &mut program.modules[i].items {
+			if let Expr::Bind {
+				name, value: Some(v), ..
+			} = item && let (Expr::Comp(_), Some(lit)) = (&v.0, consts.get(name.as_str()))
+			{
+				**v = lit.clone();
+			}
+		}
+
 		while let Some(inner) = first_comp(&mut program.modules[i].items) {
 			let lit = fold(inner, &module, consts, program, stage0)?;
 			patch_first(&mut program.modules[i].items, lit);

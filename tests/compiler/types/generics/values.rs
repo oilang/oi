@@ -114,6 +114,20 @@ fn an_anon_value_arg_takes_its_bound() {
 }
 
 #[test]
+fn enum_and_tuple_value_args() {
+	check(
+		indoc! {"
+			E :: enum { a, b(int) }
+			V[x: ?int, p: (E, ?int)] :: struct {}
+			v: V[.some.(4), .(.b.(2 + 2), .none)] = .{}
+			w: V[?int.(4), (E.b.(4), ?int.(none))] = v
+			print(type(w))
+		"},
+		"V[.some.(4), .(.b.(4), :none)]",
+	);
+}
+
+#[test]
 fn a_value_arg_must_match_its_bound() {
 	fail(
 		["greet[S: string] :: fn() string { S }", "print(greet[3]())"],

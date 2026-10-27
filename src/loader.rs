@@ -711,6 +711,8 @@ impl Loader {
 				} => {
 					if let Some(c) = self.const_value(v, &m.scope) {
 						self.program.consts.insert(name.clone(), c);
+					} else if let Expr::Comp(_) = v.0 {
+						self.program.consts.insert(name.clone(), (**v).clone());
 					}
 				}
 				Expr::Claim {
