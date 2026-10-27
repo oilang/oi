@@ -348,10 +348,11 @@ fn comp_consts_are_constants() {
 	let src = indoc! {"
 		sq :: comp fn(n: int) int { n * n }
 		N :: comp 1 + 1
+		M :: N * 2
 		main :: fn() {
 			x: [N]int = .[1, 2]
-			print(x, sq(N), comp N * 3)
+			print(x, sq(N), comp N * 3, M)
 		}
 	"};
-	check(src, "[1, 2] 4 6");
+	check(src, "[1, 2] 4 6 4");
 }

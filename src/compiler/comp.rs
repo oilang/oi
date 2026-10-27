@@ -34,6 +34,7 @@ enum Entry {
 }
 
 static SITE: AtomicUsize = AtomicUsize::new(0);
+static DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
@@ -348,7 +349,12 @@ pub(crate) fn fold(
 		.map(|(k, v)| (k.clone(), v.clone()))
 		.collect();
 	let mut compiler = stage0.take().unwrap_or_default();
-	compiler.run_stage0(&synthetic, vec![name.clone()])?;
+	let ran = match DEPTH.fetch_add(1, Ordering::Relaxed) {
+		..8 => compiler.run_stage0(&synthetic, vec![name.clone()]),
+		_ => Err(Diagnostic::new("`comp` recurses without end", span.into_range())),
+	};
+	DEPTH.fetch_sub(1, Ordering::Relaxed);
+	ran?;
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
 	let lit = reify(span, &compiler.out.any_types, &compiler.out.instances);
@@ -364,6 +370,36 @@ pub(crate) fn eval(
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
 	MAP.set(program.map.clone());
+
+	// consts reading from comp
+	for m in program.modules.iter_mut().rev() {
+		for (item, span) in &mut m.items {
+			let Expr::Bind {
+				mutable: false,
+				typ: None,
+				name,
+				value: Some(v),
+			} = item
+			else {
+				continue;
+			};
+			let mut reads = false;
+			v.0.clone().walk(&mut |e| {
+				let path = match e {
+					Expr::Field { tuple, field } if let Expr::Ident(module) = &tuple.0 => format!("{module}.{field}"),
+					Expr::Ident(n) => n.clone(),
+					_ => return,
+				};
+				let key = m.scope.at(*span).qualify_name(&path);
+				reads |= matches!(consts.get(&key), Some((Expr::Comp(_), _)));
+			});
+			if reads && !consts.contains_key(name.as_str()) {
+				**v = (Expr::Comp(v.clone()), v.1);
+				consts.insert(name.clone(), (**v).clone());
+			}
+		}
+	}
+
 	// push order is importer-first, so folding in reverse handles dependencies first
 	for i in (0..program.modules.len()).rev() {
 		let module = program.modules[i].name.clone();
@@ -405,11 +441,19 @@ pub(crate) fn eval(
 			}
 		}
 
-		while let Some(inner) = first_comp(&mut program.modules[i].items) {
-			let lit = fold(inner, &module, consts, program, stage0)?;
-			patch_first(&mut program.modules[i].items, lit);
+		for j in 0..program.modules[i].items.len() {
+			// comp fn
+			let comp_fn = program.modules[i].items[j]
+				.0
+				.def_name()
+				.is_some_and(|n| super::has_ann(annotations, n, "comp"));
+			while !comp_fn && let Some(inner) = first_comp(std::slice::from_mut(&mut program.modules[i].items[j])) {
+				let lit = fold(inner, &module, consts, program, stage0)?;
+				patch_first(std::slice::from_mut(&mut program.modules[i].items[j]), lit);
+			}
 		}
 	}
+
 	// an annotation call is implicitly comptime
 	for a in annotations.iter_mut().filter(|(k, _)| !k.contains("::")).flat_map(|(_, v)| v) {
 		if matches!(&a.0, Expr::Call { name, .. } if name != role::CTX) {

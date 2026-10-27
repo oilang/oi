@@ -145,7 +145,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		call: &Spanned<Expr>,
 		hint: Option<&Typ>,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		if self.comptime || !has_ann(self.types.consts.anns, key, "comp") {
+		let typed = self.funcs.get(key).is_some_and(|f| f.ret == Typ::TypeId);
+		if (self.comptime && !typed) || !has_ann(self.types.consts.anns, key, "comp") {
 			return Ok(None);
 		}
 		let lit = self.types.fold(call)?;
