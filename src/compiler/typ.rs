@@ -609,11 +609,8 @@ pub(crate) fn enum_boxed(variants: &[VariantInfo]) -> bool {
 	variants.iter().any(|v| !v.payload.is_empty())
 }
 
-// Tag permutation to coerce a sum across definitions with the same member set.
+// Tag permutation to coerce a sum into a superset sum.
 pub(crate) fn sum_remap(src: &[VariantInfo], dst: &[VariantInfo]) -> Option<Vec<(i64, i64)>> {
-	if src.len() != dst.len() {
-		return None;
-	}
 	src.iter()
 		.map(|s| {
 			dst.iter()

@@ -341,3 +341,28 @@ fn is_variant() {
 		"true true true false",
 	);
 }
+
+#[test]
+fn is_narrowing() {
+	check(
+		indoc! {r#"
+			P :: struct { x: int, y: int }
+			f :: fn(x: int | string | bool) string {
+				if x is int { return "int {x + 1}" }
+				if x is not string { "other {x}" } else { "str {x.len()}" }
+			}
+			print(f(4), f("abc"), f(true))
+			v: P | string = P.{ x = 1, y = 2 }
+			w := v
+			if v is P && v.x == 1 { v.x = 9 }
+			a: any = "x"
+			loop a is string && a.len() < 3 { a = a + "y" }
+			print(v, w, a)
+		"#},
+		["int 5 str 3 other true", "P.{x = 9, y = 2} P.{x = 1, y = 2} xyy"],
+	);
+	fail(
+		["y: int | string = 5", r#"if y is int { y = "s" }"#],
+		"cannot assign string to `y`, which is int",
+	);
+}

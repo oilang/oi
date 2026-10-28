@@ -153,7 +153,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (outer, mut live) = (self.slots.clone(), vec![]);
 		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 		self.b.switch_to_block(then_block);
-		let then_flow = self.branch(then, target)?;
+		let then_flow = self.narrowed(&cond.0, true, then, target)?;
 		self.rejoin(&outer, &mut live, then_flow.is_none());
 		let tail = self.branch_tail(&owned, &mut tails, then_flow.is_some());
 		if let Some(vt) = then_flow {
@@ -161,7 +161,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = self.else_default(els, &join, target)?;
+		let else_flow = match els {
+			Some(els) => self.narrowed(&cond.0, false, els, target)?,
+			None => self.else_default(None, &join, target)?,
+		};
 		self.rejoin(&outer, &mut live, else_flow.is_none());
 		self.slots = live;
 		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
@@ -178,6 +181,81 @@ impl<'a, M: Module> Translator<'a, M> {
 			}));
 		}
 		Ok(self.finish_merge(merge, join.result))
+	}
+
+	// The locals narrowed by a condition.
+	fn narrowing(&self, cond: &Expr, holds: bool) -> Vec<Narrowing> {
+		match cond {
+			Expr::Binary(BinOp::And, lhs, rhs) if holds => {
+				[self.narrowing(&lhs.0, true), self.narrowing(&rhs.0, true)].concat()
+			}
+			Expr::Is {
+				subject,
+				trait_name,
+				negated,
+			} => self.narrow_is(subject, trait_name, holds != *negated).into_iter().collect(),
+			_ => vec![],
+		}
+	}
+
+	// The type an `is` test narrows its local to.
+	fn narrow_is(&self, subject: &Spanned<Expr>, trait_name: &str, holds: bool) -> Option<Narrowing> {
+		let Expr::Ident(name) = &subject.0 else { return None };
+		let (local, te) = (self.vars.get(name)?.clone(), TypeExpr::Name(trait_name.into()));
+		let member =
+			(trait_name.strip_prefix('.').map(str::to_string)).or_else(|| self.sum_display(&te, subject.1).ok())?;
+		let set: Vec<_> = (self.variants_of(&local.typ).into_iter())
+			.filter(|v| (v.name == member) == holds)
+			.collect();
+		let t = match (&local.typ, &set[..]) {
+			(Typ::Any, _) if holds => self.types.resolve(&te, subject.1).ok()?,
+			(Typ::Enum(_), [v]) if !v.payload.is_empty() => local.typ.refined(&v.name),
+			(Typ::Sum(..), [v]) if enum_boxed(&set) => v.payload[0].clone(),
+			(Typ::Sum(..), [_, _, ..]) if enum_boxed(&set) => Typ::Sum(String::new(), set),
+			_ => return None,
+		};
+		Some((name.clone(), local, t))
+	}
+
+	// A branch that sees its condition's subjects narrowed.
+	pub(super) fn narrowed(
+		&mut self,
+		cond: &Expr,
+		holds: bool,
+		body: &[Spanned<Expr>],
+		target: Option<&Typ>,
+	) -> Result<Option<TypedVal>, Diagnostic> {
+		let narrowing = self.narrowing(cond, holds);
+		if narrowing.is_empty() {
+			return self.branch(body, target);
+		}
+		self.scoped(|s| {
+			for (name, local, t) in narrowing {
+				if matches!(t, Typ::Sum(..) | Typ::Annotated(..)) && local.typ != Typ::Any {
+					s.vars.insert(name, Local { typ: t, ..local });
+					continue;
+				}
+				let mut boxp = s.read_local(&local);
+				if local.mutable {
+					// unshare the box so writes land in it alone
+					let payload = s.ld_typ(boxp, 8, &t);
+					let payload = s.copy_in(payload, &t);
+					let fresh = s.coerce(payload, &t, &local.typ, Span::default())?.0;
+					s.untemp(fresh);
+					s.write_local(&local, fresh);
+					s.release_value(boxp, &local.typ);
+					boxp = fresh;
+				}
+				let view = Local {
+					boxed: true,
+					..Local::plain(s.b.declare_var(s.int), t, local.mutable)
+				};
+				let payload = s.b.ins().iadd_imm(boxp, 8);
+				s.b.def_var(view.var, payload);
+				s.vars.insert(name, view);
+			}
+			s.block_tail(body, target)
+		})
 	}
 
 	// Route a branch's tail value.
@@ -931,7 +1009,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
 				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
 			}
-			_ => s.block(body),
+			(Some(c), _) => s.narrowed(&c.0, true, body, None),
+			(None, _) => s.block(body),
 		})?;
 
 		if let Some(vt) = flow {
@@ -1362,6 +1441,7 @@ impl<'a, M: Module> Translator<'a, M> {
 }
 
 type ArmBinds = (TypedVal, Vec<Bind>);
+type Narrowing = (String, Local, Typ);
 
 fn falls(arm: &MatchArm) -> bool {
 	matches!(arm.body.last(), Some((Expr::Fallthrough, _)))

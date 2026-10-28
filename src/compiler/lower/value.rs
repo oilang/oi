@@ -683,7 +683,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The display name a type pattern refers to.
 	// ex: `string` -> `str`.
-	fn sum_display(&self, te: &TypeExpr, span: Span) -> Result<String, Diagnostic> {
+	pub(super) fn sum_display(&self, te: &TypeExpr, span: Span) -> Result<String, Diagnostic> {
 		match (self.types.resolve(te, span), te) {
 			(Ok(t), _) => Ok(t.to_string()),
 			(Err(_), TypeExpr::Name(n)) => Ok(n.clone()),
@@ -1099,6 +1099,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let val = if bare { val } else { self.fn_cell(val) };
 			return Ok((val, to.clone()));
 		}
+
 		if let Typ::Annotated(anns, inner) = to
 			&& **inner == *from
 			&& is_isolated(anns)
@@ -1108,6 +1109,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => Ok((val, to.clone())),
 			};
 		}
+
 		if let Typ::Annotated(anns, inner) = to
 			&& **inner == *from
 			&& let Some(t) = ctx_mark(anns).filter(|t| *t != "none")
@@ -1115,16 +1117,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			return self.ctx_thunk(val, from, ps.len(), t, span);
 		}
+
 		// fixed arrays widen to dynamic
 		if let (Typ::FixedArray(e, n), Typ::Array(t)) = (from, to)
 			&& e == t
 		{
 			return Ok((self.fixed_to_array(val, e, *n), to.clone()));
 		}
-		// same member sets with different order
+
+		// supersets with different order
 		if let (Typ::Sum(..), Typ::Sum(..)) = (from, to) {
 			let (src, dst) = (self.variants_of(from), self.variants_of(to));
-			let Some(map) = sum_remap(&src, &dst) else {
+			let Some(map) = sum_remap(&src, &dst).filter(|_| enum_boxed(&src) == enum_boxed(&dst)) else {
 				return Ok((val, from.clone()));
 			};
 			let old = self.enum_tag(from, val);
@@ -1146,10 +1150,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((ptr, to.clone()));
 		}
+
 		// values widens into options
 		if self.types.option_inner(to).is_some_and(|i| i == *from) {
 			return Ok((self.make_option(to, Some(val)), to.clone()));
 		}
+
 		// values and errors widen into results
 		if let Some((ok, err)) = self.types.result_parts(to) {
 			let (val, typ) = self.coerce(val, from, &ok, span)?;
@@ -1164,6 +1170,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.temp(val, to);
 			return Ok((val, to.clone()));
 		}
+
 		if let Typ::Sum(..) = to {
 			let variants = self.variants_of(to);
 			if let Some(v) = variants.iter().find(|v| v.payload == [from.clone()]) {

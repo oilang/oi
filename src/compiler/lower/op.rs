@@ -857,7 +857,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		self.when(go, |s| {
 			// scoped, so a temp allocated by the rhs gets released here
-			let (rv, rt) = s.block_expr(std::slice::from_ref(r), r.1)?;
+			let rhs = s.narrowed(&l.0, and, std::slice::from_ref(r), None)?;
+			let (rv, rt) = rhs.ok_or_else(|| Diagnostic::new("this never produces a value", r.1.into_range()))?;
 			if rt != Typ::Bool {
 				return fail(
 					format!("expected Bool, got {rt}"),
