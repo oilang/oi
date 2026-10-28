@@ -300,9 +300,9 @@ fn sums_as_errors() {
 					x * 2
 				}
 				show :: fn(x: int) int {
-					pick(x) or match e := $ {
-						is A => { print(e.m) 1 }
-						is B => { print(e.n) 2 }
+					pick(x) or match $ {
+						is A => { print($.m) 1 }
+						is B => { print($.n) 2 }
 					}
 				}
 				print(show(3))
@@ -318,15 +318,15 @@ fn sums_as_errors() {
 			indoc! {r#"
 				inner :: fn() A!int { return A.{ m = "boom" } }
 				outer :: fn() E!int { inner()? + 1 }
-				print(outer() or match e := $ {
-					is A => { print(e.m) 1 }
+				print(outer() or match $ {
+					is A => { print($.m) 1 }
 					is B => 2,
 				})
 			"#},
 		],
 		["boom", "1"],
 	);
-	check([types, "f :: fn() (A | B)!int { 2 }"], "")
+	check([types, "f :: fn() (A | B)!int { 2 }"], "");
 }
 
 #[test]

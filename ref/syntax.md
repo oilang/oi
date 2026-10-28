@@ -1744,7 +1744,7 @@ main :: fn() {
 
 	# check error type in the or block
 	file := fs.open(path) or {
-		if $ is fs.NotFoundError { return create_default() }
+		if $ is fs.NotFoundError { return create_default($.path) }
 		panic!($.message())
 	}
 
@@ -1805,8 +1805,8 @@ main :: fn() {
 		src := fs.read(path)?
 		parse(src)?
 	}
-	cfg := load(path) or match e := $ {
-		is ParseError => panic!("bad config at {e.line}"),
+	cfg := load(path) or match $ {
+		is ParseError => panic!("bad config at {$.line}"),
 		_ => Config.{},
 	}
 

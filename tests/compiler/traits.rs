@@ -825,6 +825,25 @@ fn boxed_error_outlives_its_scope() {
 }
 
 #[test]
+fn is_narrows_trait_objects() {
+	let src = indoc! {r#"
+		Bad :: struct { line: int }
+		Bad : Error < { message :: fn(self) string { "bad" } }
+		Net :: enum { timeout refused }
+		Net : Error < { message :: fn(self) string { "net" } }
+		load :: fn(n: int) !int {
+			if n == 0 { return Bad.{ line = 4 } }
+			return Net.refused
+		}
+		print(load(0) or { if $ is Bad { $.line } else { -1 } })
+		print(load(1) or match $ { is Bad => $.line, is Net => int.($), _ => -1 })
+		e: Error = Bad.{ line = 7 }
+		if e is Bad { print(e.line) }
+	"#};
+	check(src, ["4", "1", "7"]);
+}
+
+#[test]
 fn embedded_err_promotes_error_claim() {
 	let src = indoc! {r#"
 		Parse :: struct { Err; line: int }
