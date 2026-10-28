@@ -119,15 +119,24 @@ impl Vars {
 	}
 
 	pub(super) fn insert(&mut self, name: String, local: Local) -> Option<Local> {
+		self.forget(&name);
 		let old = self.map.insert(name.clone(), local);
 		self.log(name, &old);
 		old
 	}
 
 	fn remove(&mut self, name: &str) -> Option<Local> {
+		self.forget(name);
 		let old = self.map.remove(name);
 		self.log(name.to_string(), &old);
 		old
+	}
+
+	// Ends every unwrap below `path`.
+	pub(super) fn forget(&mut self, path: &str) {
+		let below = |n: &String| n.strip_prefix(path).is_some_and(|rest| rest.starts_with('.'));
+		self.map.retain(|n, _| !below(n));
+		self.log.iter_mut().filter(|(n, _)| below(n)).for_each(|(_, old)| *old = None);
 	}
 
 	fn retain(&mut self, keep: impl Fn(&String, &Local) -> bool) {

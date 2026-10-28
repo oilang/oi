@@ -212,11 +212,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn narrow_is(&mut self, subject: &Spanned<Expr>, te: &TypeExpr, holds: bool) -> Option<Narrowing> {
 		let (name, local) = match &subject.0 {
 			Expr::Ident(name) => (name.clone(), self.vars.get(name)?.clone()),
-			Expr::Dollar => {
-				let (v, t) = self.dollar.clone()?;
+			Expr::Dollar | Expr::Field { .. } => {
+				let name = match &subject.0 {
+					Expr::Dollar => "$".into(),
+					e => place_key(e)?,
+				};
+				let (v, t) = self.expr(subject).ok()?;
 				let var = self.b.declare_var(cl_type(&t, self.int));
 				self.b.def_var(var, v);
-				("$".into(), Local::plain(var, t, false))
+				(name, Local::plain(var, t, false))
 			}
 			_ => return None,
 		};
@@ -235,6 +239,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => return None,
 		};
 		Some((name, local, t))
+	}
+
+	// Ends unwraps written by a loop body.
+	fn unnarrow_writes(&mut self, body: &[Spanned<Expr>]) {
+		let mut written = HashSet::new();
+		Expr::Block(body.to_vec()).walk(&mut |e| match e {
+			Expr::Assign { name, .. }
+			| Expr::DerefAssign { name, .. }
+			| Expr::FieldAssign { name, .. }
+			| Expr::IndexAssign { name, .. }
+			| Expr::Append { name, .. } => _ = written.insert(name.clone()),
+			Expr::PatBind { pat, mutable: None, .. } => pat.0.idents(&mut written),
+			Expr::ArgMod(Access::Mut, place) | Expr::MethodCall { recv: place, .. } => {
+				written.extend(place_key(&Self::place_root(place).0))
+			}
+			_ => {}
+		});
+		written.iter().for_each(|root| self.vars.forget(root));
 	}
 
 	// A branch that sees its condition's subjects narrowed.
@@ -465,6 +487,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 
+			self.b.seal_block(arm_body);
+			self.b.switch_to_block(arm_body);
 			let narrowing = match &arm.patterns[..] {
 				[(Expr::Is { typ, .. }, _)] => self.narrow_is(subject, typ, true),
 				_ => None,
@@ -474,8 +498,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
 			}
-			self.b.seal_block(arm_body);
-			self.b.switch_to_block(arm_body);
 			let fell = falls(arm);
 			if fell && i + 1 == arms.len() && else_body.is_none() {
 				return fail(
@@ -1001,6 +1023,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		self.unnarrow_writes(body);
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
@@ -1253,6 +1276,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
+		self.unnarrow_writes(body);
 		self.header_scoped(|s| {
 			let (iter, consume) = match &iter.0 {
 				Expr::ArgMod(Access::Move, x) => (&**x, true),
@@ -1480,6 +1504,15 @@ impl<'a, M: Module> Translator<'a, M> {
 
 type ArmBinds = (TypedVal, Vec<Bind>);
 type Narrowing = (String, Local, Typ);
+
+// Field chain key.
+pub(super) fn place_key(e: &Expr) -> Option<String> {
+	match e {
+		Expr::Ident(name) => Some(name.clone()),
+		Expr::Field { tuple, field } => Some(format!("{}.{field}", place_key(&tuple.0)?)),
+		_ => None,
+	}
+}
 
 fn falls(arm: &MatchArm) -> bool {
 	matches!(arm.body.last(), Some((Expr::Fallthrough, _)))

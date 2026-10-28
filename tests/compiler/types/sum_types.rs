@@ -377,6 +377,21 @@ fn is_narrowing() {
 }
 
 #[test]
+fn place_paths_narrow() {
+	let defs = indoc! {"
+		Shape :: enum { circle { radius: int } point }
+		P :: struct { q: struct { shape: Shape } }
+		p := P.{ q = .{ shape = .circle.{ radius = 2 } } }
+	"};
+	check([defs, "if p.q.shape is .circle { print(p.q.shape.radius) }"], ["2"]);
+	let reassigned = "if p.q.shape is .circle { p = P.{ q = .{ shape = .point } }\n print(p.q.shape.radius) }";
+	fail([defs, reassigned], "cannot access a field of Shape");
+	let looped =
+		"loop { if p.q.shape is .circle { p = P.{ q = .{ shape = .point } } } else { print(p.q.shape.radius) } }";
+	fail([defs, looped], "cannot access a field of Shape");
+}
+
+#[test]
 fn early_exit_narrows_the_rest() {
 	check(
 		indoc! {r#"

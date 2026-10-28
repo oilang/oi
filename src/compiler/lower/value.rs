@@ -637,7 +637,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (variants, disp) = (self.variants_of(typ), self.sum_display(te, pat.1)?);
 			return match variants.iter().find(|x| x.name == disp) {
 				Some(x) => Ok((x.disc, vec![])),
-				None => bad(format!("`{typ}` has no variant `{disp}`")),
+				None => bad(format!("`{typ}` has no variant `{disp}`")).map_err(|d| match self.fallible_split(typ) {
+					Some(_) => d.with_note("bind it to unwrap: `if v := o { .. }`"),
+					None => d,
+				}),
 			};
 		}
 

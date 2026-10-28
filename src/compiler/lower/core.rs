@@ -174,7 +174,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Look up the binding that a mutation targets.
-	pub(super) fn mutable_local(&self, name: &str, span: Range<usize>, op: Mutation) -> Result<Local, Diagnostic> {
+	pub(super) fn mutable_local(&mut self, name: &str, span: Range<usize>, op: Mutation) -> Result<Local, Diagnostic> {
 		// how the mutation reads in errors
 		// (verb, verb when immutable, noun for the `:=` hint, suggest `:=`?)
 		let (verb, immutable_verb, allow, suggest_declare) = match op {
@@ -203,6 +203,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					.with_note(format!("use `{name} := ...` to allow {allow}")),
 			);
 		}
+		self.vars.forget(name);
 		Ok(local)
 	}
 

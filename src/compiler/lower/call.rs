@@ -686,7 +686,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Callsite access checks.
 	pub(super) fn check_args(
-		&self,
+		&mut self,
 		access: &[Access],
 		recv: Option<&Spanned<Expr>>,
 		args: &[Option<&Spanned<Expr>>],
@@ -742,7 +742,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// The binding a field/index/slice chain hangs off.
-	fn place_root(e: &Spanned<Expr>) -> &Spanned<Expr> {
+	pub(super) fn place_root(e: &Spanned<Expr>) -> &Spanned<Expr> {
 		match &e.0 {
 			Expr::Field { tuple: b, .. } | Expr::Index { collection: b, .. } | Expr::Slice { collection: b, .. } => {
 				Self::place_root(b)
@@ -757,13 +757,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Require a mutable binding place.
-	fn mut_place<'e>(&self, e: &'e Spanned<Expr>, msg: &str) -> Result<&'e String, Diagnostic> {
+	fn mut_place<'e>(&mut self, e: &'e Spanned<Expr>, msg: &str) -> Result<&'e String, Diagnostic> {
 		let Expr::Ident(name) = &e.0 else {
 			return fail(msg, e.1, "not a binding");
 		};
 		if !self.local(name, e.1.into_range())?.mutable {
 			return fail(msg, e.1, "immutably bound");
 		}
+		self.vars.forget(name);
 		Ok(name)
 	}
 

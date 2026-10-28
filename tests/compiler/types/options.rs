@@ -18,6 +18,7 @@ fn basics() {
 fn rejections() {
 	fail("none", "cannot infer the type");
 	fail("int.(?int.(42))", "no backing value");
+	fail(["o: ?int", "match o { is int => 1, _ => 0 }"], "bind it to unwrap");
 	fail("?int.(3.5)", "truncated");
 	fail("?int.(1) < ?int.(2)", "only `==` and `!=`");
 }

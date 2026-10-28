@@ -592,6 +592,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Field { tuple, field } => {
+				if let Some(view) = control::place_key(&expr.0).and_then(|key| self.vars.get(&key).cloned()) {
+					return Ok((self.read_local(&view), view.typ));
+				}
 				let dotted = self.dotted_type(tuple);
 				let tuple = dotted.as_ref().unwrap_or(tuple);
 
