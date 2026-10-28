@@ -1,7 +1,7 @@
 use super::generic::{Infer, mangle};
 use super::*;
 use crate::ast::{Param, record_args};
-use crate::compiler::role;
+use crate::compiler::{comp, role};
 
 // Give a symbol its bytes.
 pub(crate) fn define_once<M: Module>(m: &mut M, id: DataId, desc: &DataDescription) {
@@ -249,9 +249,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& let Some(te) = TypeExpr::from_expr(&value.0)
 				.or_else(|| matches!(&value.0, Expr::Tuple(f) if f.is_empty()).then(TypeExpr::unit))
 			&& !matches!(&value.0, Expr::Ident(n) if self.vars.contains_key(n))
-			&& let Ok(t) = self.types.resolve(&te, value.1)
+			&& let Ok(id) = self.type_val(&te, value.1)
 		{
-			return Ok(Some(self.typeid_of(&t)));
+			return Ok(Some(id));
 		}
 		let oob = |n| {
 			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
@@ -527,6 +527,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.out.any_types.push(t.clone());
 		}
 		self.b.ins().iconst(self.int, typeid(t))
+	}
+
+	// Lower a type's id.
+	pub(super) fn type_val(&mut self, te: &TypeExpr, span: Span) -> Result<Value, Diagnostic> {
+		let (elem, len) = match te {
+			TypeExpr::Value(call) if self.comptime => return self.check_typed(call, &Typ::TypeId, "not a type"),
+			TypeExpr::FixedArray(elem, len) if self.comptime => {
+				(elem, self.check_typed(len, &Typ::Int(64), "not an int")?)
+			}
+			TypeExpr::Array(elem) if self.comptime => (elem, self.b.ins().iconst(self.int, -1)),
+			te => return Ok(self.typeid_of(&self.types.resolve(te, span)?)),
+		};
+		let elem = self.type_val(elem, span)?;
+		Ok(self
+			.extern_call(comp::RT_COMP_ARRAY, &[len, elem], Some(self.int))
+			.expect("returns an id"))
 	}
 
 	// The static type of `e`, lowered into a dead block so it never runs.

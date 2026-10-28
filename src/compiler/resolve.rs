@@ -258,7 +258,7 @@ pub(crate) fn sized(name: &str, span: Span) -> Option<Result<Typ, Diagnostic>> {
 }
 
 // nested generic instantiations allowed before calling it recursive
-const MAX_GENERIC_DEPTH: usize = 64;
+pub(crate) const MAX_GENERIC_DEPTH: usize = 64;
 
 impl TypeCtx<'_> {
 	// Resolve a type expression to a concrete `Typ`.
@@ -504,9 +504,12 @@ impl TypeCtx<'_> {
 		let mut arg = arg.clone();
 		arg.0.walk(&mut |e| {
 			if let Expr::Ident(n) = e
-				&& let Some(Typ::Const(lit)) = self.type_params.get(n)
+				&& let Some(typ) = self.type_params.get(n)
 			{
-				*e = (**lit).clone();
+				match typ {
+					Typ::Const(lit) => *e = (**lit).clone(),
+					typ => *e = type_expr(typ).map_or(Expr::Ident(n.clone()), Expr::TypePat),
+				}
 			}
 		});
 		match (fold_const(&arg.0, self.consts.map, self.scope), self.consts.comp) {

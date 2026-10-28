@@ -356,3 +356,21 @@ fn comp_consts_are_constants() {
 	"};
 	check(src, "[1, 2] 4 6 4");
 }
+
+#[test]
+fn comp_fns_nest() {
+	let src = indoc! {"
+		Nest :: comp fn(n: int) type { comp if n == 0 { int } else { [1]Nest(n - 1) } }
+		V :: comp fn(t: type) type { []t }
+		x: Nest(12) = .{}
+		print(type(x), V(V(int)))
+	"};
+	check(src, "[1][1][1][1][1][1][1][1][1][1][1][1]int [][]int");
+	fail(
+		[
+			"Nest :: comp fn(n: int) type { if n == 0 { int } else { [1]Nest(n - 1) } }",
+			"x: Nest(1) = .{}",
+		],
+		"`Nest` recurses without end",
+	);
+}

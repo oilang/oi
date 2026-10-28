@@ -14,6 +14,7 @@ use super::{Compiler, Typ, TypeCtx, role, type_expr, typeid};
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
 pub(crate) const RT_COMP_PANIC: &str = "oi_rt_comp_panic";
+pub(crate) const RT_COMP_ARRAY: &str = "oi_rt_comp_array";
 pub(crate) const UNREIFIABLE: &str = "can't use this type in `comp` yet";
 
 pub(crate) const TAG_INT: i64 = 0;
@@ -39,6 +40,7 @@ static DEPTH: AtomicUsize = AtomicUsize::new(0);
 thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
 	static MAP: RefCell<SourceMap> = RefCell::default();
+	static TYPES: RefCell<Vec<Typ>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(crate) extern "C" fn rt_comp_yield(tag: i64, val: i64) {
@@ -49,6 +51,19 @@ pub(crate) extern "C" fn rt_comp_struct(name: *const runtime::StrHeader, nfields
 	// SAFETY: `name` is a str constant the JIT just built
 	let name = unsafe { runtime::str_string(name) };
 	STACK.with_borrow_mut(|s| s.push(Entry::Struct(name, nfields as usize)));
+}
+
+pub(crate) extern "C" fn rt_comp_array(len: i64, elem: i64) -> i64 {
+	TYPES.with_borrow_mut(|types| {
+		let elem = Box::new(types.iter().find(|t| typeid(t) == elem).expect("a known elem type").clone());
+		let typ = match usize::try_from(len) {
+			Ok(n) => Typ::FixedArray(elem, n),
+			Err(_) => Typ::Array(elem),
+		};
+		let id = typeid(&typ);
+		types.push(typ);
+		id
+	})
 }
 
 // Stage 0 report and exit.
@@ -190,8 +205,12 @@ fn spell(typ: &Typ, instances: &HashMap<String, Vec<Typ>>) -> TypeExpr {
 	}
 }
 
-fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -> Expr {
-	let of = |id| any_types.iter().find(|t| typeid(t) == id).expect("a yielded type has an id");
+fn reify(span: Span, instances: &HashMap<String, Vec<Typ>>) -> Expr {
+	let of = |id| {
+		TYPES
+			.with_borrow(|ts| ts.iter().find(|t| typeid(t) == id).cloned())
+			.expect("a yielded type has an id")
+	};
 	STACK
 		.with_borrow_mut(|stack| {
 			let mut exprs: Vec<Expr> = Vec::new();
@@ -205,7 +224,7 @@ fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -
 						let at = exprs.len() - n as usize;
 						super::expand::one(exprs.split_off(at).into_iter().map(|e| (e, span)).collect(), span).0
 					}
-					Entry::Scalar(TAG_TYPE, id) => Expr::TypePat(spell(of(id), instances)),
+					Entry::Scalar(TAG_TYPE, id) => Expr::TypePat(spell(&of(id), instances)),
 					Entry::Scalar(TAG_ANON, id) => {
 						let Some(Expr::StructLit { name, fields, .. }) = exprs.pop() else {
 							unreachable!("fields come first")
@@ -215,7 +234,7 @@ fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -
 							true => Expr::DotTuple(args),
 							false => Expr::EnumShorthand { variant: name, args },
 						};
-						let target = (spell(of(id), instances), span);
+						let target = (spell(&of(id), instances), span);
 						Expr::Cast {
 							target,
 							args: vec![(anon, span)],
@@ -239,19 +258,19 @@ fn reify(span: Span, any_types: &[Typ], instances: &HashMap<String, Vec<Typ>>) -
 		.expect("a comp site always yields exactly one value")
 }
 
-// Point a comptime call at a generic-equivalent copy.
-fn comp_copy(call: &mut Spanned<Expr>, target: &str, program: &Program) -> Option<(String, Spanned<Expr>)> {
-	let Expr::Call { name, type_args, args } = &mut call.0 else {
+// Copy a comp fn to take its type params.
+fn bracket_copy((e, span): &Spanned<Expr>, anns: &HashMap<String, Vec<Annotation>>) -> Option<Spanned<Expr>> {
+	let Expr::Fn {
+		name,
+		params,
+		ret,
+		body,
+		..
+	} = e
+	else {
 		return None;
 	};
-	let scope = &program.modules.iter().find(|m| m.name == target)?.scope;
-	let key = scope.at(call.1).qualify_name(name);
-	super::has_ann(&program.annotations, &key, "comp").then_some(())?;
-	let module = module_of(&key).unwrap_or("main");
-	let items = &program.modules.iter().find(|m| m.name == module)?.items;
-	let (Expr::Fn { params, ret, body, .. }, span) = items.iter().find(|i| i.0.def_name() == Some(&key))? else {
-		return None;
-	};
+	super::has_ann(anns, name, "comp").then_some(())?;
 	let type_params = (params.iter())
 		.map(|p| TypeParam {
 			name: p.name.clone(),
@@ -259,20 +278,27 @@ fn comp_copy(call: &mut Spanned<Expr>, target: &str, program: &Program) -> Optio
 			..TypeParam::default()
 		})
 		.collect();
-	*type_args = std::mem::take(args)
-		.into_iter()
-		.map(|(arg, span)| (TypeExpr::Value(Box::new((arg, span))), span))
-		.collect();
-	*name = format!("{key}#comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let copy = Expr::Fn {
-		name: name.clone(),
+		name: format!("{name}#comp"),
 		type_params,
 		params: vec![],
 		params_tuple: true,
 		ret: ret.clone(),
 		body: body.clone(),
 	};
-	Some((module.into(), (copy, *span)))
+	Some((copy, *span))
+}
+
+// Point a comp fn call at its type param copy.
+pub(crate) fn to_copy(call: &mut Expr, key: &str) {
+	let Expr::Call { name, type_args, args } = call else {
+		return;
+	};
+	*type_args = std::mem::take(args)
+		.into_iter()
+		.map(|(arg, span)| (TypeExpr::Value(Box::new((arg, span))), span))
+		.collect();
+	*name = format!("{key}#comp");
 }
 
 // Compile and run a single comp site, folding it to its reified literal.
@@ -301,6 +327,7 @@ pub(crate) fn fold(
 		return Ok(inner.0);
 	}
 	let span = inner.1;
+	let scope = program.modules.iter().find(|m| m.name == target).map(|m| m.scope.at(span));
 	// comp loop
 	if let Expr::For { pat, body, .. } = &mut inner.0 {
 		let vars = super::expand::pat_names(pat);
@@ -309,7 +336,12 @@ pub(crate) fn fold(
 			*body = vec![(Expr::Quote(std::mem::take(body)), span)];
 		}
 	}
-	let copy = comp_copy(&mut inner, target, program);
+	if let Expr::Call { name, .. } = &inner.0
+		&& let Some(key) = scope.map(|s| s.qualify_name(name))
+		&& super::has_ann(&program.annotations, &key, "comp")
+	{
+		to_copy(&mut inner.0, &key);
+	}
 	// every needs its own name
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (
@@ -341,7 +373,8 @@ pub(crate) fn fold(
 		if module == target {
 			items.push(thunk.clone());
 		}
-		items.extend(copy.iter().filter(|(m, _)| m == module).map(|(_, f)| f.clone()));
+		let copies: Vec<_> = items.iter().filter_map(|i| bracket_copy(i, &program.annotations)).collect();
+		items.extend(copies);
 	});
 	(synthetic.annotations.values_mut()).for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
 	synthetic.consts = (consts.iter())
@@ -355,9 +388,10 @@ pub(crate) fn fold(
 	};
 	DEPTH.fetch_sub(1, Ordering::Relaxed);
 	ran?;
+	TYPES.set(compiler.out.any_types.clone());
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
-	let lit = reify(span, &compiler.out.any_types, &compiler.out.instances);
+	let lit = reify(span, &compiler.out.instances);
 	*stage0 = Some(compiler);
 	Ok(lit)
 }

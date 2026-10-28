@@ -1124,7 +1124,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1.into_range(),
 			)),
 			Expr::Claim { .. } => unreachable!("claim in expression position"),
-			Expr::TypePat(te) => Ok((self.typeid_of(&self.types.resolve(te, expr.1)?), Typ::TypeId)),
+			Expr::TypePat(te) => Ok((self.type_val(te, expr.1)?, Typ::TypeId)),
 			Expr::Return(_) | Expr::Break(..) | Expr::Continue(_) => fail(
 				"`return`, `break`, and `continue` never produce a value",
 				expr.1,

@@ -608,6 +608,8 @@ struct World {
 struct Artifacts {
 	mono: HashMap<String, FnSig>,
 	pending: Vec<Pending>,
+	depths: HashMap<String, usize>,
+	lowering: String,
 	wanted: Vec<FuncId>,
 	roots: Vec<String>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
@@ -735,6 +737,7 @@ impl Default for Compiler<JITModule> {
 		builder.symbol(comp::RT_COMP_YIELD, comp::rt_comp_yield as *const u8);
 		builder.symbol(comp::RT_COMP_STRUCT, comp::rt_comp_struct as *const u8);
 		builder.symbol(comp::RT_COMP_PANIC, comp::rt_comp_panic as *const u8);
+		builder.symbol(comp::RT_COMP_ARRAY, comp::rt_comp_array as *const u8);
 
 		Self::new(JITModule::new(builder))
 	}
@@ -1919,6 +1922,7 @@ impl<M: Module> Compiler<M> {
 					..FnDef::default()
 				};
 				let sym = self.symbol(&item.key).0;
+				self.out.lowering.clone_from(&sym);
 				self.lower_fn(&sym, sig, (&item.params, &item.ret), def, &funcs, types)?;
 			}
 			let Some((sym, mut def, mut subst)) =
@@ -1938,6 +1942,7 @@ impl<M: Module> Compiler<M> {
 			subst.extend(me.map(|t| ("Self".to_string(), t)));
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();
+			self.out.lowering.clone_from(&sym);
 			let fn_def = FnDef {
 				self_type: self_key.as_deref(),
 				params_tuple: def.params_tuple,

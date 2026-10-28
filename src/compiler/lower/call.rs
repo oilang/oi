@@ -1,5 +1,5 @@
 use super::*;
-use crate::compiler::{CONTEXT, role};
+use crate::compiler::{CONTEXT, comp, role};
 
 // A chosen fill and the args to call it on.
 type Picked = (FnSig, Vec<Spanned<Expr>>);
@@ -148,6 +148,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		let typed = self.funcs.get(key).is_some_and(|f| f.ret == Typ::TypeId);
 		if (self.comptime && !typed) || !has_ann(self.types.consts.anns, key, "comp") {
 			return Ok(None);
+		}
+		if self.comptime {
+			let mut call = call.clone();
+			comp::to_copy(&mut call.0, key);
+			return self.lower(&call, hint).map(Some);
 		}
 		let lit = self.types.fold(call)?;
 		self.lower(&(lit, call.1), hint).map(Some)

@@ -1,7 +1,7 @@
 use super::call::{arg_slots, pack_varargs};
 use super::*;
 use crate::ast::TypeParam;
-use crate::compiler::{has_ann, role};
+use crate::compiler::{MAX_GENERIC_DEPTH, has_ann, role};
 
 // Type params being solved for, and what they're bound to so far.
 pub(super) struct Infer<'d> {
@@ -296,6 +296,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(sig) = self.out.mono.get(&sym) {
 			return Ok(sig.clone());
 		}
+		let depth = self.out.depths.get(&self.out.lowering).map_or(1, |d| d + 1);
+		if depth > MAX_GENERIC_DEPTH {
+			let name = name.split('#').next().unwrap_or(name);
+			return fail(
+				format!("`{name}` recurses without end"),
+				def.span,
+				"instantiates itself forever",
+			);
+		}
+		self.out.depths.insert(sym.clone(), depth);
 		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
 		let params = types.resolve_params(&def.params)?;
 		let ret = match &def.ret {
