@@ -7,8 +7,8 @@ fn coerce_and_match() {
 			xs: []any = [1, "two"]
 			loop x in xs {
 				match x {
-					n @ int => print(n + 1),
-					s @ string => print(s),
+					is int => print(x + 1),
+					is string => print(x),
 					else => print("?"),
 				}
 			}
@@ -23,7 +23,7 @@ fn zero_value_falls_to_else() {
 		indoc! {"
 			x: any
 			match x {
-				n @ int => n,
+				is int => x,
 				else => -1,
 			}
 		"},
@@ -36,7 +36,7 @@ fn needs_else() {
 	fail(
 		indoc! {"
 			x: any = 7
-			match x { n @ int => n }
+			match x { is int => x }
 		"},
 		"needs `else`",
 	);

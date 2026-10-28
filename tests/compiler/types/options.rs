@@ -42,7 +42,7 @@ fn match_binder_narrows_some() {
 		Node :: struct { val: int }
 		f :: fn(o: ?Node) int {
 			match o {
-				n @ Node => n.val,
+				n => n.val,
 				_ => -1,
 			}
 		}

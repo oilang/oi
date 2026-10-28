@@ -203,26 +203,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Binary(BinOp::And, lhs, rhs) if holds => {
 				[self.narrowing(&lhs.0, true), self.narrowing(&rhs.0, true)].concat()
 			}
-			Expr::Is {
-				subject,
-				trait_name,
-				negated,
-			} => self.narrow_is(subject, trait_name, holds != *negated).into_iter().collect(),
+			Expr::Is { subject, typ, negated } => self.narrow_is(subject, typ, holds != *negated).into_iter().collect(),
 			_ => vec![],
 		}
 	}
 
 	// The type an `is` test narrows its local to.
-	fn narrow_is(&self, subject: &Spanned<Expr>, trait_name: &str, holds: bool) -> Option<Narrowing> {
+	fn narrow_is(&self, subject: &Spanned<Expr>, te: &TypeExpr, holds: bool) -> Option<Narrowing> {
 		let Expr::Ident(name) = &subject.0 else { return None };
-		let (local, te) = (self.vars.get(name)?.clone(), TypeExpr::Name(trait_name.into()));
-		let member =
-			(trait_name.strip_prefix('.').map(str::to_string)).or_else(|| self.sum_display(&te, subject.1).ok())?;
+		let local = self.vars.get(name)?.clone();
+		let member = match te {
+			TypeExpr::Name(n) if n.starts_with('.') => n[1..].to_string(),
+			_ => self.sum_display(te, subject.1).ok()?,
+		};
 		let set: Vec<_> = (self.variants_of(&local.typ).into_iter())
 			.filter(|v| (v.name == member) == holds)
 			.collect();
 		let t = match (&local.typ, &set[..]) {
-			(Typ::Any, _) if holds => self.types.resolve(&te, subject.1).ok()?,
+			(Typ::Any, _) if holds => self.types.resolve(te, subject.1).ok()?,
 			(Typ::Enum(_), [v]) if !v.payload.is_empty() => local.typ.refined(&v.name),
 			(Typ::Sum(..), [v]) if enum_boxed(&set) => v.payload[0].clone(),
 			(Typ::Sum(..), [_, _, ..]) if enum_boxed(&set) => Typ::Sum(String::new(), set),
@@ -244,32 +242,38 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.branch(body, target);
 		}
 		self.scoped(|s| {
-			for (name, local, t) in narrowing {
-				if matches!(t, Typ::Sum(..) | Typ::Annotated(..)) && local.typ != Typ::Any {
-					s.vars.insert(name, Local { typ: t, ..local });
-					continue;
-				}
-				let mut boxp = s.read_local(&local);
-				if local.mutable {
-					// unshare the box so writes land in it alone
-					let payload = s.ld_typ(boxp, 8, &t);
-					let payload = s.copy_in(payload, &t);
-					let fresh = s.coerce(payload, &t, &local.typ, Span::default())?.0;
-					s.untemp(fresh);
-					s.write_local(&local, fresh);
-					s.release_value(boxp, &local.typ);
-					boxp = fresh;
-				}
-				let view = Local {
-					boxed: true,
-					..Local::plain(s.b.declare_var(s.int), t, local.mutable)
-				};
-				let payload = s.b.ins().iadd_imm(boxp, 8);
-				s.b.def_var(view.var, payload);
-				s.vars.insert(name, view);
-			}
+			s.rebind_narrowed(narrowing)?;
 			s.block_tail(body, target)
 		})
+	}
+
+	// Rebinds each subject to its narrowed type.
+	fn rebind_narrowed(&mut self, narrowing: impl IntoIterator<Item = Narrowing>) -> Result<(), Diagnostic> {
+		for (name, local, t) in narrowing {
+			if matches!(t, Typ::Sum(..) | Typ::Annotated(..)) && local.typ != Typ::Any {
+				self.vars.insert(name, Local { typ: t, ..local });
+				continue;
+			}
+			let mut boxp = self.read_local(&local);
+			if local.mutable {
+				// unshare the box so writes land in it alone
+				let payload = self.ld_typ(boxp, 8, &t);
+				let payload = self.copy_in(payload, &t);
+				let fresh = self.coerce(payload, &t, &local.typ, Span::default())?.0;
+				self.untemp(fresh);
+				self.write_local(&local, fresh);
+				self.release_value(boxp, &local.typ);
+				boxp = fresh;
+			}
+			let view = Local {
+				boxed: true,
+				..Local::plain(self.b.declare_var(self.int), t, local.mutable)
+			};
+			let payload = self.b.ins().iadd_imm(boxp, 8);
+			self.b.def_var(view.var, payload);
+			self.vars.insert(name, view);
+		}
+		Ok(())
 	}
 
 	// Route a branch's tail value.
@@ -377,8 +381,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		let subject = self.header(subject)?;
 		let (sv, st) = self.expr(subject)?;
 		let (sv, st) = self.deref(sv, &st);
-		let sv_var = self.b.declare_var(cl_type(&st, self.int));
-		self.b.def_var(sv_var, sv);
 
 		// a non-enum match has no coverage to analyse, so it is all a gap
 		if !st.is_enumish() && else_body.is_none() {
@@ -444,8 +446,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 
+			let narrowing = match &arm.patterns[..] {
+				[(Expr::Is { typ, .. }, _)] => self.narrow_is(subject, typ, true),
+				_ => None,
+			};
 			let binds_names = binds.as_ref().is_some_and(|(_, names): &ArmBinds| !names.is_empty());
-			if i > 0 && falls(&arms[i - 1]) && (arm.binding.is_some() || binds_names) {
+			if i > 0 && falls(&arms[i - 1]) && (narrowing.is_some() || binds_names) {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
 			}
@@ -460,21 +466,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 			let flow = self.scoped(|s| {
-				let cap = s.sum_capture(arm, &st).map(|c| ((sv, st.clone()), vec![c]));
-				if let Some(name) = &arm.binding
-					&& cap.is_none()
-				{
-					let narrowed = match &arm.patterns[..] {
-						[(Expr::EnumShorthand { variant, .. } | Expr::Field { field: variant, .. }, _)]
-							if s.variants_of(&st).iter().any(|v| v.name == *variant && !v.payload.is_empty()) =>
-						{
-							st.refined(variant)
-						}
-						_ => st.clone(),
+				s.rebind_narrowed(narrowing)?;
+				if arm.with {
+					let Expr::Ident(name) = &subject.0 else {
+						return fail("`with` needs a named subject", arm.patterns[0].1, "ex: `match x := ..`");
 					};
-					s.vars.insert(name.clone(), Local::plain(sv_var, narrowed, false));
+					s.withs.push(name.clone());
 				}
-				for ((base, base_typ), list) in cap.iter().chain(&binds) {
+				if let Some(((base, base_typ), list)) = &binds {
 					for (name, typ, off) in list {
 						let field = s.load_bind(*base, base_typ, typ, *off, span);
 						let field = s.copy_bind(field, typ);

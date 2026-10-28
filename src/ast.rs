@@ -340,10 +340,10 @@ pub enum Expr {
 
 	// operators
 
-	// `T is not? Trait`
+	// identity/membership/type-checking
 	Is {
 		subject: Box<Spanned<Expr>>,
-		trait_name: String,
+		typ: TypeExpr,
 		negated: bool,
 	},
 
@@ -749,7 +749,7 @@ impl TypeExpr {
 #[derive(Debug, Clone, Default)]
 // One arm of a `match` expression.
 pub struct MatchArm {
-	pub binding: Option<String>,
+	pub with: bool,
 	pub patterns: Vec<Spanned<Expr>>,
 	pub body: Vec<Spanned<Expr>>,
 }

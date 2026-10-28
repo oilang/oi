@@ -274,14 +274,21 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			let args = vec![(Expr::Record(es), ex.span())];
 			(Expr::EnumShorthand { variant, args }, ex.span())
 		});
-
-	// container types
-	let type_pat = p
-		.type_expr
-		.clone()
-		.filter(|t| matches!(t, TypeExpr::Array(_) | TypeExpr::Map(..) | TypeExpr::FixedArray(..)))
-		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
-	let match_pat = struct_pat.or(type_pat).or(p.expr.clone()).boxed();
+	let is_typ = (p.type_expr.clone())
+		.or(dot().ignore_then(ident()).map(|variant| TypeExpr::Name(format!(".{variant}"))))
+		.boxed();
+	let is_pat = just(Token::Is).ignore_then(is_typ.clone()).map_with(|typ, ex| {
+		let subject = Box::new((Expr::Dollar, ex.span()));
+		(
+			Expr::Is {
+				subject,
+				typ,
+				negated: false,
+			},
+			ex.span(),
+		)
+	});
+	let match_pat = struct_pat.or(is_pat).or(p.expr.clone()).boxed();
 
 	let slice_type = just(Token::LBracket)
 		.then(none_of([Token::RBracket]).or_not())
@@ -404,7 +411,6 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|label, ex| (Expr::Continue(label), ex.span()));
 
 	// match expression
-	let binding = just(Token::With).or_not().then(ident()).then_ignore(just(Token::At)).or_not();
 	let arm_end = choice((
 		just(Token::Comma).ignored(),
 		just(Token::RBrace).rewind().ignored(),
@@ -416,19 +422,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.clone()
 		.then_ignore(just(Token::Comma).or_not())
 		.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
-	let match_arm = binding
+	let match_arm = just(Token::With)
+		.or_not()
 		.then(trailing_list1(match_pat.clone()))
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
-		.map_with(|((binding, patterns), mut body), ex| {
-			if let Some((Some(_), name)) = &binding {
-				open_bound(&(Expr::Ident(name.clone()), ex.span()), &mut body);
-			}
-			MatchArm {
-				binding: binding.map(|(_, name)| name),
-				patterns,
-				body,
-			}
+		.map(|((with, patterns), body)| MatchArm {
+			with: with.is_some(),
+			patterns,
+			body,
 		})
 		.boxed();
 	let arm_spread = p.unquote.clone().map(|e| MatchArm {
@@ -789,12 +791,12 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				5,
 				just(Token::Is)
 					.ignore_then(just(Token::Ident("not".into())).or_not())
-					.then(ident().or(dot().ignore_then(ident()).map(|variant| format!(".{variant}")))),
-				|lhs, (not, trait_name): (Option<Token>, String), ex| {
+					.then(is_typ),
+				|lhs, (not, typ): (Option<Token>, TypeExpr), ex| {
 					(
 						Expr::Is {
 							subject: Box::new(lhs),
-							trait_name,
+							typ,
 							negated: not.is_some(),
 						},
 						ex.span(),

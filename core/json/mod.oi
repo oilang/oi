@@ -19,17 +19,17 @@ Json :< {
 	pub str :: fn(self) string {
 		match self {
 			:null => "null",
-			b @ bool => b.str(),
-			f @ float => {
-				if f > -1e15 && f < 1e15 && float.(int.(f)) == f {
-					int.(f).str()
+			is bool => self.str(),
+			is float => {
+				if self > -1e15 && self < 1e15 && float.(int.(self)) == self {
+					int.(self).str()
 				} else {
-					f.str()
+					self.str()
 				}
 			},
-			s @ string => quote(s),
-			a @ Arr => "[" + (loop v in a do v.str()).join(",") + "]",
-			o @ Obj => "{{" + (loop (k, v) in o { quote(k) + ":" + v.str() }).join(",") + "}}",
+			is string => quote(self),
+			is Arr => "[" + (loop v in self do v.str()).join(",") + "]",
+			is Obj => "{{" + (loop (k, v) in self { quote(k) + ":" + v.str() }).join(",") + "}}",
 		}
 	}
 }

@@ -39,7 +39,7 @@ fn control_binds() {
 		loop with p in .[P.{ 1, 2 }, P.{ 3, 4 }] { print(x + y) }
 		o: ?P = P.{ 5, 6 }
 		if with p := o do print(x * y)
-		f :: fn(v: P | int) int { match v { with q @ P => x - y, int => 0 } }
+		f :: fn(v: P | int) int { match v { with is P => x - y, is int => 0 } }
 		print(f(P.{ 9, 1 }))
 	"};
 	check(src, ["3", "7", "30", "8"]);

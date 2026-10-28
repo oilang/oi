@@ -121,12 +121,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Dollar => Ok(self.dollar()),
 
-			Expr::Is {
-				subject,
-				trait_name,
-				negated,
-			} => {
-				let tn = self.types.scope.env.get(trait_name).unwrap_or(trait_name).clone();
+			Expr::Is { subject, typ, negated } => {
+				let tn = match typ {
+					TypeExpr::Name(n) => self.types.scope.env.get(n).unwrap_or(n).clone(),
+					_ => String::new(),
+				};
 				if let Expr::Call { name, args, .. } = &subject.0
 					&& let ("type", [x]) = (name.as_str(), args.as_slice())
 				{
@@ -149,11 +148,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				let (sv, st) = self.deref(obj, &vt);
 				if st.is_enumish() {
-					let pat = match trait_name.strip_prefix('.') {
-						Some(variant) => Expr::Atom(variant.into()),
-						None => Expr::Ident(trait_name.clone()),
-					};
-					let (disc, binds) = self.enum_pattern(&(pat, expr.1), &st)?;
+					let (disc, binds) = self.enum_pattern(expr, &st)?;
 					if !binds.is_empty() {
 						return fail(format!("`{st}` is checked by its variants"), expr.1, "ex: `.some`");
 					}
@@ -172,7 +167,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						);
 					}
 				};
-				let typ = self.types.resolve(&TypeExpr::Name(trait_name.clone()), expr.1)?;
+				let typ = self.types.resolve(typ, expr.1)?;
 				if !self.world.trait_impls.contains(&(typ.key(), tn.clone())) {
 					return Ok((self.b.ins().iconst(self.int, *negated as i64), Typ::Bool));
 				}

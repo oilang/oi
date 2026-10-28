@@ -2,7 +2,7 @@ use json.{ Json, Arr, Obj, parse }
 
 as[T] :: fn(j: Json) T {
 	match j {
-		v @ T => v,
+		is T => j,
 		_ => zero[T](),
 	}
 }

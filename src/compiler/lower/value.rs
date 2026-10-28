@@ -625,16 +625,20 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A match pattern's discriminant and payload binds.
 	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<(i64, Vec<Bind>), Diagnostic> {
 		let bad = |msg| fail(msg, pat.1, "bad pattern");
-		if let (Typ::Sum(..), Some(te)) = (typ, TypeExpr::from_expr(&pat.0)) {
-			let (variants, disp) = (self.variants_of(typ), self.sum_display(&te, pat.1)?);
+		if let Expr::Is { typ: te, .. } = &pat.0 {
+			if let TypeExpr::Name(name) = te
+				&& let Some(variant) = name.strip_prefix('.')
+			{
+				return self.enum_pattern(&(Expr::Atom(variant.into()), pat.1), typ);
+			}
+			if *typ == Typ::Any {
+				return Ok((typeid(&self.types.resolve(te, pat.1)?), vec![]));
+			}
+			let (variants, disp) = (self.variants_of(typ), self.sum_display(te, pat.1)?);
 			return match variants.iter().find(|x| x.name == disp) {
 				Some(x) => Ok((x.disc, vec![])),
 				None => bad(format!("`{typ}` has no variant `{disp}`")),
 			};
-		}
-		if let (Typ::Any, Expr::Ident(v)) = (typ, &pat.0) {
-			let t = self.types.resolve(&TypeExpr::Name(v.clone()), pat.1)?;
-			return Ok((typeid(&t), vec![]));
 		}
 
 		// a bare name on an Option/Result binds the happy payload
@@ -689,24 +693,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Err(_), TypeExpr::Name(n)) => Ok(n.clone()),
 			(Err(e), _) => Err(e),
 		}
-	}
-
-	// An `n @ int` arm on a sum captures the unwrapped payload at offset 8.
-	pub(super) fn sum_capture(&self, arm: &MatchArm, st: &Typ) -> Option<Bind> {
-		let name = arm.binding.as_ref()?;
-		let [pat] = arm.patterns.as_slice() else { return None };
-		let te = TypeExpr::from_expr(&pat.0)?;
-		if *st == Typ::Any {
-			let t = self.types.resolve(&te, pat.1).ok()?;
-			return Some((name.clone(), t, 8));
-		}
-		if let Some(inner) = self.types.happy(st) {
-			return Some((name.clone(), inner, 8));
-		}
-		let Typ::Sum(..) = st else { return None };
-		let (variants, disp) = (self.variants_of(st), self.sum_display(&te, pat.1).ok()?);
-		let vi = variants.iter().find(|x| x.name == disp && x.payload.len() == 1)?;
-		Some((name.clone(), vi.payload[0].clone(), 8))
 	}
 
 	pub(super) fn make_range(

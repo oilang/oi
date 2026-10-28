@@ -533,7 +533,7 @@ fn variant_types() {
 			shape,
 			indoc! {"
 			loop s in .[Shape.circle.{ radius = 2.0 }, .triangle.(3.0, 4.0, 5.0), .point] {
-				print(match s { c @ .circle => area(c), t @ .triangle => perimeter(t), _ => 0.0 })
+				print(match s { is .circle => area(s), is .triangle => perimeter(s), _ => 0.0 })
 			}
 			print(area(.circle.{ radius = 1.0 }))
 		"},

@@ -1530,10 +1530,8 @@ main :: fn() {
 		else => (),
 	}
 
-	# TODO: not sure whether Oi should support `$` in match or use binding
-	match user {
-		u @ User.{ age = 0..18 } => "minor: {u.name}",
-		User.{ age = 0..18 } => "minor: {$.name}",
+	match u := user {
+		User.{ age = 0..18 } => "minor: {u.name}",
 		_ => "adult",
 	}
 
@@ -1807,8 +1805,8 @@ main :: fn() {
 		src := fs.read(path)?
 		parse(src)?
 	}
-	cfg := load(path) or match $ {
-		e @ ParseError => panic!("bad config at {e.line}"),
+	cfg := load(path) or match e := $ {
+		is ParseError => panic!("bad config at {e.line}"),
 		_ => Config.{},
 	}
 
@@ -1896,9 +1894,9 @@ main :: fn() {
 
 	# a payload variant is also a type, a `Shape` known to be that variant
 	area :: fn(c: Shape.circle) f64 { PI * c.radius * c.radius }
-	# `@` narrows to it, and it passes as a plain `Shape` for free
+	# `is` narrows to it, and it passes as a plain `Shape` for free
 	match s {
-		c @ .circle => area(c),
+		is .circle => area(s),
 		_ => 0.0,
 	}
 
@@ -2019,8 +2017,8 @@ main :: fn() {
 	Id :< {
 		pub str :: fn(self) string {
 			match self {
-				n @ int => "#{n}",
-				s @ string => s,
+				is int => "#{self}",
+				is string => self,
 			}
 		}
 	}
@@ -2032,8 +2030,8 @@ main :: fn() {
 	# matching is exhaustive
 	describe :: fn(id: Id) string {
 		match id {
-			n @ int => "numeric: {n}",
-			s @ string => "named: {s}",
+			is int => "numeric: {id}",
+			is string => "named: {id}",
 		}
 	}
 
@@ -2066,8 +2064,8 @@ main :: fn() {
 	x = "five"
 	describe :: fn(v: any) string {
 		match v {
-			n @ int => "int {n}",
-			s @ string => "string {s}",
+			is int => "int {v}",
+			is string => "string {v}",
 			else => "something else", # required, `any` is open
 		}
 	}

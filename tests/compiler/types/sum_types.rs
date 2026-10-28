@@ -80,13 +80,13 @@ fn anonymous_sum_param_and_return() {
 	check(
 		indoc! {r#"
 			f :: fn(v: int | string) int | string { v }
-			a := match f(7) {
-				n @ int => n + 1,
-				string => 0,
+			a := match n := f(7) {
+				is int => n + 1,
+				is string => 0,
 			}
-			b := match f("hi") {
-				int => "no",
-				s @ string => s,
+			b := match s := f("hi") {
+				is int => "no",
+				is string => s,
 			}
 			print(a, b)
 		"#},
@@ -161,8 +161,8 @@ fn set_identity() {
 			d : D : c
 			z: B
 			n := match b {
-				n @ int => n + 1,
-				string => 0,
+				is int => b + 1,
+				is string => 0,
 			}
 			print(n, a == b, z == "", d == :ok, c == d)
 		"#},
@@ -180,9 +180,9 @@ fn sum_alias_splices() {
 			V :: Status | int
 			kind :: fn(x: Value) int {
 				match x {
-					int => 1,
-					f64 => 2,
-					string => 3,
+					is int => 1,
+					is f64 => 2,
+					is string => 3,
 				}
 			}
 			e : V : :err
@@ -202,8 +202,8 @@ fn literals_take_the_hint_through_a_sum() {
 			Json :: :null | bool | float | string | Arr | Obj
 			a : Json : [true, 1.5]
 			m : Json : ["k" = true]
-			n := match a { x @ Arr => x.len(), _ => -1 }
-			k := match m { x @ Obj => x.len(), _ => -1 }
+			n := match a { is Arr => a.len(), _ => -1 }
+			k := match m { is Obj => m.len(), _ => -1 }
 			print(n, k)
 		"#},
 		"2 1",
@@ -218,7 +218,7 @@ fn recursive_members() {
 			Json :: :null | bool | float | string | Arr | [string]Json
 			size :: fn(j: Json) int {
 				match j {
-					a @ Arr => a.len(),
+					is Arr => j.len(),
 					_ => 0,
 				}
 			}
@@ -226,7 +226,7 @@ fn recursive_members() {
 			inner : Json : [b, b, b]
 			top : Json : [inner]
 			match top {
-				a @ Arr => size(a[0]),
+				is Arr => size(top[0]),
 				_ => -1,
 			}
 		"},
@@ -254,8 +254,8 @@ fn container_members_match_as_types() {
 			Json :: :null | bool | float | string | []Json | [string]Json
 			show :: fn(j: Json) string {
 				match j {
-					a @ []Json => "arr of {a.len()}",
-					m @ [string]Json => "map of {m.len()}",
+					is []Json => "arr of {j.len()}",
+					is [string]Json => "map of {j.len()}",
 					_ => "other",
 				}
 			}
@@ -300,9 +300,9 @@ fn sums_as_errors() {
 					x * 2
 				}
 				show :: fn(x: int) int {
-					pick(x) or match $ {
-						a @ A => { print(a.m) 1 }
-						b @ B => { print(b.n) 2 }
+					pick(x) or match e := $ {
+						is A => { print(e.m) 1 }
+						is B => { print(e.n) 2 }
 					}
 				}
 				print(show(3))
@@ -318,9 +318,9 @@ fn sums_as_errors() {
 			indoc! {r#"
 				inner :: fn() A!int { return A.{ m = "boom" } }
 				outer :: fn() E!int { inner()? + 1 }
-				print(outer() or match $ {
-					a @ A => { print(a.m) 1 }
-					b @ B => 2,
+				print(outer() or match e := $ {
+					is A => { print(e.m) 1 }
+					is B => 2,
 				})
 			"#},
 		],
@@ -364,6 +364,15 @@ fn is_narrowing() {
 	fail(
 		["y: int | string = 5", r#"if y is int { y = "s" }"#],
 		"cannot assign string to `y`, which is int",
+	);
+
+	check(
+		indoc! {r#"
+			Id :: int | string | []int
+			g :: fn() Id { [1, 2] }
+			print(match n := g() { is int => n + 1, is []int => n.len(), is string => n.len() })
+		"#},
+		"2",
 	);
 }
 

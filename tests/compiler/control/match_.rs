@@ -68,7 +68,7 @@ fn match_range() {
 			18..65 => "adult",
 			_ => "senior",
 		})
-		match 15 { n @ 0..18 => n, _ => 0 }
+		match n := 15 { 0..18 => n, _ => 0 }
 	"#};
 	check(src, ["adult", "15"]);
 }
@@ -190,5 +190,5 @@ fn match_bind_header() {
 		match n := 0 { 0 => print(n), else => () }
 	"};
 	check(src, ["4", "0"]);
-	fail("match n := 2 { _ => () }\nprint(n)", "undefined variable `n`");
+	fail(["match n := 2 { _ => () }", "print(n)"], "undefined variable `n`");
 }

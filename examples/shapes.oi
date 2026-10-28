@@ -29,8 +29,8 @@ match shape {
 	.rect.(w, h) => {
 		print("rect: {(w h)}")
 	}
-	t @ .triangle.(a, b, c) => {
-		print(t)
+	.triangle => {
+		print(shape)
 	}
 }
 

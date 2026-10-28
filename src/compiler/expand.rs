@@ -79,7 +79,6 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 			.iter_mut()
 			.filter(|p| !p.name.is_empty() && !p.name.starts_with('%'))
 			.for_each(|p| f(&mut p.name)),
-		Expr::Match { arms, .. } => arms.iter_mut().flat_map(|a| &mut a.binding).for_each(f),
 		_ => {}
 	}
 }
