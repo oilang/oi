@@ -37,6 +37,20 @@ fn infallible(cond: &Expr) -> bool {
 	}
 }
 
+// Whether a body ends on every path without falling out.
+pub(super) fn diverges(body: &[Spanned<Expr>]) -> bool {
+	match body.last().map(|stmt| &stmt.0) {
+		Some(Expr::Return(_) | Expr::Break(..) | Expr::Continue(_)) => true,
+		Some(Expr::MacroCall { name, .. }) => matches!(name.as_str(), "panic" | "todo" | "unreachable"),
+		Some(Expr::Block(inner)) => diverges(inner),
+		Some(Expr::If { then, els, .. }) => diverges(then) && els.as_deref().is_some_and(diverges),
+		Some(Expr::Match { arms, else_body, .. }) => {
+			arms.iter().all(|arm| diverges(&arm.body)) && else_body.as_deref().is_none_or(diverges)
+		}
+		_ => false,
+	}
+}
+
 // Whether a condition contains a header chain.
 fn chained(cond: &Expr) -> bool {
 	match cond {

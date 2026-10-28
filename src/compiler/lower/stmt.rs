@@ -308,6 +308,22 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
+				// narrowing the rest of a block
+				Expr::If { cond, then, els: None }
+					if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) =>
+				{
+					let els = Some(stmts[i + 1..].to_vec());
+					let guard = (
+						Expr::If {
+							cond: cond.clone(),
+							then: then.clone(),
+							els,
+						},
+						stmt.1,
+					);
+					return self.branching(&guard, tail, true);
+				}
+
 				Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } | Expr::Labeled { .. } => {
 					match self.branching(stmt, stmt_target, want)? {
 						Some((v, t)) => last = (v, t),

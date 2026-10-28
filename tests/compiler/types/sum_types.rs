@@ -366,3 +366,19 @@ fn is_narrowing() {
 		"cannot assign string to `y`, which is int",
 	);
 }
+
+#[test]
+fn early_exit_narrows_the_rest() {
+	check(
+		indoc! {r#"
+			Id :: int | string | bool
+			g :: fn(x: Id) string {
+				if x is int { return "int" }
+				if x is bool { return "bool {x}" }
+				"str {x.len()}"
+			}
+			print(g(1), g(true), g("abc"))
+		"#},
+		"int bool true str 3",
+	);
+}
