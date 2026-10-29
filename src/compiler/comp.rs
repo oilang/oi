@@ -9,6 +9,7 @@ use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
 
+use super::lower::generic::Infer;
 use super::{Compiler, Typ, TypeCtx, role, type_expr, typeid};
 
 pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
@@ -117,13 +118,32 @@ pub(crate) fn instantiate(
 	types: &TypeCtx,
 	target: &str,
 	consts: &HashMap<String, Spanned<Expr>>,
-) -> Result<(), Diagnostic> {
+) -> Result<HashMap<String, Typ>, Diagnostic> {
+	let mut bound = HashMap::new();
 	let (program, stage0) = types.consts.comp.expect("lowering always has a stage 0 host");
 	let as_type = |(e, span): &Spanned<Expr>| match e {
 		Expr::Tuple(fs) if fs.is_empty() => Some(Typ::unit()),
 		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
 	};
 	while let Some(mut inner) = first_comp(body) {
+		if let Expr::Match {
+			subject,
+			arms,
+			else_body,
+		} = &mut inner.0
+			&& let Some(typ) = as_type(subject).filter(|typ| !matches!(typ, Typ::Const(_)))
+		{
+			let kept = arms.drain(..).find_map(|arm| {
+				let binds = arm.patterns.iter().find_map(|pat| type_pattern(types, pat, &typ))?;
+				Some((binds, arm.body))
+			});
+			let Some((binds, arm)) = kept.or_else(|| Some((HashMap::new(), else_body.take()?))) else {
+				return Err(Diagnostic::new("no `comp match` arm matches", subject.1.into_range()));
+			};
+			bound.extend(binds);
+			patch_first(body, Expr::Block(arm));
+			continue;
+		}
 		inner.0.walk(&mut |e| {
 			if let Expr::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r) = e
 				&& let (Some(lt), Some(rt)) = (as_type(l), as_type(r))
@@ -133,8 +153,10 @@ pub(crate) fn instantiate(
 				&& let Some(Typ::Const(lit)) = types.type_params.get(n)
 			{
 				*e = (**lit).clone();
-			} else if let Expr::Ident(n) = e
-				&& let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
+			} else if let Expr::Ident(n)
+			| Expr::Bind {
+				name: n, value: None, ..
+			} = e && let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
 			}
@@ -142,7 +164,32 @@ pub(crate) fn instantiate(
 		let lit = fold(inner, target, consts, program, &mut stage0.borrow_mut())?;
 		patch_first(body, lit);
 	}
-	Ok(())
+	Ok(bound)
+}
+
+// Bind a type pattern's free names against a given type.
+fn type_pattern(types: &TypeCtx, (pat, span): &Spanned<Expr>, typ: &Typ) -> Option<HashMap<String, Typ>> {
+	let (mut te, mut free) = (TypeExpr::from_expr(pat)?, vec![]);
+	te.walk_mut(&mut |t| {
+		let name = match &*t {
+			TypeExpr::FixedArray(_, len) if let Expr::Ident(name) = &len.0 => name,
+			TypeExpr::Name(name) => name,
+			_ => return,
+		};
+		if types.named(name, *span).is_err() {
+			free.push(TypeParam {
+				name: name.clone(),
+				..TypeParam::default()
+			});
+		}
+	});
+	let mut infer = Infer::new(&free, types.generics);
+	infer.unify(&te, typ).ok()?;
+	let mut subst = types.type_params.clone();
+	subst.extend(infer.subst.clone());
+	(types.with_type_params(&subst).resolve(&te, *span).ok()? == *typ).then_some(())?;
+	infer.subst.remove("_");
+	Some(infer.subst)
 }
 
 // Unquote every path rooted at `var`.
@@ -309,6 +356,22 @@ pub(crate) fn fold(
 	program: &Program,
 	stage0: &mut Option<Compiler>,
 ) -> Result<Expr, Diagnostic> {
+	// claim check
+	if let Expr::Bind {
+		name,
+		typ: Some((typ, _)),
+		value: None,
+		..
+	} = inner.0
+	{
+		let subject = Box::new((Expr::Ident(name), inner.1));
+		inner.0 = Expr::Is {
+			subject,
+			typ,
+			negated: false,
+		};
+	}
+
 	// conditional compilation
 	while let Expr::If { cond, then, els } = inner.0 {
 		let span = cond.1;

@@ -4,14 +4,14 @@ use crate::ast::TypeParam;
 use crate::compiler::{MAX_GENERIC_DEPTH, has_ann, role};
 
 // Type params being solved for, and what they're bound to so far.
-pub(super) struct Infer<'d> {
+pub(crate) struct Infer<'d> {
 	params: &'d [TypeParam],
 	pub subst: HashMap<String, Typ>,
 	generics: &'d Generics,
 }
 
 impl<'d> Infer<'d> {
-	pub(super) fn new(params: &'d [TypeParam], generics: &'d Generics) -> Self {
+	pub(crate) fn new(params: &'d [TypeParam], generics: &'d Generics) -> Self {
 		let subst = HashMap::new();
 		Infer {
 			params,
@@ -21,7 +21,7 @@ impl<'d> Infer<'d> {
 	}
 
 	// Extend `subst` by matching a declared type against a concrete one.
-	pub(super) fn unify(&mut self, declared: &TypeExpr, concrete: &Typ) -> Result<(), String> {
+	pub(crate) fn unify(&mut self, declared: &TypeExpr, concrete: &Typ) -> Result<(), String> {
 		if let TypeExpr::Name(name) = declared
 			&& self.params.iter().any(|p| &p.name == name)
 		{

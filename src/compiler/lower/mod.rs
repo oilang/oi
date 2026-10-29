@@ -27,7 +27,7 @@ mod control;
 mod core;
 mod expr;
 mod ffi;
-mod generic;
+pub(crate) mod generic;
 mod helpers;
 mod macros;
 mod op;

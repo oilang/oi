@@ -1936,10 +1936,10 @@ impl<M: Module> Compiler<M> {
 			let module = if def.module.is_empty() { "main" } else { &def.module };
 			let home = scopes[module].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
-			comp::instantiate(&mut def.body, &types, module, &self.consts)?;
+			let bound = comp::instantiate(&mut def.body, &types, module, &self.consts)?;
 			let me = (def.self_typ.as_ref()).map(|te| types.resolve(te, def.span)).transpose()?;
 			let self_key = me.as_ref().map(Typ::key);
-			subst.extend(me.map(|t| ("Self".to_string(), t)));
+			subst.extend(bound.into_iter().chain(me.map(|t| ("Self".to_string(), t))));
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();
 			self.out.lowering.clone_from(&sym);

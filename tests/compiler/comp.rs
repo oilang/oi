@@ -59,6 +59,25 @@ fn comp_if_is_conditional_compilation() {
 }
 
 #[test]
+fn comp_match_on_a_type_param() {
+	let src = indoc! {r#"
+		f[T] :: fn() {
+			comp match T {
+				[]E => { first: E = 7 print("slice {first}") },
+				[N]E => print("{N} {E == bool}"),
+				string => print("str"),
+				_ => print("other"),
+			}
+		}
+		f[string]()
+		f[[]int]()
+		f[[3]bool]()
+		f[int]()
+	"#};
+	check(src, ["str", "slice 7", "3 true", "other"]);
+}
+
+#[test]
 fn comp_if_on_a_type_param() {
 	let src = indoc! {r#"
 		B[E] :: struct { e: E }
@@ -67,6 +86,17 @@ fn comp_if_on_a_type_param() {
 		B.{ e = () }.g()
 	"#};
 	check(src, ["2", "unit"]);
+}
+
+#[test]
+fn comp_if_on_a_claim() {
+	let src = indoc! {r#"
+		P :: struct {}
+		f[T] :: fn() { comp if T : Eq { print("eq") } else { print("no") } }
+		f[int]()
+		f[P]()
+	"#};
+	check(src, ["eq", "no"]);
 }
 
 #[test]
