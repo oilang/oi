@@ -400,6 +400,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// The payload fields of a refined variant.
+	pub(super) fn variant_fields(&self, typ: &Typ) -> Option<Vec<(Option<String>, Typ)>> {
+		let (variant, base) = typ.variant()?;
+		let v = (self.variants_of(base).into_iter())
+			.find(|v| v.name == variant)
+			.expect("resolved");
+		Some(
+			(v.payload.into_iter().enumerate())
+				.map(|(i, t)| (v.names.get(i).cloned(), t))
+				.collect(),
+		)
+	}
+
 	// What a `^T` points at.
 	pub(super) fn pointee(&self, typ: &Typ, span: Span) -> Result<Typ, Diagnostic> {
 		match typ {

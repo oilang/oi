@@ -674,17 +674,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (ptr, typ) = self.expr(tuple)?;
 
 				// a refined variant reads its payload
-				if let Some((variant, base)) = typ.variant() {
-					let v = (self.variants_of(base).into_iter())
-						.find(|v| v.name == variant)
-						.expect("resolved");
-					let fields: Vec<_> = (0..v.payload.len())
-						.map(|i| (v.names.get(i).cloned(), v.payload[i].clone()))
-						.collect();
+				if let Some(fields) = self.variant_fields(&typ) {
 					let idx = tuple_index(&fields, field, expr.1)?;
 					return Ok((
-						self.ld_typ(ptr, 8 + idx as i32 * 8, &v.payload[idx]),
-						v.payload[idx].clone(),
+						self.ld_typ(ptr, 8 + idx as i32 * 8, &fields[idx].1),
+						fields[idx].1.clone(),
 					));
 				}
 				let (ptr, typ) = self.deref(ptr, &typ);

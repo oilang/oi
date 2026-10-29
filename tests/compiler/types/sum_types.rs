@@ -392,6 +392,19 @@ fn place_paths_narrow() {
 }
 
 #[test]
+fn narrowed_field_writes_land_in_place() {
+	check(
+		indoc! {"
+			Shape :: enum { circle { radius: int } point }
+			s: Shape = .circle.{ radius = 2 }
+			if s is .circle { s.radius = 5 }
+			print(s)
+		"},
+		"circle.{radius = 5}",
+	);
+}
+
+#[test]
 fn early_exit_narrows_the_rest() {
 	check(
 		indoc! {r#"

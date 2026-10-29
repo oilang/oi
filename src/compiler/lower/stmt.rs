@@ -359,6 +359,10 @@ impl<'a, M: Module> Translator<'a, M> {
 							let i = tuple_index(&elems, field, stmt.1)?;
 							(Vec::new(), i, elems[i].1.clone())
 						}
+						_ if let Some(elems) = self.variant_fields(&local.typ) => {
+							let i = tuple_index(&elems, field, stmt.1)?;
+							(Vec::new(), i + 1, elems[i].1.clone())
+						}
 						// writes fall through embeds
 						Typ::Struct(sname, fields) => self.struct_field(&sname, &fields, field, stmt.1)?,
 						_ => {
