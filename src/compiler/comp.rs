@@ -209,6 +209,19 @@ pub(crate) fn instantiate(
 			} = e && let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
+			} else if let Expr::Bind {
+				name,
+				typ: Some((claim, span)),
+				value: None,
+				..
+			} = e && let Some(te) = types.type_params.get(name).and_then(type_expr)
+			{
+				let subject = Box::new((Expr::TypePat(te), *span));
+				*e = Expr::Is {
+					subject,
+					typ: claim.clone(),
+					negated: false,
+				};
 			}
 		});
 		let lit = fold(inner, target, consts, program, &mut stage0.borrow_mut())?;

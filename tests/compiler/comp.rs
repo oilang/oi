@@ -108,8 +108,9 @@ fn comp_if() {
 		f[T] :: fn() { comp if T : Eq { print("eq") } else { print("no") } }
 		f[int]()
 		f[P]()
+		f[[]int]()
 	"#};
-	check(src, ["eq", "no"]);
+	check(src, ["eq", "no", "no"]);
 
 	// type patterns
 	let src = indoc! {r#"
