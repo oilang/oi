@@ -167,7 +167,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (outer, mut live) = (self.slots.clone(), vec![]);
 		let (owned, mut tails) = (self.scopes.clone(), vec![]);
 		self.b.switch_to_block(then_block);
-		let then_flow = self.narrowed(&cond.0, true, then, target)?;
+		let then_flow = self.unwrapped(&cond.0, true, then, target)?;
 		self.rejoin(&outer, &mut live, then_flow.is_none());
 		let tail = self.branch_tail(&owned, &mut tails, then_flow.is_some());
 		if let Some(vt) = then_flow {
@@ -176,7 +176,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(else_block);
 		let else_flow = match els {
-			Some(els) => self.narrowed(&cond.0, false, els, target)?,
+			Some(els) => self.unwrapped(&cond.0, false, els, target)?,
 			None => self.else_default(None, &join, target)?,
 		};
 		self.rejoin(&outer, &mut live, else_flow.is_none());
@@ -197,19 +197,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result))
 	}
 
-	// The locals narrowed by a condition.
-	fn narrowing(&mut self, cond: &Expr, holds: bool) -> Vec<Narrowing> {
+	// The locals unwrapped by a condition.
+	fn unwrapping(&mut self, cond: &Expr, holds: bool) -> Vec<Unwrapping> {
 		match cond {
 			Expr::Binary(BinOp::And, lhs, rhs) if holds => {
-				[self.narrowing(&lhs.0, true), self.narrowing(&rhs.0, true)].concat()
+				[self.unwrapping(&lhs.0, true), self.unwrapping(&rhs.0, true)].concat()
 			}
-			Expr::Is { subject, typ, negated } => self.narrow_is(subject, typ, holds != *negated).into_iter().collect(),
+			Expr::Is { subject, typ, negated } => self.unwrap_is(subject, typ, holds != *negated).into_iter().collect(),
 			_ => vec![],
 		}
 	}
 
-	// The type an `is` test narrows its local to.
-	fn narrow_is(&mut self, subject: &Spanned<Expr>, te: &TypeExpr, holds: bool) -> Option<Narrowing> {
+	// The type an `is` test unwraps its local to.
+	fn unwrap_is(&mut self, subject: &Spanned<Expr>, te: &TypeExpr, holds: bool) -> Option<Unwrapping> {
 		let (name, local) = match &subject.0 {
 			Expr::Ident(name) => (name.clone(), self.vars.get(name)?.clone()),
 			Expr::Dollar | Expr::Field { .. } => {
@@ -242,7 +242,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Ends unwraps written by a loop body.
-	fn unnarrow_writes(&mut self, body: &[Spanned<Expr>]) {
+	fn rewrap_writes(&mut self, body: &[Spanned<Expr>]) {
 		let mut written = HashSet::new();
 		Expr::Block(body.to_vec()).walk(&mut |e| match e {
 			Expr::Assign { name, .. }
@@ -259,27 +259,27 @@ impl<'a, M: Module> Translator<'a, M> {
 		written.iter().for_each(|root| self.vars.forget(root));
 	}
 
-	// A branch that sees its condition's subjects narrowed.
-	pub(super) fn narrowed(
+	// A branch that sees its condition's subjects unwrapped.
+	pub(super) fn unwrapped(
 		&mut self,
 		cond: &Expr,
 		holds: bool,
 		body: &[Spanned<Expr>],
 		target: Option<&Typ>,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		let narrowing = self.narrowing(cond, holds);
-		if narrowing.is_empty() {
+		let unwrapping = self.unwrapping(cond, holds);
+		if unwrapping.is_empty() {
 			return self.branch(body, target);
 		}
 		self.scoped(|s| {
-			s.rebind_narrowed(narrowing)?;
+			s.rebind_unwrapped(unwrapping)?;
 			s.block_tail(body, target)
 		})
 	}
 
-	// Rebinds each subject to its narrowed type.
-	fn rebind_narrowed(&mut self, narrowing: impl IntoIterator<Item = Narrowing>) -> Result<(), Diagnostic> {
-		for (name, mut local, t) in narrowing {
+	// Rebinds each subject to its unwrapped type.
+	fn rebind_unwrapped(&mut self, unwrapping: impl IntoIterator<Item = Unwrapping>) -> Result<(), Diagnostic> {
+		for (name, mut local, t) in unwrapping {
 			let view = if matches!(t, Typ::Sum(..) | Typ::Annotated(..)) && local.typ != Typ::Any {
 				Local { typ: t, ..local }
 			} else {
@@ -490,12 +490,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(arm_body);
 			self.b.switch_to_block(arm_body);
 
-			let narrowing = match &arm.patterns[..] {
-				[(Expr::Is { typ, .. }, _)] => self.narrow_is(subject, typ, true),
+			let unwrapping = match &arm.patterns[..] {
+				[(Expr::Is { typ, .. }, _)] => self.unwrap_is(subject, typ, true),
 				_ => None,
 			};
 			let binds_names = binds.as_ref().is_some_and(|(_, names): &ArmBinds| !names.is_empty());
-			if i > 0 && falls(&arms[i - 1]) && (narrowing.is_some() || binds_names) {
+			if i > 0 && falls(&arms[i - 1]) && (unwrapping.is_some() || binds_names) {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
 			}
@@ -510,7 +510,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			let flow = self.scoped(|s| {
-				s.rebind_narrowed(narrowing)?;
+				s.rebind_unwrapped(unwrapping)?;
 				if arm.with {
 					let Expr::Ident(name) = &subject.0 else {
 						return fail("`with` needs a named subject", arm.patterns[0].1, "ex: `match x := ..`");
@@ -1038,7 +1038,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		self.unnarrow_writes(body);
+		self.rewrap_writes(body);
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
@@ -1085,7 +1085,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
 				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
 			}
-			(Some(c), _) => s.narrowed(&c.0, true, body, None),
+			(Some(c), _) => s.unwrapped(&c.0, true, body, None),
 			(None, _) => s.block(body),
 		})?;
 
@@ -1291,7 +1291,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		self.unnarrow_writes(body);
+		self.rewrap_writes(body);
 		self.header_scoped(|s| {
 			let (iter, consume) = match &iter.0 {
 				Expr::ArgMod(Access::Move, x) => (&**x, true),
@@ -1518,7 +1518,7 @@ impl<'a, M: Module> Translator<'a, M> {
 }
 
 type ArmBinds = (TypedVal, Vec<Bind>);
-type Narrowing = (String, Local, Typ);
+type Unwrapping = (String, Local, Typ);
 
 // Field chain key.
 pub(super) fn place_key(e: &Expr) -> Option<String> {

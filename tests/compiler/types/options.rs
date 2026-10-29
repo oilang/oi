@@ -38,7 +38,7 @@ fn match_arms() {
 }
 
 #[test]
-fn match_binder_narrows_some() {
+fn match_binder_unwraps_some() {
 	let src = indoc! {"
 		Node :: struct { val: int }
 		f :: fn(o: ?Node) int {

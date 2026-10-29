@@ -825,7 +825,7 @@ fn boxed_error_outlives_its_scope() {
 }
 
 #[test]
-fn is_narrows_trait_objects() {
+fn is_unwraps_trait_objects() {
 	let src = indoc! {r#"
 		Bad :: struct { line: int }
 		Bad : Error < { message :: fn(self) string { "bad" } }

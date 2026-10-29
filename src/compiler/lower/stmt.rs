@@ -308,7 +308,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
-				// narrowing the rest of a block
+				// unwrapping the rest of a block
 				Expr::If { cond, then, els: None }
 					if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) =>
 				{

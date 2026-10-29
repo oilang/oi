@@ -1901,7 +1901,7 @@ main :: fn() {
 
 	# a payload variant is also a type, a `Shape` known to be that variant
 	area :: fn(c: Shape.circle) f64 { PI * c.radius * c.radius }
-	# `is` narrows to it, and it passes as a plain `Shape` for free
+	# `is` unwraps to it, and it passes as a plain `Shape` for free
 	match s {
 		is .circle => area(s),
 		_ => 0.0,

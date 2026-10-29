@@ -343,7 +343,7 @@ fn is_variant() {
 }
 
 #[test]
-fn is_narrowing() {
+fn is_unwrapping() {
 	check(
 		indoc! {r#"
 			P :: struct { x: int, y: int }
@@ -377,7 +377,7 @@ fn is_narrowing() {
 }
 
 #[test]
-fn place_paths_narrow() {
+fn place_paths_unwrap() {
 	let defs = indoc! {"
 		Shape :: enum { circle { radius: int } point }
 		P :: struct { q: struct { shape: Shape } }
@@ -392,7 +392,7 @@ fn place_paths_narrow() {
 }
 
 #[test]
-fn narrowed_field_writes_land_in_place() {
+fn unwrapped_field_writes_land_in_place() {
 	check(
 		indoc! {"
 			Shape :: enum { circle { radius: int } point }
@@ -405,7 +405,7 @@ fn narrowed_field_writes_land_in_place() {
 }
 
 #[test]
-fn early_exit_narrows_the_rest() {
+fn early_exit_unwraps_the_rest() {
 	check(
 		indoc! {r#"
 			Id :: int | string | bool
