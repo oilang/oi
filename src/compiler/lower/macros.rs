@@ -13,15 +13,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		for slot in &slots {
 			let ptr = match slot {
 				expand::Slot::Name(name) => {
-					let Some(local) = self.vars.get(name).cloned() else {
+					let (val, typ) = if let Some(local) = self.vars.get(name).cloned() {
+						(self.read_local(&local), local.typ)
+					} else if let Some(Typ::Const(lit)) = self.types.type_params.get(name) {
+						self.lower(&((**lit).clone(), span), None)?
+					} else {
 						return fail(
 							format!("`%{name}` refers to no binding in scope"),
 							span,
 							"not found in scope",
 						);
 					};
-					let val = self.read_local(&local);
-					self.lift_unquote(val, &local.typ, span)?
+					self.lift_unquote(val, &typ, span)?
 				}
 				expand::Slot::Expr(e) => {
 					let (val, typ) = self.expr(e)?;

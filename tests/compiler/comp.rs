@@ -414,7 +414,8 @@ fn comp_consts_are_constants() {
 }
 
 #[test]
-fn comp_fns_nest() {
+fn comp_fns() {
+	// nesting
 	let src = indoc! {"
 		Nest :: comp fn(n: int) type { comp if n == 0 { int } else { [1]Nest(n - 1) } }
 		V :: comp fn(t: type) type { []t }
@@ -429,6 +430,15 @@ fn comp_fns_nest() {
 		],
 		"`Nest` recurses without end",
 	);
+
+	// asts
+	let src = indoc! {"
+		gen :: comp fn(n: int) Ast { `print(%n)` }
+		m! :: fn() Ast { gen(3) }
+		m!()
+		comp { gen(4) }
+	"};
+	check(src, ["3", "4"]);
 }
 
 #[test]
