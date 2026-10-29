@@ -445,10 +445,18 @@ fn comp_fns() {
 fn comp_match_guard_on_a_claim() {
 	let src = indoc! {r#"
 		P :: struct {}
-		f[T] :: fn() { comp match T { []E if E : Eq => print("eq"), []E => print("slice"), _ => print("other") } }
+		f[T] :: fn() {
+			comp match T {
+				[]E if E : Eq => print("eq"),
+				[]E => print("slice"),
+				is Eq => print("claim"),
+				_ => print("other"),
+			}
+		}
 		f[[]int]()
 		f[[]P]()
 		f[int]()
+		f[P]()
 	"#};
-	check(src, ["eq", "slice", "other"]);
+	check(src, ["eq", "slice", "claim", "other"]);
 }

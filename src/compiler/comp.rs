@@ -153,10 +153,24 @@ pub(crate) fn instantiate(
 			&& let Some(typ) = as_type(subject).filter(|typ| !matches!(typ, Typ::Const(_)))
 		{
 			let mut kept = None;
-			for arm in arms.drain(..) {
+			for mut arm in arms.drain(..) {
+				if let [(Expr::Is { typ, .. }, span)] = &arm.patterns[..]
+					&& let TypeExpr::Name(tn) = typ
+					&& types.traits.contains_key(types.scope.qualify_trait(tn).as_str())
+				{
+					let (subject, typ, negated) = (subject.clone(), typ.clone(), false);
+					let claim = Box::new((Expr::Is { subject, typ, negated }, *span));
+					arm.guard = Some(match arm.guard {
+						Some(guard) => Box::new((Expr::Binary(BinOp::And, claim, guard), *span)),
+						None => claim,
+					});
+					arm.patterns = vec![(Expr::Ident("_".into()), *span)];
+				}
+
 				let Some(binds) = arm.patterns.iter().find_map(|pat| type_pattern(types, pat, &typ)) else {
 					continue;
 				};
+
 				if let Some(guard) = arm.guard {
 					let span = guard.1;
 					let subst = types.type_params.clone().into_iter().chain(binds.clone()).collect();
@@ -171,9 +185,11 @@ pub(crate) fn instantiate(
 				kept = Some((binds, arm.body));
 				break;
 			}
+
 			let Some((binds, arm)) = kept.or_else(|| Some((HashMap::new(), else_body.take()?))) else {
 				return Err(Diagnostic::new("no `comp match` arm matches", subject.1.into_range()));
 			};
+
 			bound.extend(binds);
 			patch_first(body, Expr::Block(arm));
 			continue;
