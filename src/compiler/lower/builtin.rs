@@ -91,6 +91,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
 			"__comp_yield" => {
+				(self.ret, self.is_main) = (None, true);
 				let (val, typ) = self.expr(&args[0])?;
 				self.comp_yield(val, &typ, args[0].1)?;
 				Ok(Some(self.unit_value()))

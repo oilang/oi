@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
@@ -386,6 +386,38 @@ pub(crate) fn fold(
 		};
 		return Ok(super::expand::one(arm, span).0);
 	}
+
+	// comp match
+	if let Expr::Match {
+		subject,
+		arms,
+		else_body,
+	} = &mut inner.0
+	{
+		let span = subject.1;
+		let at = |i: i128| vec![(Expr::Int(i), span)];
+		let probe = Expr::Match {
+			subject: subject.clone(),
+			arms: (arms.iter().zip(0..))
+				.map(|(arm, i)| MatchArm {
+					body: at(i),
+					..arm.clone()
+				})
+				.collect(),
+			else_body: Some(at(-1)),
+		};
+		let probe = (Expr::Block(vec![(probe, span)]), span);
+		let Expr::Int(hit) = fold(probe, target, consts, program, stage0)? else {
+			unreachable!()
+		};
+		let body = usize::try_from(hit)
+			.ok()
+			.map(|i| std::mem::take(&mut arms[i].body))
+			.or(else_body.take());
+		let body = body.ok_or_else(|| Diagnostic::new("no `comp match` arm matches", span.into_range()))?;
+		return Ok(super::expand::one(body, span).0);
+	}
+
 	if let Expr::Bool(_) = inner.0 {
 		return Ok(inner.0);
 	}

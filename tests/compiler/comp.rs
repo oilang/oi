@@ -78,6 +78,20 @@ fn comp_match_on_a_type_param() {
 }
 
 #[test]
+fn comp_match_keeps_the_matching_arm() {
+	let src = indoc! {r#"
+		C :: enum { red, green }
+		OS :: :linux
+		K :: comp C.green
+		comp match OS { :windows => missing(), :linux => print("tux") }
+		comp match K { .red => missing(), else => print("green") }
+		print(comp match 2 { 1 => missing(), 2, 3 => 5, _ => missing() })
+	"#};
+	check(src, ["tux", "green", "5"]);
+	fail("comp match 3 { 1 => 0 }", "no `comp match` arm matches");
+}
+
+#[test]
 fn comp_if_on_a_type_param() {
 	let src = indoc! {r#"
 		B[E] :: struct { e: E }
