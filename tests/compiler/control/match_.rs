@@ -192,3 +192,18 @@ fn match_bind_header() {
 	check(src, ["4", "0"]);
 	fail(["match n := 2 { _ => () }", "print(n)"], "undefined variable `n`");
 }
+
+#[test]
+fn match_arm_guard() {
+	let src = indoc! {r#"
+		loop i in 2..5 {
+			x: ?int = i
+			print(match x { .some.(n) if n > 3 => "big", .some.(n) => "small {n}", .none => "none" })
+		}
+	"#};
+	check(src, ["small 2", "small 3", "big"]);
+	fail(
+		r#"x: ?int = 4 match x { .some.(n) if n > 3 => (), .none => () }"#,
+		"missing: some",
+	);
+}

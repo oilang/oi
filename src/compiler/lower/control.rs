@@ -430,7 +430,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// ensure match covers every variant when applicable
 		if st.is_enumish() {
-			let pats = || arms.iter().flat_map(|a| &a.patterns);
+			let pats = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
 			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all && st == Typ::Any {
 				return Err(Diagnostic::new("a match on `any` needs `else`", span.into_range()));
@@ -489,6 +489,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			self.b.seal_block(arm_body);
 			self.b.switch_to_block(arm_body);
+
 			let narrowing = match &arm.patterns[..] {
 				[(Expr::Is { typ, .. }, _)] => self.narrow_is(subject, typ, true),
 				_ => None,
@@ -498,6 +499,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
 			}
+
 			let fell = falls(arm);
 			if fell && i + 1 == arms.len() && else_body.is_none() {
 				return fail(
@@ -506,6 +508,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					"no next arm",
 				);
 			}
+
 			let flow = self.scoped(|s| {
 				s.rebind_narrowed(narrowing)?;
 				if arm.with {
@@ -521,11 +524,20 @@ impl<'a, M: Module> Translator<'a, M> {
 						s.bind_local(name, field, typ.clone(), false);
 					}
 				}
+				if let Some(guard) = &arm.guard {
+					let pass = s.bool_value(guard, "match guard")?;
+					let (yes, no) = s.fork(pass);
+					s.b.switch_to_block(no);
+					s.release_scopes(s.scopes.len() - 1, None)?;
+					s.b.ins().jump(miss, &[]);
+					s.b.switch_to_block(yes);
+				}
 				match fell {
 					true => s.block_tail(&arm.body[..arm.body.len() - 1], None),
 					false => s.block_tail(&arm.body, target),
 				}
 			})?;
+
 			let flow = match (fell, flow) {
 				(true, Some((v, t))) => {
 					self.release_value(v, &t);
@@ -534,7 +546,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				(_, flow) => flow,
 			};
+
 			self.rejoin(&outer, &mut live, flow.is_none());
+
 			let tail = self.branch_tail(&owned, &mut tails, flow.is_some());
 			if let Some(vt) = flow {
 				self.contribute(vt, &mut join, tail)?;

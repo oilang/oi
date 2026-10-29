@@ -1523,6 +1523,13 @@ main :: fn() {
 		}
 	}
 
+	# arm guards
+	match opt {
+		.some.(n) if n > 3 => "big",
+		.some.(n) => "small",
+		.none => "none"
+	}
+
 	# a trailing `fallthrough` enters the next arm's body
 	match n {
 		1 => { print("one"); fallthrough },

@@ -133,10 +133,25 @@ pub(crate) fn instantiate(
 		} = &mut inner.0
 			&& let Some(typ) = as_type(subject).filter(|typ| !matches!(typ, Typ::Const(_)))
 		{
-			let kept = arms.drain(..).find_map(|arm| {
-				let binds = arm.patterns.iter().find_map(|pat| type_pattern(types, pat, &typ))?;
-				Some((binds, arm.body))
-			});
+			let mut kept = None;
+			for arm in arms.drain(..) {
+				let Some(binds) = arm.patterns.iter().find_map(|pat| type_pattern(types, pat, &typ)) else {
+					continue;
+				};
+				if let Some(guard) = arm.guard {
+					let span = guard.1;
+					let subst = types.type_params.clone().into_iter().chain(binds.clone()).collect();
+					let mut cond = [(Expr::Comp(guard), span)];
+					instantiate(&mut cond, &types.with_type_params(&subst), target, consts)?;
+					match cond[0].0 {
+						Expr::Bool(true) => {}
+						Expr::Bool(false) => continue,
+						_ => return Err(Diagnostic::new("a match guard needs a bool", span.into_range())),
+					}
+				}
+				kept = Some((binds, arm.body));
+				break;
+			}
 			let Some((binds, arm)) = kept.or_else(|| Some((HashMap::new(), else_body.take()?))) else {
 				return Err(Diagnostic::new("no `comp match` arm matches", subject.1.into_range()));
 			};

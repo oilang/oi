@@ -425,11 +425,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let match_arm = just(Token::With)
 		.or_not()
 		.then(trailing_list1(match_pat.clone()))
+		.then(just(Token::If).ignore_then(header_cond.clone()).map(Box::new).or_not())
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
-		.map(|((with, patterns), body)| MatchArm {
+		.map(|(((with, patterns), guard), body)| MatchArm {
 			with: with.is_some(),
 			patterns,
+			guard,
 			body,
 		})
 		.boxed();

@@ -511,12 +511,14 @@ impl Expr {
 				f(One(subject));
 				for arm in arms {
 					f(List(&mut arm.patterns));
+					arm.guard.iter_mut().for_each(|g| f(One(g)));
 					f(List(&mut arm.body));
 				}
 				else_body.iter_mut().for_each(|e| f(List(e)));
 			}
 			Expr::Arm(arm) => {
 				f(List(&mut arm.patterns));
+				arm.guard.iter_mut().for_each(|g| f(One(g)));
 				f(List(&mut arm.body));
 			}
 			Expr::Bool(_)
@@ -751,6 +753,7 @@ impl TypeExpr {
 pub struct MatchArm {
 	pub with: bool,
 	pub patterns: Vec<Spanned<Expr>>,
+	pub guard: Option<Box<Spanned<Expr>>>,
 	pub body: Vec<Spanned<Expr>>,
 }
 
