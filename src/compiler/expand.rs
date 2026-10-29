@@ -844,25 +844,48 @@ pub(crate) extern "C" fn rt_quote_match(tpl: usize, subject: *mut Spanned<Expr>,
 	if !unify(&tpl.stmts[0], subj, &mut binds) {
 		return 0;
 	}
-	for (i, b) in binds.into_iter().enumerate() {
-		unsafe { *outs.add(i) = leak(b) };
+
+	for (i, (bind, name)) in binds.into_iter().zip(&tpl.names).enumerate() {
+		let ptr = match bind {
+			(Expr::Block(rest), _) if name.starts_with("...") => {
+				let elems: Vec<i64> = rest.into_iter().map(|e| leak(e) as i64).collect();
+				runtime::array_of(&elems, 8).cast_mut().cast()
+			}
+			bind => leak(bind),
+		};
+		unsafe { *outs.add(i) = ptr };
 	}
+
 	1
 }
 
-// Take `e`'s child subtrees, leaving a placeholder.
-fn split(e: &Expr) -> (String, Vec<Spanned<Expr>>) {
-	let (mut e, mut kids) = (e.clone(), Vec::new());
-	e.for_children(|c| {
-		let list = match c {
-			List(list) => list.as_mut_slice(),
-			One(one) => std::slice::from_mut(one),
-		};
-		for one in list {
-			kids.push(std::mem::replace(one, empty()));
+// Take child subtrees of an expression, leaving placeholders.
+fn split(mut e: Expr) -> (String, Vec<Vec<Spanned<Expr>>>) {
+	let mut kids = match &mut e {
+		Expr::StructDef { fields, .. } => vec![fields.drain(..).map(|f| (field_ast(&f), f.span)).collect()],
+		Expr::Call { args, .. } | Expr::MacroCall { args, .. } | Expr::Array(args) | Expr::DotTuple(args) => {
+			vec![std::mem::take(args)]
 		}
+		_ => vec![],
+	};
+	e.for_children(|c| match c {
+		List(list) => kids.push(std::mem::take(list)),
+		One(one) => kids.push(vec![std::mem::replace(one, empty())]),
 	});
 	(format!("{e:?}"), kids)
+}
+
+// Unify a sequence.
+fn unify_seq(pats: &[Spanned<Expr>], subjs: &[Spanned<Expr>], binds: &mut Vec<Spanned<Expr>>) -> bool {
+	let mut subjs = subjs.to_vec();
+	if let Some((Expr::Unquote(key), _)) = pats.last()
+		&& key.starts_with("...")
+		&& pats.len() <= subjs.len() + 1
+	{
+		let rest = subjs.split_off(pats.len() - 1);
+		subjs.push((Expr::Block(rest), Span::default()));
+	}
+	pats.len() == subjs.len() && pats.iter().zip(&subjs).all(|(p, s)| unify(p, s, binds))
 }
 
 // Structurally unify a quote pattern against a runtime Ast, capturing `%name` holes.
@@ -878,8 +901,8 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 		binds.push((Expr::Ident(std::mem::take(name)), subj.1));
 		hole.clear();
 	}
-	let ((ph, pk), (sh, sk)) = (split(&pat_expr), split(&subj_expr));
-	ph == sh && pk.iter().zip(&sk).all(|(p, s)| unify(p, s, binds))
+	let ((ph, pk), (sh, sk)) = (split(pat_expr), split(subj_expr));
+	ph == sh && pk.iter().zip(&sk).all(|(p, s)| unify_seq(p, s, binds))
 }
 
 pub(crate) extern "C" fn rt_ast_lit(tag: i64, bits: i64) -> *mut Spanned<Expr> {
@@ -935,6 +958,9 @@ fn type_ast(t: &TypeExpr) -> Expr {
 
 // A field as the Ast a param hole takes.
 fn field_ast(f: &Param) -> Expr {
+	if let Some(key) = hole_key(&f.typ).filter(|_| f.name.is_empty()) {
+		return Expr::Unquote(key.to_string());
+	}
 	let bind = Expr::Bind {
 		mutable: false,
 		name: f.name.clone(),

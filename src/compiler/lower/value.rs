@@ -253,6 +253,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			return Ok(Some(id));
 		}
+
+		if *target == Typ::Ast
+			&& let Expr::Ident(n) = &value.0
+			&& !self.vars.contains_key(n)
+			&& (self.types.named(n, value.1).is_ok() || self.funcs.contains_key(self.qualify(n).as_ref()))
+		{
+			return Ok(Some(self.quote(std::slice::from_ref(value), value.1)?.0));
+		}
+
 		let oob = |n| {
 			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
 				.with_label(format!("doesn't fit in {target}"))

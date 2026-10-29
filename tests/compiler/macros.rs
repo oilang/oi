@@ -689,3 +689,34 @@ fn module_top_level_macro_call() {
 		.lib("geo", mk)
 		.check("42");
 }
+
+#[test]
+fn quote_pattern_spread_captures() {
+	check(
+		indoc! {r"
+			rest! :: fn(e: Ast) Ast {
+				match e {
+					`f(%a, %{..rest})` => `[%{..rest}]`,
+					else => e,
+				}
+			}
+			print(rest!(f(1, 2, 3)), rest!(5))
+			comp match `P :: struct { x: int, y: int }` { `%n :: struct { %{..fs} }` => print(n.str(), fs.len()) }
+		"},
+		["[2, 3] 5", "P 2"],
+	);
+}
+
+#[test]
+fn def_takes_a_type_name() {
+	check(
+		indoc! {r#"
+			P :: struct { x: int, y: int }
+			comp match def(P) { `%n :: struct { %{..fs} }` => print(n.str(), fs.len()) }
+			f[T] :: fn() { comp match def(T) { `%n :: struct { %{..fs} }` => print(fs.len()), else => print("no") } }
+			f[P]()
+			f[int]()
+		"#},
+		["P 2", "2", "no"],
+	);
+}

@@ -610,21 +610,22 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Err(Diagnostic::new(msg, pat.1.into_range()));
 				}
 				let (tpl, slots) = expand::register(q, pat.1)?;
-				let names: Vec<String> = (slots.into_iter())
+				let names: Vec<(String, Typ)> = (slots.into_iter())
 					.map(|slot| match slot {
-						expand::Slot::Name(name) => Some(name),
+						expand::Slot::Name(name) => Some((name, Typ::Ast)),
+						expand::Slot::Splat((Expr::Ident(name), _)) => Some((name, Typ::Array(Box::new(Typ::Ast)))),
 						_ => None,
 					})
 					.collect::<Option<_>>()
 					.ok_or_else(|| {
-						let msg = "only `%name` captures are allowed in a quote pattern";
+						let msg = "only `%name` and `%{..name}` captures are allowed in a quote pattern";
 						Diagnostic::new(msg, pat.1.into_range())
 					})?;
 				let outs = self.stack_slot((names.len().max(1) * 8) as u32);
 				let tplv = self.b.ins().iconst(self.int, tpl as i64);
 				let matched = self.extern_call(expand::RT_QUOTE_MATCH, &[tplv, sv, outs], Some(self.int));
 				let hit = self.b.ins().icmp_imm(IntCC::NotEqual, matched.unwrap(), 0);
-				let binds = names.into_iter().enumerate().map(|(i, name)| (name, Typ::Ast, i as i32 * 8));
+				let binds = names.into_iter().enumerate().map(|(i, (name, typ))| (name, typ, i as i32 * 8));
 				(hit, Some(((outs, Typ::Ast), binds.collect())))
 			}
 			_ => {

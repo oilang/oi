@@ -410,20 +410,37 @@ pub(crate) fn fold(
 	} = &mut inner.0
 	{
 		let span = subject.1;
-		let at = |i: i128| vec![(Expr::Int(i), span)];
+		let at = |i: i128| vec![(Expr::Quote(vec![(Expr::Int(i), span)]), span)];
+
+		// quote arms
+		let probe_arm = |arm: &MatchArm, i| match arm.patterns.first() {
+			Some((Expr::Quote(q), _)) if let Ok((_, slots)) = super::expand::register(q, span) => {
+				let mut body = (Expr::Block(arm.body.clone()), span);
+				for slot in slots {
+					if let super::expand::Slot::Name(var) | super::expand::Slot::Splat((Expr::Ident(var), _)) = slot {
+						unquote(&mut body, &var);
+					}
+				}
+				vec![(Expr::Quote(vec![body]), span)]
+			}
+			_ => at(i),
+		};
+
 		let probe = Expr::Match {
 			subject: subject.clone(),
 			arms: (arms.iter().zip(0..))
 				.map(|(arm, i)| MatchArm {
-					body: at(i),
+					body: probe_arm(arm, i),
 					..arm.clone()
 				})
 				.collect(),
 			else_body: Some(at(-1)),
 		};
 		let probe = (Expr::Block(vec![(probe, span)]), span);
-		let Expr::Int(hit) = fold(probe, target, consts, program, stage0)? else {
-			unreachable!()
+		let hit = match fold(probe, target, consts, program, stage0)? {
+			Expr::Int(hit) => hit,
+			Expr::Block(body) => return Ok(super::expand::one(body, span).0),
+			_ => unreachable!(),
 		};
 		let body = usize::try_from(hit)
 			.ok()
@@ -438,6 +455,7 @@ pub(crate) fn fold(
 	}
 	let span = inner.1;
 	let scope = program.modules.iter().find(|m| m.name == target).map(|m| m.scope.at(span));
+
 	// comp loop
 	if let Expr::For { pat, body, .. } = &mut inner.0 {
 		let vars = super::expand::pat_names(pat);
@@ -452,7 +470,8 @@ pub(crate) fn fold(
 	{
 		to_copy(&mut inner.0, &key);
 	}
-	// every needs its own name
+
+	// functions
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (
 		Expr::Fn {
@@ -472,7 +491,8 @@ pub(crate) fn fold(
 		},
 		span,
 	);
-	// enable comp code to call imports
+
+	// imports
 	let mut synthetic = super::expand::lend(program, |module, items| {
 		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
 		items.retain_mut(|item| match &item.0 {
@@ -491,11 +511,13 @@ pub(crate) fn fold(
 		.filter(|(_, v)| !matches!(v.0, Expr::Comp(_)))
 		.map(|(k, v)| (k.clone(), v.clone()))
 		.collect();
+
 	let mut compiler = stage0.take().unwrap_or_default();
 	let ran = match DEPTH.fetch_add(1, Ordering::Relaxed) {
 		..8 => compiler.run_stage0(&synthetic, vec![name.clone()]),
 		_ => Err(Diagnostic::new("`comp` recurses without end", span.into_range())),
 	};
+
 	DEPTH.fetch_sub(1, Ordering::Relaxed);
 	ran?;
 	TYPES.set(compiler.out.any_types.clone());
