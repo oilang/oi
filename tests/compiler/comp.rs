@@ -387,19 +387,6 @@ fn type_fns_take_bracket_args() {
 }
 
 #[test]
-fn comp_fns() {
-	let src = indoc! {"
-		Tag :: struct {}
-		Arr :: comp fn(t: type, n: int) type { [n]t }
-		@Tag fib :: comp fn(n: int) int { if n < 2 { n } else { fib(n - 1) + fib(n - 2) } }
-		@Tag N :: comp fib(3)
-		x: Arr(int, 2) = .[1, 2]
-		print(x, fib(20), N)
-	"};
-	check(src, "[1, 2] 6765 2");
-}
-
-#[test]
 fn comp_consts_are_constants() {
 	let src = indoc! {"
 		sq :: comp fn(n: int) int { n * n }
@@ -415,6 +402,16 @@ fn comp_consts_are_constants() {
 
 #[test]
 fn comp_fns() {
+	let src = indoc! {"
+		Tag :: struct {}
+		Arr :: comp fn(t: type, n: int) type { [n]t }
+		@Tag fib :: comp fn(n: int) int { if n < 2 { n } else { fib(n - 1) + fib(n - 2) } }
+		@Tag N :: comp fib(3)
+		x: Arr(int, 2) = .[1, 2]
+		print(x, fib(20), N)
+	"};
+	check(src, "[1, 2] 6765 2");
+
 	// nesting
 	let src = indoc! {"
 		Nest :: comp fn(n: int) type { comp if n == 0 { int } else { [1]Nest(n - 1) } }

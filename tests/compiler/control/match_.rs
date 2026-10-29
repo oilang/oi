@@ -94,6 +94,10 @@ fn match_errors() {
 	fail(r#"match "s" { 0..5 => 1, _ => 2 }"#, "integer subject");
 	fail("match (1, 2) { (a, b, c) => a, }", "pattern binds 3 names");
 	fail(
+		["x: ?int = 1", "match .some.(n) := x { _ => print(1) }"],
+		"a `match` header can't refute",
+	);
+	fail(
 		[
 			"Point :: struct { x: int, y: int }",
 			"match Point.{ x = 1, y = 2 } { Point.{ z } => z, }",

@@ -519,8 +519,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 		.boxed();
 
+	fn rooted(e: &Expr) -> bool {
+		match e {
+			Expr::Field { tuple: base, .. } | Expr::Deref(base) => rooted(&base.0),
+			other => matches!(other, Expr::Ident(_)),
+		}
+	}
+
 	let opened = |e: Spanned<Expr>| match e.0 {
-		Expr::Ident(_) => e,
+		_ if rooted(&e.0) => e,
 		_ => {
 			let (name, value) = (format!("with#{}", e.1.start), Some(Box::new(e.clone())));
 			let bind = Expr::Bind {

@@ -98,3 +98,19 @@ fn scoped_override() {
 	"};
 	check(src, ["20", "1", "7", "3", "5", "4"]);
 }
+
+#[test]
+fn place_subject() {
+	let src = indoc! {"
+		Sub :: struct { d: int }
+		Cfg :: struct { sub: Sub }
+		cfg := Cfg.{ sub = Sub.{ d = 1 } }
+		with cfg.sub { d = 7 }
+		print(cfg.sub.d)
+	"};
+	check(src, "7");
+	fail(
+		["S :: struct { d: int }", "with S.{ 1 } { d = 7 }"],
+		"temporary `with` subject",
+	);
+}

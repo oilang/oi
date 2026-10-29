@@ -420,6 +420,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		// patterns see through a ref, like `.` does
 		let subject = self.header(subject)?;
+		if matches!(subject.0, Expr::PatBind { .. }) && !infallible(&subject.0) {
+			let note = "use `if` to test it, or move the pattern into an arm";
+			return fail("a `match` header can't refute", subject.1, note);
+		}
 		let (sv, st) = self.expr(subject)?;
 		let (sv, st) = self.deref(sv, &st);
 
@@ -515,7 +519,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let Expr::Ident(name) = &subject.0 else {
 						return fail("`with` needs a named subject", arm.patterns[0].1, "ex: `match x := ..`");
 					};
-					s.withs.push(name.clone());
+					s.withs.push((name.clone(), None));
 				}
 				if let Some(((base, base_typ), list)) = &binds {
 					for (name, typ, off) in list {

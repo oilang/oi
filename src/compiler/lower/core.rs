@@ -247,14 +247,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		for s in subjects {
 			let (Expr::Bind { name, .. } | Expr::Ident(name)) = &s.0 else {
 				// `with p = v`
-				let Expr::Block(stmts) = &s.0 else { unreachable!() };
+				let Expr::Block(stmts) = &s.0 else {
+					let place = (s.0.clone(), self.type_of(s)?);
+					self.withs.push((format!("with#{}", s.1.start), Some(place)));
+					continue;
+				};
 				self.block_tail(stmts, None)?;
 				continue;
 			};
 			if matches!(s.0, Expr::Bind { .. }) {
 				self.block_tail(std::slice::from_ref(s), None)?;
 			}
-			self.withs.push(name.clone());
+			self.withs.push((name.clone(), None));
 		}
 		Ok(self.unit_value())
 	}
@@ -267,7 +271,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.vars.contains_key(name) {
 			return Ok(None);
 		}
-		let supplies = |s: &&String| match self.vars.get(*s).map(|l| self.peeled(&l.typ)) {
+		let supplies = |(s, place): &&(String, Option<(Expr, Typ)>)| match place
+			.as_ref()
+			.map(|(_, t)| t)
+			.or(self.vars.get(s).map(|l| &l.typ))
+			.map(|t| self.peeled(t))
+		{
 			Some(Typ::Struct(sn, fs)) => {
 				self.struct_field(&sn, &fs, name, e.1).is_ok()
 					|| self.funcs.contains_key(&format!("{sn}.{name}"))
@@ -291,18 +300,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			},
 		};
 		let mut hits = self.withs.iter().filter(supplies);
-		let s = match (hits.next(), hits.next()) {
+		let (s, place) = match (hits.next(), hits.next()) {
 			(Some(a), Some(b)) => {
 				return fail(
 					format!("`{name}` is ambiguous"),
 					e.1,
-					format!("both `{a}` and `{b}` supply it"),
+					format!("both `{}` and `{}` supply it", a.0, b.0),
 				);
 			}
-			(Some(s), _) => s.clone(),
+			(Some(hit), _) => hit,
 			(None, _) => return Ok(None),
 		};
-		let (recv, field) = (Box::new((Expr::Ident(s.clone()), e.1)), name.clone());
+		let field = name.clone();
+		let recv = Box::new((place.as_ref().map_or(Expr::Ident(s.clone()), |(p, _)| p.clone()), e.1));
 		let member = match e.0.clone() {
 			Expr::Call { type_args, args, .. } => Expr::MethodCall {
 				recv,
@@ -310,7 +320,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				type_args,
 				args,
 			},
-			Expr::Assign { value, .. } => Expr::FieldAssign { name: s, field, value },
+			Expr::Assign { .. } if place.is_none() && s.starts_with("with#") => {
+				return fail(
+					"cannot assign into a temporary `with` subject",
+					e.1,
+					"name it to assign",
+				);
+			}
+			Expr::Assign { value, .. } => {
+				crate::ast::assign((Expr::Field { tuple: recv, field }, e.1), None, *value, e.1).0
+			}
 			_ => Expr::Field { tuple: recv, field },
 		};
 		Ok(Some((member, e.1)))

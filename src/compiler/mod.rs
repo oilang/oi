@@ -2227,7 +2227,7 @@ impl<M: Module> Compiler<M> {
 			aliases: vec![],
 			flagged: vec![],
 			linear: vec![],
-			withs: types.scope.withs.clone(),
+			withs: types.scope.withs.iter().map(|name| (name.clone(), None)).collect(),
 		};
 
 		(trans, block)
