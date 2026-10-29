@@ -43,3 +43,16 @@ fn multiline() {
 fn unterminated_fails() {
 	fail(r#"print("oops {who")"#, "");
 }
+
+#[test]
+fn interpolates_types() {
+	let src = indoc! {r#"
+		P :: struct { x: int }
+		f[T] :: fn() { print("{T}") }
+		g[T] :: fn() { comp match T { []E => print("{E}"), _ => {} } }
+		f[i33]()
+		g[[]u11]()
+		print("{int} {P}")
+	"#};
+	check(src, ["i33", "u11", "int P"]);
+}

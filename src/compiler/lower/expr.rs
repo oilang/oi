@@ -456,7 +456,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
 					}
 
-					// `Error` trait
+					// Error trait
 					if recv_typ == Typ::Error {
 						return self.dyn_call(recv_val, role::ERROR, method, args, expr.1);
 					}
@@ -466,6 +466,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					(owner, Some((recv_val, recv_typ)))
 				};
+
+				// interpolate type names
+				if bound.is_none()
+					&& method == "str"
+					&& args.is_empty()
+					&& self.funcs.get(&format!("{sname}.str")).is_none_or(|sig| !sig.params.is_empty())
+				{
+					let (val, typ) = self.expr(recv)?;
+					return Ok((self.derived_str(val, &typ, false), Typ::Str));
+				}
 
 				if sname == role::PTR {
 					let recv = bound.as_ref().map(|(v, _)| *v);
