@@ -92,7 +92,8 @@ fn comp_match_keeps_the_matching_arm() {
 }
 
 #[test]
-fn comp_if_on_a_type_param() {
+fn comp_if() {
+	// type params
 	let src = indoc! {r#"
 		B[E] :: struct { e: E }
 		B[E] :< { g :: fn(self) { comp if E == () { print("unit") } else { print(self.e + 1) } } }
@@ -100,10 +101,8 @@ fn comp_if_on_a_type_param() {
 		B.{ e = () }.g()
 	"#};
 	check(src, ["2", "unit"]);
-}
 
-#[test]
-fn comp_if_on_a_claim() {
+	// claims
 	let src = indoc! {r#"
 		P :: struct {}
 		f[T] :: fn() { comp if T : Eq { print("eq") } else { print("no") } }
@@ -111,6 +110,19 @@ fn comp_if_on_a_claim() {
 		f[P]()
 	"#};
 	check(src, ["eq", "no"]);
+
+	// type patterns
+	let src = indoc! {r#"
+		f[T] :: fn() {
+			comp if [N]E := T do print("{N} {E == int}")
+			else if []E := T do print("slice")
+			else do print("no")
+		}
+		f[[3]int]()
+		f[[]int]()
+		f[int]()
+	"#};
+	check(src, ["3 true", "slice", "no"]);
 }
 
 #[test]

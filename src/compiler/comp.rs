@@ -126,6 +126,25 @@ pub(crate) fn instantiate(
 		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
 	};
 	while let Some(mut inner) = first_comp(body) {
+		if let Expr::If { cond, then, els } = &inner.0
+			&& let Expr::PatBind { pat, value, .. } = &cond.0
+			&& as_type(value).is_some_and(|typ| !matches!(typ, Typ::Const(_)))
+		{
+			inner.0 = Expr::Match {
+				subject: value.clone(),
+				arms: vec![MatchArm {
+					with: false,
+					patterns: vec![(**pat).clone()],
+					guard: None,
+					body: then.clone(),
+				}],
+				else_body: Some(match els.as_deref() {
+					Some([elif @ (Expr::If { .. }, span)]) => vec![(Expr::Comp(Box::new(elif.clone())), *span)],
+					els => els.unwrap_or_default().to_vec(),
+				}),
+			};
+		}
+
 		if let Expr::Match {
 			subject,
 			arms,
