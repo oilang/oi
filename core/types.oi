@@ -59,6 +59,18 @@ ptr :< {
 		unsafe rt.oi_ptr_string(ctx.alloc, self, len)
 	}
 
+	## Copy a `T` out of the pointed-to memory.
+	@unsafe
+	pub read[T] :: fn(self) T {}
+
+	## Copy `value` into the pointed-to memory.
+	@unsafe
+	pub write[T] :: fn(self; value: T) {}
+
+	## Copy `len` elements into an owned array.
+	@unsafe
+	pub array[T] :: fn(self; len: int) []T {}
+
 	## The pointer `n` bytes further along.
 	pub offset :: fn(self; n: int) ptr {
 		ptr.(self.0 + usize.(n))

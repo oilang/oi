@@ -497,10 +497,11 @@ fn generic_trait_objects() {
 #[test]
 fn scalar_trait_objects() {
 	let src = indoc! {r#"
-		int : Write[string] < { write :: fn(mut self; s: string) do self += s.len() }
+		Sink :: trait { write: fn(mut self; s: string) }
+		int : Sink < { write :: fn(mut self; s: string) do self += s.len() }
 		Shape :: trait { area: fn(self) float }
 		float : Shape < { area :: fn(self) float do self * self }
-		put :: fn(mut w: Write) do w.write("hello")
+		put :: fn(mut w: Sink) do w.write("hello")
 		n := 1
 		put(mut n)
 		x : Shape = 3.0

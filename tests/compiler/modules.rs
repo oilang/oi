@@ -390,3 +390,16 @@ fn trait_fields_resolve_in_their_defining_module() {
 		)
 		.check("1");
 }
+
+#[test]
+fn orphan_claims() {
+	Project::new()
+		.main([
+			"use shapes",
+			"use show",
+			"shapes.P : show.Show < { show :: fn(self) int { 1 } }",
+		])
+		.lib("shapes", ["pub P :: struct { x: int }"])
+		.lib("show", ["pub Show :: trait { show: fn(self) int }"])
+		.fail_with("`P : Show` is an orphan claim");
+}

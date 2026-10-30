@@ -1203,6 +1203,17 @@ impl<M: Module> Compiler<M> {
 						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
 						.collect();
 
+					let in_core = self.world.core_origin.contains(&scope.module);
+					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
+					let blanket = type_params.iter().any(|p| p.name == *typ);
+					let local = |tn: &str| is_hook_trait(tn) || module_of(tn).unwrap_or_default() == scope.module;
+					if let Some((tn, _)) = claimed.iter().find(|(tn, _)| !in_core && (foreign || blanket) && !local(tn))
+					{
+						let msg = format!("`{} : {}` is an orphan claim", display_name(typ), display_name(tn));
+						let home = if blanket { "the trait" } else { "the trait or the type" };
+						return fail(msg, item.1, format!("claim it in the module of {home}"));
+					}
+
 					// a claim implies each supertrait its defaults cover
 					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn { body, .. } if body.is_empty());
 					for i in 0..claimed.len() {
@@ -1220,8 +1231,7 @@ impl<M: Module> Compiler<M> {
 						}
 					}
 
-					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
-					let ext = claimed.is_empty() && foreign && !self.world.core_origin.contains(&scope.module);
+					let ext = claimed.is_empty() && foreign && !in_core;
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					let claimed_traits =
 						|| claimed.iter().filter_map(|(tn, args)| Some((traits.get(tn.as_str())?, *args)));
