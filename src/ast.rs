@@ -795,7 +795,11 @@ pub fn place(name: &str, field: Option<&String>, span: Span) -> Spanned<Expr> {
 // Bind each computed index in a place chain.
 pub fn pin(place: &mut Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	let mut binds = vec![];
-	if let Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base) = &mut place.0 {
+	if let Expr::Field { tuple: base, .. }
+	| Expr::Index { collection: base, .. }
+	| Expr::Deref(base)
+	| Expr::UnquoteBind(_, base) = &mut place.0
+	{
 		binds = pin(base);
 	}
 	if let Expr::Index { index, .. } = &mut place.0
@@ -833,6 +837,14 @@ fn unplace(e: &Expr) -> Option<(String, Option<String>)> {
 }
 
 fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Expr> {
+	if let Expr::UnquoteBind(binder, inner) = &place.0
+		&& unplace(&inner.0).is_some()
+	{
+		return (
+			Expr::UnquoteBind(binder.clone(), Box::new(set(*inner.clone(), value, span))),
+			span,
+		);
+	}
 	let value = Box::new(value);
 	match unplace(&place.0) {
 		Some((name, None)) => return (Expr::Assign { name, value }, span),
@@ -858,8 +870,11 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 			span,
 		);
 	}
-	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base)) = &mut place.0
-	else {
+	let hole = match &mut place.0 {
+		Expr::UnquoteBind(_, field) => &mut field.0,
+		place => place,
+	};
+	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base)) = hole else {
 		unreachable!("not a place")
 	};
 	let t = format!("$t{}_{}", base.1.start, base.1.end);

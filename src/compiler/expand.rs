@@ -87,7 +87,9 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 // The name a `%name` can take.
 fn name_slot(e: &mut Expr) -> Option<&mut String> {
 	match e {
-		Expr::Field { field, .. } | Expr::IndexAssign { field: Some(field), .. } => Some(field),
+		Expr::Field { field, .. } | Expr::FieldAssign { field, .. } | Expr::IndexAssign { field: Some(field), .. } => {
+			Some(field)
+		}
 		Expr::MethodCall { method, .. } => Some(method),
 		Expr::Ident(name)
 		| Expr::Bind { name, .. }

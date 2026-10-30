@@ -333,6 +333,14 @@ fn comp_loops() {
 		print(name(Color.green))
 	"#};
 	check(src, "green!");
+
+	let src = indoc! {"
+		P :: struct { x: int, y: int }
+		p := P.{x = 1}
+		comp loop f in def(P).items { p.%{f.name} += 2 }
+		print(p)
+	"};
+	check(src, "P.{x = 3, y = 2}");
 }
 
 #[test]

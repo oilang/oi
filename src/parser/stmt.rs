@@ -179,8 +179,18 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		});
 
 	// assignment through a field/index/deref chain
+	let field_hole = p.unquote.clone().try_map(|(e, span), _| match e {
+		Expr::UnquoteExpr(inner) => Ok(("%".into(), Some(inner))),
+		_ => Err(Rich::custom(span, "expected a field name")),
+	});
 	let seg = just(Token::Dot)
-		.ignore_then(p.def_name.clone().or(select! { Token::Int(n) => n.to_string() }))
+		.ignore_then(
+			p.def_name
+				.clone()
+				.or(select! { Token::Int(n) => n.to_string() })
+				.map(|f| (f, None))
+				.or(field_hole),
+		)
 		.map(|f| Some(Ok(f)))
 		.or(bracket(p.expr.clone()).map(|i| Some(Err(i))))
 		.or(just(Token::Caret).to(None));
@@ -188,10 +198,13 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
 			let e = match seg {
 				None => Expr::Deref(Box::new(lhs)),
-				Some(Ok(field)) => Expr::Field {
-					tuple: Box::new(lhs),
-					field,
-				},
+				Some(Ok((field, hole))) => {
+					let tuple = Box::new(lhs);
+					match hole {
+						Some(binder) => Expr::UnquoteBind(binder, Box::new((Expr::Field { tuple, field }, ex.span()))),
+						None => Expr::Field { tuple, field },
+					}
+				}
 				Some(Err(index)) => Expr::Index {
 					collection: Box::new(lhs),
 					index: Box::new(index),
