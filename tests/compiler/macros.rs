@@ -719,7 +719,8 @@ fn quote_pattern_spread_captures() {
 }
 
 #[test]
-fn def_takes_a_type_name() {
+fn def() {
+	// takes type name
 	check(
 		indoc! {r#"
 			P :: struct { x: int, y: int }
@@ -729,5 +730,17 @@ fn def_takes_a_type_name() {
 			f[int]()
 		"#},
 		["P 2", "2", "no"],
+	);
+
+	// sees wrapped/annotated things
+	check(
+		indoc! {r"
+			keep! :: fn(input: Ast) Ast { `%input` }
+			mark :: struct {}
+			@keep! P :: struct { x: int, y: int }
+			@mark Q :: struct {}
+			comp print(def(P).items.len(), def(Q).notes.len())
+		"},
+		"2 1",
 	);
 }

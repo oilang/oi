@@ -425,11 +425,25 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 	if called {
 		ex.compile_stage0(&out)?;
 	}
-	let defs = program.items().map(|(_, i)| Expr::peel_meta(i).2);
-	DEFS.set((
-		Scope::default(),
-		defs.filter_map(|d| Some((d.0.def_name()?.to_string(), d.clone()))).collect(),
-	));
+
+	let defs = program.items().filter_map(|(_, item)| {
+		let item = match &item.0 {
+			Expr::MacroCall { args, .. } => args.first()?,
+			_ => item,
+		};
+		let (notes, _, def) = Expr::peel_meta(item);
+		let name = def.0.def_name()?.to_string();
+		let notes = [notes, program.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
+		let def = if notes.is_empty() {
+			def.clone()
+		} else {
+			(Expr::Annotated(notes, Box::new(def.clone())), def.1)
+		};
+		Some((name, def))
+	});
+
+	DEFS.set((Scope::default(), defs.collect()));
+
 	for m in &mut out.modules {
 		for item in std::mem::take(&mut m.items) {
 			let call = m.name != "main" && matches!(item.0, Expr::MacroCall { .. });
@@ -447,6 +461,7 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 		}
 		m.items.append(&mut ex.hoisted);
 	}
+
 	out.publics = ex.publics;
 	out.check_selected(&program.selected, |q| ex.macros.contains_key(q))?;
 	Ok((out, ex.stage0))
