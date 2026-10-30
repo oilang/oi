@@ -567,7 +567,7 @@ pub(crate) fn register(stmts: &[Spanned<Expr>], span: Span) -> Result<(usize, Ve
 fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg>, suffix: usize) {
 	if let Expr::Unquote(name) = &e.0 {
 		match &args[name.as_str()] {
-			Arg::Ast(v) => *e = (*v).clone(),
+			Arg::Ast((v, span)) => *e = (v.clone(), if *span == Span::default() { e.1 } else { *span }),
 			Arg::Seq(_) => e.0 = flag("%{..} spread needs a sequence position", Expr::Tuple(vec![])),
 		}
 		return;

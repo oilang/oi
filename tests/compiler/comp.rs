@@ -298,6 +298,12 @@ fn comp_loop_unrolls() {
 		show(Point.{ 3, "hi" })
 	"#};
 	check(src, ["x = 3", "y = hi"]);
+
+	let src = indoc! {"
+		Point :: struct { x: int }
+		comp loop f in type_info(Point).items { print(f.name) }
+	"};
+	fail(src, "print(f.name)");
 }
 
 #[test]
