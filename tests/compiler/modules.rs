@@ -89,7 +89,7 @@ fn fn_type_alias_casts_a_ptr() {
 	Project::foreign(
 		[
 			"Abs :: fn(n: i32) i32",
-			r#"abs := unsafe { Abs(cext.dlsym(ptr.(0), "abs")) }"#,
+			r#"abs := unsafe { Abs.(cext.dlsym(ptr.(0), "abs")) }"#,
 			"print(abs(-5))",
 		],
 		["pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
@@ -103,9 +103,9 @@ fn a_c_fn_sheds_its_cell_and_takes_it_back() {
 		[
 			"Abs :: @c fn(n: i32) i32",
 			"on_init :: fn(get: Abs) i32 { get(-21) * 2 }",
-			r#"run :: fn(init: @c fn(get: Abs) i32) i32 { init(unsafe Abs(cext.dlsym(ptr.(0), "abs"))) }"#,
+			r#"run :: fn(init: @c fn(get: Abs) i32) i32 { init(unsafe Abs.(cext.dlsym(ptr.(0), "abs"))) }"#,
 			"print(run(on_init))",
-			r#"boxed: fn(n: i32) i32 = unsafe Abs(cext.dlsym(ptr.(0), "abs"))"#,
+			r#"boxed: fn(n: i32) i32 = unsafe Abs.(cext.dlsym(ptr.(0), "abs"))"#,
 			"print(boxed(-5))",
 		],
 		["pub dlsym : fn(handle: ptr, name: cstr) ptr : foreign"],
@@ -168,7 +168,7 @@ fn unsafe_fn_value_needs_unsafe() {
 #[test]
 fn fn_ptr_cast_needs_a_c_signature() {
 	fail(
-		["Bad :: fn(s: string) int", "f := unsafe Bad(ptr.(0))"],
+		["Bad :: fn(s: string) int", "f := unsafe Bad.(ptr.(0))"],
 		"can't cross the C ABI",
 	);
 }

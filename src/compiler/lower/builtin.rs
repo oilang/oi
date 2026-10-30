@@ -287,6 +287,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.require_unsafe("cstr cast", span)?;
 			return Ok((val, Typ::CStr));
 		}
+		if let (Typ::Fn(..) | Typ::Annotated(..), Typ::TupleStruct(p, _)) = (target, &typ)
+			&& p == role::PTR
+		{
+			return self.cast_fn_ptr(val, target, span);
+		}
 		if let (Typ::TupleStruct(p, _), Typ::Fn(params, ret)) = (target, &typ)
 			&& p == role::PTR
 		{

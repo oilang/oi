@@ -292,13 +292,6 @@ impl<'a, M: Module> Translator<'a, M> {
 						Some(sig) => self.call_sig(name, sig, None, None, args, expr.1),
 						None => match self.world.generic_fns.get(&qn).cloned() {
 							Some(def) => self.call_generic(&qn, &def, type_args, args, None, expr.1),
-							None if matches!(
-								self.types.aliases.get(&qn),
-								Some(TypeExpr::Fn(..) | TypeExpr::Annotated(..))
-							) =>
-							{
-								self.cast_fn_ptr(&qn, args, expr.1)
-							}
 							None if matches!(name.as_str(), "assert" | "panic") => {
 								fail(format!("`{name}` is a macro"), expr.1, format!("write `{name}!(...)`"))
 							}

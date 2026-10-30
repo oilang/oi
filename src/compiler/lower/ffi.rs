@@ -5,9 +5,8 @@ use std::ops::Range;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
-use super::{FieldDef, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, display_name, is_c_struct};
+use super::{FieldDef, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
 use crate::ast::{Expr, Span, Spanned, TypeExpr};
-use crate::compiler::role;
 use crate::diagnostics::{Diagnostic, fail};
 
 impl<M: Module> Translator<'_, M> {
@@ -71,33 +70,24 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// A `ptr` cast through a fn-type alias.
-	pub(super) fn cast_fn_ptr(
-		&mut self,
-		name: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
-		self.require_unsafe(&format!("{} cast", display_name(name)), span)?;
-		let typ = self.types.resolve(&TypeExpr::Name(name.to_string()), span)?;
-		let (sig, bare) = match &typ {
+	// A `ptr` cast to a fn type.
+	pub(super) fn cast_fn_ptr(&mut self, addr: Value, typ: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
+		self.require_unsafe(&format!("{typ} cast"), span)?;
+		let (sig, bare) = match typ {
 			Typ::Annotated(_, inner) => (&**inner, true),
 			t => (t, false),
 		};
-		let (Typ::Fn(params, ret), [arg]) = (sig, args) else {
-			let msg = format!("`{}` casts a single `ptr`", display_name(name));
-			return fail(msg, span, "expected one argument");
+		let Typ::Fn(params, ret) = sig else {
+			return fail(format!("cannot cast core::ptr to {typ}"), span, "no conversion");
 		};
-		check_c_sig(self.types, display_name(name), params, ret, span)?;
+		check_c_sig(self.types, &typ.to_string(), params, ret, span)?;
 		if !bare && let Some(p) = params.iter().find(|p| matches!(p.typ, Typ::Fn(..))) {
-			let msg = format!("`{}` can't take a fn pointer", display_name(name));
+			let msg = format!("`{typ}` can't take a fn pointer");
 			let label = format!("`{}` would cross as a cell", p.typ);
 			return fail(msg, span, label);
 		}
-		let want = self.types.resolve(&TypeExpr::Name(role::PTR.into()), span)?;
-		let addr = self.check_typed(arg, &want, "not a `ptr`")?;
 		let val = if bare { addr } else { self.fn_cell(addr) };
-		Ok((val, typ))
+		Ok((val, typ.clone()))
 	}
 
 	// Box a bare fn pointer as an Oi fn value.
