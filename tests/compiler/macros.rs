@@ -801,13 +801,55 @@ fn notes() {
 
 	// private defs
 	Project::new()
-		.main(["use godot", "@godot.class A :: struct {}", "B :: struct {}", "godot.list!()"])
+		.main([
+			"use godot",
+			"@godot.class A :: struct {}",
+			"B :: struct {}",
+			"godot.list!()",
+		])
 		.lib(
 			"godot",
 			[
 				"pub class :: ()",
-				r#"pub list! :: fn() Ast { s := ""; loop d in defs() { if d.name.str().len() == 1 do s = s + d.name.str() }; `print(%s)` }"#,
+				indoc! {r#"
+					pub list! :: fn() Ast {
+						s := ""
+						loop d in defs() {
+							if d.name.str().len() == 1 do s += d.name.str()
+						}
+						`print(%s)`
+					}
+				"#},
 			],
 		)
 		.check("A");
+}
+
+#[test]
+fn comp_loop_splices_defs_as_types() {
+	Project::new()
+		.main([
+			"use geo",
+			"@geo.mark A :: struct { x: int }",
+			r#"A :< { hi :: fn() { print("A") } }"#,
+			"@geo.mark pub B :: struct {}",
+			r#"B :< { pub hi :: fn() { print("B") } }"#,
+			"geo.each()",
+		])
+		.lib(
+			"geo",
+			[
+				"pub mark :: ()",
+				indoc! {"
+					pub each :: fn() {
+						comp loop T in defs(mark) {
+							T.hi()
+							xs: []T = [T.{}]
+							print(T.name.str(), xs[0])
+						}
+					}
+				"},
+			],
+		)
+		.check(["A", "A A.{x = 0}", "B", "B B.{}"]);
 }

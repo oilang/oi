@@ -1485,6 +1485,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new("`Self` is only valid in an impl block", span.into_range())
 					.with_label("no enclosing impl")
 			})?,
+			_ if let Some(Typ::Struct(n, _)) = self.types.type_params.get(name) => n.clone(),
 			_ => name
 				.split_once('.')
 				.and_then(|(module, typ)| self.dotted_key(module, typ))

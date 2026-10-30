@@ -303,7 +303,7 @@ fn comp_loops() {
 		Point :: struct { x: int }
 		comp loop f in type_info(Point).items { print(f.name) }
 	"};
-	fail(src, "print(f.name)");
+	fail(src, "use `f.name.str()`");
 
 	let src = indoc! {"
 		PointCols :: struct { comp loop f in def(Point).items { %{f.name}: []%{f.typ} } }

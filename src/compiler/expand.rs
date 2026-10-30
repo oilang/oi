@@ -497,7 +497,7 @@ static HYGIENE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
-	static DEFS: RefCell<(Scope, String, Vec<Def>, Publics)> = RefCell::default();
+	pub(crate) static DEFS: RefCell<(Scope, String, Vec<Def>, Publics)> = RefCell::default();
 }
 
 // name, def
@@ -612,8 +612,16 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}
 	};
 	for_binders(&mut e.0, rename);
+	for t in e.0.types() {
+		t.walk_mut(&mut |t| {
+			if let TypeExpr::Name(n) = t {
+				rename(n)
+			}
+		});
+	}
 	match &mut e.0 {
 		Expr::Ident(n)
+		| Expr::StructLit { name: n, .. }
 		| Expr::Assign { name: n, .. }
 		| Expr::Call { name: n, .. }
 		| Expr::FieldAssign { name: n, .. }

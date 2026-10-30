@@ -234,7 +234,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			if name == "none" {
 				Diagnostic::new("cannot infer the type", span.clone()).with_label("`none` needs type context")
 			} else {
-				Diagnostic::new(format!("undefined variable `{name}`"), span.clone()).with_label("not found in scope")
+				let d = Diagnostic::new(format!("undefined variable `{name}`"), span.clone());
+				match self.world.map.locate_span(span.clone()).3 {
+					written
+						if written.contains('.')
+							&& written.chars().all(|c| c == '.' || c == '_' || c.is_alphanumeric()) =>
+					{
+						d.with_label(format!("`{written}` splices `{name}` as code"))
+							.with_note(format!("for its text, use `{written}.str()`"))
+					}
+					_ => d.with_label("not found in scope"),
+				}
 			}
 		})?;
 		if local.stat {

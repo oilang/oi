@@ -41,6 +41,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					typ,
 					value,
 				} => {
+					// spliced definitions
+					if let Some((_, _, (def, at))) = value.as_deref().map(Expr::peel_meta)
+						&& let Some(def) = def.def_name()
+					{
+						let mut params = self.types.type_params.clone();
+						params.insert(name.clone(), self.types_at(*at).named(def, *at)?);
+						self.types.type_params = Box::leak(Box::new(params));
+						continue;
+					}
+
 					// type aliases
 					if !*mutable
 						&& typ.is_none() && let Some(v) = value

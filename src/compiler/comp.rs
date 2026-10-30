@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam, bind};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
@@ -263,28 +263,44 @@ fn type_pattern(types: &TypeCtx, (pat, span): &Spanned<Expr>, typ: &Typ) -> Opti
 	Some(infer.subst)
 }
 
+// Whether an expression uses the Ast var as the type it names.
+fn as_type(e: &Expr, var: &str) -> bool {
+	match e {
+		Expr::StructLit { name, .. } => name == var,
+		Expr::MethodCall { recv, method, .. } => {
+			matches!(&recv.0, Expr::Ident(n) if n == var) && !matches!(method.as_str(), "str" | "repr" | "int")
+		}
+		_ => false,
+	}
+}
+
 // Unquote every path rooted at `var`.
-fn unquote(e: &mut Spanned<Expr>, var: &str) {
-	fn rooted(e: &Expr, var: &str) -> bool {
+fn unquote(e: &mut Spanned<Expr>, var: &str, ast: bool) -> bool {
+	fn rooted(e: &Expr, var: &str, ast: bool) -> bool {
 		match e {
 			Expr::Ident(n) => n == var,
+			_ if ast && as_type(e, var) => false,
 			Expr::Field { tuple: r, .. } | Expr::MethodCall { recv: r, .. } | Expr::Index { collection: r, .. } => {
-				rooted(&r.0, var)
+				rooted(&r.0, var, ast)
 			}
 			_ => false,
 		}
 	}
-	if rooted(&e.0, var) {
+	if rooted(&e.0, var, ast) {
 		e.0 = Expr::UnquoteExpr(Box::new(e.clone()));
-		return;
+		return false;
 	}
+	let typed = ast && as_type(&e.0, var);
+	let mut named = typed || e.0.types().iter().any(|t| super::mentions(t, var));
 	match &mut e.0 {
 		Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {}
+		Expr::MethodCall { args, .. } if typed => args.iter_mut().for_each(|a| named |= unquote(a, var, ast)),
 		_ => e.0.for_children(|c| match c {
-			Child::List(list) => list.iter_mut().for_each(|e| unquote(e, var)),
-			Child::One(e) => unquote(e, var),
+			Child::List(list) => list.iter_mut().for_each(|e| named |= unquote(e, var, ast)),
+			Child::One(e) => named |= unquote(e, var, ast),
 		}),
 	}
+	named
 }
 
 pub(super) fn is_def(e: &Expr) -> bool {
@@ -476,8 +492,8 @@ pub(crate) fn fold(
 			Some((Expr::Quote(q), _)) if let Ok((_, slots)) = super::expand::register(q, span) => {
 				let mut body = (Expr::Block(arm.body.clone()), span);
 				for slot in slots {
-					if let super::expand::Slot::Name(var) | super::expand::Slot::Splat((Expr::Ident(var), _)) = slot {
-						unquote(&mut body, &var);
+					if let super::expand::Slot::Name(var) | super::expand::Slot::Splat((Expr::Ident(var), _)) = &slot {
+						unquote(&mut body, var, matches!(slot, super::expand::Slot::Name(_)));
 					}
 				}
 				vec![(Expr::Quote(vec![body]), span)]
@@ -519,8 +535,13 @@ pub(crate) fn fold(
 	if let Expr::For { pat, body, .. } = &mut inner.0 {
 		let vars = super::expand::pat_names(pat);
 		if !vars.is_empty() {
-			vars.iter().for_each(|var| body.iter_mut().for_each(|e| unquote(e, var)));
-			*body = vec![(Expr::Quote(std::mem::take(body)), span)];
+			// var used as a type
+			let splice = |var: &str| (Expr::UnquoteExpr(Box::new((Expr::Ident(var.into()), span))), span);
+			let named: Vec<_> = (vars.iter())
+				.filter(|var| body.iter_mut().fold(false, |named, e| unquote(e, var, true) | named))
+				.map(|var| bind(var, splice(var)))
+				.collect();
+			*body = vec![(Expr::Quote([named, std::mem::take(body)].concat()), span)];
 		}
 	}
 	if let Expr::Call { name, .. } = &inner.0
@@ -580,6 +601,9 @@ pub(crate) fn fold(
 	DEPTH.fetch_sub(1, Ordering::Relaxed);
 	ran?;
 	TYPES.set(compiler.out.any_types.clone());
+	if let Some(scope) = scope {
+		super::expand::DEFS.with_borrow_mut(|d| (d.0, d.1) = (scope.clone(), scope.module.clone()));
+	}
 	// SAFETY: fn takes no args and returns unit
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
 	let lit = reify(span, &compiler.out.instances);
