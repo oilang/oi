@@ -390,9 +390,6 @@ impl Expander {
 				match &e.0 {
 					Expr::Fn { name, .. } if name.contains('!') => Ok(()),
 					Expr::Quote(_) => Ok(()),
-					Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {
-						fail("unquotes only make sense inside a macro template", e.1, "stray unquote")
-					}
 					Expr::MacroDef { .. } => {
 						fail("macros can only be defined at the top level", e.1, "nested macro def")
 					}

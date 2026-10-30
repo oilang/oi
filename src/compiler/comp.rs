@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, module_of};
 use crate::runtime;
@@ -270,10 +270,13 @@ fn unquote(e: &mut Spanned<Expr>, var: &str) {
 		e.0 = Expr::UnquoteExpr(Box::new(e.clone()));
 		return;
 	}
-	e.0.for_children(|c| match c {
-		Child::List(list) => list.iter_mut().for_each(|e| unquote(e, var)),
-		Child::One(e) => unquote(e, var),
-	});
+	match &mut e.0 {
+		Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {}
+		_ => e.0.for_children(|c| match c {
+			Child::List(list) => list.iter_mut().for_each(|e| unquote(e, var)),
+			Child::One(e) => unquote(e, var),
+		}),
+	}
 }
 
 pub(super) fn is_def(e: &Expr) -> bool {
@@ -678,6 +681,22 @@ pub(crate) fn eval(
 			while !comp_fn && let Some(inner) = first_comp(std::slice::from_mut(&mut program.modules[i].items[j])) {
 				let lit = fold(inner, &module, consts, program, stage0)?;
 				patch_first(std::slice::from_mut(&mut program.modules[i].items[j]), lit);
+			}
+
+			// fields yielded in comp
+			if let Expr::StructDef { fields, fills, .. } = &mut program.modules[i].items[j].0 {
+				let flat = std::mem::take(fills).into_iter();
+				for f in flat.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] }) {
+					match f.0 {
+						Expr::Bind {
+							name,
+							typ: Some(t),
+							value: None,
+							..
+						} => fields.push(Param::new(name, t.0, t.1)),
+						_ => fills.push(f),
+					}
+				}
 			}
 		}
 	}

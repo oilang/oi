@@ -2617,6 +2617,9 @@ main :: fn() {
 		`%n :: struct { %{..fs} }`
 	}
 	cols!(Point) # PointCols :: struct { x: []int, y: []int }
+	PointCols :: struct {
+		comp loop f in def(Point).items { %{f.name}: []%{f.typ} }
+	} # same, no macro
 
 	# reflection in `comp`
 	# `comp` on a control form runs the header at comptime and leaves the body to runtime

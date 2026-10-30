@@ -289,7 +289,7 @@ fn macros_and_comp_share_one_stage0() {
 }
 
 #[test]
-fn comp_loop_unrolls() {
+fn comp_loops() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, y: string }
 		show :: fn(p: Point) {
@@ -304,6 +304,13 @@ fn comp_loop_unrolls() {
 		comp loop f in type_info(Point).items { print(f.name) }
 	"};
 	fail(src, "print(f.name)");
+
+	let src = indoc! {"
+		PointCols :: struct { comp loop f in def(Point).items { %{f.name}: []%{f.typ} } }
+		Point :: struct { x: int, y: float }
+		print(PointCols.{x = [3], y = [1.5]}.y)
+	"};
+	check(src, "[1.5]");
 }
 
 #[test]

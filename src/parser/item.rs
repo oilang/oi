@@ -117,6 +117,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 				.map(Member::Fn)
 				.or(member.clone())
 				.or(attr_macro.clone().map(Member::Fn))
+				.or(just(Token::Comp).rewind().ignore_then(p.expr.clone()).map(Member::Fn))
 				.or(embedded.map(Member::Field)),
 		))
 		.map_with(|((name, type_params), members), ex| {
