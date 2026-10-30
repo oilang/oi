@@ -646,14 +646,28 @@ pub(crate) fn eval(
 		}
 
 		// const binds
-		for (item, _) in &mut program.modules[i].items {
-			if let Expr::Bind {
+		let m = &mut program.modules[i];
+		m.items.retain_mut(|(item, span)| {
+			let Expr::Bind {
 				name, value: Some(v), ..
-			} = item && let (Expr::Comp(_), Some(lit)) = (&v.0, consts.get(name.as_str()))
+			} = item
+			else {
+				return true;
+			};
+			let (Expr::Comp(_), Some(lit)) = (&v.0, consts.get(name.as_str())) else {
+				return true;
+			};
+			if let Expr::Ident(target) = &lit.0
+				&& let Some(vis) = m.scope.at(*span).visible.get(target).cloned()
 			{
-				**v = lit.clone();
+				let local = name.rsplit_once("::").map_or(name.as_str(), |(_, bare)| bare);
+				(m.scope.files.iter_mut()).for_each(|(_, f)| _ = f.visible.insert(local.into(), vis.clone()));
+				consts.remove(name.as_str());
+				return false;
 			}
-		}
+			**v = lit.clone();
+			true
+		});
 
 		for j in 0..program.modules[i].items.len() {
 			// comp fn

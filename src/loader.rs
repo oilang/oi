@@ -1086,6 +1086,9 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
+	let os = (Expr::Atom(std::env::consts::OS.into()), Span::from(0..0));
+	loader.program.consts.insert("core::BUILD_OS".into(), os);
+	loader.program.publics.vis.insert("core::BUILD_OS".into(), Vis::Pub);
 	loader.program.publics.packages.insert(String::new(), root.to_path_buf());
 	loader.load_files("main", entry)?;
 	loader.resolve_reexports();

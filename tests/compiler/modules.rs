@@ -392,6 +392,20 @@ fn trait_fields_resolve_in_their_defining_module() {
 }
 
 #[test]
+fn comp_selects_a_module() {
+	Project::new()
+		.main([
+			"use posix",
+			"use win32",
+			"os :: comp if BUILD_OS == :windows { win32 } else { posix }",
+			"main :: fn() { print(os.name()) with os { print(name()) } }",
+		])
+		.lib("posix", [r#"pub name :: fn() string { "posix" }"#])
+		.lib("win32", [r#"pub name :: fn() string { "win32" }"#])
+		.check(["posix", "posix"]);
+}
+
+#[test]
 fn orphan_claims() {
 	Project::new()
 		.main([

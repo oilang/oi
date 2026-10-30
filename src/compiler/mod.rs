@@ -1076,8 +1076,14 @@ impl<M: Module> Compiler<M> {
 				fields.extend(extra);
 			}
 		}
+		// comp module aliases
+		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
-		let scope_of = |key: &str| defs.get(key).copied().unwrap_or_else(|| scope_of(key));
+		let scope_of = |key: &str| {
+			defs.get(key)
+				.copied()
+				.unwrap_or_else(|| scopes[module_of(key).unwrap_or("main")])
+		};
 
 		let has_main = program
 			.items()
