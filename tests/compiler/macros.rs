@@ -743,4 +743,31 @@ fn def() {
 		"},
 		"2 1",
 	);
+
+	// filters by note
+	check(
+		indoc! {r#"
+			mark :: ()
+			@mark A :: struct {}
+			B :: struct {}
+			@mark C :: struct {}
+			comp loop d in defs(ident("mark")) { print(d.name) }
+			comp print(defs().len() > 3)
+		"#},
+		["true", "A", "C"],
+	);
+}
+
+#[test]
+fn attribute_macros_run_first() {
+	check(
+		indoc! {r#"
+			mark! :: fn(input: Ast) Ast { n := ident(input.name.str() + "Mark"); `%input
+			%n :: struct {}` }
+			report! :: fn(t: Ast) Ast { n := def(t).name.str(); `print(%n)` }
+			report!(PMark)
+			@mark! P :: struct {}
+		"#},
+		"PMark",
+	);
 }

@@ -51,6 +51,7 @@ struct Expander {
 	// keeps the stage-0 JIT and its code alive for every call this pass makes
 	stage0: Option<Compiler>,
 	hoisted: Vec<Spanned<Expr>>,
+	attrs: bool,
 }
 
 // Every name a pattern binds.
@@ -353,7 +354,9 @@ impl Expander {
 			other => vec![(other, span)],
 		};
 		body.iter_mut().for_each(|s| pin(s, e.1));
-		self.expand(List(&mut body), scope, depth + 1)?;
+		if !self.attrs {
+			self.expand(List(&mut body), scope, depth + 1)?;
+		}
 		Ok(Some(body))
 	}
 
@@ -426,40 +429,52 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 		ex.compile_stage0(&out)?;
 	}
 
-	let defs = program.items().filter_map(|(_, item)| {
-		let item = match &item.0 {
-			Expr::MacroCall { args, .. } => args.first()?,
-			_ => item,
-		};
-		let (notes, _, def) = Expr::peel_meta(item);
-		let name = def.0.def_name()?.to_string();
-		let notes = [notes, program.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
-		let def = if notes.is_empty() {
-			def.clone()
-		} else {
-			(Expr::Annotated(notes, Box::new(def.clone())), def.1)
-		};
-		Some((name, def))
-	});
+	// attribute macros
+	for attrs in [true, false] {
+		ex.attrs = attrs;
+		let defs = out.items().filter_map(|(scope, item)| {
+			let item = match &item.0 {
+				Expr::MacroCall { args, .. } => args.first()?,
+				_ => item,
+			};
+			let (notes, _, def) = Expr::peel_meta(item);
+			let name = def.0.def_name()?.to_string();
+			let notes = [notes, out.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
+			let names = super::ann_names(scope, &notes);
+			let def = if notes.is_empty() {
+				def.clone()
+			} else {
+				(Expr::Annotated(notes, Box::new(def.clone())), def.1)
+			};
+			Some((name, names, def))
+		});
 
-	DEFS.set((Scope::default(), defs.collect()));
+		DEFS.set((Scope::default(), defs.collect()));
 
-	for m in &mut out.modules {
-		for item in std::mem::take(&mut m.items) {
-			let call = m.name != "main" && matches!(item.0, Expr::MacroCall { .. });
-			let mut expanded = vec![item];
-			ex.expand(List(&mut expanded), &m.scope, 0)?;
-			// add module prefixes
-			let defs = expanded.iter_mut().filter(|_| call).filter_map(|it| wrapped_def(&mut it.0));
-			for (public, name) in defs.filter(|(_, name)| module_of(name).is_none()) {
-				*name = format!("{}::{name}", m.name);
-				if let Some(vis) = public {
-					ex.publics.vis.insert(name.clone(), vis);
+		for m in &mut out.modules {
+			for item in std::mem::take(&mut m.items) {
+				let def = |a: &Spanned<Expr>| Expr::peel_meta(a).2.0.def_name().is_some();
+				if attrs && !matches!(&item.0, Expr::MacroCall { args, .. } if args.first().is_some_and(def)) {
+					m.items.push(item);
+					continue;
 				}
+
+				let call = m.name != "main" && matches!(item.0, Expr::MacroCall { .. });
+				let mut expanded = vec![item];
+				ex.expand(List(&mut expanded), &m.scope, 0)?;
+
+				// add module prefixes
+				let defs = expanded.iter_mut().filter(|_| call).filter_map(|it| wrapped_def(&mut it.0));
+				for (public, name) in defs.filter(|(_, name)| module_of(name).is_none()) {
+					*name = format!("{}::{name}", m.name);
+					if let Some(vis) = public {
+						ex.publics.vis.insert(name.clone(), vis);
+					}
+				}
+				m.items.append(&mut expanded);
 			}
-			m.items.append(&mut expanded);
+			m.items.append(&mut ex.hoisted);
 		}
-		m.items.append(&mut ex.hoisted);
 	}
 
 	out.publics = ex.publics;
@@ -478,8 +493,11 @@ static HYGIENE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
-	static DEFS: RefCell<(Scope, HashMap<String, Spanned<Expr>>)> = RefCell::default();
+	static DEFS: RefCell<(Scope, Vec<Def>)> = RefCell::default();
 }
+
+// name, note names, def
+type Def = (String, Vec<String>, Spanned<Expr>);
 
 // Record a macro-run failure, carrying on with `stand_in`.
 fn flag<T>(msg: &str, stand_in: T) -> T {
@@ -949,8 +967,24 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 		Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => format!("{m}.{field}"),
 		_ => String::new(),
 	};
-	let def = DEFS.with_borrow(|(scope, defs)| defs.get(&scope.qualify_name(&name)).cloned());
+	let def = DEFS.with_borrow(|(scope, defs)| {
+		let name = scope.qualify_name(&name);
+		defs.iter().find(|d| d.0 == name).map(|d| d.2.clone())
+	});
 	leak(def.unwrap_or_else(|| flag("`def` needs the name of a definition", empty())))
+}
+#[unsafe(export_name = "oi_ast_defs")]
+pub(crate) extern "C" fn rt_ast_defs(note: *mut Spanned<Expr>) -> *const runtime::Header {
+	let note = unsafe { &*note };
+	let defs = DEFS.with_borrow(|(scope, defs)| {
+		let note = match &note.0 {
+			Expr::Ident(n) if n.is_empty() => vec![],
+			_ => super::ann_names(scope, std::slice::from_ref(note)),
+		};
+		let noted = defs.iter().filter(|d| note.iter().all(|n| d.1.contains(n)));
+		noted.map(|d| leak(d.2.clone()) as i64).collect::<Vec<_>>()
+	});
+	runtime::array_of(&defs, 8)
 }
 
 #[unsafe(export_name = "oi_ast_int")]

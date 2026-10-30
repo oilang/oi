@@ -22,6 +22,11 @@ pub def :: fn(name: Ast) Ast {
 	unsafe rt.oi_ast_def(name)
 }
 
+## Every definition, in source order.
+pub defs :: fn(note: Ast = ident("")) []Ast {
+	unsafe rt.oi_ast_defs(note)
+}
+
 Ast :< {
 	## The value of an Int literal.
 	int :: fn(self) int {
