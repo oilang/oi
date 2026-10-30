@@ -683,10 +683,14 @@ pub(crate) fn eval(
 				patch_first(std::slice::from_mut(&mut program.modules[i].items[j]), lit);
 			}
 
-			// fields yielded in comp
-			if let Expr::StructDef { fields, fills, .. } = &mut program.modules[i].items[j].0 {
+			// members yielded in comp
+			let def = &mut program.modules[i].items[j].0;
+			if let Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } = def {
 				let flat = std::mem::take(fills).into_iter();
-				for f in flat.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] }) {
+				*fills = flat.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] }).collect();
+			}
+			if let Expr::StructDef { fields, fills, .. } = def {
+				for f in std::mem::take(fills) {
 					match f.0 {
 						Expr::Bind {
 							name,
@@ -698,6 +702,7 @@ pub(crate) fn eval(
 					}
 				}
 			}
+			super::expand::splice_variants(def);
 		}
 	}
 

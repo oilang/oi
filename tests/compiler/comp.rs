@@ -311,6 +311,15 @@ fn comp_loops() {
 		print(PointCols.{x = [3], y = [1.5]}.y)
 	"};
 	check(src, "[1.5]");
+
+	let src = indoc! {"
+		Shape :: enum {
+			comp loop f in def(Point).items do %{f.name}(%{f.typ})
+		}
+		Point :: struct { x: int, y: float }
+		print(Shape.y.(1.5))
+	"};
+	check(src, "y.(1.5)");
 }
 
 #[test]

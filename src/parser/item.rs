@@ -189,6 +189,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then(doc_body(
 			func.clone()
 				.or(p.unquote.clone())
+				.or(just(Token::Comp).rewind().ignore_then(p.expr.clone()))
 				.map(Member::Fn)
 				.or(variant.map(Member::Variant)),
 		))

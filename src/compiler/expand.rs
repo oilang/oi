@@ -694,10 +694,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			})
 			.collect();
 	}
-	if let Expr::EnumDef { variants, fills, .. } = &mut e.0 {
-		let spliced = fills.extract_if(.., |f| matches!(f.0, Expr::Ident(_) | Expr::Call { .. }));
-		variants.extend(spliced.map(to_variant));
-	}
+	splice_variants(&mut e.0);
 }
 
 // A `name: Type` param Ast.
@@ -764,11 +761,22 @@ fn fill_sig(params: &mut Vec<Param>, ret: Option<&mut Spanned<TypeExpr>>, args: 
 	ret.into_iter().for_each(|(t, _)| fill_type(t, args));
 }
 
+// Promote enum fills to variants.
+pub(super) fn splice_variants(e: &mut Expr) {
+	if let Expr::EnumDef { variants, fills, .. } = e {
+		let spliced = fills.extract_if(.., |f| {
+			matches!(f.0, Expr::Ident(_) | Expr::Call { .. } | Expr::Apply { .. })
+		});
+		variants.extend(spliced.map(to_variant));
+	}
+}
+
 // A `Name` or `Name(Type)` Ast spliced into an enum body.
 fn to_variant((e, span): Spanned<Expr>) -> EnumVariant {
 	let (name, args) = match e {
 		Expr::Call { name, args, .. } => (name, args),
 		Expr::Ident(name) => (name, vec![]),
+		Expr::Apply { callee, args } => (to_variant(*callee).name, args),
 		_ => unreachable!(),
 	};
 	let payload: Vec<_> = args.iter().filter_map(|a| Some((TypeExpr::from_expr(&a.0)?, a.1))).collect();

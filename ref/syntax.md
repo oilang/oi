@@ -2620,6 +2620,9 @@ main :: fn() {
 	PointCols :: struct {
 		comp loop f in def(Point).items { %{f.name}: []%{f.typ} }
 	} # same, no macro
+	Axis :: enum {
+		comp loop f in def(Point).items do %{f.name}
+	} # .x, .y
 
 	# reflection in `comp`
 	# `comp` on a control form runs the header at comptime and leaves the body to runtime
