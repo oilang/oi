@@ -111,6 +111,14 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			*x = lit;
 		}
 	});
+
+	for (e, _) in items {
+		e.walk(&mut |e| {
+			if let Expr::Match { arms, .. } = e {
+				super::expand::spread_arms(arms)
+			}
+		});
+	}
 }
 
 pub(crate) fn instantiate(

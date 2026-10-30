@@ -2624,12 +2624,19 @@ main :: fn() {
 		comp loop f in def(Point).items do %{f.name}
 	} # .x, .y
 
-	# reflection in `comp`
+	# reflection in comp
 	# `comp` on a control form runs the header at comptime and leaves the body to runtime
 	# that is, `comp loop` is not the same as `comp { loop .. }`, which is is fully comptime
 	debug_print[T] :: fn(value: T) {
 		comp loop field in type_info(T).items {
 			println("{field.name} = {value.(field.name)}")
+		}
+	}
+	axis_name :: fn(a: Axis) string {
+		match a {
+			comp loop v in def(Axis).items {
+				Axis.%{v} => v.str()
+			}
 		}
 	}
 

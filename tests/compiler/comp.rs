@@ -320,6 +320,19 @@ fn comp_loops() {
 		print(Shape.y.(1.5))
 	"};
 	check(src, "y.(1.5)");
+
+	let src = indoc! {r#"
+		Color :: enum { red, green }
+		name :: fn(c: Color) string {
+			match c {
+				comp loop v in def(Color).items {
+					Color.%{v} => "{v.str()}!"
+				}
+			}
+		}
+		print(name(Color.green))
+	"#};
+	check(src, "green!");
 }
 
 #[test]

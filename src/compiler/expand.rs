@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Capture, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, int_word};
+use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr, int_word};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
@@ -681,20 +681,26 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}),
 	}
 	if let Expr::Match { arms, .. } = &mut e.0 {
-		*arms = std::mem::take(arms)
-			.into_iter()
-			.flat_map(|a| match a.patterns.is_empty() {
-				false => vec![a],
-				true => (a.body.into_iter())
-					.filter_map(|(e, _)| match e {
-						Expr::Arm(arm) => Some(arm),
-						_ => flag("a match arm spread needs `pattern => body` Asts", None),
-					})
-					.collect(),
-			})
-			.collect();
+		spread_arms(arms);
 	}
 	splice_variants(&mut e.0);
+}
+
+// Splice arm spreads.
+pub(super) fn spread_arms(arms: &mut Vec<MatchArm>) {
+	*arms = std::mem::take(arms)
+		.into_iter()
+		.flat_map(|a| match a.patterns.is_empty() {
+			false => vec![a],
+			true => (a.body.into_iter())
+				.flat_map(|e| if let Expr::Block(v) = e.0 { v } else { vec![e] })
+				.filter_map(|(e, _)| match e {
+					Expr::Arm(arm) => Some(arm),
+					_ => flag("a match arm spread needs `pattern => body` Asts", None),
+				})
+				.collect(),
+		})
+		.collect();
 }
 
 // A `name: Type` param Ast.

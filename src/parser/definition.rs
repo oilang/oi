@@ -440,6 +440,29 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		..Default::default()
 	});
 
+	let arm_loop = just(Token::Comp)
+		.ignore_then(just(Token::Loop))
+		.ignore_then(p.pat.clone().or(spanned(p.def_name.clone().map(Expr::Ident))).map(Box::new))
+		.then_ignore(just(Token::In))
+		.then(header_expr.clone().map(Box::new))
+		.then(brace(spanned(match_arm.clone().map(Expr::Arm)).repeated().collect()))
+		.map_with(|((pat, iter), body), ex| {
+			let comp = (
+				Expr::For {
+					label: None,
+					pat,
+					iter,
+					body,
+				},
+				ex.span(),
+			);
+			MatchArm {
+				body: vec![(Expr::Comp(Box::new(comp)), ex.span())],
+				..Default::default()
+			}
+		});
+	let arm = arm_loop.or(match_arm.clone()).or(arm_spread);
+
 	// arms in macro bodies
 	let macro_arm = (p.bind.clone().or(p.expr.clone()))
 		.or(just(Token::Else).map_with(|_, ex| (Expr::Ident("else".into()), ex.span())))
@@ -479,7 +502,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let match_expr = just(Token::Match)
 		.ignore_then(match_subject)
 		.then(brace(
-			match_arm.clone().or(arm_spread).repeated().collect::<Vec<_>>().then(
+			arm.repeated().collect::<Vec<_>>().then(
 				just(Token::Else)
 					.ignore_then(just(Token::FatArrow))
 					.ignore_then(arm_body)
