@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt::Display;
 use std::io::IsTerminal;
 use std::ops::Range;
@@ -29,6 +30,21 @@ struct File {
 	src: String,
 }
 
+thread_local! {
+	// Sources parse reads at comptime.
+	static FRAGMENTS: RefCell<Vec<&'static File>> = const { RefCell::new(Vec::new()) };
+}
+
+// Lay out a comptime-parsed source past any loaded file, returning its base.
+pub fn push_fragment(src: String) -> usize {
+	FRAGMENTS.with_borrow_mut(|frags| {
+		let base = frags.last().map_or(1 << 48, |f| f.base + f.src.len() + 1);
+		let name = "<parse>".into();
+		frags.push(Box::leak(Box::new(File { base, name, src })));
+		base
+	})
+}
+
 // Source files laid out at increasing byte offsets so one span space covers the whole program.
 #[derive(Clone, Default)]
 pub struct SourceMap {
@@ -49,8 +65,9 @@ impl SourceMap {
 
 	// Map a program-wide span back to its file and local range.
 	fn locate(&self, span: &Range<usize>) -> (&File, Range<usize>) {
+		let frag = FRAGMENTS.with_borrow(|frags| frags.iter().rev().find(|f| f.base <= span.start).copied());
 		let i = self.files.partition_point(|f| f.base <= span.start).saturating_sub(1);
-		let f = &self.files[i];
+		let f = frag.unwrap_or(&self.files[i]);
 		(f, span.start - f.base..span.end - f.base)
 	}
 

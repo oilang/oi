@@ -574,6 +574,17 @@ fn parse_reports_a_bad_fragment_at_the_call_site() {
 }
 
 #[test]
+fn parse_fragment_errors_render_in_the_fragment() {
+	fail(
+		indoc! {r#"
+			gen! :: fn() Ast { parse("1 + nope") }
+			print(gen!())
+		"#},
+		"<parse>:1:5",
+	);
+}
+
+#[test]
 fn tokens_param_takes_a_raw_body() {
 	check(
 		indoc! {r#"
