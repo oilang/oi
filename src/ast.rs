@@ -130,6 +130,8 @@ pub enum Expr {
 	UnquoteBind(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 	// a macro expansion scoped block
 	Block(Vec<Spanned<Expr>>),
+	// a name and the def it resolves to
+	Resolved(String, Box<Spanned<Expr>>),
 
 	Comp(Box<Spanned<Expr>>),
 	Unsafe(Box<Spanned<Expr>>),
@@ -442,6 +444,7 @@ impl Expr {
 			| Expr::UnquoteExpr(v)
 			| Expr::UnquoteSplat(v)
 			| Expr::Comp(v)
+			| Expr::Resolved(_, v)
 			| Expr::Unsafe(v) => f(One(v)),
 			Expr::Annotated(anns, v) => {
 				f(List(anns));

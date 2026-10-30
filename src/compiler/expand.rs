@@ -344,7 +344,7 @@ impl Expander {
 		let arg = |i: usize| boxed.get(i).copied().unwrap_or(std::ptr::null_mut());
 		// SAFETY: stage-0 fns take at most MAX_PARAMS pointer args, all in registers on the ABIs cranelift targets, so a fixed-shape call just leaves the extras unread.
 		let f = unsafe { std::mem::transmute::<*const u8, fn(Ptr, Ptr, Ptr, Ptr) -> Ptr>(ptr) };
-		DEFS.with_borrow_mut(|d| d.0 = scope.clone());
+		DEFS.with_borrow_mut(|d| (d.0, d.1) = (scope.clone(), module_of(&key).unwrap_or_default().into()));
 		let (e0, span) = unsafe { *Box::from_raw(f(arg(0), arg(1), arg(2), arg(3))) };
 		if let Some(msg) = ERROR.take() {
 			return fail(msg, e.1, format!("while running `{name}!`"));
@@ -440,16 +440,20 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 			let (notes, _, def) = Expr::peel_meta(item);
 			let name = def.0.def_name()?.to_string();
 			let notes = [notes, out.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
-			let names = super::ann_names(scope, &notes);
+			let resolve = |n: Spanned<Expr>| match super::ann_names(scope, std::slice::from_ref(&n)).pop() {
+				Some(q) => (Expr::Resolved(q, Box::new(n.clone())), n.1),
+				None => n,
+			};
+			let notes: Vec<_> = notes.into_iter().map(resolve).collect();
 			let def = if notes.is_empty() {
 				def.clone()
 			} else {
 				(Expr::Annotated(notes, Box::new(def.clone())), def.1)
 			};
-			Some((name, names, def))
+			Some((name, def))
 		});
 
-		DEFS.set((Scope::default(), defs.collect()));
+		DEFS.set((Scope::default(), String::new(), defs.collect(), ex.publics.clone()));
 
 		for m in &mut out.modules {
 			for item in std::mem::take(&mut m.items) {
@@ -493,11 +497,11 @@ static HYGIENE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
-	static DEFS: RefCell<(Scope, Vec<Def>)> = RefCell::default();
+	static DEFS: RefCell<(Scope, String, Vec<Def>, Publics)> = RefCell::default();
 }
 
-// name, note names, def
-type Def = (String, Vec<String>, Spanned<Expr>);
+// name, def
+type Def = (String, Spanned<Expr>);
 
 // Record a macro-run failure, carrying on with `stand_in`.
 fn flag<T>(msg: &str, stand_in: T) -> T {
@@ -962,29 +966,47 @@ pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Span
 }
 #[unsafe(export_name = "oi_ast_def")]
 pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr> {
-	let name = match unsafe { &(*a).0 } {
-		Expr::Ident(n) => n.clone(),
-		Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => format!("{m}.{field}"),
-		_ => String::new(),
-	};
-	let def = DEFS.with_borrow(|(scope, defs)| {
-		let name = scope.qualify_name(&name);
-		defs.iter().find(|d| d.0 == name).map(|d| d.2.clone())
+	let def = DEFS.with_borrow(|(scope, _, defs, _)| {
+		let name = match unsafe { &(*a).0 } {
+			Expr::Resolved(q, _) => q.clone(),
+			e => scope.qualify_name(&written(e)),
+		};
+		defs.iter().find(|d| d.0 == name).map(|d| d.1.clone())
 	});
 	leak(def.unwrap_or_else(|| flag("`def` needs the name of a definition", empty())))
 }
 #[unsafe(export_name = "oi_ast_defs")]
 pub(crate) extern "C" fn rt_ast_defs(note: *mut Spanned<Expr>) -> *const runtime::Header {
-	let note = unsafe { &*note };
-	let defs = DEFS.with_borrow(|(scope, defs)| {
-		let note = match &note.0 {
-			Expr::Ident(n) if n.is_empty() => vec![],
-			_ => super::ann_names(scope, std::slice::from_ref(note)),
+	let defs = DEFS.with_borrow(|(scope, module, defs, publics)| {
+		let note = match unsafe { &(*note).0 } {
+			Expr::Resolved(q, _) => Some(q.clone()),
+			e => Some(written(e))
+				.filter(|n| !n.is_empty())
+				.map(|n| super::ann_names(scope, &[(Expr::Ident(n), Span::default())]).concat()),
 		};
-		let noted = defs.iter().filter(|d| note.iter().all(|n| d.1.contains(n)));
-		noted.map(|d| leak(d.2.clone()) as i64).collect::<Vec<_>>()
+		let owned = |q: &&String| module_of(q).unwrap_or_default() == module;
+		let noted = defs.iter().filter(|(key, def)| {
+			let notes: Vec<_> = (Expr::peel_meta(def).0.iter())
+				.filter_map(|n| match &n.0 {
+					Expr::Resolved(q, _) => Some(q),
+					_ => None,
+				})
+				.collect();
+			(publics.is_visible(key, module) || notes.iter().chain([&key]).any(owned))
+				&& note.as_ref().is_none_or(|n| notes.contains(&n))
+		});
+		noted.map(|d| leak(d.1.clone()) as i64).collect::<Vec<_>>()
 	});
 	runtime::array_of(&defs, 8)
+}
+
+// The name an Ast holding a plain or module-dotted name spells.
+fn written(e: &Expr) -> String {
+	match e {
+		Expr::Ident(n) => n.clone(),
+		Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => format!("{m}.{field}"),
+		_ => String::new(),
+	}
 }
 
 #[unsafe(export_name = "oi_ast_int")]
@@ -1027,6 +1049,10 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	let asts = |es: &mut dyn Iterator<Item = &Spanned<Expr>>| list(es.map(|e| leak(e.clone()) as i64).collect());
 	let m = unsafe { runtime::str_bytes(m) };
 	let (notes, _, (subject, span)) = Expr::peel_meta(unsafe { &*a });
+	let subject = match subject {
+		Expr::Resolved(_, written) => &written.0,
+		subject => subject,
+	};
 	match (m, subject) {
 		(b"notes", _) => asts(&mut notes.iter()),
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
@@ -1056,6 +1082,8 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			b"name",
 			Expr::StructDef { name, .. }
 			| Expr::EnumDef { name, .. }
+			| Expr::TypeAlias { name, .. }
+			| Expr::TraitDef { name, .. }
 			| Expr::Call { name, .. }
 			| Expr::MacroCall { name, .. }
 			| Expr::Bind { name, .. }
@@ -1096,6 +1124,10 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			(n.as_bytes() == bytes) as i64
 		}
 		(b"==", _) => 0,
+		(b"eq", _) => match unsafe { (&(*a).0, &(*(arg as *mut Spanned<Expr>)).0) } {
+			(Expr::Resolved(q, _), Expr::Resolved(p, _)) => (q == p) as i64,
+			_ => 0,
+		},
 		_ => flag("unknown Ast method", leak(empty()) as i64),
 	}
 }

@@ -1164,6 +1164,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Comp(_) => fail("`comp` isn't supported here", expr.1, "can't run at compile time"),
+			Expr::Resolved(_, written) => self.lower(written, hint),
 
 			Expr::With(subjects) => self.open_with(subjects),
 

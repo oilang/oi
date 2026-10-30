@@ -771,3 +771,43 @@ fn attribute_macros_run_first() {
 		"PMark",
 	);
 }
+
+#[test]
+fn notes() {
+	Project::new()
+		.main([
+			"use godot",
+			"@godot.hidden A :: struct {}",
+			"@godot.shown B :: struct {}",
+			"godot.probe!(A)",
+			"godot.probe!(B)",
+		])
+		.lib(
+			"godot",
+			[
+				"pub hidden :: ()",
+				"pub shown :: ()",
+				indoc! {"
+					pub probe! :: fn(e: Ast) Ast {
+						n := def(e).notes
+						a := n.contains(hidden)
+						s := n[0].str()
+						`print(%a, %s)`
+					}
+				"},
+			],
+		)
+		.check(["true godot.hidden", "false godot.shown"]);
+
+	// private defs
+	Project::new()
+		.main(["use godot", "@godot.class A :: struct {}", "B :: struct {}", "godot.list!()"])
+		.lib(
+			"godot",
+			[
+				"pub class :: ()",
+				r#"pub list! :: fn() Ast { s := ""; loop d in defs() { if d.name.str().len() == 1 do s = s + d.name.str() }; `print(%s)` }"#,
+			],
+		)
+		.check("A");
+}

@@ -10,7 +10,7 @@ fn comparable(t: &Typ) -> bool {
 	t.is_enumish() && *t != Any
 		|| matches!(
 			t,
-			Int(_) | UInt(_) | ISize | USize | Bool | Rune | Atom | Float(_) | Str | Error | Ref(_)
+			Int(_) | UInt(_) | ISize | USize | Bool | Rune | Atom | Float(_) | Str | Error | Ref(_) | Ast
 		)
 }
 
@@ -35,6 +35,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.emit_eq(lhs, rhs, &Typ::Str)
 			}
 			Typ::Str => self.rt_call("str_eq", &[lhs, rhs]).unwrap(),
+			Typ::Ast => {
+				let eq = self.ast_method(lhs, "eq", Some(rhs));
+				self.b.ins().ireduce(types::I8, eq)
+			}
 			_ => self.b.ins().icmp(IntCC::Equal, lhs, rhs),
 		}
 	}
@@ -748,7 +752,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 			}
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
-			(Typ::Str, Typ::Str) | (Typ::Error, Typ::Error) | (Typ::Ast, Typ::Str) | (Typ::Str, Typ::Ast)
+			(Typ::Str, Typ::Str)
+			| (Typ::Error, Typ::Error)
+			| (Typ::Ast, Typ::Str)
+			| (Typ::Str, Typ::Ast)
+			| (Typ::Ast, Typ::Ast)
 				if matches!(icc, IntCC::Equal | IntCC::NotEqual) =>
 			{
 				let eq = match (&lt, &rt) {

@@ -257,9 +257,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		if *target == Typ::Ast
 			&& let Expr::Ident(n) = &value.0
 			&& !self.vars.contains_key(n)
-			&& (self.types.named(n, value.1).is_ok() || self.funcs.contains_key(self.qualify(n).as_ref()))
 		{
-			return Ok(Some(self.quote(std::slice::from_ref(value), value.1)?.0));
+			let q = self.qualify(n).into_owned();
+			if self.types.named(n, value.1).is_ok()
+				|| self.funcs.contains_key(&q)
+				|| self.types.consts.map.contains_key(&q)
+			{
+				let reference = match self.types.type_params.contains_key(n) {
+					true => value.clone(),
+					false => (Expr::Resolved(q, Box::new(value.clone())), value.1),
+				};
+				return Ok(Some(self.quote(&[reference], value.1)?.0));
+			}
 		}
 
 		let oob = |n| {
