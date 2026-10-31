@@ -347,6 +347,24 @@ fn comp_loops() {
 		print(P.{ comp loop f in def(P).items { %{f.name} = 1 } })
 	"};
 	check(src, "P.{x = 1, y = 1}");
+
+	let src = indoc! {"
+		Cols[T] :: struct {
+			comp loop f in def(T).items { %{f.name}: []%{f.typ} }
+		}
+		Cols[T] :< {
+			push :: fn(mut self; v: T) {
+				comp loop f in def(T).items {
+					self.%{f.name} << v.%{f.name}
+				}
+			}
+		}
+		Point :: struct { x: int, y: float }
+		c: Cols[Point]
+		c.push(Point.{x = 3, y = 1.5})
+		print(c)
+	"};
+	check(src, "Cols[Point].{x = [3], y = [1.5]}");
 }
 
 #[test]

@@ -76,11 +76,12 @@ pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHead
 	std::process::exit(1);
 }
 
-// Visit every comp site outside generic fns and claims.
+// Visit comp sites.
 fn sites(items: &mut [Spanned<Expr>], f: &mut impl FnMut(&mut Expr)) {
 	for (e, _) in items {
 		match e {
-			Expr::Fn { type_params, .. } | Expr::Claim { type_params, .. } if !type_params.is_empty() => {}
+			Expr::Fn { type_params, .. } | Expr::StructDef { type_params, .. } | Expr::Claim { type_params, .. }
+				if !type_params.is_empty() => {}
 			Expr::Comp(_) => f(e),
 			e => e.for_children(|c| match c {
 				Child::List(list) => sites(list, f),
@@ -732,22 +733,10 @@ pub(crate) fn eval(
 
 			// members yielded in comp
 			let def = &mut program.modules[i].items[j].0;
-			if let Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } = def {
-				let flat = std::mem::take(fills).into_iter();
-				*fills = flat.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] }).collect();
-			}
-			if let Expr::StructDef { fields, fills, .. } = def {
-				for f in std::mem::take(fills) {
-					match f.0 {
-						Expr::Bind {
-							name,
-							typ: Some(t),
-							value: None,
-							..
-						} => fields.push(Param::new(name, t.0, t.1)),
-						_ => fills.push(f),
-					}
-				}
+			match def {
+				Expr::StructDef { fields, fills, .. } => splice_fields(fills, Some(fields)),
+				Expr::EnumDef { fills, .. } => splice_fields(fills, None),
+				_ => {}
 			}
 			super::expand::splice_variants(def);
 		}
@@ -760,4 +749,25 @@ pub(crate) fn eval(
 		}
 	}
 	Ok(())
+}
+
+// Flatten yielded blocks in a type body, moving typed binds into `fields`.
+pub(super) fn splice_fields(fills: &mut Vec<Spanned<Expr>>, mut fields: Option<&mut Vec<Param>>) {
+	for (e, span) in std::mem::take(fills)
+		.into_iter()
+		.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] })
+	{
+		match (e, &mut fields) {
+			(
+				Expr::Bind {
+					name,
+					typ: Some(t),
+					value: None,
+					..
+				},
+				Some(fields),
+			) => fields.push(Param::new(name, t.0, t.1)),
+			(e, _) => fills.push((e, span)),
+		}
+	}
 }

@@ -238,6 +238,7 @@ struct FnDef<'a> {
 pub(crate) struct GenericStructDef {
 	pub type_params: Vec<TypeParam>,
 	pub fields: Vec<Param>,
+	pub comps: Vec<Spanned<Expr>>,
 	pub scope: Scope,
 }
 
@@ -254,8 +255,8 @@ pub(crate) struct Generics {
 	pub structs: HashMap<String, GenericStructDef>,
 	pub enums: HashMap<String, GenericEnumDef>,
 	pub aliases: HashMap<String, (Vec<TypeParam>, TypeExpr)>,
-	// struct instances' concrete type args keyed by display name (`Box[int]`)
 	pub instance_args: RefCell<HashMap<String, Vec<Typ>>>,
+	pub yielded: RefCell<HashMap<String, Vec<Param>>>,
 }
 
 impl Generics {
@@ -1133,6 +1134,7 @@ impl<M: Module> Compiler<M> {
 						let def = GenericStructDef {
 							type_params: bounds,
 							fields: fields.clone(),
+							comps: fills.iter().filter(|f| matches!(f.0, Expr::Comp(_))).cloned().collect(),
 							scope: scope.clone(),
 						};
 						generics.structs.insert(name.clone(), def);

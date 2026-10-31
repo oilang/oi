@@ -609,11 +609,27 @@ impl TypeCtx<'_> {
 			.nested(name, span, "would require infinitely nested fields")?
 			.with_type_params(subst)
 			.with_scope(&def.scope);
-		let fields = def.fields.iter().map(|f| inner.field(f)).collect::<Result<Vec<_>, _>>()?;
-		Ok(Typ::Struct(
-			self.register_instance(name, &def.type_params, subst),
-			fields,
-		))
+		let display = self.register_instance(name, &def.type_params, subst);
+		let cached = self.generics.yielded.borrow().get(&display).cloned();
+		let yielded = match cached {
+			Some(yielded) => yielded,
+			None => {
+				let (mut comps, mut yielded) = (def.comps.clone(), vec![]);
+				let module = if def.scope.module.is_empty() {
+					"main"
+				} else {
+					&def.scope.module
+				};
+				comp::instantiate(&mut comps, &inner, module, self.consts.map)?;
+				comp::splice_fields(&mut comps, Some(&mut yielded));
+				self.generics.yielded.borrow_mut().insert(display.clone(), yielded.clone());
+				yielded
+			}
+		};
+		let fields = (def.fields.iter().chain(&yielded))
+			.map(|f| inner.field(f))
+			.collect::<Result<Vec<_>, _>>()?;
+		Ok(Typ::Struct(display, fields))
 	}
 
 	// Substitute `subst` into a generic enum's variants.
