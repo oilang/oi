@@ -144,22 +144,26 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		Some(op) => (Expr::Binary(op, Box::new((lhs, span)), Box::new(value)), span),
 	};
 
+	// unquote holes
+	let hole = p.unquote.clone().try_map(|(e, span), _| match e {
+		Expr::UnquoteExpr(inner) => Ok(("%".into(), Some(inner))),
+		_ => Err(Rich::custom(span, "expected a name")),
+	});
+
 	// assignment
 	let mut assign = Recursive::declare();
 	assign.define(
-		p.def_name
-			.clone()
+		(p.def_name.clone().map(|n| (n, None)).or(hole.clone()))
 			.then(assign_op.clone())
 			.then(assign.clone().or(p.juxt_expr.clone()))
-			.map_with(move |((name, op), value), ex| {
-				let value = fold(op, Expr::Ident(name.clone()), value, ex.span());
-				(
-					Expr::Assign {
-						name,
-						value: Box::new(value),
-					},
-					ex.span(),
-				)
+			.map_with(move |(((name, binder), op), value), ex| {
+				let lhs = binder.clone().map_or(Expr::Ident(name.clone()), Expr::UnquoteExpr);
+				let value = Box::new(fold(op, lhs, value, ex.span()));
+				let assign = (Expr::Assign { name, value }, ex.span());
+				match binder {
+					Some(b) => (Expr::UnquoteBind(b, Box::new(assign)), ex.span()),
+					None => assign,
+				}
 			}),
 	);
 
@@ -179,17 +183,13 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		});
 
 	// assignment through a field/index/deref chain
-	let field_hole = p.unquote.clone().try_map(|(e, span), _| match e {
-		Expr::UnquoteExpr(inner) => Ok(("%".into(), Some(inner))),
-		_ => Err(Rich::custom(span, "expected a field name")),
-	});
 	let seg = just(Token::Dot)
 		.ignore_then(
 			p.def_name
 				.clone()
 				.or(select! { Token::Int(n) => n.to_string() })
 				.map(|f| (f, None))
-				.or(field_hole),
+				.or(hole),
 		)
 		.map(|f| Some(Ok(f)))
 		.or(bracket(p.expr.clone()).map(|i| Some(Err(i))))

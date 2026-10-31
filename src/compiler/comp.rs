@@ -117,6 +117,21 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			if let Expr::Match { arms, .. } = e {
 				super::expand::spread_arms(arms)
 			}
+			// comptime field inits
+			if let Expr::StructLit { fields, .. } = e {
+				*fields = (std::mem::take(fields).into_iter())
+					.flat_map(|field| match field {
+						(None, (Expr::Block(inits), _)) if inits.iter().all(|i| matches!(i.0, Expr::Assign { .. })) => {
+							inits.into_iter().map(|init| (None, init)).collect()
+						}
+						field => vec![field],
+					})
+					.map(|field| match field {
+						(None, (Expr::Assign { name, value }, _)) => (Some(name), *value),
+						field => field,
+					})
+					.collect();
+			}
 		});
 	}
 }

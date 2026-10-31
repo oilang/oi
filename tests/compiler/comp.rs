@@ -341,6 +341,12 @@ fn comp_loops() {
 		print(p)
 	"};
 	check(src, "P.{x = 3, y = 2}");
+
+	let src = indoc! {"
+		P :: struct { x: int, y: int }
+		print(P.{ comp loop f in def(P).items { %{f.name} = 1 } })
+	"};
+	check(src, "P.{x = 1, y = 1}");
 }
 
 #[test]
