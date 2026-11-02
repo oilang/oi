@@ -66,6 +66,7 @@ fn prints_literal_shaped() {
 #[test]
 fn rune_keys() {
 	check("m: [rune]int = .{}; m['☃'] = 2; (m['☃'], 'a' in m)", "(2, false)");
+	check("m: [rune]int = .{}; assert! 'a' !in m", "");
 }
 
 #[test]

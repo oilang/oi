@@ -276,6 +276,7 @@ pub enum Token {
 	OrOr,
 	#[token("!")]
 	Not,
+	NotIn,
 	#[token("|")]
 	Pipe,
 	#[token("|>")]
@@ -422,6 +423,7 @@ impl fmt::Display for Token {
 			Token::Amp => write!(f, "&"),
 			Token::OrOr => write!(f, "||"),
 			Token::Not => write!(f, "!"),
+			Token::NotIn => write!(f, "!in"),
 			Token::Pipe => write!(f, "|"),
 			Token::Pipeline => write!(f, "|>"),
 			Token::ArrowL => write!(f, "<-"),
@@ -610,8 +612,12 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 	let raw = raw_lex(src, base);
 	let text = |from: usize, to: usize| &src[from - base..to - base];
 	let mut out = Vec::with_capacity(raw.len() + 4);
+	let mut fused = false;
 	for i in 0..raw.len() {
 		let (tok, span) = &raw[i];
+		if std::mem::take(&mut fused) {
+			continue;
+		}
 		if i > 0
 			&& let (Token::Doc(_), Token::Doc(_)) = (&raw[i - 1].0, tok)
 		{
@@ -640,6 +646,13 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 				let lead = !before.is_empty() && !before.contains('\n') && after == Some("");
 				out.push((if lead { Token::SpaceMinus } else { Token::Minus }, *span));
 			}
+			Token::Not if i > 0 && !text(raw[i - 1].1.end, span.start).is_empty() => match raw.get(i + 1) {
+				Some((Token::In, next)) if next.start == span.end => {
+					out.push((Token::NotIn, (span.start..next.end).into()));
+					fused = true;
+				}
+				_ => out.push((tok.clone(), *span)),
+			},
 			Token::String(s) => out.extend(expand_string(s, *span, text(span.start, span.end))),
 			Token::RawString(s) => out.push((Token::String(s.clone()), *span)),
 			_ => out.push((tok.clone(), *span)),

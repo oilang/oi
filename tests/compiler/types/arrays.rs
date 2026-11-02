@@ -172,6 +172,10 @@ fn in_operator() {
 		],
 		"true false true",
 	);
+	check(
+		["xs :: [1, 2]", "assert! 3 !in xs", "print(1 !in xs, 3 !in xs)"],
+		"false true",
+	);
 	fail("5 in 10", "not an array");
 	fail(r#"a :: [1, 2]; "x" in a"#, "type mismatch");
 }

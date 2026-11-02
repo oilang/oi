@@ -842,7 +842,18 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			// equality | membership
 			binop(4, Token::Eq, BinOp::Eq),
 			binop(4, Token::Ne, BinOp::Ne),
-			binop(4, Token::In, BinOp::In),
+			infix(
+				left(4),
+				just(Token::In).to(false).or(just(Token::NotIn).to(true)),
+				|lhs, negated, rhs, ex| {
+					let member = (Expr::Binary(BinOp::In, Box::new(lhs), Box::new(rhs)), ex.span());
+					if negated {
+						(Expr::Not(Box::new(member)), ex.span())
+					} else {
+						member
+					}
+				},
+			),
 			// logical
 			binop(3, Token::AndAnd, BinOp::And),
 			binop(2, Token::OrOr, BinOp::Or),
