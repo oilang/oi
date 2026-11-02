@@ -345,7 +345,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				Expr::Block(body) if stmt_target.is_none_or(Typ::is_unit) => {
 					match self.scoped(|s| s.block_tail(body, stmt_target))? {
-						Some((v, t)) => last = (v, t),
+						Some((v, t)) if !want => self.release_value(v, &t),
+						Some(vt) => last = vt,
 						None => return Ok(None),
 					}
 				}
@@ -470,15 +471,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		// trailing places
-		if let Some(read) = stmts.last().and_then(place_read) {
+		let read = stmts.last().and_then(place_read);
+		if let Some(read) = &read {
 			last = match tail {
 				Some(t) if t.is_unit() || self.types.fallible(t) => self.unit_value(),
-				Some(t) => self.check_expr(&read, t)?,
-				None => self.expr(&read)?,
+				Some(t) => self.check_expr(read, t)?,
+				None => self.expr(read)?,
 			};
 		}
 		// a tail local moves out to whoever takes the block's value
-		if let Some(e) = stmts.last() {
+		if let Some(e) = read.as_ref().or(stmts.last()) {
 			self.move_resource(e, &last.1)?;
 		}
 
@@ -542,10 +544,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !self.types.fallible(&typ) {
+			let val = self.copy_bind(val, &typ);
 			if self.script && !self.comptime {
 				self.emit_print(val, &typ, false, runtime::Sink::Out);
 				self.write_lit("\n", runtime::Sink::Out);
 			}
+			self.release_value(val, &typ);
 			let (val, typ) = self.unit_value();
 			return self.emit_return(val, typ, span);
 		}

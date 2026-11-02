@@ -29,7 +29,7 @@ pub(super) fn settled(args: &[Spanned<TypeExpr>]) -> bool {
 pub(super) fn type_expr<'token, I: Tokens<'token>>(
 	dotted_name: P<'token, I, String>,
 	access: P<'token, I, Access>,
-	same_line: P<'token, I, ()>,
+	(same_line, adjacent): (P<'token, I, ()>, P<'token, I, ()>),
 	annotation: P<'token, I, Spanned<Expr>>,
 	unquote: P<'token, I, Spanned<Expr>>,
 	anon_fields: P<'token, I, Vec<Param>>,
@@ -142,7 +142,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				same_line
 					.clone()
 					.ignore_then(just(Token::Not))
-					.ignore_then(base.or_not())
+					.ignore_then(adjacent.ignore_then(base).or_not())
 					.or_not(),
 			)
 			.map(|(e, ok)| match ok {

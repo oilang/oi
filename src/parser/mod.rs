@@ -323,7 +323,7 @@ where
 	let type_expr = types::type_expr(
 		dotted_name.clone().boxed(),
 		access.clone(),
-		same_line.boxed(),
+		(same_line.boxed(), adjacent.boxed()),
 		annotation.clone(),
 		unquote.clone(),
 		anon_fields.clone().boxed(),
