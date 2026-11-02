@@ -823,6 +823,18 @@ fn notes() {
 			],
 		)
 		.check("A");
+
+	Project::new()
+		.main([
+			"use godot",
+			"@godot.tag! A :: struct {}",
+			"comp print(defs(godot.class).len())",
+		])
+		.lib(
+			"godot",
+			["pub class :: ()", "pub tag! :: fn(e: Ast) Ast { `@c @class %e` }"],
+		)
+		.check("1");
 }
 
 #[test]

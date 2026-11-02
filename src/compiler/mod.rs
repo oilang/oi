@@ -311,7 +311,7 @@ fn qualify_anns(scope: &Scope, anns: &[Annotation]) -> Vec<Annotation> {
 	for a in &mut anns {
 		match &mut a.0 {
 			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. }
-				if name != "unsafe" && name != "comp" =>
+				if name != "unsafe" && name != "comp" && !name.contains("::") =>
 			{
 				*name = role::marker(name).map_or_else(|| scope.qualify_name(name), String::from)
 			}
@@ -1038,6 +1038,7 @@ impl<M: Module> Compiler<M> {
 					&& !anns.is_empty()
 				{
 					let anns = qualify_anns(m.scope.at(inner.1), anns);
+					program.annotations.entry(name.into()).or_default().extend(anns.clone());
 					self.annotations.entry(name.into()).or_default().extend(anns);
 				}
 				*item = (inner.0.clone(), item.1);

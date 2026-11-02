@@ -255,20 +255,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		if *target == Typ::Ast
-			&& let Expr::Ident(n) = &value.0
-			&& !self.vars.contains_key(n)
+			&& let Some((n, q)) = match &value.0 {
+				Expr::Ident(n) if !self.vars.contains_key(n) => Some((n, self.qualify(n).into_owned())),
+				Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => {
+					self.dotted_key(m, field).map(|q| (field, q))
+				}
+				_ => None,
+			} && (self.types.named(n, value.1).is_ok()
+			|| self.funcs.contains_key(&q)
+			|| self.types.consts.map.contains_key(&q))
 		{
-			let q = self.qualify(n).into_owned();
-			if self.types.named(n, value.1).is_ok()
-				|| self.funcs.contains_key(&q)
-				|| self.types.consts.map.contains_key(&q)
-			{
-				let reference = match self.types.type_params.contains_key(n) {
-					true => value.clone(),
-					false => (Expr::Resolved(q, Box::new(value.clone())), value.1),
-				};
-				return Ok(Some(self.quote(&[reference], value.1)?.0));
-			}
+			let reference = match self.types.type_params.contains_key(n) {
+				true => value.clone(),
+				false => (Expr::Resolved(q, Box::new(value.clone())), value.1),
+			};
+			return Ok(Some(self.quote(&[reference], value.1)?.0));
 		}
 
 		let oob = |n| {

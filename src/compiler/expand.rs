@@ -150,8 +150,11 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 	});
 }
 
-// Resolve a template's `mod.fn` calls where the macro is actually defined.
+// Resolve a template's keyed types where the macro is actually defined.
 fn def_site(e: &mut Expr, scope: &Scope) {
+	if let Expr::Annotated(anns, _) = e {
+		*anns = super::qualify_anns(scope, anns);
+	}
 	let Expr::MethodCall {
 		recv,
 		method,
@@ -608,11 +611,13 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}
 		return;
 	}
+
 	let rename = &mut |n: &mut String| {
 		if bound.contains(n.as_str()) {
 			*n = format!("{n}#{suffix}");
 		}
 	};
+
 	for_binders(&mut e.0, rename);
 	for t in e.0.types() {
 		t.walk_mut(&mut |t| {
@@ -621,6 +626,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			}
 		});
 	}
+
 	match &mut e.0 {
 		Expr::Ident(n)
 		| Expr::StructLit { name: n, .. }
@@ -642,6 +648,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		}
 		_ => {}
 	}
+
 	if let Some(name) = name_slot(&mut e.0)
 		&& let Some(param) = name.strip_prefix('%')
 	{
@@ -650,6 +657,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			_ => flag("a `%name` binder needs a plain name argument", ()),
 		}
 	}
+
 	match &mut e.0 {
 		Expr::Fn {
 			params,
@@ -669,6 +677,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		Expr::StructDef { fields, .. } => fill_sig(fields, None, args),
 		_ => e.0.types().into_iter().for_each(|t| fill_type(t, args)),
 	}
+
 	match &mut e.0 {
 		Expr::Call { args: list, .. }
 		| Expr::MacroCall { args: list, .. }
@@ -690,9 +699,19 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 			One(one) => fill(one, bound, args, suffix),
 		}),
 	}
+
 	if let Expr::Match { arms, .. } = &mut e.0 {
 		spread_arms(arms);
 	}
+
+	// stacked notes
+	if let Expr::Annotated(anns, inner) = &mut e.0
+		&& let Expr::Annotated(more, def) = &mut inner.0
+	{
+		anns.append(more);
+		**inner = std::mem::replace(def, empty());
+	}
+
 	splice_variants(&mut e.0);
 }
 
