@@ -224,7 +224,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	}
 	let type_alias = plain_head
 		.then(p.type_expr.clone())
-		.filter(|(_, typ)| !expr_shaped(typ))
+		.filter(|((_, type_params), typ)| !type_params.is_empty() || !expr_shaped(typ))
 		.then_ignore(
 			one_of([
 				Token::LBrace,

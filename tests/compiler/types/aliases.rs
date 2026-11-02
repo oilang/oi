@@ -82,3 +82,15 @@ fn generic_alias_is_transparent() {
 	"};
 	check(src, "[[1, 2], [3, 4]] [[5]]");
 }
+
+#[test]
+fn generic_alias_of_expr_shaped_type() {
+	let src = indoc! {"
+		Opt[T] :: ?T
+		Pair[T] :: (T, T)
+		x: Opt[int] = 3
+		p: Pair[int] = (1, 2)
+		print(x or 0, p.1)
+	"};
+	check(src, "3 2");
+}

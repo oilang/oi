@@ -445,6 +445,7 @@ print(Money.(5).double()) # $10
 # transparent types
 Money :: float
 UserId :: int | string
+Pair[T] :: (T, T)
 # distinct types
 Money :: struct (float)
 UserId :: struct (int | string)
