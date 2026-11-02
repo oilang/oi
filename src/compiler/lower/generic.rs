@@ -67,7 +67,9 @@ impl<'d> Infer<'d> {
 			}
 			(TypeExpr::Annotated(_, inner), Typ::Annotated(_, found)) => self.unify(inner, found),
 			(TypeExpr::Annotated(_, inner), found) => self.unify(inner, found),
-			(TypeExpr::Fn(params, ret), Typ::Fn(found, found_ret)) if params.len() == found.len() => {
+			(TypeExpr::Fn(params, ret), Typ::Fn(found, found_ret) | Typ::Closure(found, found_ret, _))
+				if params.len() == found.len() =>
+			{
 				(params.iter().zip(found)).try_for_each(|((_, _, param), arg)| self.unify(param, &arg.typ))?;
 				self.unify(ret, found_ret)
 			}
@@ -144,6 +146,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			})
 			.collect();
 		self.check_args(&access, recv.as_ref().map(|(_, e)| *e), &slots)?;
+
 		let mut infer = Infer::new(&def.type_params, self.types.generics);
 		if type_args.len() > def.type_params.len() {
 			return arity_err(
@@ -154,12 +157,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				span,
 			);
 		}
+
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
 			infer.subst.insert(param.name.clone(), self.types.arg_typ(param, te, *te_span)?);
 		}
+
 		let mut vals = Vec::with_capacity(args.len() + self_n);
 		let mut declared = def.params.iter();
 		let (mut lent, mut given) = (Vec::new(), Vec::new());
+
 		if let Some(((rval, rtyp), rexpr)) = &recv {
 			let rparam = declared.next().unwrap();
 			infer.bind(&rparam.typ, rtyp, span)?;
@@ -176,20 +182,32 @@ impl<'a, M: Module> Translator<'a, M> {
 				false => vals.push(*rval),
 			}
 		}
+
 		for ((arg, param), &access) in slots.iter().zip(declared).zip(&access[self_n..]) {
 			let Some(arg) = arg else {
 				given.push(None);
 				continue;
 			};
+
 			// params that are already pinned
 			let types = self.types.with_type_params(&infer.subst).with_scope(self.home_scope(def));
-			let want = types.resolve(&param.typ, arg.1).ok();
+			let want = match types.resolve(&param.typ, arg.1) {
+				Err(_)
+					if let TypeExpr::Fn(params, _) = &param.typ
+						&& let Ok(Typ::Fn(params, _)) =
+							types.resolve(&TypeExpr::Fn(params.clone(), Box::new(TypeExpr::unit())), arg.1) =>
+				{
+					self.anon_hint(arg, params)?
+				}
+				want => want.ok(),
+			};
 			let (val, typ, entry) = self.arg_value(access, arg, want.as_ref())?;
 			lent.extend(entry);
 			infer.bind(&param.typ, &typ, arg.1)?;
 			given.push(Some((val, typ)));
 		}
 		self.type_defaults(def, &mut infer)?;
+
 		if let Some(missing) = infer.missing() {
 			let kind = if self.types.value_param(missing) {
 				"value"
@@ -202,6 +220,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"not determined by any argument",
 			);
 		}
+
 		for p in &def.type_params {
 			let Some(bound) = &p.bound else { continue };
 			if self.types.value_param(p) {
@@ -219,10 +238,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				);
 			}
 		}
+
 		let sig = self.declare_instance(name, def, infer.subst)?;
 		let params = sig.value_params();
 		let access: Vec<Access> = params[self_n..].iter().map(|p| self.param_access(p)).collect();
 		self.check_args(&access, None, &slots)?;
+
 		let vals = self.fill_args(name, &params, vals, &slots, given, span)?;
 		let out = self.emit_call(&sig, &vals);
 		self.reload_lent(&lent)?;

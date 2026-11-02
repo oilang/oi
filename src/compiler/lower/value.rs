@@ -579,11 +579,20 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The static type of `e`, lowered into a dead block so it never runs.
 	pub(super) fn type_of(&mut self, e: &Spanned<Expr>) -> Result<Typ, Diagnostic> {
+		self.dead_typ(|s| s.expr(e))
+	}
+
+	// The static type of what `lower` yields, lowered into a dead block.
+	pub(super) fn dead_typ(
+		&mut self,
+		lower: impl FnOnce(&mut Self) -> Result<TypedVal, Diagnostic>,
+	) -> Result<Typ, Diagnostic> {
 		let (dead, cont, scopes) = (self.b.create_block(), self.b.create_block(), self.scopes.clone());
 		self.b.ins().jump(cont, &[]);
 		self.b.seal_block(dead);
 		self.b.switch_to_block(dead);
-		let typed = self.scoped(|s| s.expr(e).map(Some));
+
+		let typed = self.scoped(|s| lower(s).map(Some));
 		self.scopes = scopes;
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		self.b.seal_block(cont);

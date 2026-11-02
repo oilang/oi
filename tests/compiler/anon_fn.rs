@@ -259,6 +259,18 @@ fn params_tuple_inferred() {
 }
 
 #[test]
+fn generic_return_inferred_from_body() {
+	let src = indoc! {r#"
+		[]T :< { map2[U] :: fn(self; f: fn(T) U) []U { loop x in self { f(x) } } }
+		pair[T, U] :: fn(x: T, f: fn(T, T) U) U { f(x, x) }
+		k := 1
+		xs := [1, 2]
+		print(xs.map2 { "n{$}" }, xs.map2(fn(x) { x + k }), pair(2) { $.0 * $.1 })
+	"#};
+	check(src, r#"["n1", "n2"] [2, 3] 4"#);
+}
+
+#[test]
 fn literal_against_declared_type() {
 	let src = indoc! {"
 		Op :: fn(int) int

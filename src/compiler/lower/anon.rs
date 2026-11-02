@@ -9,6 +9,33 @@ pub(super) enum AnonSig<'a> {
 }
 
 impl<'a, M: Module> Translator<'a, M> {
+	// Type a returnless fn literal against `params`, inferring its return from the body.
+	pub(super) fn anon_hint(&mut self, lit: &Spanned<Expr>, params: Vec<FnParam>) -> Result<Option<Typ>, Diagnostic> {
+		let (names, body) = match &lit.0 {
+			Expr::AnonFn {
+				ret: None,
+				params,
+				body,
+				..
+			} => (&params[..], body),
+			Expr::Block(body) => (&[][..], body),
+			_ => return Ok(None),
+		};
+		let ret = self.dead_typ(|s| {
+			let locals: Vec<_> = (params.iter())
+				.map(|p| Local::plain(s.b.declare_var(cl_type(&p.typ, s.int)), p.typ.clone(), false))
+				.collect();
+			for (n, local) in names.iter().zip(&locals) {
+				s.vars.insert(n.name.clone(), local.clone());
+			}
+			let outer = std::mem::replace(&mut s.params, locals);
+			s.bind_dollar(params.len() != 1);
+			s.params = outer;
+			s.expr(&(Expr::Block(body.clone()), lit.1))
+		})?;
+		Ok(Some(Typ::Fn(params, Box::new(ret))))
+	}
+
 	// Declare an anon fn literal.
 	pub(super) fn declare_anon_fn(
 		&mut self,
