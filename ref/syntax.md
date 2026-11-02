@@ -1407,6 +1407,7 @@ main :: fn() {
 	assert! true != false
 	assert! 3 !in [1, 2]
 	assert! string !is Float
+	# `!` also negates a predicate, as in `xs.filter(!seen.contains)`
 
 	# `**` is for exponents, and it associates right
 	assert! 2 ** 3 ** 2 == 512

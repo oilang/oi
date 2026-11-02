@@ -250,6 +250,19 @@ impl<'a, M: Module> Translator<'a, M> {
 							);
 						}
 					},
+					t @ (Typ::Fn(params, ret) | Typ::Closure(params, ret, _)) if **ret == Typ::Bool => {
+						let callee = format!("$not{}", self.vars.len());
+						self.hidden_local(callee.clone(), v, typ.clone());
+						let args = (0..params.len()).map(|i| (Expr::Ident(format!("${i}")), expr.1)).collect();
+						let call = Expr::Call {
+							name: callee,
+							type_args: vec![],
+							args,
+						};
+						let body = [(Expr::Not(Box::new((call, expr.1))), expr.1)];
+						let sig = AnonSig::Inferred(t.clone());
+						return self.declare_anon_fn(&None, &[], false, sig, &body, expr.1);
+					}
 					_ => {
 						return fail(
 							format!("expected Bool or an integer, got {typ}"),

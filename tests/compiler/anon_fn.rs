@@ -355,3 +355,13 @@ fn ret_less_fn_type_ends_its_line() {
 	"};
 	check(src, "1");
 }
+
+#[test]
+fn not_negates_a_predicate() {
+	let src = indoc! {"
+		even :: fn(x: int) bool { x % 2 == 0 }
+		seen := [1 3]
+		print((!even)(3), [1 2 3 4].filter(!seen.contains))
+	"};
+	check(src, "true [2, 4]");
+}
