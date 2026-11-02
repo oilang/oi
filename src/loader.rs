@@ -1003,6 +1003,14 @@ impl Loader {
 
 	// Re-key claims on imported types to their owning module, once the prelude is seeded.
 	fn resolve_claims(&mut self) {
+		let aliases: HashMap<_, _> = (self.program.items())
+			.filter_map(|(scope, (item, _))| {
+				let (name, _, (Expr::Ident(to), _)) = const_fill(item)? else {
+					return None;
+				};
+				Some((name.clone(), scope.env.get(to).unwrap_or(to).clone()))
+			})
+			.collect();
 		for m in &mut self.program.modules {
 			let own = format!("{}::", m.scope.module);
 			for item in &mut m.items {
@@ -1011,6 +1019,10 @@ impl Loader {
 					&& type_params.iter().all(|p| p.name != *typ)
 				{
 					*typ = m.scope.at(item.1).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
+					for _ in 0..aliases.len() {
+						let Some(to) = aliases.get(typ.as_str()) else { break };
+						typ.clone_from(to);
+					}
 				}
 			}
 		}

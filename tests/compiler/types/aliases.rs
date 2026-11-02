@@ -94,3 +94,13 @@ fn generic_alias_of_expr_shaped_type() {
 	"};
 	check(src, "3 2");
 }
+
+#[test]
+fn alias_fill_collides_with_target() {
+	let src = indoc! {r#"
+		Num :: int
+		Num :< { show :: fn(self) string { "a" } }
+		int :< { show :: fn(self) string { "b" } }
+	"#};
+	fail(src, "duplicate fill `int.show");
+}

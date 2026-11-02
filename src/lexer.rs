@@ -586,6 +586,7 @@ pub fn splice_raw(
 					d += i32::from(*t == Token::LBrace) - i32::from(*t == Token::RBrace);
 				}
 				out.extend_from_slice(&toks[from..i - usize::from(group)]);
+				out.push((Token::Comma, *span));
 				covered = toks[i - 1].1.end;
 				continue;
 			}
@@ -596,6 +597,7 @@ pub fn splice_raw(
 				break;
 			}
 			out.push((Token::String(src[span.start - base..span.end - base].into()), *span));
+			out.push((Token::Comma, *span));
 		}
 	}
 	Ok(out)

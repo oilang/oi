@@ -70,6 +70,10 @@ fn rejections() {
 		"duplicate member `int` in sum type",
 	);
 	fail(
+		["Either[A, B] :: A | B", "x: Either[int, int] = 1"],
+		"duplicate member `int` in sum type",
+	);
+	fail(
 		["Id :: int | string", "x : Id : 4", "int.(x)"],
 		"cannot extract a sum member by casting",
 	);
