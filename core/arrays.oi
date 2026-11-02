@@ -31,6 +31,33 @@ module core
 		loop i in 0..self.len() do self[self.len() - 1 - i]
 	}
 
+	## New array with `f` applied to each element.
+	map[U] :: fn(self; f: fn(T) U) []U {
+		loop x in self do f(x)
+	}
+
+	## New array of the elements `predicate` holds for.
+	filter :: fn(self; predicate: fn(T) bool) []T {
+		loop x in self { if !predicate(x) do continue; x }
+	}
+
+	## Whether `predicate` holds for any element.
+	any :: fn(self; predicate: fn(T) bool) bool {
+		loop x in self { if predicate(x) do return true }
+		false
+	}
+
+	## Whether `predicate` holds for every element.
+	all :: fn(self; predicate: fn(T) bool) bool {
+		loop x in self { if !predicate(x) do return false }
+		true
+	}
+
+	## The first element `predicate` holds for.
+	find :: fn(self; predicate: fn(T) bool) ?T {
+		loop x in self { if predicate(x) do break x }
+	}
+
 	## Join elements with `separator`.
 	join :: fn(self; separator: string) string {
 		out := ""

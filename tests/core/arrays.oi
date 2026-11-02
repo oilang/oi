@@ -36,3 +36,15 @@ test! "join" {
 	xs : []int : []
 	assert! xs.join(",") == ""
 }
+
+test! "map, filter and friends" {
+	xs := [1 2 3 4]
+	k := 10
+	big := xs.filter({ $ > 2 }).map { $ * k }
+	assert! big == [30 40]
+	assert! xs.map(fn(x) { "{x}" }) == ["1" "2" "3" "4"]
+	assert! xs.any({ $ == 3 }) && !xs.any({ $ > 4 })
+	assert! xs.all({ $ > 0 }) && !xs.all({ $ > 1 })
+	assert! xs.find({ $ % 2 == 0 }) == ?int.(2)
+	assert! xs.find({ $ > 4 }) == none
+}
