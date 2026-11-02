@@ -132,8 +132,8 @@ test! "group poll keeps order" {
 }
 
 test! "tick" {
-	tk := sync.tick(2.ms())
 	t := time.Instant.now()
+	tk := sync.tick(2.ms())
 	loop _ in 0..3 { sync.select! { tk => () } }
 	assert! t.elapsed() >= 6.ms()
 }
