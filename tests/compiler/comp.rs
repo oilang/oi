@@ -459,6 +459,16 @@ fn type_fns_memoize_calls() {
 }
 
 #[test]
+fn type_fns_return_anon_structs() {
+	let src = indoc! {"
+		Box :: comp fn(T: type) type { struct { v: T } }
+		b: Box(int) = .{ v = 3 }
+		print(b, type(b))
+	"};
+	check(src, ".{v = 3} struct{v: int}");
+}
+
+#[test]
 fn type_fns_take_bracket_args() {
 	let src = indoc! {"
 		Arr[N: int] :: fn() type { [N]int }

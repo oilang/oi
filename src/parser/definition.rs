@@ -297,6 +297,10 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.rewind()
 		.ignore_then(p.type_expr.clone())
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
+	let struct_type = just(Token::Struct)
+		.rewind()
+		.ignore_then(p.type_expr.clone())
+		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 
 	let if_expr = recursive(|if_expr| {
 		just(Token::If)
@@ -652,7 +656,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		group,
 		tuple,
 		map,
-		slice_type.or(array),
+		slice_type.or(struct_type).or(array),
 		p.block_ast.clone(),
 		if_expr,
 		match_expr,
