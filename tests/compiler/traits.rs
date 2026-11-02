@@ -148,8 +148,8 @@ fn is_expression() {
 		Cat :: struct {}
 		Dog :< Animal
 		D :: Dog
-		print(Dog is Animal, Dog is not Animal, D is Animal)
-		print(Cat is Animal, Cat is not Animal)
+		print(Dog is Animal, Dog !is Animal, D is Animal)
+		print(Cat is Animal, Cat !is Animal)
 	"};
 	check(src, ["true false true", "false true"]);
 }
@@ -158,7 +158,7 @@ fn is_expression() {
 fn is_on_type_of() {
 	let src = indoc! {"
 		x := 3.7
-		print(type(x) is Float, type(3) is Float, int is Float, type(x) is not Float)
+		print(type(x) is Float, type(3) is Float, int is Float, type(x) !is Float)
 		print(float == type(x), int == type(x))
 	"};
 	check(src, ["true false false false", "true false"]);
@@ -255,7 +255,7 @@ fn is_on_a_trait_object() {
 		Bad : Error < { message :: fn(self) string { "bad" } }
 		a := Animal.(Dog.{})
 		e := Error.(Bad.{})
-		print(a is Dog, a is Cat, a is not Dog, e is Bad)
+		print(a is Dog, a is Cat, a !is Dog, e is Bad)
 	"#};
 	check(src, "true false false true");
 }

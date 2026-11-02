@@ -825,15 +825,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			// trait check
 			postfix(
 				5,
-				just(Token::Is)
-					.ignore_then(just(Token::Ident("not".into())).or_not())
-					.then(is_typ),
-				|lhs, (not, typ): (Option<Token>, TypeExpr), ex| {
+				just(Token::Is).to(false).or(just(Token::NotIs).to(true)).then(is_typ),
+				|lhs, (negated, typ): (bool, TypeExpr), ex| {
 					(
 						Expr::Is {
 							subject: Box::new(lhs),
 							typ,
-							negated: not.is_some(),
+							negated,
 						},
 						ex.span(),
 					)

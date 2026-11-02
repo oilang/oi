@@ -277,6 +277,7 @@ pub enum Token {
 	#[token("!")]
 	Not,
 	NotIn,
+	NotIs,
 	#[token("|")]
 	Pipe,
 	#[token("|>")]
@@ -424,6 +425,7 @@ impl fmt::Display for Token {
 			Token::OrOr => write!(f, "||"),
 			Token::Not => write!(f, "!"),
 			Token::NotIn => write!(f, "!in"),
+			Token::NotIs => write!(f, "!is"),
 			Token::Pipe => write!(f, "|"),
 			Token::Pipeline => write!(f, "|>"),
 			Token::ArrowL => write!(f, "<-"),
@@ -647,8 +649,13 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 				out.push((if lead { Token::SpaceMinus } else { Token::Minus }, *span));
 			}
 			Token::Not if i > 0 && !text(raw[i - 1].1.end, span.start).is_empty() => match raw.get(i + 1) {
-				Some((Token::In, next)) if next.start == span.end => {
-					out.push((Token::NotIn, (span.start..next.end).into()));
+				Some((fusable @ (Token::In | Token::Is), next)) if next.start == span.end => {
+					let fused_tok = if *fusable == Token::In {
+						Token::NotIn
+					} else {
+						Token::NotIs
+					};
+					out.push((fused_tok, (span.start..next.end).into()));
 					fused = true;
 				}
 				_ => out.push((tok.clone(), *span)),

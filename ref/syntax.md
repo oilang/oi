@@ -753,7 +753,7 @@ Bike :: struct {
 Apple :< Fruit
 assert!(Kiwi is Fruit)
 assert!(Apple is Fruit)
-assert!(Bike is not Fruit)
+assert!(Bike !is Fruit)
 
 # every type is `Display`, rendered by its `fmt` or `str`, or derived
 Kiwi :< { str :: fn(self) string { "kiwi" } }
@@ -1402,6 +1402,11 @@ main :: fn() {
 	#   &&
 	#   ||
 	#   |>
+
+	# `!` negates applicable infix operators
+	assert! true != false
+	assert! 3 !in [1, 2]
+	assert! string !is Float
 
 	# `**` is for exponents, and it associates right
 	assert! 2 ** 3 ** 2 == 512

@@ -340,7 +340,7 @@ fn is_variant() {
 			Id :: int | string
 			id: Id = 7
 			x: ?int = 3
-			print(id is int, id is not string, x is .some, x is .none)
+			print(id is int, id !is string, x is .some, x is .none)
 		"},
 		"true true true false",
 	);
@@ -353,7 +353,7 @@ fn is_unwrapping() {
 			P :: struct { x: int, y: int }
 			f :: fn(x: int | string | bool) string {
 				if x is int { return "int {x + 1}" }
-				if x is not string { "other {x}" } else { "str {x.len()}" }
+				if x !is string { "other {x}" } else { "str {x.len()}" }
 			}
 			print(f(4), f("abc"), f(true))
 			v: P | string = P.{ x = 1, y = 2 }
