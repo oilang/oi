@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam, bind};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::{Program, module_of};
+use crate::loader::{Program, Scope, module_of};
 use crate::runtime;
 
 use super::lower::generic::Infer;
@@ -42,6 +42,37 @@ thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
 	static MAP: RefCell<SourceMap> = RefCell::default();
 	static TYPES: RefCell<Vec<Typ>> = const { RefCell::new(Vec::new()) };
+	static CALLS: RefCell<HashMap<String, Option<Expr>>> = RefCell::default();
+}
+
+// Key a call by its qualified fn and args.
+fn call_key(scope: &Scope, call: &Spanned<Expr>) -> Option<String> {
+	fn unspan(e: &mut Spanned<Expr>) {
+		e.1 = Span::default();
+		e.0.for_children(|c| match c {
+			Child::List(list) => list.iter_mut().for_each(unspan),
+			Child::One(one) => unspan(one),
+		});
+	}
+	let mut call = call.clone();
+	let Expr::Call { name, .. } = &mut call.0 else {
+		return None;
+	};
+	*name = scope.qualify_name(name);
+	unspan(&mut call);
+	Some(format!("{call:?}"))
+}
+
+// Whether a def's signature names a type fn call that's still folding.
+fn names_in_flight(scope: &Scope, item: &Spanned<Expr>) -> bool {
+	let mut hit = false;
+	for t in Expr::peel_meta(item).2.0.clone().types() {
+		t.walk_mut(&mut |t| {
+			hit |= matches!(t, TypeExpr::Value(call) if CALLS.with_borrow(|calls|
+				matches!(call_key(scope, call).and_then(|k| calls.get(&k).cloned()), Some(None))));
+		});
+	}
+	hit
 }
 
 pub(crate) extern "C" fn rt_comp_yield(tag: i64, val: i64) {
@@ -546,6 +577,13 @@ pub(crate) fn fold(
 	}
 	let span = inner.1;
 	let scope = program.modules.iter().find(|m| m.name == target).map(|m| m.scope.at(span));
+	let key = scope.and_then(|s| call_key(s, &inner));
+	if let Some(k) = &key {
+		if let Some(Some(lit)) = CALLS.with_borrow(|calls| calls.get(k).cloned()) {
+			return Ok(lit);
+		}
+		CALLS.with_borrow_mut(|calls| calls.insert(k.clone(), None));
+	}
 
 	// comp loop
 	if let Expr::For { pat, body, .. } = &mut inner.0 {
@@ -591,7 +629,9 @@ pub(crate) fn fold(
 	// imports
 	let mut synthetic = super::expand::lend(program, |module, items| {
 		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
+		let at = program.modules.iter().find(|m| m.name == module).map(|m| &m.scope);
 		items.retain_mut(|item| match &item.0 {
+			_ if at.is_some_and(|s| names_in_flight(s.at(item.1), item)) => false,
 			Expr::Fn { name, .. } => name != "main",
 			Expr::Bind { mutable: true, .. } => has_main || module != "main",
 			e => is_def(e) && first_comp(std::slice::from_mut(item)).is_none(),
@@ -615,6 +655,7 @@ pub(crate) fn fold(
 	};
 
 	DEPTH.fetch_sub(1, Ordering::Relaxed);
+	key.iter().for_each(|k| _ = CALLS.with_borrow_mut(|calls| calls.remove(k)));
 	ran?;
 	TYPES.set(compiler.out.any_types.clone());
 	if let Some(scope) = scope {
@@ -624,6 +665,9 @@ pub(crate) fn fold(
 	unsafe { std::mem::transmute::<*const u8, fn()>(compiler.finalized(&name))() };
 	let lit = reify(span, &compiler.out.instances);
 	*stage0 = Some(compiler);
+	if let (Some(k), Expr::TypePat(_)) = (key, &lit) {
+		CALLS.with_borrow_mut(|calls| calls.insert(k, Some(lit.clone())));
+	}
 	Ok(lit)
 }
 
@@ -635,6 +679,7 @@ pub(crate) fn eval(
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
 	MAP.set(program.map.clone());
+	CALLS.take();
 
 	// consts reading from comp
 	for m in program.modules.iter_mut().rev() {

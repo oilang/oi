@@ -445,6 +445,20 @@ fn type_fns_return_instances() {
 }
 
 #[test]
+fn type_fns_memoize_calls() {
+	let src = indoc! {"
+		Box :: comp fn(T: type) type { [1]T }
+		a: Box(int) = .[3]
+		f :: fn(b: Box(int)) int { b[0] }
+		main :: fn() {
+			b: Box(int) = .[4]
+			print(f(a), f(b), type(a) == type(b))
+		}
+	"};
+	check(src, "3 4 true");
+}
+
+#[test]
 fn type_fns_take_bracket_args() {
 	let src = indoc! {"
 		Arr[N: int] :: fn() type { [N]int }
