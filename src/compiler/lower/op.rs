@@ -622,6 +622,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let pow = matches!(op, BinOp::Pow).then(|| {
 			let (name, wide, t) = match kind {
 				NumKind::Float => ("pow_float", Typ::Float(64), types::F64),
+				_ if cl_type(&lt, self.int) == types::I128 => {
+					let exp = self.numcast(rv, &rt, &Typ::ISize);
+					return self.rt_call("pow_wide", &[lv, exp]).unwrap();
+				}
 				_ => ("pow_int", Typ::ISize, types::I64),
 			};
 			let (l, r) = (self.numcast(lv, &lt, &wide), self.numcast(rv, &rt, &wide));

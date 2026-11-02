@@ -66,6 +66,7 @@ pub oi_float_to_wide : fn(x: float, signed: isize) i128 : foreign
 pub oi_write_sep : fn(i: isize, sink: isize) : foreign
 pub oi_trait_field : fn(data: ptr, off: isize) isize : foreign
 pub oi_pow_int : fn(base: isize, exp: isize) isize : foreign
+pub oi_pow_wide : fn(base: i128, exp: isize) i128 : foreign
 pub oi_pow_float : fn(base: float, exp: float) float : foreign
 pub oi_f16_to_f32 : fn(bits: u16) f32 : foreign
 pub oi_f32_to_f16 : fn(x: f32) u16 : foreign

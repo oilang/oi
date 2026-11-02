@@ -220,6 +220,14 @@ pub extern "C" fn pow_int(base: i64, exp: i64) -> i64 {
 	base.wrapping_pow(exp as u32)
 }
 
+#[unsafe(export_name = "oi_pow_wide")]
+pub extern "C" fn pow_wide(base: i128, exp: i64) -> i128 {
+	if exp < 0 {
+		fatal!("negative exponent: {exp}");
+	}
+	base.wrapping_pow(exp as u32)
+}
+
 #[unsafe(export_name = "oi_f16_to_f32")]
 pub extern "C" fn f16_to_f32(bits: u16) -> f32 {
 	f16::from_bits(bits) as f32
