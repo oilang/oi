@@ -719,6 +719,36 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.make_array(data, len, &typ), typ));
 				}
 
+				// uncalled methods
+				if !matches!(&typ, Typ::Struct(_, fs) if fs.iter().any(|f| f.name == *field))
+					&& let Some(sig) = self.resolve_method(&typ, field)
+					&& sig.params.first().is_some_and(|p| p.typ == typ)
+				{
+					let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
+					let recv = format!("$recv{}", self.vars.len());
+					self.hidden_local(recv.clone(), ptr, typ.clone());
+					let args = (0..rest.len()).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
+					let body = [(
+						Expr::MethodCall {
+							recv: Box::new((Expr::Ident(recv), span)),
+							method: field.clone(),
+							type_args: vec![],
+							args,
+						},
+						span,
+					)];
+					let fsig = AnonSig::Inferred(Typ::Fn(rest, Box::new(sig.ret)));
+					return self.declare_anon_fn(&None, &[], false, fsig, &body, span);
+				}
+				if self
+					.world
+					.generic_fns
+					.contains_key(&format!("{}.{field}", rc::base_name(&typ.key())))
+				{
+					let msg = format!("generic method `{field}` can't be a value");
+					return fail(msg, expr.1, "wrap the call in a fn literal");
+				}
+
 				// expose array/string fields
 				if let Typ::Array(_) | Typ::FixedArray(..) | Typ::Str = &typ {
 					let elem = array_elem(&typ).clone();
@@ -766,27 +796,6 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& let Some(c) = self.types.consts.map.get(&format!("{sname}::{field}")).cloned()
 					{
 						return self.check_expr(&c, &typ);
-					}
-					// an uncalled method is a closure over its receiver
-					if !sfields.iter().any(|f| f.name == *field)
-						&& let Some(sig) = self.funcs.get(&format!("{sname}.{field}")).cloned()
-						&& sig.params.first().is_some_and(|p| p.typ == typ)
-					{
-						let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
-						let recv = format!("$recv{}", self.vars.len());
-						self.hidden_local(recv.clone(), ptr, typ.clone());
-						let args = (0..rest.len()).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
-						let body = [(
-							Expr::MethodCall {
-								recv: Box::new((Expr::Ident(recv), span)),
-								method: field.clone(),
-								type_args: vec![],
-								args,
-							},
-							span,
-						)];
-						let fsig = AnonSig::Inferred(Typ::Fn(rest, Box::new(sig.ret)));
-						return self.declare_anon_fn(&None, &[], false, fsig, &body, span);
 					}
 				}
 

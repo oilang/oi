@@ -16,6 +16,15 @@ fn instance_method() {
 }
 
 #[test]
+fn method_value() {
+	let src = indoc! {"
+		has := [1, 3].contains
+		print(has(3), has(2))
+	"};
+	check(src, "true false");
+}
+
+#[test]
 fn receiver_is_any_name() {
 	let src = indoc! {"
 		Point :: struct { x: int, y: int }
