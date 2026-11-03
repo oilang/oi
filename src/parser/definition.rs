@@ -82,6 +82,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 ) -> P<'token, I, Spanned<Expr>> {
 	let dot = || just(Token::Dot).or(just(Token::SpaceDot));
 	let mut defer_body = Recursive::declare();
+	let mut trail = Recursive::declare();
 
 	let literal = select! {
 		Token::Bool(b) => Expr::Bool(b),
@@ -166,7 +167,22 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.then_ignore(dot().rewind())
 		.map(|(name, args)| Expr::TypePat(TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect())));
 
-	let call_tail = call_type_args.clone().filter(|a| types::settled(a)).or_not().then(args.clone());
+	// same-line trailing functions
+	let call_args = args
+		.clone()
+		.then(trail.clone().or_not())
+		.map(|(mut args, func)| {
+			args.extend(func);
+			args
+		})
+		.or(trail.clone().map(|func| vec![func]))
+		.boxed();
+	let call_tail = call_type_args
+		.clone()
+		.filter(|a| types::settled(a))
+		.or_not()
+		.then(call_args.clone());
+
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {
 		Some((type_args, args)) => Expr::Call {
 			name,
@@ -176,7 +192,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		None => Expr::Ident(name),
 	});
 
-	// leaf atoms pair themselves with their span
+	// leaf atoms
 	let leaf = spanned(
 		literal
 			.or(foreign_lit)
@@ -680,7 +696,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		// `[T]` is type args or subscript, based on whether a call follows
 		p.def_name
 			.clone()
-			.then(call_type_args.or_not().then(args.clone()).or_not())
+			.then(call_type_args.or_not().then(call_args).or_not())
 			.map(|(name, call)| match call {
 				Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),
 				None => Dot::Fields(vec![name]),
@@ -884,6 +900,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// juxts
 	let trailing = anon_fn.clone().or(p.block_ast.clone()).boxed();
 	let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
+	trail.define(
+		p.same_line
+			.clone()
+			.ignore_then(trailing.clone())
+			.contextual()
+			.configure(|_, on| *on),
+	);
 	let lead = p
 		.same_line
 		.clone()
@@ -903,7 +926,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let tail_body = p.block.clone().or(core.clone().map(|e| vec![pipe_step(e)]));
 	let and_tail = just(Token::And).ignore_then(tail_body.clone());
 	let or_tail = just(Token::Or).ignore_then(tail_body);
-	let level = |juxt: Option<P<'token, I, Juxt>>| {
+	let level = |juxt: Option<P<'token, I, Juxt>>, trails: bool| {
 		let inner = match juxt {
 			None => core.clone().boxed(),
 			Some(juxt) => labeled
@@ -965,18 +988,22 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			})
 			.then(or_tail.clone().or_not())
 			.map_with(|pair, ex| or_else(pair, ex.span()))
+			.with_ctx(trails)
 			.boxed()
 	};
-	header_expr.define(level(None));
-	let (bind, test) = stmt::binds(p, level(None).boxed(), match_pat.clone());
+	header_expr.define(level(None, false));
+	let (bind, test) = stmt::binds(p, level(None, false), match_pat.clone());
 	header_cond.define(bind.or(test).or(header_expr.clone()));
-	defer_body.define(level(Some(
-		just(Token::LBrace)
-			.not()
-			.ignore_then(lead)
-			.map(|lead| (Some(lead), None))
-			.boxed(),
-	)));
-	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed())));
-	level(Some(trail_only))
+	defer_body.define(level(
+		Some(
+			just(Token::LBrace)
+				.not()
+				.ignore_then(lead)
+				.map(|lead| (Some(lead), None))
+				.boxed(),
+		),
+		false,
+	));
+	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed()), true));
+	level(Some(trail_only), true)
 }

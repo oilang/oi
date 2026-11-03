@@ -9,7 +9,8 @@ mod item;
 mod stmt;
 mod types;
 
-type Err<'t> = extra::Err<Rich<'t, Token>>;
+// Context determines whether a same-line trailing fn may join a call.
+type Err<'t> = extra::Full<Rich<'t, Token>, (), bool>;
 // Every parser passed across a fn boundary in here wears this shape.
 pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, Err<'t>>;
 // A Recursive handle passed across a fn boundary so it can be defined there.

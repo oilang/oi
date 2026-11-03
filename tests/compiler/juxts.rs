@@ -31,6 +31,15 @@ fn method_trailing_fn() {
 }
 
 #[test]
+fn trailing_fn_chains() {
+	let src = indoc! {"
+		xs := [1, 2, 3, 4]
+		print(xs.filter { $ > 2 }.map { $ * 10 }, !xs.any { $ > 9 })
+	"};
+	check(src, "[30, 40] true");
+}
+
+#[test]
 fn leading_literals() {
 	let src = indoc! {r#"
 		Box :: struct { n: int }
