@@ -138,3 +138,17 @@ fn newline_led_dot_stays_access() {
 	"#};
 	check(src, "2");
 }
+
+#[test]
+fn leading_arg_method_claims_block() {
+	let src = indoc! {"
+		retry :: fn(n: int, f: fn() int) { print(f() + n) }
+		attempts :: 3
+		xs := [1, 2, 3, 4]
+		print xs.filter { $ > 2 }.map { $ * 10 }
+		assert! xs.any { $ > 2 }
+		retry attempts { 10 }
+		retry 3 { 20 }
+	"};
+	check(src, ["[30, 40]", "13", "23"]);
+}

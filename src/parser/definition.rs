@@ -1,6 +1,6 @@
 use super::{
-	P, Parsers, Rec, Tokens, brace, bracket, ident, list1, loose_list, loose_list1, matrix, paren, shadow_params,
-	spanned, stmt, trailing_list, trailing_list1, types,
+	P, Parsers, Rec, Tokens, Trails, brace, bracket, ident, list1, loose_list, loose_list1, matrix, paren,
+	shadow_params, spanned, stmt, trailing_list, trailing_list1, types,
 };
 use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
 use crate::lexer::Token;
@@ -168,20 +168,22 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map(|(name, args)| Expr::TypePat(TypeExpr::Generic(name, args.into_iter().map(|(t, _)| t).collect())));
 
 	// same-line trailing functions
-	let call_args = args
-		.clone()
-		.then(trail.clone().or_not())
-		.map(|(mut args, func)| {
-			args.extend(func);
-			args
-		})
-		.or(trail.clone().map(|func| vec![func]))
-		.boxed();
+	let trail_from = |min: Trails| trail.clone().contextual().configure(move |_, ctx: &Trails| *ctx >= min);
+	let call_args = |bare: Trails| {
+		args.clone()
+			.then(trail_from(Trails::Methods).or_not())
+			.map(|(mut args, func)| {
+				args.extend(func);
+				args
+			})
+			.or(trail_from(bare).map(|func| vec![func]))
+			.boxed()
+	};
 	let call_tail = call_type_args
 		.clone()
 		.filter(|a| types::settled(a))
 		.or_not()
-		.then(call_args.clone());
+		.then(call_args(Trails::All));
 
 	let var_or_call = ident().then(call_tail.or_not()).map(|(name, call)| match call {
 		Some((type_args, args)) => Expr::Call {
@@ -696,7 +698,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		// `[T]` is type args or subscript, based on whether a call follows
 		p.def_name
 			.clone()
-			.then(call_type_args.or_not().then(call_args).or_not())
+			.then(call_type_args.or_not().then(call_args(Trails::Methods)).or_not())
 			.map(|(name, call)| match call {
 				Some((type_args, args)) => Dot::Method(name, type_args.unwrap_or_default(), args),
 				None => Dot::Fields(vec![name]),
@@ -900,20 +902,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// juxts
 	let trailing = anon_fn.clone().or(p.block_ast.clone()).boxed();
 	let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
-	trail.define(
-		p.same_line
-			.clone()
-			.ignore_then(trailing.clone())
-			.contextual()
-			.configure(|_, on| *on),
-	);
-	let lead = p
-		.same_line
-		.clone()
-		.ignore_then(p.adjacent.clone().then(just(Token::Backtick)).not())
-		.ignore_then(header_expr.clone())
-		.boxed();
-	let with_lead = lead.clone().then(trailing.or_not()).map(|(l, t)| (Some(l), t)).boxed();
+	trail.define(p.same_line.clone().ignore_then(trailing.clone()));
 
 	// labeled blocks
 	let labeled = label
@@ -926,7 +915,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let tail_body = p.block.clone().or(core.clone().map(|e| vec![pipe_step(e)]));
 	let and_tail = just(Token::And).ignore_then(tail_body.clone());
 	let or_tail = just(Token::Or).ignore_then(tail_body);
-	let level = |juxt: Option<P<'token, I, Juxt>>, trails: bool| {
+	let level = |juxt: Option<P<'token, I, Juxt>>, trails: Trails| {
 		let inner = match juxt {
 			None => core.clone().boxed(),
 			Some(juxt) => labeled
@@ -991,9 +980,19 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			.with_ctx(trails)
 			.boxed()
 	};
-	header_expr.define(level(None, false));
-	let (bind, test) = stmt::binds(p, level(None, false), match_pat.clone());
+
+	header_expr.define(level(None, Trails::Off));
+
+	let lead = p
+		.same_line
+		.clone()
+		.ignore_then(p.adjacent.clone().then(just(Token::Backtick)).not())
+		.ignore_then(level(None, Trails::Methods))
+		.boxed();
+	let with_lead = lead.clone().then(trailing.or_not()).map(|(l, t)| (Some(l), t)).boxed();
+	let (bind, test) = stmt::binds(p, level(None, Trails::Off), match_pat.clone());
 	header_cond.define(bind.or(test).or(header_expr.clone()));
+
 	defer_body.define(level(
 		Some(
 			just(Token::LBrace)
@@ -1002,8 +1001,9 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.map(|lead| (Some(lead), None))
 				.boxed(),
 		),
-		false,
+		Trails::Off,
 	));
-	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed()), true));
-	level(Some(trail_only), true)
+
+	juxt_expr.define(level(Some(trail_only.clone().or(with_lead).boxed()), Trails::All));
+	level(Some(trail_only), Trails::All)
 }

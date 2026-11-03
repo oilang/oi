@@ -340,6 +340,7 @@ print -2
 benchmark 1_000_000 { do_work() }
 config :production { ... }
 hook .startup { ... }
+# the block attaches to the nearest call before it, so `print xs.filter { $ > 2 }` filters, then prints
 
 ## structs
 
@@ -2196,7 +2197,7 @@ main :: fn() {
 	retry 3 {
 		fetch(url)?
 	}
-	timeout 5.sec {
+	timeout(5.sec) {
 		slow_call()
 	}
 
