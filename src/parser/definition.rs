@@ -963,6 +963,16 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 								args: a,
 							}
 						}
+						Expr::Apply { callee, args: mut a } if !has_lead => {
+							a.extend(args);
+							Expr::Apply { callee, args: a }
+						}
+						callee @ (Expr::Index { .. } | Expr::Deref(_) | Expr::Propagate(_)) if !has_lead => {
+							Expr::Apply {
+								callee: Box::new((callee, s)),
+								args,
+							}
+						}
 						_ => return Err(Rich::custom(span, "trailing arg needs a call or method callee")),
 					};
 					Ok((e, span))

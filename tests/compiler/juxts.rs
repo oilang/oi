@@ -40,6 +40,17 @@ fn trailing_fn_chains() {
 }
 
 #[test]
+fn trailing_fn_on_fn_value() {
+	let src = indoc! {"
+		fs := [fn(g: fn(int) int) int { g(1) }]
+		a := fs[0] { $ + 1 }
+		b := fs[0]() { $ + 2 }
+		print(a, b)
+	"};
+	check(src, "2 3");
+}
+
+#[test]
 fn leading_literals() {
 	let src = indoc! {r#"
 		Box :: struct { n: int }
