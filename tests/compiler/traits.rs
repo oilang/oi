@@ -112,6 +112,7 @@ fn default_methods_name_trait_params() {
 		Source[T] :: trait {
 			next: fn(mut self) ?T
 			first :: fn(mut self) ?T { got: ?T = self.next()  got }
+			pipe[U] :: fn(mut self; f: fn(T) U) ?U { f(self.next()?) }
 		}
 		Count :: struct { n: int }
 		Count : Source[int] < { next :: fn(mut self) ?int { self.n += 1  self.n } }
@@ -119,9 +120,9 @@ fn default_methods_name_trait_params() {
 		Wrap[E] : Source[E] < { next :: fn(mut self) ?E { self.item } }
 		c := Count.{ n = 0 }
 		w := Wrap[string].{ item = "hi" }
-		print(c.first() or 0, w.first() or "")
+		print(c.first() or 0, w.first() or "", c.pipe { $ * 10 } or 0, w.pipe { $ + "!" } or "")
 	"#};
-	check(src, "1 hi");
+	check(src, "1 hi 20 hi!");
 }
 
 #[test]

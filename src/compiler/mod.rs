@@ -1265,27 +1265,30 @@ impl<M: Module> Compiler<M> {
 								return fail(format!("`{tn}` has two blanket claims"), item.1, "one per trait");
 							}
 							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds);
-							// generic fills
-							if !is_hook_trait(tn) {
-								// unfilled defaults
-								let (tps, ms) = traits.get(tn.as_str()).map_or((&[][..], &[][..]), |t| (t.1, t.3));
-								let decls: Vec<TraitFn> = trait_fns(ms).collect();
-								let filled = |n: &str| {
-									(fills.iter())
-										.any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn { name, .. } if name == n))
-								};
-								for d in ms {
-									if matches!(&d.0, Expr::Fn { name, body, .. } if !body.is_empty() && !filled(name))
-									{
-										let claim = Fills {
-											decls: &decls,
-											targs: &targs,
-											..Fills::default()
-										};
-										let d = std::slice::from_ref(bind_trait_args(d, tps, args));
-										self.register_fills(typ, type_params, d, scope, &mut others, claim)?;
-									}
+						}
+						// generic fills
+						if !is_hook_trait(tn) {
+							// unfilled defaults
+							let (tps, ms) = traits.get(tn.as_str()).map_or((&[][..], &[][..]), |t| (t.1, t.3));
+							let decls: Vec<TraitFn> = trait_fns(ms).collect();
+							let filled = |n: &str| {
+								(fills.iter())
+									.any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn { name, .. } if name == n))
+							};
+							for d in ms {
+								if matches!(&d.0, Expr::Fn { name, body, type_params: mtp, .. }
+									if !body.is_empty() && !filled(name) && !(type_params.is_empty() && mtp.is_empty()))
+								{
+									let claim = Fills {
+										decls: &decls,
+										targs: &targs,
+										..Fills::default()
+									};
+									let d = std::slice::from_ref(bind_trait_args(d, tps, args));
+									self.register_fills(typ, type_params, d, scope, &mut others, claim)?;
 								}
+							}
+							if !type_params.is_empty() {
 								continue;
 							}
 						}

@@ -386,12 +386,12 @@ pub(super) fn check_impls<'p>(
 				params_tuple,
 				ret,
 				body,
-				..
+				type_params: mtp,
 			} = &t.0
 			else {
 				continue;
 			};
-			if methods.iter().any(|m| matches!(&m.0, Expr::Fn { name: n, .. } if n == name)) {
+			if !mtp.is_empty() || methods.iter().any(|m| matches!(&m.0, Expr::Fn { name: n, .. } if n == name)) {
 				continue;
 			}
 			// check whether an overlapping fill is already present
