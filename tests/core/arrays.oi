@@ -48,3 +48,13 @@ test! "map, filter and friends" {
 	assert! xs.find({ $ % 2 == 0 }) == ?int.(2)
 	assert! xs.find({ $ > 4 }) == none
 }
+
+test! "lazy iterator adapters" {
+	xs := [1 2 3 4 5 6]
+	evens := xs.iter().filter({ $ % 2 == 0 }).map({ $ * 10 }).collect()
+	assert! evens == [20 40 60]
+	squares := loop v in (0..).map({ $ * $ }) { if v > 100 do break; v }
+	assert! squares.len() == 11 && squares.last() == ?int.(100)
+	assert! (0..10).any({ $ == 3 }) && !(0..10).all({ $ < 5 })
+	assert! xs.iter().find({ $ > 4 }) == ?int.(5)
+}

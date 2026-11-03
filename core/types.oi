@@ -7,10 +7,6 @@ use rt
 pub Range :: struct { start: int, end: ?int, step: int }
 
 Range :< {
-	pub collect :: fn(self) []int {
-		loop n in self do n
-	}
-
 	str :: fn(self) string {
 		second :: if self.step == 1 { "" } else { (self.start + self.step).str() + ".." }
 		last :: match self.end { .some.(e) => e.str(), .none => "" }
