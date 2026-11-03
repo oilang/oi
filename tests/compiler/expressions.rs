@@ -24,6 +24,12 @@ fn blocks_are_expressions() {
 }
 
 #[test]
+fn same_line_statements_need_a_semicolon() {
+	check("{ 1; 2 }", "2");
+	fail("{ 1 2 }", "consecutive statements on a line must be separated by `;`");
+}
+
+#[test]
 fn assign_yields_the_place() {
 	check(
 		indoc! {"

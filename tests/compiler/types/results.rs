@@ -185,9 +185,9 @@ fn claimed_error() {
 		wrapped :: fn() !int { return error(NetError.timeout) }
 		a :: fn() Result[int, NetError] { return NetError.refused }
 		b :: fn() !int { a()? }
-		bare() or { print($.message()) 0 }
-		wrapped() or { print($.message()) 0 }
-		b() or { print($.message()) 0 }
+		bare() or { print($.message()); 0 }
+		wrapped() or { print($.message()); 0 }
+		b() or { print($.message()); 0 }
 	"#};
 	check(src, ["net down", "net down", "net down", "0"]);
 }
@@ -202,9 +202,9 @@ fn error_message_defaults_to_str() {
 		e :: fn() !int { return NetError.timeout }
 		a :: fn() !int { return :oops }
 		i :: fn() !int { return Io.{} }
-		e() or { print($.message()) 0 }
-		a() or { print($.message()) 0 }
-		i() or { print($.message()) 0 }
+		e() or { print($.message()); 0 }
+		a() or { print($.message()); 0 }
+		i() or { print($.message()); 0 }
 	"#};
 	check(src, ["timeout", ":oops", "Io.{}", "0"]);
 }
@@ -212,7 +212,7 @@ fn error_message_defaults_to_str() {
 #[test]
 fn result_ok_discards_the_error() {
 	let src = indoc! {r#"
-		f :: fn(n: int) !int { if n == 0 { return error("boom") } n }
+		f :: fn(n: int) !int { if n == 0 { return error("boom") }; n }
 		print(f(1).ok())
 		print(f(0).ok())
 	"#};
@@ -222,14 +222,14 @@ fn result_ok_discards_the_error() {
 #[test]
 fn result_context_wraps_the_error() {
 	let src = indoc! {r#"
-		f :: fn(n: int) !int { if n == 0 { return error("disk on fire") } n }
+		f :: fn(n: int) !int { if n == 0 { return error("disk on fire") }; n }
 		g :: fn() !int { f(0).context("loading save")? }
 		f(0).context("loading save") or {
 			print($.message())
 			print(match $.cause() { .some.(e) => e.message(), .none => "none" })
 			0
 		}
-		g() or { print($.message()) 0 }
+		g() or { print($.message()); 0 }
 	"#};
 	check(
 		src,

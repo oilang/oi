@@ -111,11 +111,11 @@ fn default_methods_name_trait_params() {
 	let src = indoc! {r#"
 		Source[T] :: trait {
 			next: fn(mut self) ?T
-			first :: fn(mut self) ?T { got: ?T = self.next()  got }
+			first :: fn(mut self) ?T { got: ?T = self.next(); got }
 			pipe[U] :: fn(mut self; f: fn(T) U) ?U { f(self.next()?) }
 		}
 		Count :: struct { n: int }
-		Count : Source[int] < { next :: fn(mut self) ?int { self.n += 1  self.n } }
+		Count : Source[int] < { next :: fn(mut self) ?int { self.n += 1; self.n } }
 		Wrap[E] :: struct { item: E }
 		Wrap[E] : Source[E] < { next :: fn(mut self) ?E { self.item } }
 		c := Count.{ n = 0 }

@@ -398,7 +398,7 @@ fn comp_selects_a_module() {
 			"use posix",
 			"use win32",
 			"os :: comp if BUILD_OS == :windows { win32 } else { posix }",
-			"main :: fn() { print(os.name()) with os { print(name()) } }",
+			"main :: fn() { print(os.name()); with os { print(name()) } }",
 		])
 		.lib("posix", [r#"pub name :: fn() string { "posix" }"#])
 		.lib("win32", [r#"pub name :: fn() string { "win32" }"#])

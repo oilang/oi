@@ -305,8 +305,8 @@ fn sums_as_errors() {
 				}
 				show :: fn(x: int) int {
 					pick(x) or match $ {
-						is A => { print($.m) 1 }
-						is B => { print($.n) 2 }
+						is A => { print($.m); 1 }
+						is B => { print($.n); 2 }
 					}
 				}
 				print(show(3))
@@ -323,7 +323,7 @@ fn sums_as_errors() {
 				inner :: fn() A!int { return A.{ m = "boom" } }
 				outer :: fn() E!int { inner()? + 1 }
 				print(outer() or match $ {
-					is A => { print($.m) 1 }
+					is A => { print($.m); 1 }
 					is B => 2,
 				})
 			"#},

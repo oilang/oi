@@ -5,7 +5,7 @@ fn trailing_fn() {
 	let src = indoc! {r#"
 		retry :: fn(n: int, f: fn() int) int { f() }
 		twice :: fn(f: fn() int) int { f() + f() }
-		run_test :: fn(name: string, f: fn() int) int { print(name) f() }
+		run_test :: fn(name: string, f: fn() int) int { print(name); f() }
 		print(retry(2) fn() int { 21 })
 		print(retry(2) { 22 })
 		x :: twice fn() int { 21 }
@@ -82,7 +82,7 @@ fn headers_stay_juxt_free() {
 #[test]
 fn call_then_literal_return() {
 	let src = indoc! {r#"
-		logret :: fn() string { print(1) "done" }
+		logret :: fn() string { print(1); "done" }
 		logret()
 	"#};
 	check(src, ["1", "done"]);
@@ -123,7 +123,7 @@ fn macro_block_arg() {
 fn juxt_enum_shorthand_arg() {
 	let src = indoc! {"
 		Phase :: enum { startup }
-		hook :: fn(p: Phase, f: fn() int) int { print(p) f() }
+		hook :: fn(p: Phase, f: fn() int) int { print(p); f() }
 		hook .startup { 21 }
 	"};
 	check(src, ["startup", "21"]);

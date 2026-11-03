@@ -39,7 +39,7 @@ fn comp_folds_aggregates() {
 fn comp_is_actually_comptime() {
 	let src = indoc! {r#"
 		print("run")
-		V :: comp { print("fold") 7 }
+		V :: comp { print("fold"); 7 }
 		print(V)
 	"#};
 	check(src, ["fold", "run", "7"]);
@@ -63,7 +63,7 @@ fn comp_match_on_a_type_param() {
 	let src = indoc! {r#"
 		f[T] :: fn() {
 			comp match T {
-				[]E => { first: E = 7 print("slice {first}") },
+				[]E => { first: E = 7; print("slice {first}") },
 				[N]E => print("{N} {E == bool}"),
 				string => print("str"),
 				_ => print("other"),
@@ -183,7 +183,7 @@ fn comp_folds_in_an_imported_module() {
 		.file("main.oi", ["module main", "use util", "print(util.f())"])
 		.file(
 			"util/lib.oi",
-			["module util", r#"pub f :: fn() int { comp { print("fold") 40 + 2 } }"#],
+			["module util", r#"pub f :: fn() int { comp { print("fold"); 40 + 2 } }"#],
 		)
 		.check(["fold", "42"]);
 }
@@ -195,7 +195,7 @@ fn comp_seeds_module_statics_before_use() {
 			"main.oi",
 			[
 				"use seenmod",
-				r#"V :: comp { seenmod.bump("k") seenmod.seen }"#,
+				r#"V :: comp { seenmod.bump("k"); seenmod.seen }"#,
 				"print(V)",
 			],
 		)

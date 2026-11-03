@@ -298,9 +298,9 @@ fn from() {
 			Shape :: enum { point triangle(f64, f64, f64) }
 			print(Color.from(1) or { Color.red }, Color.from(9) or .red, Color.from("blue") or { Color.red }, Color.from(:blue) or { Color.red })
 			print(Shape.from(1) or { Shape.point })
-			Color.from(9) or { print($) Color.red }
-			Color.from("purple") or { print($) Color.red }
-			Color.from(:purple) or { print($) Color.red }
+			Color.from(9) or { print($); Color.red }
+			Color.from("purple") or { print($); Color.red }
+			Color.from(:purple) or { print($); Color.red }
 		"#},
 		[
 			"green red blue blue",

@@ -77,7 +77,7 @@ fn type_errors() {
 #[test]
 fn and_maps_the_happy_path() {
 	let src = indoc! {r#"
-		half :: fn(n: int) ?int { if n % 2 == 0 { return n / 2 } none }
+		half :: fn(n: int) ?int { if n % 2 == 0 { return n / 2 }; none }
 		print(?int.(4) and $ * 10 or -1)
 		print(?int.(4) and half($) and half($) or -1)
 		print(?int.(6) and half($) and half($) or -1)

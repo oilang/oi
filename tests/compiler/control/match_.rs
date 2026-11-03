@@ -181,7 +181,7 @@ fn fallthrough() {
 	"#};
 	check(src, ["one", "two", "two", "three", "other"]);
 
-	fail("match 1 { 1 => { fallthrough 2 } _ => 3 }", "last statement");
+	fail("match 1 { 1 => { fallthrough; 2 } _ => 3 }", "last statement");
 	fail("match 1 { 1 => fallthrough }", "last arm");
 	fail("match (1, 2) { _ => fallthrough, (a, b) => a }", "binds names");
 }

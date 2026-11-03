@@ -484,7 +484,23 @@ where
 
 	// blocks
 	let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
-	block.define(brace(semi(stmt.clone()).repeated().collect::<Vec<_>>()).or(do_body));
+	let lines =
+		semi(stmt.clone())
+			.repeated()
+			.collect::<Vec<_>>()
+			.validate(move |stmts: Vec<Spanned<Expr>>, _, emitter| {
+				for pair in stmts.windows(2) {
+					let gap = src.get(pair[0].1.end - origin..pair[1].1.start - origin);
+					if !gap.is_none_or(|gap| gap.contains(['\n', ';'])) {
+						emitter.emit(Rich::custom(
+							pair[1].1,
+							"consecutive statements on a line must be separated by `;`",
+						));
+					}
+				}
+				stmts
+			});
+	block.define(brace(lines).or(do_body));
 
 	let p = Parsers {
 		access,

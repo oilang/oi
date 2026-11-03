@@ -362,7 +362,7 @@ fn pure_fn_values() {
 	fail(
 		[
 			"@pure",
-			"f :: fn(x: int) int { g := fn(y: int) int { print(y) y } g(x) }",
+			"f :: fn(x: int) int { g := fn(y: int) int { print(y); y }; g(x) }",
 			"f(1)",
 		],
 		"isn't allowed in a `@pure` fn",
