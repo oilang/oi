@@ -833,15 +833,23 @@ impl TypeCtx<'_> {
 				let lendable = matches!(
 					typ,
 					Typ::Int(_)
-						| Typ::UInt(_) | Typ::ISize
-						| Typ::USize | Typ::Float(_)
-						| Typ::Bool | Typ::Rune
-						| Typ::Array(_) | Typ::FixedArray(..)
-						| Typ::Map(..) | Typ::Struct(..)
+						| Typ::UInt(_)
+						| Typ::ISize
+						| Typ::USize
+						| Typ::Float(_)
+						| Typ::Bool
+						| Typ::Rune
+						| Typ::Array(_)
+						| Typ::FixedArray(..)
+						| Typ::Map(..)
+						| Typ::Struct(..)
 						| Typ::TupleStruct(..)
-						| Typ::Str | Typ::Enum(_)
-						| Typ::Sum(..) | Typ::Tuple(_)
-						| Typ::Ref(_) | Typ::Trait(_)
+						| Typ::Str
+						| Typ::Enum(_)
+						| Typ::Sum(..)
+						| Typ::Tuple(_)
+						| Typ::Ref(_)
+						| Typ::Trait(_)
 				);
 				if p.access == Access::Mut && !lendable {
 					let msg = "this type can't be a `mut` parameter";

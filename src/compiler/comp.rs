@@ -261,7 +261,8 @@ pub(crate) fn instantiate(
 			} else if let Expr::Ident(n)
 			| Expr::Bind {
 				name: n, value: None, ..
-			} = e && let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
+			} = e
+				&& let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
 			} else if let Expr::Bind {
@@ -269,7 +270,8 @@ pub(crate) fn instantiate(
 				typ: Some((claim, span)),
 				value: None,
 				..
-			} = e && let Some(te) = types.type_params.get(name).and_then(type_expr)
+			} = e
+				&& let Some(te) = types.type_params.get(name).and_then(type_expr)
 			{
 				let subject = Box::new((Expr::TypePat(te), *span));
 				*e = Expr::Is {

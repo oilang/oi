@@ -1040,10 +1040,11 @@ impl Program {
 			let m = self.modules.iter().find(|m| &m.name == module).unwrap();
 			let is_def = |q: &str| {
 				self.consts.contains_key(q)
-					|| is_macro(q) || self.items().any(|(_, i)| {
-					let i = &Expr::peel_meta(i).2.0;
-					i.def_name() == Some(q) || matches!(i, Expr::Bind { name, .. } if name == q)
-				})
+					|| is_macro(q)
+					|| self.items().any(|(_, i)| {
+						let i = &Expr::peel_meta(i).2.0;
+						i.def_name() == Some(q) || matches!(i, Expr::Bind { name, .. } if name == q)
+					})
 			};
 			let qualified = format!("{module}::{name}");
 			let found = (m.scope.env.get(name).or_else(|| m.scope.env.get(&format!("{name}!"))))

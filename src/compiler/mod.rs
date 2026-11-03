@@ -1654,7 +1654,8 @@ impl<M: Module> Compiler<M> {
 			let (sym, linkage) = self.symbol(&item.key);
 			// context-less fns
 			let foreign = self.exports.contains_key(&item.key)
-				|| is_c_fn || self.out.roots.contains(&item.key)
+				|| is_c_fn
+				|| self.out.roots.contains(&item.key)
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
 			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
 			let ctx = ctx.unwrap_or(Some(CONTEXT.into())).filter(|_| !foreign);

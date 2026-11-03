@@ -53,7 +53,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 					// type aliases
 					if !*mutable
-						&& typ.is_none() && let Some(v) = value
+						&& typ.is_none()
+						&& let Some(v) = value
 						&& let Some(te) = match &v.0 {
 							Expr::Call { name, args, .. } if name == "type" && args.len() == 1 => {
 								Some(TypeExpr::Infer(Box::new(args[0].clone())))
@@ -65,7 +66,8 @@ impl<'a, M: Module> Translator<'a, M> {
 								Some(TypeExpr::Value(v.clone()))
 							}
 							e => TypeExpr::from_expr(e),
-						} && let Ok(aliased) = self.resolve_local(&te, v.1)
+						}
+						&& let Ok(aliased) = self.resolve_local(&te, v.1)
 					{
 						let mut params = self.types.type_params.clone();
 						params.insert(name.clone(), aliased);

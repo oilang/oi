@@ -261,9 +261,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.dotted_key(m, field).map(|q| (field, q))
 				}
 				_ => None,
-			} && (self.types.named(n, value.1).is_ok()
-			|| self.funcs.contains_key(&q)
-			|| self.types.consts.map.contains_key(&q))
+			}
+			&& (self.types.named(n, value.1).is_ok()
+				|| self.funcs.contains_key(&q)
+				|| self.types.consts.map.contains_key(&q))
 		{
 			let reference = match self.types.type_params.contains_key(n) {
 				true => value.clone(),
