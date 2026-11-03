@@ -460,6 +460,13 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((tag, Typ::Int(64)));
 					}
 					if let Typ::Trait(tn) = &recv_typ {
+						let key = format!("{}.{method}", rc::base_name(tn));
+						if let Some(def) = self.world.generic_fns.get(&key).cloned()
+							&& !has_slot(self.types.trait_instance(tn).0.3, method)
+						{
+							let recv = Some(((recv_val, recv_typ.clone()), recv));
+							return self.call_generic(&key, &def, type_args, args, recv, expr.1);
+						}
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
 					}
 

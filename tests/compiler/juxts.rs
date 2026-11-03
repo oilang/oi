@@ -140,7 +140,6 @@ fn juxt_enum_shorthand_arg() {
 	check(src, ["startup", "21"]);
 }
 
-// a `.` after a newline is still a method chain, not a juxt arg
 #[test]
 fn newline_led_dot_stays_access() {
 	let src = indoc! {r#"
@@ -162,4 +161,14 @@ fn leading_arg_method_claims_block() {
 		retry 3 { 20 }
 	"};
 	check(src, ["[30, 40]", "13", "23"]);
+
+	let src = indoc! {r#"
+		Count :: struct { n: int }
+		Count : Iterator[int] < {
+			next :: fn(mut self) ?int { if self.n == 0 do return none; self.n -= 1; self.n }
+		}
+		it: Iterator[int] = Count.{ n = 6 }
+		print(it.next(), it.map { $ * 2 }.filter { $ > 2 }.collect())
+	"#};
+	check(src, "some.(5) [8, 6, 4]");
 }

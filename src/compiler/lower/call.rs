@@ -1038,8 +1038,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let bare = matches!(ret, Some((te, _)) if is_self(te));
 		let opt =
 			matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [te] if is_self(te)));
-		let leaks = !bare && !opt && matches!(ret, Some((te, _)) if mentions(te, "Self"));
-		if leaks || params.iter().skip(1).any(|p| mentions(&p.typ, "Self")) {
+		if !object_safe((method, params, ret)) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return fail(msg, span, "uses `Self` beyond the receiver");
 		}

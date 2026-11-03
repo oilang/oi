@@ -78,7 +78,7 @@ impl<'d> Infer<'d> {
 			{
 				self.unify(&args[0], found)
 			}
-			(TypeExpr::Generic(_, args), Typ::Struct(name, _) | Typ::Enum(name)) => {
+			(TypeExpr::Generic(_, args), Typ::Struct(name, _) | Typ::Enum(name) | Typ::Trait(name)) => {
 				let found = self.generics.instance_args(name).unwrap_or_default();
 				args.iter().zip(&found).try_for_each(|(arg, found)| self.unify(arg, found))
 			}

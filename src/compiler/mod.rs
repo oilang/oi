@@ -1103,6 +1103,7 @@ impl<M: Module> Compiler<M> {
 			else {
 				continue;
 			};
+
 			let supers = supers.iter().map(|s| scope.qualify_trait(s)).collect();
 			let item = (
 				supers,
@@ -1115,10 +1116,19 @@ impl<M: Module> Compiler<M> {
 				let msg = format!("duplicate trait `{name}`");
 				return fail(msg, *span, "already defined");
 			}
+
 			if scope.module == "core" {
 				self.world.core_traits.insert(name.clone());
 			}
+
+			// generic trait defaults
+			let has_body = |m: &&Spanned<Expr>| matches!(&m.0, Expr::Fn { body, .. } if !body.is_empty());
+			for m in methods.iter().filter(has_body).filter(|_| !type_params.is_empty()) {
+				let m = std::slice::from_ref(m);
+				self.register_fills(name, type_params, m, scope, &mut others, Fills::default())?;
+			}
 		}
+
 		for (scope, item) in program.items() {
 			match &item.0 {
 				Expr::StructDef {
@@ -1785,24 +1795,27 @@ impl<M: Module> Compiler<M> {
 			if is_hook_trait(&tn) {
 				continue;
 			}
-			let ((_, tparams, tfields, tmethods, _), sub) = base.trait_instance(&tn);
+			let ((_, tparams, tfields, tmethods, home), sub) = base.trait_instance(&tn);
 			if sub.is_empty() && tparams.iter().any(|p| p.default.is_none()) {
 				continue;
 			}
 
 			// an instance picks the claim whose sig fits
-			let types = base.with_type_params(&sub);
+			let types = base.with_type_params(&sub).with_scope(home);
 			let fill = |(n, params, ret): TraitFn| {
 				let key = format!("{typ}.{n}");
+				if !has_slot(tmethods, n) {
+					return Some(None);
+				}
 				if sub.is_empty() {
-					return funcs.get(&key);
+					return funcs.get(&key).map(Some);
 				}
 				let ret = ret.as_ref().map_or(Ok(Typ::unit()), |(te, sp)| types.resolve(te, *sp));
 				let want = (params.iter().skip(1).map(|p| types.param(&p.typ, p.span)).chain([ret]))
 					.collect::<Result<Vec<_>, _>>()
 					.ok()?;
 				let fits = |s: &FnSig| s.params.iter().skip(1).map(|p| access_peel(&p.typ)).chain([&s.ret]).eq(&want);
-				(funcs.iter().find(|(k, s)| k.starts_with(&format!("{key}#")) && fits(s))).map(|(_, s)| s)
+				(funcs.iter().find(|(k, s)| k.split('#').next() == Some(&key) && fits(s))).map(|(_, s)| Some(s))
 			};
 
 			let Some(methods) = trait_fns(tmethods).map(fill).collect::<Option<Vec<_>>>() else {
@@ -1836,7 +1849,7 @@ impl<M: Module> Compiler<M> {
 				desc.write_data_addr(off as u32, gv, 2);
 			}
 			let cell = base.named(&typ, Span::default())?.slots().is_none();
-			for (i, sig) in methods.iter().enumerate() {
+			for (i, sig) in methods.iter().enumerate().filter_map(|(i, sig)| sig.map(|s| (i, s))) {
 				self.out.wanted.push(sig.id);
 				let id = match cell && sig.access[0] != Access::Mut {
 					true => self.cell_thunk(sig.id, &format!("{typ}_{tn}#{i}")),

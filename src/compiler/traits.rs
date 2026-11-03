@@ -126,6 +126,24 @@ pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = Trait
 	})
 }
 
+// Whether an object can call it.
+pub(crate) fn object_safe((_, params, ret): TraitFn) -> bool {
+	let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
+	let boxable = |te: &TypeExpr| match te {
+		TypeExpr::Generic(o, a) if o == "Option" && matches!(&a[..], [te] if is_self(te)) => true,
+		te => is_self(te) || !mentions(te, "Self"),
+	};
+	ret.as_ref().is_none_or(|(te, _)| boxable(te)) && !params.iter().skip(1).any(|p| mentions(&p.typ, "Self"))
+}
+
+// Whether a method gets a vtable slot.
+pub(crate) fn has_slot(methods: &[Spanned<Expr>], method: &str) -> bool {
+	methods.iter().any(|m| {
+		matches!(&m.0, Expr::Fn { name, type_params, params, ret, .. }
+			if name == method && type_params.is_empty() && object_safe((name, params, ret)))
+	})
+}
+
 // Complete a fill's signature from the trait's declaration.
 // An empty, non-tuple param list means the header was omitted entirely.
 pub(crate) fn fill_from_decl(
