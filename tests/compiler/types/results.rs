@@ -284,3 +284,12 @@ fn bang_on_value_call_is_not() {
 	"#};
 	check(src, "false true");
 }
+
+#[test]
+fn cast_then_propagate() {
+	let src = indoc! {r#"
+		f :: fn() n: !int { n = 5; x := !int.(error("e"))?; x }
+		print(f())
+	"#};
+	check(src, r#"err.("e")"#);
+}

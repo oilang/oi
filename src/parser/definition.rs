@@ -792,6 +792,12 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					let target = (types::result_of(t, None), ts);
 					(Expr::Cast { target, args }, ex.span())
 				}
+				(Expr::Propagate(mut inner), _) if matches!(inner.0, Expr::Cast { .. }) => {
+					if let Expr::Cast { target: (t, _), .. } = &mut inner.0 {
+						*t = types::result_of(t.clone(), None);
+					}
+					(Expr::Propagate(inner), ex.span())
+				}
 				(
 					Expr::StructLit {
 						ref name,
