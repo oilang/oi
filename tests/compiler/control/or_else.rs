@@ -114,3 +114,24 @@ fn pipeline_is_a_try_scope() {
 	"};
 	fail(src, "cannot catch both `?T` and `!T`");
 }
+
+#[test]
+fn chains_through_fallible_bodies() {
+	let src = indoc! {r#"
+		find :: fn(id: int) ?int { if id == 1 { return 10 }; none }
+		print(find(2) or find(1) or 3)
+		print(find(1) or error("missing") or -1)
+		find(2) or error("missing") or { print($); -1 }
+	"#};
+	check(src, ["10", "10", "missing", "-1"]);
+}
+
+#[test]
+fn bare_name_step_hints_a_block() {
+	let src = indoc! {"
+		x: ?int = none
+		name := 3
+		x or name
+	"};
+	fail(src, "use `{ name }`");
+}

@@ -736,9 +736,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		};
 		let merge = self.b.create_block();
-		let mut join = Join::new("or", span, None);
 		let payload = self.copy_bind(payload, &inner);
-		self.join_branch(want, (payload, inner.clone()), &mut join, merge)?;
+		let happy_tail = self.b.create_block();
+		self.b.ins().jump(happy_tail, &[]);
+		self.b.seal_block(happy_tail);
 
 		let (var, err) = self.land(&catch)?;
 		self.b.switch_to_block(catch.block);
@@ -746,9 +747,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
 		let flow = self.branch(body, want.then_some(&inner))?;
 		self.dollar = saved_dollar;
-		if let Some(vt) = flow {
+		let target = match &flow {
+			Some((_, t)) if !want || *t == inner => inner.clone(),
+			Some((_, t)) if *t == Typ::Error => self.types.core_enum(role::RESULT, &[inner.clone(), Typ::Error]),
+			Some((_, t)) if self.fallible_split(t).is_some_and(|(i, _)| i == inner) => t.clone(),
+			_ => inner.clone(),
+		};
+		let seed = self.b.declare_var(cl_type(&target, self.int));
+		let mut join = Join::new("or", span, Some((seed, target.clone())));
+		if let Some((v, t)) = flow {
+			let vt = self.coerce(v, &t, &target, span)?;
 			self.join_branch(want, vt, &mut join, merge)?;
 		}
+
+		self.b.switch_to_block(happy_tail);
+		let happy = self.coerce(payload, &inner, &target, span)?;
+		self.join_branch(want, happy, &mut join, merge)?;
 
 		if !want {
 			self.b.switch_to_block(merge);

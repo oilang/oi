@@ -59,20 +59,6 @@ fn pipe(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> 
 // A juxtaposed leading literal and/or trailing fn.
 type Juxt = (Option<Spanned<Expr>>, Option<Spanned<Expr>>);
 
-// Wrap a value and `or` body into an `OrElse`.
-fn or_else((value, body): (Spanned<Expr>, Option<Vec<Spanned<Expr>>>), span: Span) -> Spanned<Expr> {
-	match body {
-		Some(body) => (
-			Expr::OrElse {
-				value: Box::new(value),
-				body,
-			},
-			span,
-		),
-		None => value,
-	}
-}
-
 // The core expr/atom/pratt grammar.
 pub(super) fn definition<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
@@ -985,8 +971,10 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				let value = Box::new(value);
 				(Expr::AndThen { value, body }, ex.span())
 			})
-			.then(or_tail.clone().or_not())
-			.map_with(|pair, ex| or_else(pair, ex.span()))
+			.foldl_with(or_tail.clone().repeated(), |value, body, ex| {
+				let value = Box::new(value);
+				(Expr::OrElse { value, body }, ex.span())
+			})
 			.with_ctx(trails)
 			.boxed()
 	};

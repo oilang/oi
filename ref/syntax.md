@@ -1757,6 +1757,9 @@ main :: fn() {
 	# or block can yield a fallback value of the same type
 	user := repo.find_user(7) or { User.{ name = "guest" } }
 
+	# or a `?T`/`!T` to try next, which lets `or` chain
+	cfg := local_config() or global_config() or Config.{}
+
 	# check error type in the or block
 	file := fs.open(path) or {
 		if $ is fs.NotFoundError { return create_default($.path) }

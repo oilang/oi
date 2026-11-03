@@ -873,11 +873,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (params, ret) = match typ {
 			Typ::Fn(params, ret) | Typ::Closure(params, ret, _) => (params, &**ret),
 			typ => {
-				return fail(
+				let diag = fail(
 					format!("`{name}` is not callable"),
 					span,
 					format!("this is {typ}, not a function"),
 				);
+				return match args {
+					[(Expr::Dollar, at)] if *at == span => {
+						diag.map_err(|d| d.with_note(format!("a bare name here calls it on `$`, use `{{ {name} }}`")))
+					}
+					_ => diag,
+				};
 			}
 		};
 		if !pure {
