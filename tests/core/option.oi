@@ -1,0 +1,5 @@
+test! "filter" {
+	x: ?int = 12
+	assert! x.filter { $ > 9 } == 12
+	assert! x.filter { $ > 20 } == none
+}

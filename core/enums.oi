@@ -11,6 +11,13 @@ pub Result[T, E] :: enum {
 	err(E)
 }
 
+Option[T] :< {
+	## The value if the predicate holds.
+	pub filter :: fn(self; predicate: fn(T) bool) ?T {
+		if (value := self) && predicate(value) do value
+	}
+}
+
 Result[T, E] :< {
 	## The ok value, discarding any error.
 	pub ok :: fn(self) ?T {
