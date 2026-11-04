@@ -1193,6 +1193,9 @@ main :: fn() {
 	# `;` is a stronger comma, and can be used to separate rows in multi-dimensional arrays
 	identity: [2][2]int = .[1 0; 0 1]
 
+	# make array with designated initializers
+	codes := string.[0 = "ok", 5 = "err"] # [6]string
+
 	# a fixed array coerces (and makes copy) to `[]T` where one is expected
 	roster: []string = stooges
 
@@ -1496,7 +1499,10 @@ main :: fn() {
 
 	# control flow headers share scope with their bodies
 	if (n := count()) > 9 do print(n) else do print(n, "is small")
+	# `;` sequences clauses, `,` requires every clause in the group to hold
 	if { n := count(); n > 9 } do print(n)
+	if n := count(); n > 9 do print(n)
+	if .some.(a) := f(), a > 2 do print(a)
 
 	# `do` takes a single statement instead of a block, anywhere a block is expected
 	if i == 2 do print("two")
@@ -1614,10 +1620,21 @@ main :: fn() {
 	loop b in "hi" {
 		print(b)
 	}
-	# map entries are `(K, V)` tuples
-	loop (k, v) in ["one" = 1, "two" = 2] {
-		print("{k}={v}")
-	}
+
+	# a second name is the key
+	loop x, i in [2 4 6] { print(i, x) }
+	loop v, k in ["one" = 1, "two" = 2] { print("{k}={v}") }
+	loop _, k in m { print(k) }
+	loop r, i in "h☃i" { print(i, r) } # 0 h, 1 ☃, 4 i
+
+	# a header is `;`-separated groups of `,`-separated clauses
+	# `,` steps every clause in the group each round, and the round ends when any clause ends
+	loop x in xs, y in ys { print(x, y) } # zip, shortest wins
+	loop x in xs, y := q.pop() { }        # until pop misses
+	loop x in xs, x < limit { }           # until the test fails
+	# `;` nests. a comprehension over a nest is flat
+	grid :: loop y in ..h; x in ..w do (x, y) # [](int, int)
+	# `break` leaves the whole header, `continue` advances the innermost group
 
 	# `break` can carry a value out of the loop
 	# an infinite loop always breaks to get out, so it yields `T`
