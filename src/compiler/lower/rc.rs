@@ -754,10 +754,10 @@ fn opt_ref(typ: &Typ) -> bool {
 	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[^")))
 }
 
-// Whether a type is a `?^T` or `?fn`, whose none is a null pointer.
+// Whether a type is a `?^T`, `?fn` or `?Error`, whose none is a null pointer.
 pub(super) fn opt_niche(typ: &Typ) -> bool {
 	let Typ::Enum(n) = typ else { return false };
 	let arg = n.strip_prefix(role::OPTION).and_then(|a| a.strip_prefix('['));
 	let bare = arg.and_then(|a| a.split(' ').find(|w| !w.starts_with('@')));
-	opt_ref(typ) || bare.is_some_and(|w| w.starts_with("fn("))
+	opt_ref(typ) || bare.is_some_and(|w| w.starts_with("fn(") || w == "Error]")
 }

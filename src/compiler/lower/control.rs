@@ -1512,16 +1512,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (flag, flag_typ) = match err {
 				None => (tag, Typ::Bool),
 				Some(err) => {
-					let flag = self.call_alloc(2);
-					self.st(flag, 0, tag);
-					self.when(tag, |s| {
-						let e = s.ld_typ(val, 8, &err);
-						let e = s.copy_in(e, &err);
-						s.st(flag, 8, e)
-					});
-					let flag_typ = self.types.core_enum(role::OPTION, &[err]);
-					self.temp(flag, &flag_typ);
-					(flag, flag_typ)
+					let flag_typ = self.types.core_enum(role::OPTION, std::slice::from_ref(&err));
+					if rc::opt_niche(&flag_typ) {
+						let (e, none) = (self.ld_typ(val, 8, &err), self.b.ins().iconst(self.int, 0));
+						(self.b.ins().select(tag, e, none), flag_typ)
+					} else {
+						let flag = self.call_alloc(2);
+						self.st(flag, 0, tag);
+						self.when(tag, |s| {
+							let e = s.ld_typ(val, 8, &err);
+							let e = s.copy_in(e, &err);
+							s.st(flag, 8, e)
+						});
+						self.temp(flag, &flag_typ);
+						(flag, flag_typ)
+					}
 				}
 			};
 			self.bind_pat(value_pat, payload, &inner, mutable)?;

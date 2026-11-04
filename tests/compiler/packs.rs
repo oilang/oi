@@ -142,3 +142,23 @@ fn error_slots() {
 	"#};
 	check(src, ["done 1", "abort -2 full", r#"1 none -2 some.("full")"#]);
 }
+
+#[test]
+fn fallible_returns_allocate_nothing_on_success() {
+	let src = indoc! {"
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc { count = count + 1 }
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		open :: fn(k: int) (n: int, err: ?Error) { k, none }
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			a := open(1) or 0
+			b, err := open(2)
+			print(a + b, count)
+		}
+	"};
+	check(src, "3 0");
+}
