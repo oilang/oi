@@ -19,3 +19,17 @@ fn comma_lists_destructure_and_build_tuples() {
 fn name_list_needs_a_tuple_value() {
 	fail("lo, hi := 0", "chain `a := b := ...`");
 }
+
+#[test]
+fn two_names_destructure_option_and_result() {
+	let src = indoc! {r#"
+		find :: fn(n: int) ?string { if n > 0 do "hit" else do none }
+		parse :: fn(n: int) !int { if n > 0 do n else do error("bad") }
+		s, ok := find(1)
+		e, gone := find(0)
+		n, err := parse(7)
+		m, bad := parse(0)
+		print(s, ok, e == "", gone, n, err == none, m, bad != none)
+	"#};
+	check(src, "hit true true false 7 true 0 true");
+}

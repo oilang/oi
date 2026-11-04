@@ -1454,6 +1454,34 @@ impl<'a, M: Module> Translator<'a, M> {
 		typ: &Typ,
 		mutable: Option<bool>,
 	) -> Result<(), Diagnostic> {
+		// two names on a propagator split the payload from its ok flag or error
+		if let Expr::Tuple(names) = &pat.0
+			&& let [(_, value_pat), (_, flag_pat)] = names.as_slice()
+			&& let Some((inner, err)) = self.fallible_split(typ)
+		{
+			let tag = self.enum_tag(typ, val);
+			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+			let payload = self.opt_payload(val, typ, &inner, 8);
+			let zero = self.zero_or_err(&inner, pat.1)?;
+			let payload = self.b.ins().select(happy, payload, zero);
+			let (flag, flag_typ) = match err {
+				None => (tag, Typ::Bool),
+				Some(err) => {
+					let flag = self.call_alloc(2);
+					self.st(flag, 0, tag);
+					self.when(tag, |s| {
+						let e = s.ld_typ(val, 8, &err);
+						let e = s.copy_in(e, &err);
+						s.st(flag, 8, e)
+					});
+					let flag_typ = self.types.core_enum(role::OPTION, &[err]);
+					self.temp(flag, &flag_typ);
+					(flag, flag_typ)
+				}
+			};
+			self.bind_pat(value_pat, payload, &inner, mutable)?;
+			return self.bind_pat(flag_pat, flag, &flag_typ, mutable);
+		}
 		let parts = !matches!(&pat.0, Expr::Ident(_));
 		let binds = match &pat.0 {
 			Expr::Ident(name) if name == "_" => return Ok(()),
