@@ -90,6 +90,28 @@ fn match_destructure() {
 }
 
 #[test]
+fn match_sub_patterns() {
+	let src = indoc! {r#"
+		print(match 1, 0 {
+			(0, 0) => "both",
+			(_, 0) => "b",
+			_ => "none"
+		})
+		o: ?(int, int) = .some.((7, 2))
+		match o {
+			.some.((0, y)) => print(y),
+			.some.((x, 1..3)) => print("near", x),
+			_ => print("other")
+		}
+	"#};
+	check(src, ["b", "near 7"]);
+	fail(
+		"n: ?int = .none match n { .some.(0) => 1, .none => 2 }",
+		"missing: some",
+	);
+}
+
+#[test]
 fn match_errors() {
 	fail(r#"match "s" { 0..5 => 1, _ => 2 }"#, "integer subject");
 	fail("match (1, 2) { (a, b, c) => a, }", "pattern binds 3 names");

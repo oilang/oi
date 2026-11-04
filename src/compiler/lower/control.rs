@@ -434,7 +434,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// ensure match covers every variant when applicable
 		if st.is_enumish() {
-			let pats = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
+			let unguarded = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
+			let pats = || unguarded().filter(|p| !refutable_subs(p));
 			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all && st == Typ::Any {
 				return Err(Diagnostic::new("a match on `any` needs `else`", span.into_range()));
@@ -478,12 +479,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(arm_entries[i]);
 
 			// bindings
-			let (alone, mut binds) = (arm.patterns.len() == 1, None);
+			let (alone, mut binds) = (arm.patterns.len() == 1, vec![]);
 			for (j, pat) in arm.patterns.iter().enumerate() {
-				let (hit, found) = self.pat_test(pat, (sv, &st), alone)?;
-				binds = found;
 				let last = j + 1 == arm.patterns.len();
 				let next = if last { miss } else { self.b.create_block() };
+				let (hit, found) = self.pat_test(pat, (sv, &st), alone, next)?;
+				binds = found;
 				self.b.ins().brif(hit, arm_body, &[], next, &[]);
 				if !last {
 					self.b.seal_block(next);
@@ -498,7 +499,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				[(Expr::Is { typ, .. }, _)] => self.unwrap_is(subject, typ, true),
 				_ => None,
 			};
-			let binds_names = binds.as_ref().is_some_and(|(_, names): &ArmBinds| !names.is_empty());
+			let binds_names = binds.iter().any(|(_, names)| !names.is_empty());
 			if i > 0 && falls(&arms[i - 1]) && (unwrapping.is_some() || binds_names) {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");
@@ -521,7 +522,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					s.withs.push((name.clone(), None));
 				}
-				if let Some(((base, base_typ), list)) = &binds {
+				for ((base, base_typ), list) in &binds {
 					for (name, typ, off) in list {
 						let field = s.load_bind(*base, base_typ, typ, *off, span);
 						let field = s.copy_bind(field, typ);
@@ -580,10 +581,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		pat: &Spanned<Expr>,
 		(sv, st): (Value, &Typ),
 		alone: bool,
-	) -> Result<(Value, Option<ArmBinds>), Diagnostic> {
+		miss: Block,
+	) -> Result<(Value, Vec<ArmBinds>), Diagnostic> {
 		let yes = |s: &mut Self| s.b.ins().iconst(types::I8, 1);
-		let subject = |binds| alone.then(|| ((sv, st.clone()), binds));
-		Ok(match &pat.0 {
+		let subject = |binds| Some(((sv, st.clone()), binds));
+		let (pat, subs) = &split_subs(pat);
+		let (mut hit, found) = match &pat.0 {
 			Expr::Ident(w) if w == "_" => (yes(self), None),
 			_ if let Some(bounds) = pat.0.bounds() => (self.range_pattern(sv, st, bounds, pat.1)?, None),
 			_ if st.is_enumish() => {
@@ -640,7 +643,25 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				(self.emit_eq(sv, pv, st), None)
 			}
-		})
+		};
+
+		// test each sub-pattern's field once the outer pattern holds
+		let mut out = vec![];
+		if let Some((base, binds)) = found {
+			let (hidden, named): (Vec<_>, _) = binds.into_iter().partition(|(name, ..)| name.starts_with("$sub"));
+			out.push((base.clone(), named));
+			for ((_, field_typ, off), sub) in hidden.iter().zip(subs) {
+				let holds = self.b.create_block();
+				self.b.ins().brif(hit, holds, &[], miss, &[]);
+				self.b.seal_block(holds);
+				self.b.switch_to_block(holds);
+				let field = self.load_bind(base.0, &base.1, field_typ, *off, sub.1);
+				let (sub_hit, sub_binds) = self.pat_test(sub, (field, field_typ), alone, miss)?;
+				hit = sub_hit;
+				out.extend(sub_binds);
+			}
+		}
+		Ok((hit, if alone { out } else { vec![] }))
 	}
 
 	// Write (v, t) into the shared result variable and jump to `merge`.
@@ -1601,6 +1622,28 @@ pub(super) fn place_key(e: &Expr) -> Option<String> {
 		Expr::Field { tuple, field } => Some(format!("{}.{field}", place_key(&tuple.0)?)),
 		_ => None,
 	}
+}
+
+// Swaps a pattern's sub-patterns for hidden names, returning them in order.
+fn split_subs(pat: &Spanned<Expr>) -> (Spanned<Expr>, Vec<Spanned<Expr>>) {
+	let (mut pat, mut subs) = (pat.clone(), vec![]);
+	let slots = match &mut pat.0 {
+		Expr::Tuple(elems) => elems.iter_mut().map(|(_, e)| e).collect(),
+		Expr::Array(elems) => elems.iter_mut().collect(),
+		Expr::EnumShorthand { args, .. } if !matches!(&args[..], [(Expr::Record(_), _)]) => args.iter_mut().collect(),
+		_ => vec![],
+	};
+	for slot in slots.into_iter().filter(|e| !matches!(e.0, Expr::Ident(_))) {
+		let hidden = (Expr::Ident(format!("$sub{}", subs.len())), slot.1);
+		subs.push(std::mem::replace(slot, hidden));
+	}
+	(pat, subs)
+}
+
+// Whether any sub-pattern can fail to match.
+fn refutable_subs(pat: &Spanned<Expr>) -> bool {
+	let destructures = |sub: &Spanned<Expr>| matches!(sub.0, Expr::Tuple(_) | Expr::StructLit { .. });
+	split_subs(pat).1.iter().any(|sub| !destructures(sub) || refutable_subs(sub))
 }
 
 fn falls(arm: &MatchArm) -> bool {
