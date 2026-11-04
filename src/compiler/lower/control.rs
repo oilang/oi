@@ -670,8 +670,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// A propagator payload, and the error type if it's a Result.
+	// A propagator payload, and the error type if it's a Result or partial pack.
 	pub(super) fn fallible_split(&self, typ: &Typ) -> Option<(Typ, Option<Typ>)> {
+		if let (Some((lead, opt)), Typ::Tuple(fields)) = (self.trailing(typ), typ) {
+			let payload = match &fields[..lead] {
+				[(_, one)] => one.clone(),
+				many => Typ::Tuple(many.to_vec()),
+			};
+			return Some((payload, self.types.option_inner(opt)));
+		}
 		let res = self.types.result_parts(typ).map(|(ok, err)| (ok, Some(err)));
 		res.or_else(|| Some((self.types.option_inner(typ)?, None)))
 	}
@@ -722,7 +729,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (happy_block, sad_block) = self.fork(is_happy);
 				self.b.switch_to_block(sad_block);
 				let err = match err {
-					Some(e) => (self.ld_typ(val, 8, &e), e),
+					Some(e) => (self.flow_err(val, &typ, &e), e),
 					None => self.unit_value(),
 				};
 				self.throw(&mut catch, err, value.1)?;
@@ -774,7 +781,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A some payload, moved out of an owned box if affine.
 	fn take_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
-		let payload = self.opt_payload(val, typ, inner, 8);
+		let payload = self.flow_payload(val, typ, inner);
 		if !(self.is_affine(inner) && self.enum_box(typ) && self.temps.contains_key(&val)) {
 			return payload;
 		}
@@ -844,15 +851,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		from: Option<&FnSig>,
 		span: Span,
 	) -> Result<Value, Diagnostic> {
-		let Some(((_, err), (_, target_err))) = self.types.result_parts(typ).zip(self.types.result_parts(target))
+		let Some(((_, Some(err)), (_, Some(target_err)))) = self.fallible_split(typ).zip(self.fallible_split(target))
 		else {
 			return Ok(self.make_option(target, None));
 		};
-		let e = self.ld_word(val, 8);
+		let e = self.flow_err(val, typ, &err);
 		let e = match from {
 			Some(sig) => self.emit_call(sig, &[e]).0,
 			None => self.coerce(e, &err, &target_err, span)?.0,
 		};
+		if let Some((lead, opt)) = self.trailing(target) {
+			let (pack, some) = (self.zero(target), self.make_option(opt, Some(e)));
+			self.untemp(some);
+			self.st(pack, lead as i32 * 8, some);
+			return Ok(pack);
+		}
 		let variants = self.variants_of(target);
 		Ok(self.make_enum(&variants, 1, &[e]))
 	}
@@ -878,7 +891,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut join = Join::new("and", span, None);
 
 		self.b.switch_to_block(happy_block);
-		let payload = self.opt_payload(val, &typ, &inner, 8);
+		let payload = self.flow_payload(val, &typ, &inner);
 		let saved_dollar = self.dollar.replace((payload, inner));
 		let flow = self.branch(body, None);
 		self.dollar = saved_dollar;
@@ -932,7 +945,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut from = None;
 		let declared = self.ret.as_ref().filter(|_| self.catch.is_none()).map(|(t, _)| t.clone());
 		let target = match &declared {
-			Some(d) if is_result && let Some((t, e)) = self.types.result_parts(d) => {
+			Some(d) if is_result && let Some((t, Some(e))) = self.fallible_split(d) => {
 				from = self.err_into(
 					&err_typ,
 					&e,
@@ -949,9 +962,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			None => inner.clone(),
 		};
-		let target_typ = match is_result {
-			true => self.types.core_enum(role::RESULT, &[target.clone(), target_err.clone()]),
-			false => self.types.core_enum(role::OPTION, std::slice::from_ref(&target)),
+		let target_typ = match (is_result, declared) {
+			(true, Some(d)) if self.trailing(&d).is_some() => d,
+			(true, _) => self.types.core_enum(role::RESULT, &[target.clone(), target_err.clone()]),
+			(false, _) => self.types.core_enum(role::OPTION, std::slice::from_ref(&target)),
 		};
 
 		let tag = self.enum_tag(&typ, val);
@@ -962,14 +976,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(sad_block);
 		if let Some(mut catch) = self.catch.take() {
 			let err = match is_result {
-				true => (self.ld_word(val, 8), err_typ.clone()),
+				true => (self.flow_err(val, &typ, &err_typ), err_typ.clone()),
 				false => self.unit_value(),
 			};
 			self.throw(&mut catch, err, span)?;
 			self.catch = Some(catch);
 		} else if panic_in_main {
 			let msg = if is_result {
-				let e = self.ld_word(val, 8);
+				let e = self.flow_err(val, &typ, &err_typ);
 				self.derived_str(e, &err_typ, false)
 			} else {
 				self.str_const("unwrapped `none`")
@@ -981,7 +995,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		self.b.switch_to_block(happy_block);
-		let payload = self.opt_payload(val, &typ, &inner, 8);
+		let payload = self.flow_payload(val, &typ, &inner);
 		Ok((payload, inner))
 	}
 
@@ -1120,17 +1134,27 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// `v := opt` re-matches `v` to bind the payload
-	fn unwrap_arm(&self, cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Option<(Spanned<Expr>, MatchArm)> {
+	// `v := opt` re-matches `v` to bind the payload, and a pack's `v` views its leading slots.
+	fn unwrap_arm(&mut self, cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Option<(Spanned<Expr>, MatchArm)> {
 		let Expr::Bind { name, .. } = &cond.0 else { return None };
-		self.fallible_split(&self.vars.get(name)?.typ)?;
-		let id = (Expr::Ident(name.clone()), cond.1);
+		let local = self.vars.get(name)?.clone();
+		let (inner, _) = self.fallible_split(&local.typ)?;
+		let (mut id, mut pat) = (Expr::Ident(name.clone()), Expr::Ident(name.clone()));
+		if self.trailing(&local.typ).is_some() {
+			let pack = self.read_local(&local);
+			let tag = self.enum_tag(&local.typ, pack);
+			let payload = self.flow_payload(pack, &local.typ, &inner);
+			self.hidden_local(name.clone(), payload, inner);
+			let flag = format!("$err{}", self.vars.len());
+			self.hidden_local(flag.clone(), tag, Typ::Int(64));
+			(id, pat) = (Expr::Ident(flag), Expr::Int(0));
+		}
 		let arm = MatchArm {
-			patterns: vec![id.clone()],
+			patterns: vec![(pat, cond.1)],
 			body: body.to_vec(),
 			..Default::default()
 		};
-		Some((id, arm))
+		Some(((id, cond.1), arm))
 	}
 
 	// A labeled block.
@@ -1457,7 +1481,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// two names on a propagator split the payload from its ok flag or error
 		if let Expr::Tuple(names) = &pat.0
 			&& let [(_, value_pat), (_, flag_pat)] = names.as_slice()
-			&& let Some((inner, err)) = self.fallible_split(typ)
+			&& let Some((inner, err)) = self.fallible_split(typ).filter(|_| self.trailing(typ).is_none())
 		{
 			let tag = self.enum_tag(typ, val);
 			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);

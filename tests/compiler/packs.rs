@@ -90,3 +90,27 @@ fn sum_cast_extracts_member_or_zero() {
 	"#};
 	check(src, ["3", "x  none P.{x = 0} false"]);
 }
+
+#[test]
+fn partial_packs_flow_through_their_error_slot() {
+	let src = indoc! {r#"
+		open :: fn(k: int) (n: int, err: ?Error) { if k > 0 do k, none else do 0, error("shut") }
+		pair :: fn(k: int) (a, b: int, err: ?Error) { if k > 0 do k, -k, none else do 0, 0, error("odd") }
+		twice :: fn(k: int) (n: int, err: ?Error) { open(k)? * 2, none }
+		strict :: fn(k: int) !int { open(k)? }
+		if n := open(2) do print(n)
+		if p := pair(3) do print(p.0, p.1)
+		pair(4) and print($.0 + $.1)
+		n, err := twice(0)
+		print(open(5)?, open(0) or 7, twice(4), n, err, strict(0))
+	"#};
+	check(
+		src,
+		[
+			"2",
+			"3 -3",
+			"0",
+			r#"5 7 (n = 8, err = none) 0 some.("shut") err.("shut")"#,
+		],
+	);
+}

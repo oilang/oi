@@ -544,6 +544,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.ld_word(val, 0)
 		} else if *typ == Typ::TypeId {
 			val
+		} else if let Some((lead, opt)) = self.trailing(typ) {
+			let slot = self.ld_typ(val, lead as i32 * 8, opt);
+			self.enum_tag(opt, slot)
 		} else if rc::opt_niche(typ) {
 			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, 0);
 			self.b.ins().uextend(self.int, nz)
@@ -637,6 +640,32 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else {
 			self.ld_typ(val, off, inner)
 		}
+	}
+
+	// A partial pack's leading slot count and trailing `?E`.
+	pub(super) fn trailing<'t>(&self, typ: &'t Typ) -> Option<(usize, &'t Typ)> {
+		let Typ::Tuple(fields) = typ else { return None };
+		let [_, .., (_, last)] = &fields[..] else { return None };
+		let err = self.types.option_inner(last)?;
+		(err == Typ::Error || self.open_error(&err)).then_some((fields.len() - 1, last))
+	}
+
+	// The happy payload, a pack's leading slots viewed in place.
+	pub(super) fn flow_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
+		match self.trailing(typ) {
+			Some((1, _)) => self.ld_typ(val, 0, inner),
+			Some(_) => val,
+			None => self.opt_payload(val, typ, inner, 8),
+		}
+	}
+
+	// The error of a `!T` or partial pack.
+	pub(super) fn flow_err(&mut self, val: Value, typ: &Typ, err: &Typ) -> Value {
+		let Some((lead, opt)) = self.trailing(typ) else {
+			return self.ld_typ(val, 8, err);
+		};
+		let slot = self.ld_typ(val, lead as i32 * 8, opt);
+		self.opt_payload(slot, opt, err, 8)
 	}
 
 	// Build a variant value.
