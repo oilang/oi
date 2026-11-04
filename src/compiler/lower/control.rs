@@ -1630,7 +1630,13 @@ fn split_subs(pat: &Spanned<Expr>) -> (Spanned<Expr>, Vec<Spanned<Expr>>) {
 	let slots = match &mut pat.0 {
 		Expr::Tuple(elems) => elems.iter_mut().map(|(_, e)| e).collect(),
 		Expr::Array(elems) => elems.iter_mut().collect(),
-		Expr::EnumShorthand { args, .. } if !matches!(&args[..], [(Expr::Record(_), _)]) => args.iter_mut().collect(),
+		Expr::StructLit { fields, .. } => {
+			fields.iter_mut().filter(|(name, _)| name.is_some()).map(|(_, e)| e).collect()
+		}
+		Expr::EnumShorthand { args, .. } => match &mut args[..] {
+			[(Expr::Record(entries), _)] => entries.iter_mut().map(|(_, e)| e).collect(),
+			args => args.iter_mut().collect(),
+		},
 		_ => vec![],
 	};
 	for slot in slots.into_iter().filter(|e| !matches!(e.0, Expr::Ident(_))) {

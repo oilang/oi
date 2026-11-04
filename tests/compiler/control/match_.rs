@@ -109,6 +109,25 @@ fn match_sub_patterns() {
 		"n: ?int = .none match n { .some.(0) => 1, .none => 2 }",
 		"missing: some",
 	);
+
+	let src = indoc! {r#"
+		User :: struct { name: string, age: int }
+		greet :: fn(u: User) string do match u {
+			User.{ age = 0..18 } => "minor: {u.name}",
+			_ => "adult"
+		}
+		print(greet(User.{ name = "kid", age = 9 }), greet(User.{ name = "old", age = 40 }))
+		Shape :: enum {
+			circle { radius: int }
+			point
+		}
+		match Shape.circle.{ radius = 0 } {
+			.circle.{ radius = 0 } => "dot",
+			.circle.{ radius } => "{radius}",
+			.point => ""
+		}
+	"#};
+	check(src, ["minor: kid adult", "dot"]);
 }
 
 #[test]
