@@ -129,7 +129,7 @@ pub(super) struct Parsers<'token, I: Tokens<'token>> {
 	pub(super) params: P<'token, I, (Vec<Param>, bool)>,
 	pub(super) param_hole: P<'token, I, Param>,
 	pub(super) ret: P<'token, I, Option<Spanned<TypeExpr>>>,
-	pub(super) fn_ret: P<'token, I, (Option<Bound>, Option<Spanned<TypeExpr>>)>,
+	pub(super) fn_ret: P<'token, I, (Vec<Param>, Option<Spanned<TypeExpr>>)>,
 	pub(super) param_type: P<'token, I, (TypeExpr, Option<Spanned<Expr>>, bool)>,
 	pub(super) annotation: P<'token, I, Spanned<Expr>>,
 	pub(super) annotations: P<'token, I, Vec<Spanned<Expr>>>,
@@ -179,32 +179,36 @@ fn split_members(members: Vec<Member>) -> (Vec<Param>, Vec<Spanned<Expr>>, Vec<E
 }
 
 // Handle named results.
-type Bound = (String, (Spanned<TypeExpr>, Option<Spanned<Expr>>));
-fn named_ret(bound: Option<Bound>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec<Spanned<Expr>> {
-	let Some((name, (typ, default))) = bound else {
-		return body;
+fn named_ret(slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec<Spanned<Expr>> {
+	let value = match &slots[..] {
+		[] => return body,
+		[slot] => Expr::Ident(slot.name.clone()),
+		_ => Expr::Tuple(slots.iter().map(|s| (None, (Expr::Ident(s.name.clone()), s.span))).collect()),
 	};
-	body.iter_mut().for_each(|e| bind_return(e, &name));
-	let decl = Expr::Bind {
-		mutable: true,
-		name,
-		typ: Some(typ),
-		value: default.map(Box::new),
-	};
-	body.insert(0, (decl, span));
+	body.iter_mut().for_each(|e| bind_return(e, &value));
+	let decls = slots.into_iter().map(|s| {
+		let decl = Expr::Bind {
+			mutable: true,
+			name: s.name,
+			typ: Some((s.typ, s.span)),
+			value: s.default.map(Box::new),
+		};
+		(decl, span)
+	});
+	body.splice(0..0, decls);
 	body
 }
 
 // Bind return variables for named results.
-fn bind_return((e, span): &mut Spanned<Expr>, name: &str) {
+fn bind_return((e, span): &mut Spanned<Expr>, value: &Expr) {
 	match e {
 		Expr::Fn { .. } | Expr::AnonFn { .. } | Expr::MacroDef { .. } | Expr::Quote(_) => return,
-		Expr::Return(v @ None) => *v = Some(Box::new((Expr::Ident(name.into()), *span))),
+		Expr::Return(v @ None) => *v = Some(Box::new((value.clone(), *span))),
 		_ => {}
 	}
 	e.for_children(|c| match c {
-		Child::List(list) => list.iter_mut().for_each(|x| bind_return(x, name)),
-		Child::One(x) => bind_return(x, name),
+		Child::List(list) => list.iter_mut().for_each(|x| bind_return(x, value)),
+		Child::One(x) => bind_return(x, value),
 	});
 }
 
@@ -416,7 +420,28 @@ where
 		.ignore_then(spanned(type_expr.clone()))
 		.then(just(Token::Assign).ignore_then(expr.clone()).or_not());
 	let bound_ret = bind_default.clone().map_with(|(typ, default), ex| ((typ, ex.span()), default));
-	let fn_ret = ident().then(typed.or(bound_ret)).or_not().then(ret.clone()).boxed();
+	let named = ident().then(typed.or(bound_ret)).map(|(name, ((typ, at), default))| {
+		vec![Param {
+			default,
+			..Param::new(name, typ, at)
+		}]
+	});
+
+	// treat a list with an untyped slot as a tuple type
+	let slots = params.clone().map(|(slots, _)| slots);
+	let slots = slots.filter(|slots| slots.iter().all(|s| !matches!(&s.typ, TypeExpr::Name(n) if n == "$?")));
+	let fn_ret = named
+		.or(slots)
+		.map_with(|slots, ex| {
+			let fields = slots.iter().map(|s| (Some(s.name.clone()), s.typ.clone())).collect();
+			let typ = match &slots[..] {
+				[slot] => (slot.typ.clone(), slot.span),
+				_ => (TypeExpr::Tuple(fields), ex.span()),
+			};
+			(slots, Some(typ))
+		})
+		.or(ret.clone().map(|ret| (vec![], ret)))
+		.boxed();
 
 	// generics
 	let bound = (dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not()))

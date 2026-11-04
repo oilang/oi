@@ -83,12 +83,20 @@ fn named_result() {
 			out.1 = a % b
 			return
 		}
+		split :: fn(a, b: int) (q, r: int; tag := "x") {
+			q = a / b
+			r = a % b
+			return
+		}
+		one :: fn() (n: int) { n = 4; return }
 		print(first([7, 8]))
 		print(three())
 		print(divmod(10, 3))
+		print(split(7, 2))
+		print(one() + 1)
 		rename("me").name
 	"#};
-	check(src, ["7", "3", "(3, 1)", "me"]);
+	check(src, ["7", "3", "(3, 1)", r#"(q = 3, r = 1, tag = "x")"#, "5", "me"]);
 }
 
 #[test]

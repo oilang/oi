@@ -43,12 +43,9 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then(p.block.clone())
 		.then_ignore(just(Token::Pipeline).not())
 		.validate(|((((head, comp), params), (bound, ret)), body), ex, emitter| {
-			if let Some((name, ((_, at), _))) = &bound
-				&& params.0.iter().any(|p| p.name == *name)
-			{
-				emitter.emit(Rich::custom(*at, format!("duplicate argument `{name}`")));
+			if let Some(slot) = bound.iter().find(|s| params.0.iter().any(|p| p.name == s.name)) {
+				emitter.emit(Rich::custom(slot.span, format!("duplicate argument `{}`", slot.name)));
 			}
-			let ret = bound.as_ref().map(|(_, (typ, _))| typ.clone()).or(ret);
 			let f = fn_def(head, Some(params), ret, named_ret(bound, body, ex.span()), ex.span());
 			match comp {
 				Some(c) => (Expr::Annotated(vec![c], Box::new(f)), ex.span()),

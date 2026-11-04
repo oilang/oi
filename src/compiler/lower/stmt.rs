@@ -288,7 +288,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// a bare `return` reads its named result after defers run, `$` before
 					let owned = self.scopes.clone();
 					let held = match value.as_deref() {
-						Some(e @ (Expr::Ident(_), span)) if *span == stmt.1 => {
+						Some(e @ (Expr::Ident(_) | Expr::Tuple(_), span)) if *span == stmt.1 => {
 							let dollar = self.expr(e)?;
 							let held = std::mem::take(&mut self.defers);
 							self.defers = vec![vec![]; held.len()];
