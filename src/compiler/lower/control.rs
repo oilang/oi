@@ -1519,7 +1519,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				format!("cannot destructure {typ} with this pattern"),
 				pat.1,
 				"wrong shape",
-			),
+			)
+			.map_err(|d| match pat.0 {
+				Expr::Tuple(_) => d.with_note("to bind every name to one value, chain `a := b := ...`"),
+				_ => d,
+			}),
 		}
 	}
 

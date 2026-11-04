@@ -112,5 +112,5 @@ fn underscore_assign_drops() {
 
 #[test]
 fn block_bind_copies_the_first() {
-	check(["lo := (hi := 0)", "hi += 5", "print(lo, hi)"], "0 5");
+	check(["lo := hi := 0", "hi += 5", "print(lo, hi)"], "0 5");
 }

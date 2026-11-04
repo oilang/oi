@@ -220,7 +220,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.then(rhs)
 		.map_with(|(place, (op, value)), ex| ast::assign(place, op, value, ex.span()));
 
-	bind.define(binds(p, p.juxt_expr.clone(), p.pat.clone()).0);
+	bind.define(binds(p, p.bind.clone().or(p.juxt_expr.clone()).boxed(), p.pat.clone()).0);
 
 	// destructuring
 	let names = spanned(ident().map(Expr::Ident))
@@ -229,7 +229,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.collect::<Vec<_>>()
 		.map_with(|names, ex| (Expr::Tuple(names.into_iter().map(|n| (None, n)).collect()), ex.span()));
 	let pat = p.pat.clone().or(names).boxed();
-	let (list_bind, destructure) = binds(p, values.clone(), pat);
+	let (list_bind, destructure) = binds(p, p.bind.clone().or(values.clone()).boxed(), pat);
 
 	let return_list = just(Token::Return)
 		.ignore_then(values.clone())

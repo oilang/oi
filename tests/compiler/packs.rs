@@ -14,3 +14,8 @@ fn comma_lists_destructure_and_build_tuples() {
 	"};
 	check(src, "2 1 1 2 1 2");
 }
+
+#[test]
+fn name_list_needs_a_tuple_value() {
+	fail("lo, hi := 0", "chain `a := b := ...`");
+}
