@@ -51,3 +51,15 @@ fn index_reads_zero_and_flow_sees_option() {
 	"#};
 	check(src, ["2", "0 100 0 false 30 0 none"]);
 }
+
+#[test]
+fn tuple_returns_through_fn_values() {
+	let src = indoc! {"
+		divmod :: fn(a, b: int) (q, r: int) { a / b, a % b }
+		apply :: fn(f: fn(int, int) (int, int), a: int) (int, int) { f(a, 3) }
+		q, r := apply(divmod, 7)
+		d := divmod(9, 4)
+		print(q, r, d.q, d.r)
+	"};
+	check(src, "2 1 2 1");
+}

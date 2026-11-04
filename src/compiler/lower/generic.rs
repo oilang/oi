@@ -343,9 +343,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
-		if !ret.is_unit() {
-			sig.returns.push(AbiParam::new(cl_type(&ret, self.int)));
-		}
+		sig.returns.extend(abi_returns(&ret, self.int));
 		let id = self
 			.module
 			.declare_function(&sym, Linkage::Local, &sig)

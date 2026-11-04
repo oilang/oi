@@ -833,14 +833,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
-		let ret_val = if sig.ret.is_unit() {
-			self.unit_value().0
-		} else if sig.foreign {
-			self.c_norm(self.b.inst_results(call)[0], &sig.ret)
-		} else {
-			let v = self.b.inst_results(call)[0];
-			self.unbox_ret(v, &sig.ret)
-		};
+		let ret_val = self.returned(call, &sig.ret, sig.foreign);
 		self.temp(ret_val, &sig.ret);
 		(ret_val, sig.ret.clone())
 	}
@@ -909,24 +902,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			sig.params.push(AbiParam::new(self.int));
 			vals.push(obj);
 		}
-		let is_unit = ret.is_unit();
-		if !is_unit {
-			sig.returns.push(AbiParam::new(cl_type(ret, self.int)));
-		}
+		sig.returns.extend(abi_returns(ret, self.int));
 		let sig_ref = self.b.import_signature(sig);
 		let call = self.b.ins().call_indirect(sig_ref, addr, &vals);
-		let ret_val = if is_unit {
-			self.unit_value().0
-		} else {
-			self.b.inst_results(call)[0]
-		};
-		let ret_val = match c_abi {
-			true => self.c_norm(ret_val, ret),
-			false => self.unbox_ret(ret_val, ret),
-		};
+		let ret_val = self.returned(call, ret, c_abi);
 		self.reload_lent(&lent)?;
 		self.temp(ret_val, ret);
 		Ok((ret_val, ret.clone()))
+	}
+
+	// Gathers a call's results.
+	fn returned(&mut self, call: codegen::ir::Inst, typ: &Typ, c_abi: bool) -> Value {
+		let rets = self.b.inst_results(call).to_vec();
+		match typ {
+			_ if typ.is_unit() => self.unit_value().0,
+			_ if c_abi => self.c_norm(rets[0], typ),
+			Typ::Tuple(_) => self.frame_slots(&rets),
+			_ => self.unbox_ret(rets[0], typ),
+		}
 	}
 
 	// A returned inline value's box moves into a frame slot.

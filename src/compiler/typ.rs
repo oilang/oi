@@ -490,6 +490,14 @@ pub(crate) fn abi_params<'t>(
 	params.chain(std::iter::repeat_n(AbiParam::new(int), ptrs))
 }
 
+// A fn's ABI returns, one per tuple slot.
+pub(crate) fn abi_returns(ret: &Typ, int: types::Type) -> Vec<AbiParam> {
+	match ret {
+		Typ::Tuple(fields) => fields.iter().map(|(_, t)| AbiParam::new(cl_type(t, int))).collect(),
+		_ => vec![AbiParam::new(cl_type(ret, int))],
+	}
+}
+
 // The access mod a param carries.
 pub(crate) fn access_of(typ: &Typ) -> Access {
 	if let Typ::Access(a, _) = typ { *a } else { Access::Read }

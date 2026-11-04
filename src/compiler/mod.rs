@@ -2120,9 +2120,7 @@ impl<M: Module> Compiler<M> {
 		let mut sig = self.module.make_signature();
 		let typed = params.iter().zip(&access).map(|(p, a)| (&p.typ, *a));
 		sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
-		if !ret.is_unit() {
-			sig.returns.push(AbiParam::new(cl_type(&ret, int)));
-		}
+		sig.returns.extend(abi_returns(&ret, int));
 		let id = self.module.declare_function(symbol, linkage, &sig).expect("declare function");
 		FnSig {
 			id,
@@ -2364,9 +2362,8 @@ impl<M: Module> Compiler<M> {
 			trans.emit_return(val, typ, span)?;
 		} else if trans.b.func.signature.returns.is_empty()
 			&& let Some((ret, _)) = &trans.ret
-			&& !ret.is_unit()
 		{
-			trans.b.func.signature.returns.push(AbiParam::new(cl_type(ret, trans.int)));
+			trans.b.func.signature.returns.extend(abi_returns(ret, trans.int));
 		}
 		if let Some(span) = def.ctxless
 			&& trans.ctx_used

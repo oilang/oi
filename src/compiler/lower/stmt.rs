@@ -579,13 +579,32 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok(());
 		}
-		let final_val = self.copy_in(val, &typ);
+		let (rets, final_val) = match &typ {
+			// defers read `$` from the frame copy
+			Typ::Tuple(fields) => {
+				let moved = self.handover(val, &typ);
+				if moved {
+					self.untemp(val);
+				}
+				let mut rets = vec![];
+				for (i, (_, field)) in fields.iter().enumerate() {
+					let slot = self.ld_typ(val, i as i32 * 8, field);
+					rets.push(if moved { slot } else { self.copy_in(slot, field) });
+				}
+				let frame = self.frame_slots(&rets);
+				(rets, frame)
+			}
+			_ => {
+				let val = self.copy_in(val, &typ);
+				(vec![val], val)
+			}
+		};
 		self.release_scopes(0, Some((final_val, typ.clone())))?;
 		// take return type from the first return
 		if self.b.func.signature.returns.is_empty() {
-			self.b.func.signature.returns.push(AbiParam::new(cl_type(&typ, self.int)));
+			self.b.func.signature.returns.extend(abi_returns(&typ, self.int));
 		}
-		self.b.ins().return_(&[final_val]);
+		self.b.ins().return_(&rets);
 		if self.ret.is_none() {
 			self.ret = Some((typ, span));
 		}

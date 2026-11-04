@@ -9,10 +9,10 @@ use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleE
 
 use super::{
 	Artifacts, CTX, FieldDef, FnParam, FnSig, GenericEnumDef, GenericFnDef, GenericStructDef, Generics, Local,
-	LoopFrame, Typ, TypeCtx, VariantInfo, World, access_of, access_peel, access_wrap, ann_names, builtin_claim,
-	c_layout, check_ann_typ, check_c_sig, check_reserved, cl_int_for_width, cl_type, display_name, elem_size, embeds,
-	enum_boxed, enum_slots, escapes, has_ann, has_slot, is_c_struct, is_range, mentions, object_safe, oi_symbol,
-	param_cl, role, sugar, sum_remap, trait_fns, type_expr, typeid, word_slot,
+	LoopFrame, Typ, TypeCtx, VariantInfo, World, abi_returns, access_of, access_peel, access_wrap, ann_names,
+	builtin_claim, c_layout, check_ann_typ, check_c_sig, check_reserved, cl_int_for_width, cl_type, display_name,
+	elem_size, embeds, enum_boxed, enum_slots, escapes, has_ann, has_slot, is_c_struct, is_range, mentions,
+	object_safe, oi_symbol, param_cl, role, sugar, sum_remap, trait_fns, type_expr, typeid, word_slot,
 };
 use crate::ast::{Access, BinOp, Bounds, Expr, MatchArm, Span, Spanned, TypeExpr, When, int_word, place};
 use crate::diagnostics::{Diagnostic, arity_err, fail, unknown_member};
