@@ -611,8 +611,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(run);
 			self.b.switch_to_block(run);
 			dollar = Some(match (d.when, err) {
-				(When::Ok, _) => (self.opt_payload(*val, typ, &inner, 8), inner),
-				(_, Some(e)) => (self.ld_typ(*val, 8, &e), e),
+				(When::Ok, _) => (self.flow_payload(*val, typ, &inner), inner),
+				(_, Some(e)) => (self.flow_err(*val, typ, &e), e),
 				_ => self.unit_value(),
 			});
 			join = Some(after);

@@ -92,7 +92,8 @@ fn sum_cast_extracts_member_or_zero() {
 }
 
 #[test]
-fn partial_packs_flow_through_their_error_slot() {
+fn error_slots() {
+	// partial packs flow through their error slot
 	let src = indoc! {r#"
 		open :: fn(k: int) (n: int, err: ?Error) { if k > 0 do k, none else do 0, error("shut") }
 		pair :: fn(k: int) (a, b: int, err: ?Error) { if k > 0 do k, -k, none else do 0, 0, error("odd") }
@@ -113,4 +114,31 @@ fn partial_packs_flow_through_their_error_slot() {
 			r#"5 7 (n = 8, err = none) 0 some.("shut") err.("shut")"#,
 		],
 	);
+
+	// one name cannot hide an error slot
+	let src = indoc! {"
+		open :: fn(k: int) (n: int, err: ?Error) { k, none }
+		t := open(1)
+	"};
+	fail(src, "or bind both, `n, err := ...`");
+
+	// `defer or` reads the named error slot
+	let src = indoc! {r#"
+		Tx :: struct { n: int }
+		store :: fn(n: int) !int { if n > 0 do n else do error("full") }
+		commit :: fn(k: int) (tx: Tx, err: ?Error) {
+			tx = Tx.{n = k}
+			defer or print("abort", tx.n, $)
+			defer and print("done", $.n)
+			store(k) or {
+				err = $
+				return
+			}
+			return
+		}
+		a, ok := commit(1)
+		b, bad := commit(-2)
+		print(a.n, ok, b.n, bad)
+	"#};
+	check(src, ["done 1", "abort -2 full", r#"1 none -2 some.("full")"#]);
 }

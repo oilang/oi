@@ -89,7 +89,20 @@ impl<'a, M: Module> Translator<'a, M> {
 						(Some(value), None) if matches!(value.0, Expr::Index { .. } | Expr::Cast { .. }) => {
 							self.lower(value, stmt_target)?
 						}
-						(Some(value), None) => self.expr(value)?,
+						(Some(value), None) => {
+							let (val, typ) = self.expr(value)?;
+							// header binds test the error slot instead
+							let call = matches!(
+								value.0,
+								Expr::Call { .. } | Expr::MethodCall { .. } | Expr::Apply { .. }
+							);
+							if call && stmt_target.is_none() && self.trailing(&typ).is_some() {
+								let msg = format!("one name can't bind {typ}, it would hide the error");
+								let note = "unwrap it with `?` or `or`, or bind both, `n, err := ...`";
+								return fail(msg, stmt.1, "fallible pack").map_err(|d| d.with_note(note));
+							}
+							(val, typ)
+						}
 						(None, Some(target)) => {
 							if matches!(target, Typ::Ref(_)) {
 								let msg = "a reference must be initialized (`?^T` for an optional one)";
