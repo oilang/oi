@@ -185,9 +185,13 @@ Color :: struct {
 	a: u8 = 255
 }
 
-# a block bind evaluates once and the other names are copies
-lo, hi := 0 # essentially `hi := lo`
-# a, b := fs.open(path)? # error, the copy into `b` would move a Drop value
+# a bind yields its value, so binds chain right-to-left
+lo := hi := 0 # essentially `hi := 0; lo := hi`
+# a := b := fs.open(path)? # error, the copy into `a` would move a Drop value
+
+# a name list destructures a tuple, and a comma list builds one
+q, r := 7 / 2, 7 % 2
+q, r = r, q
 
 # `Linear` types never implicitly drop, every path must move it into a consumer
 tx := db.begin()
@@ -258,6 +262,16 @@ divmod :: fn(a: int, b: int) out: (int, int) {
 	out.1 = a % b
 	return
 }
+
+# results take the param grammar, so slots group, default, and each named slot is a zeroed local
+# a bare `return` yields them all, after defers run
+divmod :: fn(a, b: int) (q, r: int) {
+	q = a / b
+	r = a % b
+	return
+}
+# a one-slot list is the bare value, and a list is all names or all types
+count :: fn() (n: int) { n = 3; return } # int, not a 1-tuple
 
 # default values
 three :: fn() r := 2 {
@@ -1276,39 +1290,37 @@ main :: fn() {
 		split_once(value, "|") # returns a 2-tuple (a twople? anyone?)
 	}
 	splat := split("hi|mom")
-	(l, r) := split("hi|mom")
+	l, r := split("hi|mom")
 	assert!(splat.left == "hi")
 	assert!(splat.right == "mom")
 	assert!(splat == (l, r))
 
 	# another example with a common divmod method
-	divmod :: fn(a: int, b: int) (q: int, r: int) {
-		(a / b, a % b)
+	divmod :: fn(a, b: int) (q, r: int) {
+		a / b, a % b
 	}
 	result := divmod(10, 3)
 	print(result) # (q = 3, r = 1)
-	assert!(result == (3, 1))
-	assert!(result.0 == 3)
-	assert!(result.1 == 1)
-	assert!(result.q == 3)
-	assert!(result.r == 1)
+	assert! result == (3, 1)
+	assert! result.0 == 3
+	assert! result.1 == 1
+	assert! result.q == 3
+	assert! result.r == 1
 
 	# a tuple spreads into fixed slots, arity statically checked
 	show(..divmod(10, 3))
 	forward :: fn(a: int, b: int) string { show(..$) }
 
-	# this can be used alongside the named return feature, as they are different systems
-	divmod :: fn(a: int, b: int) out (q: int, r: int) {
-		out.q = a / b
-		out.r = a % b
-		return
-	}
+	# one name keeps the tuple, several destructure it
+	q, r := divmod(10, 3)
+	both := divmod(10, 3)
+	assert! q == both.0 && r == both.1
 
-	http_get :: fn(url: string) (int, body string, []Header) {
-		(200, "the body", [])
+	http_get :: fn(url: string) (status: int, body: string, headers: []Header) {
+		200, "the body", []
 	}
 	result := http_get("/health")
-	print(result) # (200, body = "the body", [])
+	print(result) # (status = 200, body = "the body", headers = [])
 	assert!(result.body == result.1)
 
 	## unit type
