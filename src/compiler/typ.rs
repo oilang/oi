@@ -358,8 +358,11 @@ impl fmt::Display for Typ {
 			Typ::CStr => write!(f, "cstr"),
 			Typ::Atom => write!(f, "atom"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
-			Typ::Tuple(fields) if fields.last().is_some_and(|(n, _)| n.as_deref() == Some(role::PACK_ERR)) => {
-				write!(f, "!{}", fields[0].1)
+			Typ::Tuple(fields)
+				if let [(_, ok), (Some(n), _)] = &fields[..]
+					&& [role::PACK_OK, role::PACK_ERR].contains(&&**n) =>
+			{
+				write!(f, "{}{ok}", if n == role::PACK_OK { "?" } else { "!" })
 			}
 			Typ::Tuple(fields) => {
 				let show = |(n, t): &(Option<String>, Typ)| n.as_ref().map_or(t.to_string(), |n| format!("{n}: {t}"));

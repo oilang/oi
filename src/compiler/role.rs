@@ -41,6 +41,7 @@ pub(crate) const LINEAR: &str = "core::Linear";
 pub(crate) const OPTION: &str = "core::Option";
 pub(crate) const RESULT: &str = "core::Result";
 pub(crate) const PACK_ERR: &str = "$err";
+pub(crate) const PACK_OK: &str = "$ok";
 pub(crate) const PTR: &str = "core::ptr";
 pub(crate) const RANGE: &str = "core::Range";
 pub(crate) const BITS: &str = "core::Bits";

@@ -156,14 +156,28 @@ fn fallible_returns_allocate_nothing_on_success() {
 		parse :: fn(k: int) !int {
 			if k > 0 do k else do error("bad")
 		}
+		half :: fn(k: int) ?int {
+			if k % 2 == 0 do k / 2 else do none
+		}
 		main :: fn() {
 			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			a := open(1) or 0
 			b, err := open(2)
 			c := parse(3) or 0
 			d, bad := parse(4)
-			print(a + b + c + d, count)
+			e := half(10) or 0
+			f, ok := half(12)
+			print(a + b + c + d + e + f, count)
 		}
 	"#};
-	check(src, "10 0");
+	check(src, "21 0");
+
+	assert_clean(indoc! {"
+		arr :: fn(k: int) ?[]int {
+			if k > 0 do .[k] else do none
+		}
+		fwd :: fn(k: int) ?[]int { a := arr(k)?; a }
+		print(fwd(0) or .[], fwd(1))
+	"});
+	fail("g :: fn() ?int { x: !int = 1; x? }; g()", "returning `!T`, found ?int");
 }

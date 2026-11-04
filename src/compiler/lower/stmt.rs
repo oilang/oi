@@ -596,7 +596,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (rets, final_val) = match &typ {
 			// defers read `$` from the frame copy
 			Typ::Tuple(fields) => {
-				let moved = self.handover(val, &typ);
+				let moved = self.handover(val, &typ) || self.temps.contains_key(&val);
 				if moved {
 					self.untemp(val);
 				}

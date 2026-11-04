@@ -874,7 +874,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Value, Diagnostic> {
 		let Some(((_, Some(err)), (_, Some(target_err)))) = self.fallible_split(typ).zip(self.fallible_split(target))
 		else {
-			return Ok(self.make_option(target, None));
+			return Ok(match self.trailing(target) {
+				Some(_) => self.owned_zero(target),
+				None => self.make_option(target, None),
+			});
 		};
 		let e = self.flow_err(val, typ, &err);
 		let e = match from {
@@ -976,7 +979,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				target_err = e;
 				t
 			}
-			Some(d) if !is_result && let Some(t) = self.types.option_inner(d) => t,
+			Some(d) if !is_result && let Some((t, None)) = self.fallible_split(d) => t,
 			Some(other) => {
 				let msg = format!("`?` needs an enclosing fn returning `{shape}`, found {other}");
 				return fail(msg, span, format!("not a `{shape}` fn"));
@@ -984,7 +987,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => inner.clone(),
 		};
 		let target_typ = match (is_result, declared) {
-			(true, Some(d)) if self.trailing(&d).is_some() => d,
+			(_, Some(d)) if self.trailing(&d).is_some() => d,
 			(true, _) => self.types.core_enum(role::RESULT, &[target.clone(), target_err.clone()]),
 			(false, _) => self.types.core_enum(role::OPTION, std::slice::from_ref(&target)),
 		};
@@ -1159,7 +1162,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn unwrap_arm(&mut self, cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Option<(Spanned<Expr>, MatchArm)> {
 		let Expr::Bind { name, .. } = &cond.0 else { return None };
 		let local = self.vars.get(name)?.clone();
-		let (inner, _) = self.fallible_split(&local.typ)?;
+		let (inner, err) = self.fallible_split(&local.typ)?;
 		let (mut id, mut pat) = (Expr::Ident(name.clone()), Expr::Ident(name.clone()));
 		if self.trailing(&local.typ).is_some() {
 			let pack = self.read_local(&local);
@@ -1168,7 +1171,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.hidden_local(name.clone(), payload, inner);
 			let flag = format!("$err{}", self.vars.len());
 			self.hidden_local(flag.clone(), tag, Typ::Int(64));
-			(id, pat) = (Expr::Ident(flag), Expr::Int(0));
+			(id, pat) = (Expr::Ident(flag), Expr::Int(err.is_none() as i128));
 		}
 		let arm = MatchArm {
 			patterns: vec![(pat, cond.1)],

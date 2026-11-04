@@ -687,11 +687,13 @@ impl TypeCtx<'_> {
 		Some((ok, err))
 	}
 
-	// The `(T, ?Error)` pack a `!T` returns as.
+	// The pack a `?T` or `!T` returns as.
 	// Plain `T` only, so `!Self` and `!Trait` agree behind a vtable.
 	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
-		let (ok, Typ::Error) = self.result_parts(ret)? else {
-			return None;
+		let (ok, flag, slot) = match self.result_parts(ret) {
+			Some((ok, Typ::Error)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[Typ::Error])),
+			Some(_) => return None,
+			None => (self.option_inner(ret)?, role::PACK_OK, Typ::Bool),
 		};
 		let plain = matches!(
 			ok,
@@ -706,17 +708,20 @@ impl TypeCtx<'_> {
 				| Typ::Array(_)
 				| Typ::Map(..)
 		);
-		let err = plain.then(|| self.core_enum(role::OPTION, &[Typ::Error]))?;
-		Some(Typ::Tuple(vec![(None, ok), (Some(role::PACK_ERR.into()), err)]))
+		plain.then(|| Typ::Tuple(vec![(None, ok), (Some(flag.into()), slot)]))
 	}
 
-	// The `!T` a return pack stands for.
+	// The `?T` or `!T` a return pack stands for.
 	pub fn pack_ret(&self, pack: &Typ) -> Option<Typ> {
 		let Typ::Tuple(fields) = pack else { return None };
 		let [(_, ok), (Some(name), _)] = &fields[..] else {
 			return None;
 		};
-		(name == role::PACK_ERR).then(|| self.core_enum(role::RESULT, &[ok.clone(), Typ::Error]))
+		match name.as_str() {
+			role::PACK_ERR => Some(self.core_enum(role::RESULT, &[ok.clone(), Typ::Error])),
+			role::PACK_OK => Some(self.core_enum(role::OPTION, std::slice::from_ref(ok))),
+			_ => None,
+		}
 	}
 
 	// The `some`/`ok` payload type.

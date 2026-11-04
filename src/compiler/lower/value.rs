@@ -278,7 +278,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				.with_label(format!("doesn't fit in {target}"))
 		};
 		if let Some(res) = self.types.pack_ret(target) {
-			let (ok, _) = self.types.result_parts(&res).expect("a `!T`");
+			let (ok, err) = self.fallible_split(&res).expect("a return pack");
+			if err.is_none() && matches!(inner, Expr::Ident(n) if n == "none") {
+				return Ok(Some(self.owned_zero(target)));
+			}
 			let Some(v) = self.coerce_lit(value, &ok)? else {
 				return Ok(None);
 			};
@@ -649,10 +652,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// A partial pack's leading slot count and trailing `?E`.
+	// A partial pack's leading slot count and trailing `?E` or `bool`.
 	pub(super) fn trailing<'t>(&self, typ: &'t Typ) -> Option<(usize, &'t Typ)> {
 		let Typ::Tuple(fields) = typ else { return None };
-		let [_, .., (_, last)] = &fields[..] else { return None };
+		let [_, .., (name, last)] = &fields[..] else {
+			return None;
+		};
+		if name.as_deref() == Some(role::PACK_OK) {
+			return Some((fields.len() - 1, &Typ::Bool));
+		}
 		let err = self.types.option_inner(last)?;
 		(err == Typ::Error || self.open_error(&err)).then_some((fields.len() - 1, last))
 	}
@@ -1250,31 +1258,43 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((val, from.clone()))
 	}
 
-	// A value as a `!T` return pack.
+	// A value as the `?T` or `!T` return pack it stands for.
 	fn pack_value(&mut self, val: Value, from: &Typ, pack: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
-		let res = &self.types.pack_ret(pack).expect("a `!T` pack");
-		let (ok, _) = self.types.result_parts(res).expect("a `!T`");
-		let none = self.b.ins().iconst(self.int, 0);
-		let slots = if from == res {
-			let (failed, zero) = (self.enum_tag(res, val), self.zero_val(&ok));
-			let (payload, err) = (self.ld_typ(val, 8, &ok), self.ld_word(val, 8));
-			[
-				self.b.ins().select(failed, zero, payload),
-				self.b.ins().select(failed, err, none),
-			]
+		let res = &self.types.pack_ret(pack).expect("a return pack");
+		let (ok, err) = self.fallible_split(res).expect("a return pack");
+		let (yes, none) = (self.b.ins().iconst(types::I8, 1), self.b.ins().iconst(self.int, 0));
+		let (happy, payload, failure) = if from == res {
+			let tag = self.enum_tag(res, val);
+			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+			let (payload, zero) = (self.ld_typ(val, 8, &ok), self.owned_zero(&ok));
+			(happy, self.b.ins().select(happy, payload, zero), self.ld_word(val, 8))
 		} else {
 			match self.coerce(val, from, &ok, span)? {
-				(v, t) if t == ok => [v, none],
-				(v, t) => match self.coerce(v, &t, &Typ::Error, span)? {
-					(e, Typ::Error) => [self.zero_val(&ok), e],
-					_ => return Ok((val, from.clone())),
-				},
+				(v, t) if t == ok => (yes, v, none),
+				(v, t)
+					if err.is_some()
+						&& let (e, Typ::Error) = self.coerce(v, &t, &Typ::Error, span)? =>
+				{
+					(self.b.ins().iconst(types::I8, 0), self.owned_zero(&ok), e)
+				}
+				_ => return Ok((val, from.clone())),
 			}
 		};
-		let payload = self.copy_in(slots[0], &ok);
-		let frame = self.frame_slots(&[payload, slots[1]]);
+		let flag = match err {
+			Some(_) => self.b.ins().select(happy, none, failure),
+			None => self.b.ins().uextend(self.int, happy),
+		};
+		let payload = self.copy_in(payload, &ok);
+		let frame = self.frame_slots(&[payload, flag]);
 		self.temp(frame, pack);
 		Ok((frame, pack.clone()))
+	}
+
+	// A zero value this scope owns.
+	pub(super) fn owned_zero(&mut self, typ: &Typ) -> Value {
+		let zero = self.zero(typ);
+		self.temp(zero, typ);
+		zero
 	}
 
 	// A `@ctx` closure with its embedded context.
