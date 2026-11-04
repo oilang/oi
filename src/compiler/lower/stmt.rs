@@ -86,6 +86,9 @@ impl<'a, M: Module> Translator<'a, M> {
 							let val = self.check_typed(value, &target, "does not match the declared type")?;
 							(val, target)
 						}
+						(Some(value), None) if matches!(value.0, Expr::Index { .. }) => {
+							self.lower(value, stmt_target)?
+						}
 						(Some(value), None) => self.expr(value)?,
 						(None, Some(target)) => {
 							if matches!(target, Typ::Ref(_)) {
@@ -133,7 +136,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				// pattern bindings
 				Expr::PatBind { pat, value, mutable } => {
-					let (ptr, typ) = self.expr(value)?;
+					let (ptr, typ) = match &pat.0 {
+						Expr::Tuple(names) if names.len() == 2 => self.flow_operand(value)?,
+						_ => self.expr(value)?,
+					};
 					if i + 1 == stmts.len() {
 						last = (ptr, typ.clone());
 					}

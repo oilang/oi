@@ -1226,6 +1226,9 @@ main :: fn() {
 	typed_map["three"] = 4
 	typed_map.delete["three"]
 
+	# a missing key reads as zero, and control flow things see the `?V`
+	print(num_map["six"], num_map["six"] or 6) # 0 6
+
 	# empty `[]` resolves against the expected collection type
 	empty: [string]int = []
 

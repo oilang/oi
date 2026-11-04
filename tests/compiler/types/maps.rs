@@ -125,17 +125,6 @@ fn bracket_lit_var_key_uses_value_not_name() {
 		"#},
 		"1",
 	);
-	assert!(
-		fail_rt(
-			indoc! {r#"
-				k :: "one"
-				m := [k = 1]
-				m["k"]
-			"#},
-			""
-		)
-		.contains("key not found")
-	);
 }
 
 #[test]
@@ -164,15 +153,15 @@ fn delete_key() {
 }
 
 #[test]
-fn deleted_key_then_lookup_panics() {
-	fail_rt(
+fn deleted_key_then_lookup_reads_zero() {
+	check(
 		indoc! {r#"
 			m: [string]int
 			m["one"] = 1
 			m.delete["one"]
 			m["one"]
 		"#},
-		"key not found",
+		"0",
 	);
 }
 

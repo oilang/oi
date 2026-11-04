@@ -33,3 +33,21 @@ fn two_names_destructure_option_and_result() {
 	"#};
 	check(src, "hit true true false 7 true 0 true");
 }
+
+#[test]
+fn index_reads_zero_and_flow_sees_option() {
+	let src = indoc! {r#"
+		Sparse :: struct { at: int }
+		Sparse : Index[int, ?int] < {
+			index :: fn(self; i: int) ?int { if i == self.at do i * 10 else do none }
+		}
+		stats := ["hp" = 7]
+		stats["mp"] += 2
+		hp, found := stats["xp"]
+		if mp := stats["mp"] do print(mp)
+		s := Sparse.{ at = 3 }
+		stored: ?int = s[4]
+		print(stats["xp"], stats["xp"] or 100, hp, found, s[3], s[4], stored)
+	"#};
+	check(src, ["2", "0 100 0 false 30 0 none"]);
+}

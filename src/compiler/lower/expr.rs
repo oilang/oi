@@ -50,6 +50,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.expr(&(call, span))
 	}
 
+	// Lowers a flow operand, keeping the `?V` an index drops in value position.
+	pub(super) fn flow_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
+		match &value.0 {
+			Expr::Index { .. } | Expr::Bind { .. } => self.lower(value, Some(&Typ::Enum(role::OPTION.into()))),
+			_ => self.expr(value),
+		}
+	}
+
+	// `val` when `hit`, else zero.
+	fn or_zero(&mut self, hit: Value, val: Value, typ: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
+		let zero = self.zero_or_err(typ, span)?;
+		self.temp(zero, typ);
+		Ok((self.b.ins().select(hit, val, zero), typ.clone()))
+	}
+
 	pub(super) fn lower(&mut self, expr: &Spanned<Expr>, hint: Option<&Typ>) -> Result<TypedVal, Diagnostic> {
 		if let Some(t) = hint
 			&& let Some(v) = self.coerce_lit(expr, t)?
@@ -895,14 +910,32 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Index { collection, index } => {
+				let keep = matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION));
 				let (ptr, typ) = self.expr(collection)?;
 				let (ptr, typ) = self.deref(ptr, &typ);
 				match &typ {
 					Typ::Map(k, v) => {
 						let (k, v) = (*k.clone(), *v.clone());
 						let (tag, bits) = self.map_key(index, &k)?;
-						let raw = self.map_rt("get", ptr, tag, bits, &[]);
-						Ok((self.unmap_bits(raw, &v), v))
+						let (slot, none) = (self.stack_slot(8), self.b.ins().iconst(self.int, 0));
+						self.st(slot, 0, none);
+						let hit = self.map_rt("find", ptr, tag, bits, &[slot]);
+						let raw = self.ld_word(slot, 0);
+						let val = self.unmap_bits(raw, &v);
+						if !keep {
+							return self.or_zero(hit, val, &v, expr.1);
+						}
+						let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(&v));
+						if rc::opt_niche(&opt) {
+							return Ok((raw, opt));
+						}
+						let out = self.make_option(&opt, None);
+						self.when(hit, |s| {
+							let payload = s.copy_in(val, &v);
+							s.st(out, 0, hit);
+							s.st(out, 8, payload)
+						});
+						Ok((out, opt))
 					}
 					t if let Some((key, arr)) = t.keyed() => {
 						let idx = self.key_slot(index, &key)?;
@@ -920,7 +953,14 @@ impl<'a, M: Module> Translator<'a, M> {
 						let idx = self.intcast(idx, self.int, true);
 						Ok((self.load_index((ptr, &typ), idx, collection.1), elem))
 					}
-					t if self.claims(t, role::INDEX) => self.index_call((ptr, typ), index, expr.1),
+					t if self.claims(t, role::INDEX) => {
+						let (val, typ) = self.index_call((ptr, typ), index, expr.1)?;
+						let Some(inner) = self.types.option_inner(&typ).filter(|_| !keep) else {
+							return Ok((val, typ));
+						};
+						let (ok, payload) = (self.enum_tag(&typ, val), self.opt_payload(val, &typ, &inner, 8));
+						self.or_zero(ok, payload, &inner, expr.1)
+					}
 					_ => fail(
 						format!("cannot index {typ}"),
 						collection.1,
