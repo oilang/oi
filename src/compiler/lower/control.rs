@@ -1311,7 +1311,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				"its `Iterator` claim has no `next(mut self) ?T`",
 			);
 		};
-		let opt = next.ret.clone();
 
 		// `mut self` without inline slots
 		let it = match next.access[0] == Access::Mut && it_typ.slots().is_none() {
@@ -1321,9 +1320,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let (header, exit) = (self.b.create_block(), self.b.create_block());
 		self.b.ins().jump(header, &[]);
-
 		self.b.switch_to_block(header);
-		let (yielded, _) = self.emit_call(&next, &[it]);
+
+		// keeps a plain `?T` as its pack
+		let outer = self.pack_call.replace(span);
+		let (yielded, opt) = self.emit_call_at(&next, &[it], Some(span));
+		self.pack_call = outer;
+
 		let tag = self.enum_tag(&opt, yielded);
 		let (body_block, done) = self.fork(tag);
 

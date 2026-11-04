@@ -227,3 +227,47 @@ fn header_binds_allocate_nothing() {
 	check(drain, "m1m2m3");
 	assert_clean(drain);
 }
+
+#[test]
+fn iterator_next_allocates_nothing() {
+	let src = indoc! {r#"
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		Countdown :: struct { n: int }
+		Countdown : Iterator[int] < {
+			next :: fn(mut self) ?int {
+				if self.n == 0 do return none
+				self.n -= 1
+				self.n
+			}
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			sum := 0
+			loop k in Countdown.{ n = 5 } { sum += k }
+			print(sum, count)
+		}
+	"#};
+	check(src, "10 0");
+
+	assert_clean(indoc! {r#"
+		Words :: struct { n: int }
+		Words : Iterator[string] < {
+			next :: fn(mut self) ?string {
+				if self.n == 0 do return none
+				self.n -= 1
+				"w{self.n}"
+			}
+		}
+		out := ""
+		loop w in Words.{ n = 3 } {
+			if w == "w0" do break
+			out += w
+		}
+		print(out)
+	"#});
+}
