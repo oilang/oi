@@ -223,3 +223,16 @@ fn match_comma_subject_is_tuple() {
 	"#};
 	check(src, "12");
 }
+
+#[test]
+fn match_without_subject() {
+	let src = indoc! {r#"
+		x :: 7
+		match {
+			x < 5 => "small",
+			x < 10 => "medium",
+			else => "large",
+		}
+	"#};
+	check(src, "medium");
+}

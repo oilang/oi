@@ -318,7 +318,7 @@ add :: fn(x: int, y: int) int { x + y }
 
 @pure
 clamp :: fn(value: f64, low: f64, high: f64) f64 {
-	match true {
+	match {
 		value < low => low,
 		value > high => high,
 		else => value,
@@ -1738,7 +1738,7 @@ main :: fn() {
 
 	# match
 	(i, foo, bar, u, me) := (0, true, true, 2, [0 2 4])
-	n := match true {
+	n := match {
 		i < 3 => "love ya",
 		foo == bar => "soul mates",
 		u in me => "🥵",

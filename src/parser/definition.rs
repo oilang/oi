@@ -515,7 +515,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		),
 	});
 	let match_expr = just(Token::Match)
-		.ignore_then(match_subjects)
+		.ignore_then(match_subjects.or_not())
 		.then(brace(
 			arm.repeated().collect::<Vec<_>>().then(
 				just(Token::Else)
@@ -527,7 +527,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|(subject, (arms, else_body)), ex| {
 			(
 				Expr::Match {
-					subject: Box::new(subject),
+					subject: Box::new(subject.unwrap_or((Expr::Bool(true), ex.span()))),
 					arms,
 					else_body,
 				},
