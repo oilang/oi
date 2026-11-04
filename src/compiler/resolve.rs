@@ -688,27 +688,42 @@ impl TypeCtx<'_> {
 	}
 
 	// The pack a `?T` or `!T` returns as.
-	// Plain `T` only, so `!Self` and `!Trait` agree behind a vtable.
 	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
 		let (ok, flag, slot) = match self.result_parts(ret) {
 			Some((ok, Typ::Error)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[Typ::Error])),
 			Some(_) => return None,
 			None => (self.option_inner(ret)?, role::PACK_OK, Typ::Bool),
 		};
-		let plain = matches!(
-			ok,
-			Typ::Int(_)
-				| Typ::UInt(_)
-				| Typ::Float(_)
-				| Typ::Bool
-				| Typ::Rune
-				| Typ::ISize
-				| Typ::USize
-				| Typ::Str
-				| Typ::Array(_)
-				| Typ::Map(..)
-		);
-		plain.then(|| Typ::Tuple(vec![(None, ok), (Some(flag.into()), slot)]))
+		self.inert(&ok, &mut vec![])
+			.then(|| Typ::Tuple(vec![(None, ok), (Some(flag.into()), slot)]))
+	}
+
+	// Whether a payload rides a pack, with no `Drop` to run on its zero and no `?Self` to rebox behind a vtable.
+	fn inert(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
+		match typ {
+			Typ::Tuple(fields) => !fields.is_empty() && fields.iter().all(|(_, field)| self.inert(field, seen)),
+			Typ::Enum(name) if seen.contains(name) => true,
+			Typ::Enum(name) => {
+				seen.push(name.clone());
+				let variants = self.enums.borrow().get(name).cloned().unwrap_or_default();
+				variants
+					.iter()
+					.all(|variant| variant.payload.iter().all(|field| self.inert(field, seen)))
+			}
+			_ => matches!(
+				typ,
+				Typ::Int(_)
+					| Typ::UInt(_)
+					| Typ::Float(_)
+					| Typ::Bool
+					| Typ::Rune
+					| Typ::ISize
+					| Typ::USize
+					| Typ::Str
+					| Typ::Array(_)
+					| Typ::Map(..)
+			),
+		}
 	}
 
 	// The `?T` or `!T` a return pack stands for.

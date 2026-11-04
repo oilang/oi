@@ -144,6 +144,51 @@ fn error_slots() {
 }
 
 #[test]
+fn tuple_and_enum_payloads_ride_packs() {
+	// the tuple keeps its own block, the `?T` box is gone
+	let src = indoc! {r#"
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc { count = count + 1 }
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		Dir :: enum { up, down }
+		Shape :: enum { circle(int), square(int) }
+		Turn :: trait { turn : fn(self, k: int) ?Dir }
+		Wheel :: struct {}
+		Wheel : Turn < {
+			turn :: fn(self, k: int) ?Dir {
+				if k > 0 do .up else do none
+			}
+		}
+		span :: fn(k: int) ?(int, int) {
+			if k > 0 do (k, -k) else do none
+		}
+		parse :: fn(k: int) !(int, string) {
+			if k > 0 do (k, "ok") else do error("bad")
+		}
+		shape :: fn(k: int) ?Shape {
+			if k > 0 do .circle.(k) else do none
+		}
+		main :: fn() {
+			wheel : Turn : Wheel.{}
+			call := span
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			lo, hi := call(2) or (0, 0)
+			dir := wheel.turn(1) or .down
+			print(lo + hi, dir, count)
+			pair, ok := span(3)
+			print(pair.1, ok, wheel.turn(0), parse(0), shape(6), shape(0) or .square.(1))
+		}
+	"#};
+	check(
+		src,
+		["0 up 1", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
+	);
+}
+
+#[test]
 fn fallible_returns_allocate_nothing_on_success() {
 	let src = indoc! {r#"
 		count := 0
