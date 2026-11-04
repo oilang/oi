@@ -86,7 +86,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							let val = self.check_typed(value, &target, "does not match the declared type")?;
 							(val, target)
 						}
-						(Some(value), None) if matches!(value.0, Expr::Index { .. }) => {
+						(Some(value), None) if matches!(value.0, Expr::Index { .. } | Expr::Cast { .. }) => {
 							self.lower(value, stmt_target)?
 						}
 						(Some(value), None) => self.expr(value)?,

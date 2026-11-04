@@ -44,8 +44,8 @@ fn needs_else() {
 
 #[test]
 fn assertion_casts() {
-	check(["x: any = 7", "int.(x)"], "some.(7)");
-	check(["x: any = 7", "string.(x)"], "none");
+	check(["x: any = 7", "int.(x)"], "7");
+	check(["x: any = 7", "string.(x)"], "");
 }
 
 #[test]

@@ -63,3 +63,16 @@ fn tuple_returns_through_fn_values() {
 	"};
 	check(src, "2 1 2 1");
 }
+
+#[test]
+fn any_cast_reads_zero_and_flow_sees_option() {
+	let src = indoc! {r#"
+		a: any = "five"
+		b: any = 7
+		n, ok := int.(a)
+		if v := int.(b) do print(v)
+		stored: ?int = int.(a)
+		print(int.(a), int.(b), int.(a) or 100, string.(a), n, ok, stored)
+	"#};
+	check(src, ["7", "0 7 100 five 0 false none"]);
+}

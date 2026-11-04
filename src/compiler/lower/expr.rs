@@ -50,10 +50,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.expr(&(call, span))
 	}
 
-	// Lowers a flow operand, keeping the `?V` an index drops in value position.
+	// Lowers a flow operand, keeping the `?V` an index or cast drops in value position.
 	pub(super) fn flow_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		match &value.0 {
-			Expr::Index { .. } | Expr::Bind { .. } => self.lower(value, Some(&Typ::Enum(role::OPTION.into()))),
+			Expr::Index { .. } | Expr::Cast { .. } | Expr::Bind { .. } => {
+				self.lower(value, Some(&Typ::Enum(role::OPTION.into())))
+			}
 			_ => self.expr(value),
 		}
 	}
@@ -344,8 +346,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.construct_variant(&name, &variant, args, expr.1);
 				}
+				let keep = matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION));
 				let typ = self.types.resolve(&target.0, target.1)?;
-				self.cast_to(&typ, args, expr.1)
+				let (val, out) = self.cast_to(&typ, args, expr.1)?;
+				let Some(inner) = self.types.option_inner(&out).filter(|_| out != typ && !keep) else {
+					return Ok((val, out));
+				};
+				let (ok, payload) = (self.enum_tag(&out, val), self.opt_payload(val, &out, &inner, 8));
+				self.or_zero(ok, payload, &inner, expr.1)
 			}
 
 			Expr::Apply { callee, args } => {

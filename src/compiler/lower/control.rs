@@ -424,7 +424,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let note = "use `if` to test it, or move the pattern into an arm";
 			return fail("a `match` header can't refute", subject.1, note);
 		}
-		let (sv, st) = self.expr(subject)?;
+		let (sv, st) = self.flow_operand(subject)?;
 		let (sv, st) = self.deref(sv, &st);
 
 		// a non-enum match has no coverage to analyse, so it is all a gap
