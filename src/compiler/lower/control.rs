@@ -136,7 +136,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
-				s.flow_operand(cond)?;
+				s.pack_operand(cond)?;
 				if let Some((id, arm)) = s.unwrap_arm(cond, then) {
 					return s.match_expr(&id, &[arm], els, Some(&[]), target, span);
 				}
@@ -1122,7 +1122,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// a body expression that can fall through ends the loop when it does
 		let (mut frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| match (cond, body) {
 			(Some(c), _) if infallible(&c.0) => {
-				s.flow_operand(c)?;
+				s.pack_operand(c)?;
 				match s.unwrap_arm(c, body) {
 					Some((id, arm)) => {
 						s.match_expr(&id, &[arm], None, Some(&[(Expr::Break(None, None), c.1)]), None, c.1)

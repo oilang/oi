@@ -62,11 +62,15 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Lowers a flow tool's operand, keeping a `!T` call as its pack.
 	pub(super) fn pack_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
+		let operand = match &value.0 {
+			Expr::Bind { value: Some(bound), .. } => bound,
+			_ => value,
+		};
 		let call = matches!(
-			value.0,
+			operand.0,
 			Expr::Call { .. } | Expr::MethodCall { .. } | Expr::Apply { .. }
 		);
-		let outer = std::mem::replace(&mut self.pack_call, call.then_some(value.1));
+		let outer = std::mem::replace(&mut self.pack_call, call.then_some(operand.1));
 		let out = self.flow_operand(value);
 		self.pack_call = outer;
 		out

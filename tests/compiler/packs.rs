@@ -181,3 +181,49 @@ fn fallible_returns_allocate_nothing_on_success() {
 	"});
 	fail("g :: fn() ?int { x: !int = 1; x? }; g()", "returning `!T`, found ?int");
 }
+
+#[test]
+fn header_binds_allocate_nothing() {
+	let src = indoc! {r#"
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc { count += 1 }
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		parse :: fn(k: int) !int {
+			if k > 0 do k else do error("bad")
+		}
+		half :: fn(k: int) ?int {
+			if k % 2 == 0 do k / 2 else do none
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			sum := 0
+			if v := half(10) do sum += v
+			if v := half(3) do sum += 100 else do sum += 1
+			if v := parse(2) do sum += v
+			k := 8
+			loop v := half(k) {
+				sum += v
+				k = v
+			}
+			print(sum, count)
+		}
+	"#};
+	check(src, "15 0");
+
+	let drain = indoc! {r#"
+		use sync
+		ch := sync.Chan[string].{ cap = 4 }
+		loop i in 1..4 {
+			ch <- "m{i}" or panic!("closed")
+		}
+		ch.close()
+		out := ""
+		loop msg := ch.recv() do out += msg
+		print(out)
+	"#};
+	check(drain, "m1m2m3");
+	assert_clean(drain);
+}
