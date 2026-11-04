@@ -150,7 +150,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				// pattern bindings
 				Expr::PatBind { pat, value, mutable } => {
 					let (ptr, typ) = match &pat.0 {
-						Expr::Tuple(names) if names.len() == 2 => self.flow_operand(value)?,
+						Expr::Tuple(names) if names.len() == 2 => self.pack_operand(value)?,
 						_ => self.expr(value)?,
 					};
 					if i + 1 == stmts.len() {
@@ -325,6 +325,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						},
 						None => {
 							let typ = self.ret.as_ref().map_or(Typ::unit(), |(t, _)| t.clone());
+							let typ = self.types.pack_ret(&typ).unwrap_or(typ);
 							(self.zero_or_err(&typ, stmt.1)?, typ)
 						}
 					};
@@ -548,7 +549,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				false => (val, typ),
 			});
 		}
-		match self.types.result_parts(&ret) {
+		match self.types.happy(&ret) {
 			Some(_) => self.coerce(val, &typ, &ret, span),
 			None => Ok((val, typ)),
 		}
@@ -615,7 +616,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.release_scopes(0, Some((final_val, typ.clone())))?;
 		// take return type from the first return
 		if self.b.func.signature.returns.is_empty() {
-			self.b.func.signature.returns.extend(abi_returns(&typ, self.int));
+			self.b.func.signature.returns.extend(abi_returns(&typ, &self.types, self.int));
 		}
 		self.b.ins().return_(&rets);
 		if self.ret.is_none() {

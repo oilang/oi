@@ -145,7 +145,7 @@ fn error_slots() {
 
 #[test]
 fn fallible_returns_allocate_nothing_on_success() {
-	let src = indoc! {"
+	let src = indoc! {r#"
 		count := 0
 		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc { count = count + 1 }
@@ -153,12 +153,17 @@ fn fallible_returns_allocate_nothing_on_success() {
 			sys.proc(sys.data, mode, size, align, old, old_size)
 		}
 		open :: fn(k: int) (n: int, err: ?Error) { k, none }
+		parse :: fn(k: int) !int {
+			if k > 0 do k else do error("bad")
+		}
 		main :: fn() {
 			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			a := open(1) or 0
 			b, err := open(2)
-			print(a + b, count)
+			c := parse(3) or 0
+			d, bad := parse(4)
+			print(a + b + c + d, count)
 		}
-	"};
-	check(src, "3 0");
+	"#};
+	check(src, "10 0");
 }

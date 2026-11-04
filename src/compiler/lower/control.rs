@@ -730,7 +730,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.flagged.extend(late.map(|(v, _)| *v));
 			lowered
 		} else {
-			self.flow_operand(value)
+			self.pack_operand(value)
 		};
 		let (val, typ) = lowered?;
 
@@ -899,7 +899,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		body: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (val, typ) = self.flow_operand(value)?;
+		let (val, typ) = self.pack_operand(value)?;
 		let Some((inner, err)) = self.fallible_split(&typ) else {
 			let msg = format!("`and` needs a `?T`/`!T` value, got {typ}");
 			return fail(msg, value.1, "not an Option or Result");
@@ -954,7 +954,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Returns `none`/error from the enclosing fn on the sad path.
 	// Panics when called in `main`.
 	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
-		let (val, typ) = self.flow_operand(value)?;
+		let (val, typ) = self.pack_operand(value)?;
 		let Some((inner, err)) = self.fallible_split(&typ) else {
 			let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
 			return fail(msg, value.1, "not a `?T` or `!T` value");

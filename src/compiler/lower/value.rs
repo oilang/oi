@@ -277,6 +277,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
 				.with_label(format!("doesn't fit in {target}"))
 		};
+		if let Some(res) = self.types.pack_ret(target) {
+			let (ok, _) = self.types.result_parts(&res).expect("a `!T`");
+			let Some(v) = self.coerce_lit(value, &ok)? else {
+				return Ok(None);
+			};
+			return Ok(Some(self.pack_value(v, &ok, target, value.1)?.0));
+		}
 		if let Some(some) = self.types.option_inner(target) {
 			match inner {
 				Expr::Ident(n) | Expr::EnumShorthand { variant: n, .. } if n == "none" => {
@@ -1125,6 +1132,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if from == to {
 			return Ok((val, from.clone()));
 		}
+		if self.types.pack_ret(to).is_some() {
+			return self.pack_value(val, from, to, span);
+		}
 		if from.variant().is_some_and(|(_, base)| base == to) {
 			return Ok((val, to.clone()));
 		}
@@ -1238,6 +1248,33 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		}
 		Ok((val, from.clone()))
+	}
+
+	// A value as a `!T` return pack.
+	fn pack_value(&mut self, val: Value, from: &Typ, pack: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
+		let res = &self.types.pack_ret(pack).expect("a `!T` pack");
+		let (ok, _) = self.types.result_parts(res).expect("a `!T`");
+		let none = self.b.ins().iconst(self.int, 0);
+		let slots = if from == res {
+			let (failed, zero) = (self.enum_tag(res, val), self.zero_val(&ok));
+			let (payload, err) = (self.ld_typ(val, 8, &ok), self.ld_word(val, 8));
+			[
+				self.b.ins().select(failed, zero, payload),
+				self.b.ins().select(failed, err, none),
+			]
+		} else {
+			match self.coerce(val, from, &ok, span)? {
+				(v, t) if t == ok => [v, none],
+				(v, t) => match self.coerce(v, &t, &Typ::Error, span)? {
+					(e, Typ::Error) => [self.zero_val(&ok), e],
+					_ => return Ok((val, from.clone())),
+				},
+			}
+		};
+		let payload = self.copy_in(slots[0], &ok);
+		let frame = self.frame_slots(&[payload, slots[1]]);
+		self.temp(frame, pack);
+		Ok((frame, pack.clone()))
 	}
 
 	// A `@ctx` closure with its embedded context.

@@ -1669,7 +1669,7 @@ impl<M: Module> Compiler<M> {
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
 			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
 			let ctx = ctx.unwrap_or(Some(CONTEXT.into())).filter(|_| !foreign);
-			let mut sig = self.declare_fn(&sym, linkage, params, access, ret, ctx);
+			let mut sig = self.declare_fn((&sym, linkage), params, access, ret, ctx, types);
 			sig.foreign = foreign;
 			sig.unsafe_call = is_unsafe;
 			sig.pure = pure.is_some();
@@ -1741,7 +1741,7 @@ impl<M: Module> Compiler<M> {
 					check_c_sig(types, bare, ps, r, span)?;
 				}
 			}
-			let sig = self.declare_fn(bare, Linkage::Import, params, access, ret, None);
+			let sig = self.declare_fn((bare, Linkage::Import), params, access, ret, None, types);
 			funcs.insert(name.clone(), sig);
 		}
 
@@ -2109,18 +2109,18 @@ impl<M: Module> Compiler<M> {
 	// Declare a hoisted fn's signature ahead of its body.
 	fn declare_fn(
 		&mut self,
-		symbol: &str,
-		linkage: Linkage,
+		(symbol, linkage): (&str, Linkage),
 		params: Vec<FnParam>,
 		access: Vec<Access>,
 		ret: Typ,
 		ctx: Option<String>,
+		types: TypeCtx,
 	) -> FnSig {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
 		let typed = params.iter().zip(&access).map(|(p, a)| (&p.typ, *a));
 		sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
-		sig.returns.extend(abi_returns(&ret, int));
+		sig.returns.extend(abi_returns(&ret, &types, int));
 		let id = self.module.declare_function(symbol, linkage, &sig).expect("declare function");
 		FnSig {
 			id,
@@ -2240,7 +2240,7 @@ impl<M: Module> Compiler<M> {
 			out: &mut self.out,
 			c_callback: false,
 			comptime: self.stage0,
-			ret: def.ret.clone(),
+			ret: def.ret.clone().map(|(t, s)| (types.ret_pack(&t).unwrap_or(t), s)),
 			loops: vec![],
 			collect: None,
 			unsafely: 0,
@@ -2262,6 +2262,7 @@ impl<M: Module> Compiler<M> {
 			flagged: vec![],
 			linear: vec![],
 			withs: types.scope.withs.iter().map(|name| (name.clone(), None)).collect(),
+			pack_call: None,
 		};
 
 		(trans, block)
@@ -2363,7 +2364,7 @@ impl<M: Module> Compiler<M> {
 		} else if trans.b.func.signature.returns.is_empty()
 			&& let Some((ret, _)) = &trans.ret
 		{
-			trans.b.func.signature.returns.extend(abi_returns(ret, trans.int));
+			trans.b.func.signature.returns.extend(abi_returns(ret, &trans.types, trans.int));
 		}
 		if let Some(span) = def.ctxless
 			&& trans.ctx_used
@@ -2373,7 +2374,7 @@ impl<M: Module> Compiler<M> {
 		}
 		trans.b.finalize();
 
-		Ok(trans.ret.map(|(t, _)| t).unwrap_or(Typ::unit()))
+		Ok(trans.ret.map_or(Typ::unit(), |(t, _)| trans.types.pack_ret(&t).unwrap_or(t)))
 	}
 }
 

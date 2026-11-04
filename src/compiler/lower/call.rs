@@ -274,7 +274,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			p.typ = Typ::Annotated(vec![role::C.into()], Box::new(p.typ.clone()));
 		}
 		let (vals, lent) = self.call_args(name, &params, recv, recv_expr, args, span)?;
-		let out = self.emit_call(&sig, &vals);
+		let out = self.emit_call_at(&sig, &vals, Some(span));
 		self.reload_lent(&lent)?;
 		Ok(out)
 	}
@@ -824,6 +824,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Emit the actual call instruction for a resolved fn signature.
 	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
+		self.emit_call_at(sig, vals, None)
+	}
+
+	// A call at `span`, whose `!T` pack is kept by a flow operand there.
+	pub(super) fn emit_call_at(&mut self, sig: &FnSig, vals: &[Value], span: Option<Span>) -> TypedVal {
 		self.out.wanted.push(sig.id);
 		let mut vals = vals.to_vec();
 		if let Some(want) = &sig.ctx {
@@ -833,9 +838,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
-		let ret_val = self.returned(call, &sig.ret, sig.foreign);
-		self.temp(ret_val, &sig.ret);
-		(ret_val, sig.ret.clone())
+		let (ret_val, ret) = self.returned(call, &sig.ret, sig.foreign, span);
+		self.temp(ret_val, &ret);
+		(ret_val, ret)
 	}
 
 	// Call through a value as a function.
@@ -902,24 +907,43 @@ impl<'a, M: Module> Translator<'a, M> {
 			sig.params.push(AbiParam::new(self.int));
 			vals.push(obj);
 		}
-		sig.returns.extend(abi_returns(ret, self.int));
+		sig.returns.extend(abi_returns(ret, &self.types, self.int));
 		let sig_ref = self.b.import_signature(sig);
 		let call = self.b.ins().call_indirect(sig_ref, addr, &vals);
-		let ret_val = self.returned(call, ret, c_abi);
+		let (ret_val, ret) = self.returned(call, ret, c_abi, Some(span));
 		self.reload_lent(&lent)?;
-		self.temp(ret_val, ret);
-		Ok((ret_val, ret.clone()))
+		self.temp(ret_val, &ret);
+		Ok((ret_val, ret))
 	}
 
 	// Gathers a call's results.
-	fn returned(&mut self, call: codegen::ir::Inst, typ: &Typ, c_abi: bool) -> Value {
+	fn returned(&mut self, call: codegen::ir::Inst, typ: &Typ, c_abi: bool, span: Option<Span>) -> TypedVal {
 		let rets = self.b.inst_results(call).to_vec();
-		match typ {
+		let keep = span.is_some() && span == self.pack_call;
+		let val = match typ {
 			_ if typ.is_unit() => self.unit_value().0,
 			_ if c_abi => self.c_norm(rets[0], typ),
 			Typ::Tuple(_) => self.frame_slots(&rets),
+			_ if keep && let Some(pack) = self.types.ret_pack(typ) => return (self.frame_slots(&rets), pack),
+			_ if rets.len() == 2 => self.result_box(&rets, typ),
 			_ => self.unbox_ret(rets[0], typ),
-		}
+		};
+		(val, typ.clone())
+	}
+
+	// Boxes a returned `!T` pack.
+	fn result_box(&mut self, slots: &[Value], typ: &Typ) -> Value {
+		let (ok, _) = self.types.result_parts(typ).expect("a `!T`");
+		let out = self.call_alloc(2);
+		let failed = self.b.ins().icmp_imm(IntCC::NotEqual, slots[1], 0);
+		let tag = self.b.ins().uextend(self.int, failed);
+		self.st(out, 0, tag);
+		self.st(out, 8, slots[0]);
+		self.when(failed, |s| {
+			s.release_value(slots[0], &ok);
+			s.st(out, 8, slots[1])
+		});
+		out
 	}
 
 	// A returned inline value's box moves into a frame slot.

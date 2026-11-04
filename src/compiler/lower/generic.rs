@@ -245,7 +245,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.check_args(&access, None, &slots)?;
 
 		let vals = self.fill_args(name, &params, vals, &slots, given, span)?;
-		let out = self.emit_call(&sig, &vals);
+		let out = self.emit_call_at(&sig, &vals, Some(span));
 		self.reload_lent(&lent)?;
 		Ok(out)
 	}
@@ -343,7 +343,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
-		sig.returns.extend(abi_returns(&ret, self.int));
+		sig.returns.extend(abi_returns(&ret, &types, self.int));
 		let id = self
 			.module
 			.declare_function(&sym, Linkage::Local, &sig)

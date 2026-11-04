@@ -77,6 +77,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub flagged: Vec<Variable>,
 	pub linear: Vec<(Variable, Spanned<String>)>,
 	pub withs: Vec<(String, Option<(Expr, Typ)>)>,
+	pub pack_call: Option<Span>,
 }
 
 // Bindings in scope, with an undo log so `scoped` restores what a child scope changed.

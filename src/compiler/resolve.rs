@@ -687,8 +687,41 @@ impl TypeCtx<'_> {
 		Some((ok, err))
 	}
 
+	// The `(T, ?Error)` pack a `!T` returns as.
+	// Plain `T` only, so `!Self` and `!Trait` agree behind a vtable.
+	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
+		let (ok, Typ::Error) = self.result_parts(ret)? else {
+			return None;
+		};
+		let plain = matches!(
+			ok,
+			Typ::Int(_)
+				| Typ::UInt(_)
+				| Typ::Float(_)
+				| Typ::Bool
+				| Typ::Rune
+				| Typ::ISize
+				| Typ::USize
+				| Typ::Str
+				| Typ::Array(_)
+				| Typ::Map(..)
+		);
+		let err = plain.then(|| self.core_enum(role::OPTION, &[Typ::Error]))?;
+		Some(Typ::Tuple(vec![(None, ok), (Some(role::PACK_ERR.into()), err)]))
+	}
+
+	// The `!T` a return pack stands for.
+	pub fn pack_ret(&self, pack: &Typ) -> Option<Typ> {
+		let Typ::Tuple(fields) = pack else { return None };
+		let [(_, ok), (Some(name), _)] = &fields[..] else {
+			return None;
+		};
+		(name == role::PACK_ERR).then(|| self.core_enum(role::RESULT, &[ok.clone(), Typ::Error]))
+	}
+
 	// The `some`/`ok` payload type.
 	pub fn happy(&self, typ: &Typ) -> Option<Typ> {
+		let typ = &self.pack_ret(typ).unwrap_or_else(|| typ.clone());
 		self.option_inner(typ).or_else(|| Some(self.result_parts(typ)?.0))
 	}
 

@@ -358,6 +358,9 @@ impl fmt::Display for Typ {
 			Typ::CStr => write!(f, "cstr"),
 			Typ::Atom => write!(f, "atom"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
+			Typ::Tuple(fields) if fields.last().is_some_and(|(n, _)| n.as_deref() == Some(role::PACK_ERR)) => {
+				write!(f, "!{}", fields[0].1)
+			}
 			Typ::Tuple(fields) => {
 				let show = |(n, t): &(Option<String>, Typ)| n.as_ref().map_or(t.to_string(), |n| format!("{n}: {t}"));
 				write!(f, "({})", fields.iter().map(show).collect::<Vec<_>>().join(", "))
@@ -490,11 +493,11 @@ pub(crate) fn abi_params<'t>(
 	params.chain(std::iter::repeat_n(AbiParam::new(int), ptrs))
 }
 
-// A fn's ABI returns, one per tuple slot.
-pub(crate) fn abi_returns(ret: &Typ, int: types::Type) -> Vec<AbiParam> {
-	match ret {
+// A fn's ABI returns, one per tuple or `!T` pack slot.
+pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<AbiParam> {
+	match types.ret_pack(ret).as_ref().unwrap_or(ret) {
 		Typ::Tuple(fields) => fields.iter().map(|(_, t)| AbiParam::new(cl_type(t, int))).collect(),
-		_ => vec![AbiParam::new(cl_type(ret, int))],
+		ret => vec![AbiParam::new(cl_type(ret, int))],
 	}
 }
 
