@@ -72,25 +72,22 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 		t
 	});
 
-	let bind = list1(bind_name.clone())
+	let bind = bind_name
 		.then(binding(annot, value.clone()))
-		.map_with(|(names, (mutable, typ, mut value)), ex| {
-			for (name, binder) in names {
-				let bind = (
-					Expr::Bind {
-						mutable,
-						name,
-						typ: typ.clone(),
-						value: value.map(Box::new),
-					},
-					ex.span(),
-				);
-				value = Some(match binder {
-					Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
-					None => bind,
-				});
+		.map_with(|((name, binder), (mutable, typ, value)), ex| {
+			let bind = (
+				Expr::Bind {
+					mutable,
+					name,
+					typ,
+					value: value.map(Box::new),
+				},
+				ex.span(),
+			);
+			match binder {
+				Some(b) => (Expr::UnquoteBind(Box::new(b), Box::new(bind)), ex.span()),
+				None => bind,
 			}
-			value.unwrap()
 		})
 		.boxed();
 
@@ -123,6 +120,14 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	mut place: Rec<'token, I, Spanned<Expr>>,
 	mut bind: Rec<'token, I, Spanned<Expr>>,
 ) {
+	// tuples
+	let values = list1(p.juxt_expr.clone())
+		.map_with(|mut values, ex| match values.len() {
+			1 => values.remove(0),
+			_ => (Expr::Tuple(values.into_iter().map(|v| (None, v)).collect()), ex.span()),
+		})
+		.boxed();
+
 	// compound assignment
 	let assign_op = choice((
 		just(Token::PlusEq).to(Some(BinOp::Add)),
@@ -138,7 +143,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		just(Token::GtGtEq).to(Some(BinOp::Shr)),
 		just(Token::Assign).to(None),
 	));
-	let rhs = assign_op.clone().then(p.juxt_expr.clone());
+	let rhs = assign_op.clone().then(values.clone());
 	let fold = |op, lhs, value: Spanned<Expr>, span| match op {
 		None => value,
 		Some(op) => (Expr::Binary(op, Box::new((lhs, span)), Box::new(value)), span),
@@ -155,7 +160,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	assign.define(
 		(p.def_name.clone().map(|n| (n, None)).or(hole.clone()))
 			.then(assign_op.clone())
-			.then(assign.clone().or(p.juxt_expr.clone()))
+			.then(assign.clone().or(values.clone()))
 			.map_with(move |(((name, binder), op), value), ex| {
 				let lhs = binder.clone().map_or(Expr::Ident(name.clone()), Expr::UnquoteExpr);
 				let value = Box::new(fold(op, lhs, value, ex.span()));
@@ -215,8 +220,20 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.then(rhs)
 		.map_with(|(place, (op, value)), ex| ast::assign(place, op, value, ex.span()));
 
-	let (b, destructure) = binds(p, p.juxt_expr.clone(), p.pat.clone());
-	bind.define(b);
+	bind.define(binds(p, p.juxt_expr.clone(), p.pat.clone()).0);
+
+	// destructuring
+	let names = spanned(ident().map(Expr::Ident))
+		.separated_by(just(Token::Comma))
+		.at_least(2)
+		.collect::<Vec<_>>()
+		.map_with(|names, ex| (Expr::Tuple(names.into_iter().map(|n| (None, n)).collect()), ex.span()));
+	let pat = p.pat.clone().or(names).boxed();
+	let (list_bind, destructure) = binds(p, values.clone(), pat);
+
+	let return_list = just(Token::Return)
+		.ignore_then(values.clone())
+		.map_with(|value, ex| (Expr::Return(Some(Box::new(value))), ex.span()));
 
 	let doc = select! { Token::Doc(text) => text }
 		.repeated()
@@ -225,9 +242,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()))
 		.then_ignore(just(Token::DocBreak).or_not());
 
-	// statements that leave a place behind
-	place.define(destructure.or(bind.clone()).or(place_assign).or(assign.clone()).or(map_delete));
-
 	// statements
-	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(p.juxt_expr.clone()));
+	place.define(destructure.or(list_bind).or(place_assign).or(assign.clone()).or(map_delete));
+	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(return_list).or(values));
 }

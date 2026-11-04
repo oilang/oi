@@ -141,9 +141,9 @@ fn empty_array_static_needs_an_annotation() {
 #[test]
 fn bind_groups_split_into_statics_and_consts() {
 	let src = indoc! {r#"
-		a, b :: 4
-		pub x, y := 2
-		m, n: int = 3
+		a :: (b :: 4)
+		pub x := (y := 2)
+		m : int = (n : int = 3)
 
 		main :: fn() {
 			m = 10

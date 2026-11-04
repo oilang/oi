@@ -546,7 +546,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|stmts, ex| (Expr::Quote(stmts), ex.span()));
 
 	let comp_expr = just(Token::Comp)
-		.ignore_then(p.stmt.clone())
+		.ignore_then(p.place.clone().or(p.juxt_expr.clone()))
 		.map_with(|inner, ex| (Expr::Comp(Box::new(inner)), ex.span()))
 		.boxed();
 

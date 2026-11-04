@@ -31,6 +31,7 @@ mod memory;
 mod methods;
 mod modules;
 mod overloads;
+mod packs;
 mod param_mods;
 mod pipelines;
 mod references;
