@@ -74,8 +74,8 @@ fn rejections() {
 		"duplicate member `int` in sum type",
 	);
 	fail(
-		["Id :: int | string", "x : Id : 4", "int.(x)"],
-		"cannot extract a sum member by casting",
+		["Id :: int | string", "x : Id : 4", "bool.(x)"],
+		"cannot cast Id to bool",
 	);
 }
 

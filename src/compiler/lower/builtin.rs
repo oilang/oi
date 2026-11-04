@@ -332,13 +332,18 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Assertion casts.
 	fn assert_cast(&mut self, obj: Value, typ: &Typ, target: &Typ, span: Span) -> Result<Option<TypedVal>, Diagnostic> {
-		if !matches!(typ, Typ::Any | Typ::Trait(_) | Typ::Error) {
+		if !matches!(typ, Typ::Any | Typ::Trait(_) | Typ::Error | Typ::Sum(..)) {
 			return Ok(None);
 		}
 		let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(target));
 		let want = if *typ == Typ::Any {
 			// `any` is tagged by typeid
 			self.b.ins().iconst(self.int, typeid(target))
+		} else if let Typ::Sum(..) = typ {
+			let Some(member) = self.variants_of(typ).into_iter().find(|v| v.payload.first() == Some(target)) else {
+				return Ok(None);
+			};
+			self.b.ins().iconst(self.int, member.disc)
 		} else {
 			// trait objects tagged by their vtable
 			let tn = if let Typ::Trait(tn) = typ { tn } else { role::ERROR };
@@ -363,7 +368,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let zero = self.b.ins().iconst(self.int, 0);
 			self.st(obj, -16, zero);
 			data = self.unbox_ret(data, target);
-		} else if *typ != Typ::Any && target.slots().is_none() {
+		} else if matches!(typ, Typ::Trait(_) | Typ::Error) && target.slots().is_none() {
 			data = self.ld_typ(data, 0, target);
 		}
 
@@ -388,8 +393,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		let (val, typ) = self.expr(value)?;
-		if typ == Typ::Any {
-			return self.assert_cast(val, &typ, target, span);
+		if matches!(typ, Typ::Any | Typ::Sum(..))
+			&& let Some(out) = self.assert_cast(val, &typ, target, span)?
+		{
+			return Ok(Some(out));
 		}
 		let (val, typ) = self.enum_as_backing(val, typ, value.1)?;
 		if *target == Str && !matches!(typ, Str | Array(_)) {
@@ -447,13 +454,6 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn enum_as_backing(&mut self, val: Value, typ: Typ, span: Span) -> Result<TypedVal, Diagnostic> {
 		if !typ.is_enumish() {
 			return Ok((val, typ));
-		}
-		if matches!(typ, Typ::Sum(..)) {
-			return fail(
-				"cannot extract a sum member by casting",
-				span,
-				"no member extraction yet",
-			);
 		}
 		let variants = self.variants_of(&typ);
 		if enum_boxed(&variants) {

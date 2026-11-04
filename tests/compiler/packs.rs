@@ -76,3 +76,17 @@ fn any_cast_reads_zero_and_flow_sees_option() {
 	"#};
 	check(src, ["7", "0 7 100 five 0 false none"]);
 }
+
+#[test]
+fn sum_cast_extracts_member_or_zero() {
+	let src = indoc! {r#"
+		P :: struct { x: int }
+		U :: P | string
+		u: U = "x"
+		w: U = P.{ x = 3 }
+		n, ok := P.(u)
+		if p := P.(w) do print(p.x)
+		print(string.(u), string.(w), string.(w) or "none", n, ok)
+	"#};
+	check(src, ["3", "x  none P.{x = 0} false"]);
+}
