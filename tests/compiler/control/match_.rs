@@ -211,3 +211,15 @@ fn match_arm_guard() {
 		"missing: some",
 	);
 }
+
+#[test]
+fn match_comma_subject_is_tuple() {
+	let src = indoc! {r#"
+		a :: 3
+		b :: 4
+		match a, b {
+			(x, y) => x * y,
+		}
+	"#};
+	check(src, "12");
+}

@@ -507,8 +507,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		Expr::Bind { name, .. } => (Expr::Block(vec![e.clone(), (Expr::Ident(name.clone()), e.1)]), e.1),
 		_ => e,
 	});
+	let match_subjects = list1(match_subject).map_with(|mut subjects, ex| match subjects.len() {
+		1 => subjects.remove(0),
+		_ => (
+			Expr::Tuple(subjects.into_iter().map(|s| (None, s)).collect()),
+			ex.span(),
+		),
+	});
 	let match_expr = just(Token::Match)
-		.ignore_then(match_subject)
+		.ignore_then(match_subjects)
 		.then(brace(
 			arm.repeated().collect::<Vec<_>>().then(
 				just(Token::Else)
