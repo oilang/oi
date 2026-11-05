@@ -273,6 +273,14 @@ divmod :: fn(a, b: int) (q, r: int) {
 # a one-slot list is the bare value, and a list is all names or all types
 count :: fn() (n: int) { n = 3; return } # int, not a 1-tuple
 
+# a trailing `?Error` slot makes the fn fallible, so `defer or` sees it
+commit :: fn(db: Db) (tx: Tx, err: ?Error) {
+	tx = db.begin()
+	defer or tx.abort()
+	tx.write(rows) or { err = $; return }
+	return
+}
+
 # default values
 three :: fn() r := 2 {
 	r = 3
@@ -1566,9 +1574,27 @@ main :: fn() {
 		else => (),
 	}
 
+	# comma subjects match as a tuple
+	match x, y {
+		(0, 0) => "origin",
+		(_, 0) => "on the x axis",
+		(-9..10, _) => "near",
+		_ => "far",
+	}
+	match opt {
+		.some.((0, y)) => y,
+		.some.((x, 1..3)) => x,
+		_ => -1,
+	}
+
+	# fields take sub-patterns
 	match u := user {
 		User.{ age = 0..18 } => "minor: {u.name}",
 		_ => "adult",
+	}
+	match shape {
+		.circle.{ radius = 0.0 } => "tiny circle",
+		_ => "",
 	}
 
 	## loops
@@ -1779,7 +1805,7 @@ main :: fn() {
 		}
 	}
 
-	# ?T and !T must be handled, and the or block is required to unwrap
+	# ?T and !T must be handled, and `or` unwraps them
 	# $ is the Error value (!T) or none (?T)
 	user := repo.find_user(7) or {
 		print($.message()) # "User 7 not found"
@@ -1826,6 +1852,23 @@ main :: fn() {
 	maybe :: ?int.(42)
 	ok :: !int.(7)
 	broken :: !int.(error("oops"))
+
+	# in return position `?T` and `!T` are packs, `(T, bool)` and `(T, ?Error)`
+	# one binding keeps the enum, two split it, and a miss leaves the value zeroed
+	user, found := repo.find_user_if_exists(7)
+	user, err := repo.find_user(7)
+
+	# a trailing `?Error` slot makes any pack fallible, keeping a partial result beside its error
+	read :: fn(buf: []u8) (n: int, err: ?io.Error)
+	n, err := read(buf) # the bytes that landed before EOF
+	n := read(buf)? # `?` propagates err and yields n
+	# n := read(buf) # error, one binding would hide the error slot
+
+	# operators like casts and map index drop the ok slot, reading zero on a miss
+	a: any = "five"
+	n := int.(a) # 0
+	n := int.(a) or -1
+	n, ok := int.(a)
 
 	# ?T / !T wrap the whole tuple in multi-return
 	checked_divmod :: fn(a: int, b: int) !(int, int) {

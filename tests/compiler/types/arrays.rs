@@ -334,3 +334,16 @@ fn fixed_arithmetic_is_elementwise() {
 		"[0.0, 0.0, 30.0] [[2, 4], [6, 8]]",
 	);
 }
+
+#[test]
+fn keyed_fixed_literal() {
+	check(
+		indoc! {r#"
+			codes :: string.[0 = "ok", 3 = "err"]
+			sized: [4]int = .[1 = 7]
+			print(codes, sized)
+		"#},
+		r#"["ok", "", "", "err"] [0, 7, 0, 0]"#,
+	);
+	fail(r#"string.[1 = "a", 1 = "b"]"#, "duplicate key 1");
+}

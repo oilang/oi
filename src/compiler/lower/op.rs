@@ -410,7 +410,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// An expression known at comptime to be a plain int.
-	fn const_int(&self, e: &Spanned<Expr>) -> Option<i64> {
+	pub(super) fn const_int(&self, e: &Spanned<Expr>) -> Option<i64> {
 		match &e.0 {
 			Expr::Int(n) => int_word(*n),
 			Expr::Negative(inner) => self.const_int(inner).map(i64::wrapping_neg),

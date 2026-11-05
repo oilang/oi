@@ -1444,6 +1444,27 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		target: Option<&Typ>,
 	) -> Result<TypedVal, Diagnostic> {
+		if let Some(t @ Typ::FixedArray(elem, len)) = target {
+			let (ptr, mut seen) = (self.zero(t), vec![false; *len]);
+			for (k, v) in entries {
+				let Some(slot) = (self.const_int(k)).and_then(|n| usize::try_from(n).ok()).filter(|n| n < len) else {
+					return fail(
+						format!("expected an index below {len}"),
+						k.1,
+						"a fixed array is keyed by index",
+					);
+				};
+				if std::mem::replace(&mut seen[slot], true) {
+					return fail(format!("duplicate key {slot}"), k.1, "already set");
+				}
+				let val = self.stored(v, elem, &format!("element of {elem} array"), "an array")?;
+				let (val, idx) = (self.copy_in(val, elem), self.b.ins().iconst(self.int, slot as i64));
+				self.store_index((ptr, t), idx, val, k.1);
+			}
+			self.temp(ptr, t);
+			return Ok((ptr, t.clone()));
+		}
+
 		if let Some(t) = target
 			&& let Some((key, arr)) = t.keyed()
 		{

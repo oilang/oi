@@ -227,6 +227,18 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Casts and numeric conversions.
 	pub(super) fn cast_to(&mut self, target: &Typ, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
+		// keyed fixed arrays
+		if let [(Expr::Map(entries), _)] = args
+			&& !matches!(target, Typ::Map(..))
+			&& target.keyed().is_none()
+			&& self.pick_from(target, |p| matches!(p, Typ::Map(..)), span)?.is_none()
+			&& let Some(last) = (entries.iter()).try_fold(-1, |last, (k, _)| Some(self.const_int(k)?.max(last)))
+			&& let Ok(last) = usize::try_from(last)
+		{
+			let fixed = Typ::FixedArray(Box::new(target.clone()), last + 1);
+			return self.map_lit(entries, span, Some(&fixed));
+		}
+
 		let [value] = args else {
 			let fields: Vec<_> = args.iter().map(|a| (None, a.clone())).collect();
 			return match target {
@@ -240,6 +252,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				),
 			};
 		};
+
 		if *target == Typ::TypeId {
 			let (val, typ) = self.lower(value, Some(&Typ::TypeId))?;
 			let id = match typ {
@@ -321,6 +334,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				return Ok((val, target.clone()));
 			}
 		}
+
 		// support userland From claims
 		if self.claims(target, "core::From")
 			&& let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ)
