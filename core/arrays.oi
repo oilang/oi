@@ -58,9 +58,6 @@ module core
 		loop x in self { if predicate(x) do break x }
 	}
 
-	## Lazy iterator over the elements.
-	iter :: fn(self) ArrayIter[T] { .{ self, 0 } }
-
 	## Join elements with `separator`.
 	join :: fn(self; separator: string) string {
 		out := ""
@@ -70,6 +67,18 @@ module core
 		}
 		out
 	}
+}
+
+## Arrays claim `Keyed` for bounds, loops still index them directly.
+[T] []T : Keyed[int, T] < {
+	pairs :: fn(self; after: ?int) ?(T, int) {
+		i :: (after or -1) + 1
+		if i >= self.len() do return none
+		(self[i], i)
+	}
+
+	## Lazy iterator over the elements.
+	iter :: fn(self) ArrayIter[T] { .{ self, 0 } }
 }
 
 pub ArrayIter[T] :: struct { items: []T, at: int }

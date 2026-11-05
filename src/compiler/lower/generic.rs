@@ -275,6 +275,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (Some(bound), Some(w)) = (&p.bound, infer.subst.get(&p.name)) else {
 				continue;
 			};
+
 			let key = (rc::base_name(&w.key()).to_string(), bound.clone());
 			let Some(args) = self.world.claim_args.get(&key) else {
 				continue;
@@ -286,9 +287,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				.into_iter()
 				.flatten()
 				.map(|p| p.name.clone());
-			let own = names
-				.zip(self.types.generics.instance_args(&w.key()).unwrap_or_default())
-				.collect();
+			let own_args = match w {
+				Typ::Array(elem) => vec![(**elem).clone()],
+				_ => self.types.generics.instance_args(&w.key()).unwrap_or_default(),
+			};
+			let own = names.zip(own_args).collect();
 			for ((te, _), (arg, span)) in p.bound_args.iter().zip(args) {
 				let typ = self.types_at(*span).with_type_params(&own).resolve(arg, *span)?;
 				infer.bind(te, &typ, *span)?;
@@ -303,6 +306,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let typ = self.types.with_scope(self.home_scope(def)).resolve(te, *span)?;
 			infer.subst.insert(p.name.clone(), typ);
 		}
+
 		Ok(())
 	}
 

@@ -1463,7 +1463,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		if self.claims(&typ, role::ITERATOR) || self.claims(&typ, role::KEYED) {
+		if self.claims(&typ, role::ITERATOR) || !matches!(typ, Typ::Array(_)) && self.claims(&typ, role::KEYED) {
 			return self.iter_loop(label, (pat, key), body, (val, typ), span);
 		}
 

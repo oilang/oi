@@ -58,3 +58,26 @@ test! "lazy iterator adapters" {
 	assert! (0..10).any({ $ == 3 }) && !(0..10).all({ $ < 5 })
 	assert! xs.iter().find({ $ > 4 }) == ?int.(5)
 }
+
+Ring :: struct { items: []int, start: int }
+
+Ring : Keyed[int, int] < {
+	pairs :: fn(self; after: ?int) ?(int, int) {
+		i :: (after or -1) + 1
+		if i >= self.items.len() do return none
+		(self.items[(self.start + i) % self.items.len()], i)
+	}
+}
+
+second[C: Keyed[int, T], T] :: fn(c: C) ?T {
+	(_, i) :: c.pairs(none)?
+	(item, _) :: c.pairs(i)?
+	item
+}
+
+test! "keyed bounds and adapters" {
+	ring := Ring.{ [1 2 3], 1 }
+	assert! second([4 5]) == ?int.(5)
+	assert! second(ring) == ?int.(3)
+	assert! ring.iter().map({ $ * 10 }).collect() == [20 30 10]
+}
