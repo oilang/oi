@@ -1217,6 +1217,9 @@ main :: fn() {
 
 	# make array with designated initializers
 	codes := string.[0 = "ok", 5 = "err"] # [6]string
+	# a range key fills every index it covers
+	animals := string.[0 = "raven", 1 = "zebra", 3..=5 = "frog", 6..8 = "cat"] # [8]string
+	assert! animals.7 == "cat"
 
 	# a fixed array coerces (and makes copy) to `[]T` where one is expected
 	roster: []string = stooges
@@ -1716,7 +1719,8 @@ main :: fn() {
 	# plain `break` and `continue` skip labeled blocks
 	# with no enclosing `:name`, `break :name` breaks with the atom
 
-	# Iterator/Iterable traits
+	# Iterator/Keyed traits
+	# a stream advances itself
 	Countdown :: struct { n: int }
 	Countdown : Iterator[int] < {
 		next :: fn(mut self) ?int {
@@ -1726,6 +1730,17 @@ main :: fn() {
 		}
 	}
 	loop x in Countdown.{ n = 3 } { print(x) }
+
+	# a collection is walked by key, which is the cursor
+	Ring :: struct { items: []int, start: int }
+	Ring : Keyed[int, int] < {
+		pairs :: fn(self; after: ?int) ?(int, int) {
+			i :: (after or -1) + 1
+			if i >= self.items.len() do return none
+			(self.items[(self.start + i) % self.items.len()], i)
+		}
+	}
+	loop x, i in Ring.{ [1 2 3], 1 } do print(i, x) # 0 2, 1 3, 2 1
 
 	## everything is an expression
 

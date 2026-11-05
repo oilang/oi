@@ -341,9 +341,10 @@ fn keyed_fixed_literal() {
 		indoc! {r#"
 			codes :: string.[0 = "ok", 3 = "err"]
 			sized: [4]int = .[1 = 7]
-			print(codes, sized)
+			animals := string.[1..=2 = "frog", 3..5 = "cat"]
+			print(codes, sized, animals, int.[0..2..=4 = 1])
 		"#},
-		r#"["ok", "", "", "err"] [0, 7, 0, 0]"#,
+		r#"["ok", "", "", "err"] [0, 7, 0, 0] ["", "frog", "frog", "cat", "cat"] [1, 0, 1, 0, 1]"#,
 	);
-	fail(r#"string.[1 = "a", 1 = "b"]"#, "duplicate key 1");
+	fail(r#"string.[0..3 = "a", 2 = "b"]"#, "duplicate key 2");
 }

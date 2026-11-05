@@ -232,7 +232,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& !matches!(target, Typ::Map(..))
 			&& target.keyed().is_none()
 			&& self.pick_from(target, |p| matches!(p, Typ::Map(..)), span)?.is_none()
-			&& let Some(last) = (entries.iter()).try_fold(-1, |last, (k, _)| Some(self.const_int(k)?.max(last)))
+			&& let Some(last) =
+				(entries.iter()).try_fold(-1, |last, (k, _)| Some(self.const_keys(k)?.fold(last, i64::max)))
 			&& let Ok(last) = usize::try_from(last)
 		{
 			let fixed = Typ::FixedArray(Box::new(target.clone()), last + 1);

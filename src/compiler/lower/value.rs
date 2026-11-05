@@ -1447,19 +1447,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(t @ Typ::FixedArray(elem, len)) = target {
 			let (ptr, mut seen) = (self.zero(t), vec![false; *len]);
 			for (k, v) in entries {
-				let Some(slot) = (self.const_int(k)).and_then(|n| usize::try_from(n).ok()).filter(|n| n < len) else {
+				let slots = (self.const_keys(k)).and_then(|keys| {
+					keys.map(|n| usize::try_from(n).ok().filter(|n| n < len))
+						.collect::<Option<Vec<_>>>()
+				});
+				let Some(slots) = slots else {
 					return fail(
 						format!("expected an index below {len}"),
 						k.1,
 						"a fixed array is keyed by index",
 					);
 				};
-				if std::mem::replace(&mut seen[slot], true) {
-					return fail(format!("duplicate key {slot}"), k.1, "already set");
-				}
 				let val = self.stored(v, elem, &format!("element of {elem} array"), "an array")?;
-				let (val, idx) = (self.copy_in(val, elem), self.b.ins().iconst(self.int, slot as i64));
-				self.store_index((ptr, t), idx, val, k.1);
+				for slot in slots {
+					if std::mem::replace(&mut seen[slot], true) {
+						return fail(format!("duplicate key {slot}"), k.1, "already set");
+					}
+					let (val, idx) = (self.copy_in(val, elem), self.b.ins().iconst(self.int, slot as i64));
+					self.store_index((ptr, t), idx, val, k.1);
+				}
 			}
 			self.temp(ptr, t);
 			return Ok((ptr, t.clone()));

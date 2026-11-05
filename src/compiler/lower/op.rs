@@ -422,6 +422,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Get the ints a literal key covers.
+	pub(super) fn const_keys(&self, e: &Spanned<Expr>) -> Option<impl Iterator<Item = i64> + use<M>> {
+		let (start, end, inclusive) = e.0.bounds().unwrap_or((Some(e), Some(e), true));
+		let (first, second) = match start?.0.bounds() {
+			Some((first, second @ Some(_), false)) => (first?, second),
+			_ => (start?, None),
+		};
+		let (first, end) = (self.const_int(first)?, self.const_int(end?)?);
+		let step = second
+			.map_or(Some(1), |second| self.const_int(second)?.checked_sub(first))
+			.filter(|step| *step != 0)?;
+		let more = move |i: &i64| end.saturating_sub(*i).signum() == step.signum() || inclusive && *i == end;
+		Some(std::iter::successors(Some(first), move |i| i.checked_add(step)).take_while(more))
+	}
+
 	pub(super) fn binop(
 		&mut self,
 		op: BinOp,
