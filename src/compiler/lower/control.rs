@@ -54,7 +54,7 @@ pub(super) fn diverges(body: &[Spanned<Expr>]) -> bool {
 // Whether a condition contains a header chain.
 fn chained(cond: &Expr) -> bool {
 	match cond {
-		Expr::Bind { .. } | Expr::PatBind { .. } => true,
+		Expr::Bind { .. } | Expr::PatBind { .. } | Expr::Block(_) => true,
 		Expr::Binary(BinOp::And, lhs, rhs) => chained(&lhs.0) || chained(&rhs.0),
 		_ => false,
 	}
@@ -111,6 +111,28 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
+	// Chains a header block's binds and tests as clauses, and its other statements just run.
+	fn clauses(&mut self, h: &Spanned<Expr>) -> Result<Spanned<Expr>, Diagnostic> {
+		let Expr::Block(body) = &h.0 else { return Ok(h.clone()) };
+		let (stmt, rest) = match &body[..] {
+			[] => return Ok(h.clone()),
+			[stmt] => return self.clauses(stmt),
+			[stmt, rest @ ..] => (stmt, (Expr::Block(rest.to_vec()), h.1)),
+		};
+		let mut test = stmt.clone();
+		if !chained(&stmt.0) {
+			let never = || Diagnostic::new("this never produces a value", stmt.1.into_range());
+			let (val, typ) = self.block(std::slice::from_ref(stmt))?.ok_or_else(never)?;
+			if typ != Typ::Bool {
+				return self.clauses(&rest);
+			}
+			let name = format!("$test{}", self.vars.len());
+			self.hidden_local(name.clone(), val, typ);
+			test.0 = Expr::Ident(name);
+		}
+		Ok((Expr::Binary(BinOp::And, Box::new(test), Box::new(rest)), h.1))
+	}
+
 	// `if`/`else` lowered to branch&merge, yielding value of the chosen branch.
 	// A diverging branch contributes nothing to the merge.
 	// If all branches diverge, returns None.
@@ -123,7 +145,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		let cond = self.header(cond)?;
+		let cond = &self.clauses(cond)?;
 		if let Expr::Binary(BinOp::And, lhs, rhs) = &cond.0
 			&& chained(&cond.0)
 		{
@@ -134,16 +156,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			return self.conditional(lhs, &[(inner, cond.1)], els, target, span, want);
 		}
+
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
 				s.pack_operand(cond)?;
 				if let Some((id, arm)) = s.unwrap_arm(cond, then) {
 					return s.match_expr(&id, &[arm], els, Some(&[]), target, span);
 				}
-				if let Some([first, ..]) = els {
+
+				if let Some([first, ..]) = els
+					&& !matches!(then, [(Expr::If { .. }, inner)] if inner.start <= cond.1.start)
+				{
 					let msg = "this binding always succeeds, so `else` can never run";
 					return fail(msg, first.1, "unreachable");
 				}
+
 				s.block_tail(then, target)
 			});
 		}
@@ -1141,12 +1168,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
-		let cond = cond.map(|c| self.header(c)).transpose()?;
+		let cond = cond.map(|c| self.clauses(c)).transpose()?;
+		let cond = cond.as_ref();
 
 		// a conditional loop branches, into the body or out through `fallthrough`
 		let (exit, fallthrough) = match cond {
-			Some((Expr::PatBind { .. }, _)) | None => (None, None),
-			Some((c, _)) if infallible(c) => (None, None),
+			None => (None, None),
+			Some((c, _)) if infallible(c) || chained(c) => (None, None),
 			Some(cond) => {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
@@ -1180,6 +1208,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					..Default::default()
 				};
 				s.match_expr(value, &[arm], None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
+			}
+			(Some(c), _) if chained(&c.0) => {
+				s.conditional(c, body, Some(&[(Expr::Break(None, None), c.1)]), None, c.1, true)
 			}
 			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
 				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)

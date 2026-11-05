@@ -306,10 +306,25 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.ignore_then(p.type_expr.clone())
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 
+	// `,` chains clauses with `&&`, and `;` groups them into a header block
+	let header = (header_cond.clone())
+		.foldl_with(
+			just(Token::Comma).ignore_then(header_cond.clone()).repeated(),
+			|lhs, rhs, ex| (Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs)), ex.span()),
+		)
+		.separated_by(just(Token::Semicolon))
+		.at_least(1)
+		.collect::<Vec<_>>()
+		.map_with(|mut groups, ex| match groups.len() {
+			1 => groups.remove(0),
+			_ => (Expr::Block(groups), ex.span()),
+		})
+		.boxed();
+
 	let if_expr = recursive(|if_expr| {
 		just(Token::If)
 			.ignore_then(just(Token::With).or_not())
-			.then(header_cond.clone())
+			.then(header.clone())
 			.then(p.block.clone())
 			.then(
 				just(Token::Else)
@@ -342,7 +357,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.map(Some)
 				.then(p.same_line.clone().ignore_then(p.block.clone()))
 				.or(p.block.clone().map(|body| (None, body)))
-				.or(header_cond.clone().map(Some).then(p.block.clone()))
+				.or(header.map(Some).then(p.block.clone()))
 				.or(header_expr.clone().map(|e| (None, vec![e]))),
 		)
 		.map_with(|(label, (cond, body)), ex| {

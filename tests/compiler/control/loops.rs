@@ -273,6 +273,16 @@ fn header_bind() {
 }
 
 #[test]
+fn header_bind_then_test() {
+	let src = indoc! {"
+		it := 0..9
+		loop n := it.next(), n < 2 { print(n) }
+		print(loop n := it.next(); n < 5 do n * 10)
+	"};
+	check(src, ["0", "1", "[30, 40]"]);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

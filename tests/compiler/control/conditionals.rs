@@ -161,5 +161,17 @@ fn header_binds_stay_in_the_construct() {
 	check("if { x := 5; x > 1 } { print(x) }", "5");
 	check("match { x := 2; x } { 2 => print(x), _ => () }", "2");
 	check("loop x in { ys := [1 2]; ys } { print(x, ys.len()) }", ["1 2", "2 2"]);
-	fail("if (x := 5) > 0 { print(x) }\nprint(x)", "undefined variable `x`");
+	fail(["if (x := 5) > 0 { print(x) }", "print(x)"], "undefined variable `x`");
+}
+
+#[test]
+fn header_clauses() {
+	let src = indoc! {r#"
+		f :: fn() ?int do 5
+		g :: fn() ?int do none
+		if a := f(), b := f(), a > b do print(a) else do print("no")
+		if n := 12; n > 9; n > 99 do print(n) else do print("small")
+		if a := f(); b := g() do print(a + b) else do print("miss")
+	"#};
+	check(src, ["no", "small", "miss"]);
 }
