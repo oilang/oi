@@ -1444,6 +1444,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				s.bind_pat(key, key_val, &fields[1].1, Some(false))?;
 			}
 			let last = s.b.use_var(*var);
+
+			// a key owning nothing overwrites the last one in place
+			if s.enum_box(opt_key) && !s.slot_owns(&fields[1].1) {
+				let some = s.b.ins().iconst(s.int, 1);
+				s.store_slots(last, &[some, key_val]);
+				return s.block(body);
+			}
+
 			s.release_value(last, opt_key);
 			let last = s.make_option(opt_key, Some(key_val));
 			s.untemp(last);

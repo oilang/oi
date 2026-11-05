@@ -408,3 +408,29 @@ fn custom_error_returns_allocate_nothing() {
 	"};
 	check(src, "5 some.(worse) err.(bad) 0");
 }
+
+#[test]
+fn keyed_loop_reuses_its_key() {
+	let src = indoc! {r#"
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		Three :: struct {}
+		Three : Keyed[int, int] < {
+			pairs :: fn(self; after: ?int) ?(int, int) {
+				i :: (after or -1) + 1
+				if i < 3 do (i * 10, i) else do none
+			}
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			sum := 0
+			loop x, i in Three.{} do sum += x + i
+			print(sum, count)
+		}
+	"#};
+	check(src, "33 5");
+}
