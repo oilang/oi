@@ -90,6 +90,25 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some((self.derived_str(val, &typ, name == "__repr"), Typ::Str)))
 			}
 
+			// a map or fixed enum array's key or value at the given position
+			"__key_at" | "__value_at" => {
+				let ((coll, typ), key) = (self.expr(&args[0])?, name == "__key_at");
+				let at = self.check_typed(&args[1], &Typ::Int(64), "not an int")?;
+				if let Some((key_typ, arr)) = typ.keyed() {
+					return Ok(Some(match key {
+						true => (self.enum_disc(&key_typ, at), key_typ),
+						false => (self.load_index((coll, arr), at, span), array_elem(arr).clone()),
+					}));
+				}
+				let Typ::Map(key_typ, val_typ) = &typ else {
+					unreachable!("a map or `[E]T`")
+				};
+				let out = if key { key_typ } else { val_typ };
+				let flag = self.b.ins().iconst(self.int, key as i64);
+				let bits = self.rt_call("map_at", &[coll, at, flag]).unwrap();
+				Ok(Some((self.unmap_bits(bits, out), (**out).clone())))
+			}
+
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
 			"__comp_yield" => {
 				(self.ret, self.is_main) = (None, true);

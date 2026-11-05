@@ -1174,15 +1174,27 @@ pub unsafe extern "C" fn map_find(map: *mut OiMap, tag: i64, bits: i64, out: *mu
 #[unsafe(export_name = "oi_map_entries")]
 pub unsafe extern "C" fn map_entries(map: *mut OiMap, keys: i64, width: i64) -> *const Header {
 	let map = unsafe { &*map };
-	let key_bits = |k: &MapKey| match k {
-		MapKey::Raw(bits) => *bits,
-		MapKey::Str(bytes) => str_new(system_allocator(), bytes) as i64,
-	};
 	let bits: Vec<i64> = match keys {
 		0 => map.entries.values().copied().collect(),
 		_ => map.entries.keys().map(key_bits).collect(),
 	};
 	array_of(&bits, width)
+}
+
+fn key_bits(key: &MapKey) -> i64 {
+	match key {
+		MapKey::Raw(bits) => *bits,
+		MapKey::Str(bytes) => str_new(system_allocator(), bytes) as i64,
+	}
+}
+
+/// The key or value of the entry at `at`.
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer with an entry at `at`.
+#[unsafe(export_name = "oi_map_at")]
+pub unsafe extern "C" fn map_at(map: *mut OiMap, at: i64, key: i64) -> i64 {
+	let (k, v) = unsafe { &(*map).entries }.get_index(at as usize).expect("an entry at `at`");
+	if key != 0 { key_bits(k) } else { *v }
 }
 
 /// Run a boxed fn on a new, detached thread, with that thread's root context.

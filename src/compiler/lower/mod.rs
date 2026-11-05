@@ -34,6 +34,7 @@ mod op;
 mod pipe;
 mod print;
 mod rc;
+pub(crate) use rc::base_name;
 mod stmt;
 pub(crate) mod value;
 

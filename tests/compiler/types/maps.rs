@@ -165,6 +165,29 @@ fn insertion_order() {
 }
 
 #[test]
+fn keyed_bound() {
+	let src = indoc! {r#"
+		Dir :: enum { north east south }
+		entries[S: Keyed[K, V], K, V] :: fn(c: S) out: []string {
+			after: ?S.Cursor = none
+			loop pair := c.pairs(after) {
+				out << "{c.key(pair.1)}={pair.0}"
+				after = pair.1
+			}
+			out
+		}
+		wind: [Dir]string
+		wind[.east] = "gust"
+		print(entries(["b" = [1], "a" = [2, 3]]), entries([3 = 1.5]), entries(wind), entries("hé"))
+	"#};
+	check(
+		src,
+		r#"["b=[1]", "a=[2, 3]"] ["3=1.5"] ["north=", "east=gust", "south="] ["0=h", "1=é"]"#,
+	);
+	assert_clean(src);
+}
+
+#[test]
 fn deleted_key_then_lookup_reads_zero() {
 	check(
 		indoc! {r#"

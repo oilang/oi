@@ -91,6 +91,17 @@ ArrayIter[T] : Iterator[T] < {
 	}
 }
 
+## Maps walk in insertion order and `[E]T` by variant, each entry under its position.
+[K]V : Keyed[K, V] < {
+	Cursor :: int
+	pairs :: fn(self; after: ?int) ?(V, int) {
+		at :: (after or -1) + 1
+		if at >= self.len() do return none
+		(__value_at(self, at), at)
+	}
+	key :: fn(self; at: int) K { __key_at(self, at) }
+}
+
 ## Map union, `other` wins on shared keys.
 [K]V : BitOr < {
 	bitor :: fn(self, other: Self) out: Self {

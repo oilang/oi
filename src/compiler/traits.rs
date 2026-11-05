@@ -68,7 +68,11 @@ pub(crate) fn is_assoc_type(p: &Param) -> bool {
 }
 
 // A claim's associated types, filled or defaulted.
-pub(crate) fn claim_assoc(fills: &[Spanned<Expr>], tfields: &[Param]) -> Vec<(String, TypeExpr)> {
+pub(crate) fn claim_assoc(
+	fills: &[Spanned<Expr>],
+	tfields: &[Param],
+	by: &[(String, TypeExpr)],
+) -> Vec<(String, TypeExpr)> {
 	let filled = |slot: &str| {
 		fills.iter().find_map(|f| match &Expr::peel_meta(f).2.0 {
 			Expr::Bind {
@@ -79,10 +83,11 @@ pub(crate) fn claim_assoc(fills: &[Spanned<Expr>], tfields: &[Param]) -> Vec<(St
 	};
 	(tfields.iter().filter(|f| is_assoc_type(f)))
 		.filter_map(|f| {
-			Some((
-				f.name.clone(),
-				TypeExpr::from_expr(filled(&f.name).or(f.default.as_ref().map(|d| &d.0))?)?,
-			))
+			let te = match filled(&f.name) {
+				Some(fill) => TypeExpr::from_expr(fill)?,
+				None => subst(&TypeExpr::from_expr(&f.default.as_ref()?.0)?, by),
+			};
+			Some((f.name.clone(), te))
 		})
 		.collect()
 }
@@ -304,7 +309,7 @@ pub(super) fn check_impls<'p>(
 			let Some((te, sp)) = arg else { continue };
 			sig_params.insert(p.name.clone(), types.with_scope(scope).resolve(&te, sp)?);
 		}
-		let assoc = claim_assoc(methods, tfields);
+		let assoc = claim_assoc(methods, tfields, &trait_args(tparams, args));
 		for (name, te) in &assoc {
 			sig_params.insert(name.clone(), types.with_scope(scope).resolve(&subst(te, &me), span)?);
 		}

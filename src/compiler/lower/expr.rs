@@ -1303,7 +1303,7 @@ fn method_owner(typ: &Typ) -> Option<String> {
 	Some(match typ {
 		Typ::Struct(name, _) | Typ::TupleStruct(name, _) | Typ::Enum(name) | Typ::Sum(name, _) => name.clone(),
 		Typ::Array(_) => "array".into(),
-		Typ::Map(..) => "map".into(),
+		t if matches!(t, Typ::Map(..)) || t.keyed().is_some() => "map".into(),
 		Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Bool | Typ::ISize | Typ::USize => typ.to_string(),
 		Typ::Rune | Typ::Str | Typ::CStr | Typ::Ast | Typ::Atom | Typ::Tuple(_) => typ.to_string(),
 		_ => return None,

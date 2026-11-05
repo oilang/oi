@@ -287,11 +287,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.into_iter()
 				.flatten()
 				.map(|p| p.name.clone());
-			let own_args = match w {
-				Typ::Array(elem) => vec![(**elem).clone()],
-				_ => self.types.generics.instance_args(&w.key()).unwrap_or_default(),
-			};
-			let own = names.zip(own_args).collect();
+			let own = names.zip(self.types.claim_args(w)).collect();
 			for ((te, _), (arg, span)) in p.bound_args.iter().zip(args) {
 				let typ = self.types_at(*span).with_type_params(&own).resolve(arg, *span)?;
 				infer.bind(te, &typ, *span)?;

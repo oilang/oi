@@ -711,7 +711,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 // A generic instance's base name
 // ex: `Box[int]` -> `Box`.
-pub(super) fn base_name(name: &str) -> &str {
+pub(crate) fn base_name(name: &str) -> &str {
 	match name.strip_prefix('[') {
 		Some(rest) if rest.starts_with(']') => "array",
 		Some(rest) if !rest.starts_with(|c: char| c.is_ascii_digit()) => "map",

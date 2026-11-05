@@ -424,6 +424,28 @@ impl TypeCtx<'_> {
 		}
 	}
 
+	// A type's args to its generic claims.
+	pub fn claim_args(&self, typ: &Typ) -> Vec<Typ> {
+		match typ {
+			Typ::Array(elem) => vec![(**elem).clone()],
+			Typ::Map(key, elem) => vec![(**key).clone(), (**elem).clone()],
+			t if let Some((key, Typ::FixedArray(elem, _))) = t.keyed() => vec![key, (**elem).clone()],
+			_ => self.generics.instance_args(&typ.key()).unwrap_or_default(),
+		}
+	}
+
+	// `T.Slot`, the associated type a claim on `T` fills.
+	fn assoc_type(&self, head: &str, slot: &str, span: Span) -> Option<Typ> {
+		let typ = self.named(head, span).ok()?;
+		if let Some(te) = self.aliases.get(&format!("{}::{slot}", typ.key())) {
+			return self.resolve(te, span).ok();
+		}
+		let generic = format!("{}::{slot}", lower::base_name(&typ.key()));
+		let (params, te) = self.generics.aliases.get(&generic)?;
+		let own = params.iter().map(|p| p.name.clone()).zip(self.claim_args(&typ)).collect();
+		self.with_type_params(&own).resolve(te, span).ok()
+	}
+
 	// `T.size`, `T.count`, or an int assoc const.
 	pub fn assoc_int(&self, name: &str, field: &str) -> Option<i64> {
 		let t = self.named(name, Span::default()).ok()?;
@@ -785,6 +807,11 @@ impl TypeCtx<'_> {
 				),
 				false => Ok(Typ::Enum(e).refined(variant)),
 			};
+		}
+		if let Some((head, slot)) = name.rsplit_once('.')
+			&& let Some(typ) = self.assoc_type(head, slot, span)
+		{
+			return Ok(typ);
 		}
 		if let Some((m, t)) = name.split_once('.').filter(|_| !name.contains("::")) {
 			let Some(vis) = self.scope.visible.get(m) else {

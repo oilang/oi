@@ -1374,9 +1374,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			return fail(format!("{typ} is not keyed"), key.1, "not keyed");
 		}
 
+		let mut method = |name: &str| {
+			(self.find_fill(&format!("{}.{name}", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, name))
+		};
 		let step = if keyed { "pairs" } else { "next" };
-		let next =
-			(self.find_fill(&format!("{}.{step}", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, step));
+		let (next, key_at) = (method(step), key.and_then(|_| method("key")));
 		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
 		let (Some(next), Some(item)) = (next, item) else {
 			let note = format!("no `{step}` on its claim");
@@ -1440,8 +1442,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			let (value, key_val) = (s.ld_typ(v, 0, &fields[0].1), s.ld_typ(v, 8, &fields[1].1));
 			s.bind_pat(pat, value, &fields[0].1, Some(false))?;
-			if let Some(key) = key {
-				s.bind_pat(key, key_val, &fields[1].1, Some(false))?;
+			if let (Some(key), Some(key_at)) = (key, &key_at) {
+				let (at, typ) = s.emit_call_at(key_at, &[it, key_val], Some(span));
+				s.bind_pat(key, at, &typ, Some(false))?;
 			}
 			let last = s.b.use_var(*var);
 
@@ -1502,7 +1505,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		if self.claims(&typ, role::ITERATOR) || !matches!(typ, Typ::Array(_)) && self.claims(&typ, role::KEYED) {
+		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
+		if self.claims(&typ, role::ITERATOR) || !direct && self.claims(&typ, role::KEYED) {
 			return self.iter_loop(label, (pat, key), body, (val, typ), span);
 		}
 

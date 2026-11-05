@@ -158,20 +158,22 @@ fn keyed_loops() {
 
 #[test]
 fn keyed_protocol() {
-	let src = indoc! {"
+	let src = indoc! {r#"
 		Ring :: struct { items: []int, start: int }
-		Ring : Keyed[int, int] < {
+		Ring : Keyed[string, int] < {
+			Cursor :: int
 			pairs :: fn(self; after: ?int) ?(int, int) {
 				i :: (after or -1) + 1
 				if i >= self.items.len() do return none
 				(self.items[(self.start + i) % self.items.len()], i)
 			}
+			key :: fn(self; at: int) string { "k{at}" }
 		}
 		ring := Ring.{ [1 2 3], 1 }
-		loop x, i in ring do print(i, x)
+		loop x, k in ring do print(k, x)
 		loop x in ring do x
-	"};
-	check(src, ["0 2", "1 3", "2 1", "[2, 3, 1]"]);
+	"#};
+	check(src, ["k0 2", "k1 3", "k2 1", "[2, 3, 1]"]);
 	assert_clean(src);
 }
 

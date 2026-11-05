@@ -1256,17 +1256,23 @@ impl<M: Module> Compiler<M> {
 						|| claimed.iter().filter_map(|(tn, args)| Some((traits.get(tn.as_str())?, *args)));
 					let targs: Vec<_> = claimed_traits()
 						.flat_map(|(t, args)| trait_args(t.1, args))
-						.chain(claimed_traits().flat_map(|(t, _)| claim_assoc(fills, t.2)))
+						.chain(claimed_traits().flat_map(|(t, args)| claim_assoc(fills, t.2, &trait_args(t.1, args))))
 						.collect();
 					for (tn, args) in &claimed {
 						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
+						let assoc = traits
+							.get(tn.as_str())
+							.map_or(vec![], |t| claim_assoc(fills, t.2, &trait_args(t.1, args)));
 						if type_params.is_empty() {
 							self.world.trait_impls.insert((typ.clone(), tn.clone()));
 							let me = [("Self".to_string(), TypeExpr::Name(typ.clone()))];
-							for (slot, te) in traits.get(tn.as_str()).map_or(vec![], |t| claim_assoc(&[], t.2)) {
+							for (slot, te) in assoc {
 								slot_defaults.push((format!("{typ}::{slot}"), subst(&te, &me)));
 							}
 						} else {
+							for (slot, te) in assoc.into_iter().filter(|_| !blanket) {
+								generics.aliases.insert(format!("{typ}::{slot}"), (type_params.clone(), te));
+							}
 							let mut bounds = type_params.clone();
 							qualify_bounds(scope, &mut bounds);
 							if let Some(p) = bounds.iter().find(|p| p.name == *typ)

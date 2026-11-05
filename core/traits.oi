@@ -170,23 +170,27 @@ FilterIter[I, T] : Iterator[T] < {
 	}
 }
 
-## A collection walked by key.
-## `pairs(none)` is the first entry, `pairs(k)` is the one after `k`.
+## A collection walked by cursor, its key unless it claims otherwise.
+## `pairs(none)` is the first entry, `pairs(c)` is the one after `c`.
 pub Keyed[K, V] :: trait {
-	pairs: fn(self; after: ?K) ?(V, K)
+	Cursor :: K
+	pairs: fn(self; after: ?Cursor) ?(V, Cursor)
+
+	## The key at cursor `at`.
+	key :: fn(self; at: Cursor) K { at }
 
 	## Lazy iterator over the items.
-	iter :: fn(self) KeyedIter[Self, K, V] {
+	iter :: fn(self) KeyedIter[Self, V] {
 		.{ self, none }
 	}
 }
 
-pub KeyedIter[C, K, V] :: struct { pub keyed: C, pub after: ?K }
+pub KeyedIter[S, V] :: struct { pub keyed: S, pub after: ?S.Cursor }
 
-KeyedIter[C, K, V] : Iterator[V] < {
+KeyedIter[S, V] : Iterator[V] < {
 	next :: fn(mut self) ?V {
-		(item, key) :: self.keyed.pairs(self.after)?
-		self.after = key
+		(item, at) :: self.keyed.pairs(self.after)?
+		self.after = at
 		item
 	}
 }
