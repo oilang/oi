@@ -27,7 +27,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					);
 				}
 				let ret = self.ret.as_ref().map(|(t, _)| t.clone());
-				let err = ret.as_ref().and_then(|t| self.types.result_parts(t)).map(|(_, e)| e);
+				let err = ret.as_ref().and_then(|t| self.fallible_split(t)?.1);
 				let (av, at) = match &err {
 					// resolve enum shorthands
 					Some(err) if *err != Typ::Error => self.check_expr(&args[0], err)?,
@@ -35,6 +35,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				let bare = at == Typ::Str && err.as_ref().is_none_or(|e| *e == Typ::Error);
 				match (ret, err) {
+					(Some(ret), Some(err)) if at == err && self.types.pack_ret(&ret).is_some() => Ok(Some((av, err))),
 					(Some(ret), Some(err)) if at == err => {
 						let variants = self.variants_of(&ret);
 						let v = self.make_enum(&variants, 1, &[av]);

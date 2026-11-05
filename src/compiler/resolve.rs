@@ -703,12 +703,11 @@ impl TypeCtx<'_> {
 	// The pack a `?T` or `!T` returns as.
 	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
 		let (ok, flag, slot) = match self.result_parts(ret) {
-			Some((ok, Typ::Error)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[Typ::Error])),
-			Some(_) => return None,
+			Some((ok, err)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[err])),
 			None if self.opt_niche(ret).is_some() => return None,
 			None => (self.option_inner(ret)?, role::PACK_OK, Typ::Bool),
 		};
-		self.inert(&ok, &mut vec![])
+		(self.inert(&ok, &mut vec![]) && (slot == Typ::Bool || self.opt_niche(&slot).is_some()))
 			.then(|| Typ::Tuple(vec![(None, ok), (Some(flag.into()), slot)]))
 	}
 
@@ -743,11 +742,11 @@ impl TypeCtx<'_> {
 	// The `?T` or `!T` a return pack stands for.
 	pub fn pack_ret(&self, pack: &Typ) -> Option<Typ> {
 		let Typ::Tuple(fields) = pack else { return None };
-		let [(_, ok), (Some(name), _)] = &fields[..] else {
+		let [(_, ok), (Some(name), slot)] = &fields[..] else {
 			return None;
 		};
 		match name.as_str() {
-			role::PACK_ERR => Some(self.core_enum(role::RESULT, &[ok.clone(), Typ::Error])),
+			role::PACK_ERR => Some(self.core_enum(role::RESULT, &[ok.clone(), self.option_inner(slot)?])),
 			role::PACK_OK => Some(self.core_enum(role::OPTION, std::slice::from_ref(ok))),
 			_ => None,
 		}

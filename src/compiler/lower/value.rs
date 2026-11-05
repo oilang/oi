@@ -282,10 +282,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			if err.is_none() && matches!(inner, Expr::Ident(n) if n == "none") {
 				return Ok(Some(self.owned_zero(target)));
 			}
-			let Some(v) = self.coerce_lit(value, &ok)? else {
-				return Ok(None);
-			};
-			return Ok(Some(self.pack_value(v, &ok, target, value.1)?.0));
+			for side in [ok].into_iter().chain(err) {
+				if let Some(v) = self.coerce_lit(value, &side)? {
+					return Ok(Some(self.pack_value(v, &side, target, value.1)?.0));
+				}
+			}
+			return Ok(None);
 		}
 		if let Some(some) = self.types.option_inner(target) {
 			match inner {
@@ -673,7 +675,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Some((fields.len() - 1, &Typ::Bool));
 		}
 		let err = self.types.option_inner(last)?;
-		(err == Typ::Error || self.open_error(&err)).then_some((fields.len() - 1, last))
+		let pack = name.as_deref() == Some(role::PACK_ERR);
+		(pack || err == Typ::Error || self.open_error(&err)).then_some((fields.len() - 1, last))
+	}
+
+	// A pack's unset flag word.
+	pub(super) fn pack_none(&self, pack: &Typ) -> i64 {
+		self.trailing(pack)
+			.and_then(|(_, slot)| self.types.opt_niche(slot))
+			.unwrap_or(0)
 	}
 
 	// The happy payload, a pack's leading slots viewed in place.
@@ -1269,7 +1279,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn pack_value(&mut self, val: Value, from: &Typ, pack: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
 		let res = &self.types.pack_ret(pack).expect("a return pack");
 		let (ok, err) = self.fallible_split(res).expect("a return pack");
-		let (yes, none) = (self.b.ins().iconst(types::I8, 1), self.b.ins().iconst(self.int, 0));
+		let niche = self.pack_none(pack);
+		let (yes, none) = (self.b.ins().iconst(types::I8, 1), self.b.ins().iconst(self.int, niche));
 		let (happy, payload, failure) = if from == res {
 			let tag = self.enum_tag(res, val);
 			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
@@ -1283,8 +1294,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			match self.coerce(val, from, &ok, span)? {
 				(v, t) if t == ok => (yes, v, none),
 				(v, t)
-					if err.is_some()
-						&& let (e, Typ::Error) = self.coerce(v, &t, &Typ::Error, span)? =>
+					if let Some(err) = &err
+						&& let (e, coerced) = self.coerce(v, &t, err, span)?
+						&& coerced == *err =>
 				{
 					(self.b.ins().iconst(types::I8, 0), self.owned_zero(&ok), e)
 				}

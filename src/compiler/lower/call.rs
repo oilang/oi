@@ -935,8 +935,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn pack_box(&mut self, slots: &[Value], typ: &Typ) -> Value {
 		let (ok, err) = self.fallible_split(typ).expect("a return pack");
 		let out = self.call_alloc(2);
+		let none = self.pack_none(&self.types.ret_pack(typ).expect("a return pack"));
 		// a set flag is tag 1, `some` or `err`
-		let set = self.b.ins().icmp_imm(IntCC::NotEqual, slots[1], 0);
+		let set = self.b.ins().icmp_imm(IntCC::NotEqual, slots[1], none);
 		let tag = self.b.ins().uextend(self.int, set);
 		self.st(out, 0, tag);
 		self.st(out, 8, slots[0]);

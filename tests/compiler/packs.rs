@@ -213,7 +213,7 @@ fn tuple_and_enum_payloads_ride_packs() {
 	let src = indoc! {r#"
 		count := 0
 		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
-			if mode == .alloc { count = count + 1 }
+			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
 		}
@@ -257,7 +257,7 @@ fn fallible_returns_allocate_nothing_on_success() {
 	let src = indoc! {r#"
 		count := 0
 		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
-			if mode == .alloc { count = count + 1 }
+			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
 		}
@@ -379,4 +379,32 @@ fn iterator_next_allocates_nothing() {
 		}
 		print(out)
 	"#});
+}
+
+#[test]
+fn custom_error_returns_allocate_nothing() {
+	let src = indoc! {"
+		MyErr :: enum { bad, worse }
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		parse :: fn(k: int) MyErr!int {
+			if k > 0 do k else if k < 0 do .bad else do error(.worse)
+		}
+		twice :: fn(k: int) MyErr!int {
+			v := parse(k)?; v * 2
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			a := parse(1) or 0
+			b, err := parse(0)
+			c := twice(2) or 0
+			allocs := count
+			print(a + b + c, err, twice(-1), allocs)
+		}
+	"};
+	check(src, "5 some.(worse) err.(bad) 0");
 }
