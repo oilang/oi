@@ -29,7 +29,7 @@ Json :< {
 			},
 			is string => quote(self),
 			is Arr => "[" + (loop v in self do v.str()).join(",") + "]",
-			is Obj => "{{" + (loop (k, v) in self { quote(k) + ":" + v.str() }).join(",") + "}}",
+			is Obj => "{{" + (loop v, k in self { quote(k) + ":" + v.str() }).join(",") + "}}",
 		}
 	}
 }

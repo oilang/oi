@@ -1153,7 +1153,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// non-bool headers are iterated
 					self.b.seal_block(top);
 					let wild = (Expr::Ident("_".into()), cond.1);
-					return self.for_value(label, &wild, (cv, ct), false, cond.1, body).map(Some);
+					return self.for_value(label, (&wild, None), (cv, ct), false, cond.1, body).map(Some);
 				}
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
@@ -1399,7 +1399,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn for_loop(
 		&mut self,
 		label: Option<&str>,
-		pat: &Spanned<Expr>,
+		pats: (&Spanned<Expr>, Option<&Spanned<Expr>>),
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
@@ -1419,26 +1419,30 @@ impl<'a, M: Module> Translator<'a, M> {
 					s.temp(val, &typ);
 				}
 			}
-			s.for_value(label, pat, (val, typ), owns, iter.1, body)
+			s.for_value(label, pats, (val, typ), owns, iter.1, body)
 		})
 	}
 
 	fn for_value(
 		&mut self,
 		label: Option<&str>,
-		pat: &Spanned<Expr>,
+		(pat, key): (&Spanned<Expr>, Option<&Spanned<Expr>>),
 		(val, typ): TypedVal,
 		owns: bool,
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
 		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
-			return self.iter_loop(label, pat, body, (val, typ), span);
+			return match key {
+				Some(key) => fail(format!("{typ} is not keyed"), key.1, "not keyed"),
+				None => self.iter_loop(label, pat, body, (val, typ), span),
+			};
 		}
 
 		let zero = self.b.ins().iconst(self.int, 0);
-		let (key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
-		let (limit, src, vals): (_, TypedVal, Option<TypedVal>) = match typ {
+		let (enum_key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
+		let hint = key.is_none() && (enum_key.is_some() || matches!(&typ, Typ::Map(_, v) if !v.is_unit()));
+		let (limit, src, keys): (_, TypedVal, Option<TypedVal>) = match typ {
 			// arrays
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
 				let (data, len) = self.array_parts(val, &typ);
@@ -1450,7 +1454,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let keys = self.map_entries(val, true, &k);
 				self.temp(keys, &Typ::Array(k.clone()));
 				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));
-				(len, (kdata, *k), None)
+				(len, (kdata, (*k).clone()), Some((kdata, *k)))
 			}
 
 			// maps
@@ -1461,7 +1465,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.temp(vals, &Typ::Array(v.clone()));
 				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));
 				let vdata = self.array_data(vals);
-				(len, (kdata, *k), Some((vdata, *v)))
+				(len, (vdata, *v), Some((kdata, *k)))
 			}
 
 			_ => {
@@ -1484,26 +1488,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		let iv = self.b.use_var(counter);
 		let (mut frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
 			let (data, elem) = &src;
-			let (mut item, mut typ) = (s.load_nth(*data, iv, elem), elem.clone());
-			if let Some((vdata, vt)) = &vals {
-				let (key, val) = (s.copy_in(item, elem), s.load_nth(*vdata, iv, vt));
-				let val = s.copy_in(val, vt);
-				typ = Typ::Tuple(vec![(None, typ), (None, vt.clone())]);
-				item = s.frame_slots(&[key, val]);
-				s.temp(item, &typ);
-			}
-
-			// enum keys
-			if let Some(k) = &key {
-				let val = s.copy_in(item, elem);
-				typ = Typ::Tuple(vec![(None, k.clone()), (None, typ)]);
-				let disc = s.enum_disc(k, iv);
-				item = s.frame_slots(&[disc, val]);
-				s.temp(item, &typ);
-			}
-
+			let item = s.load_nth(*data, iv, elem);
 			let n = s.scopes.last().map_or(0, Vec::len);
-			s.bind_pat(pat, item, &typ, Some(false))?;
+			s.bind_pat(pat, item, elem, Some(false)).map_err(|d| match hint {
+				true => d.with_note("the key is a second name, as in `loop v, k in m`"),
+				false => d,
+			})?;
+			if let Some(key) = key {
+				let (key_val, key_typ) = match (&keys, &enum_key) {
+					(Some((kdata, kt)), _) => (s.load_nth(*kdata, iv, kt), kt.clone()),
+					(None, Some(variant)) => (s.enum_disc(variant, iv), variant.clone()),
+					(None, None) => (iv, Typ::Int(64)),
+				};
+				s.bind_pat(key, key_val, &key_typ, Some(false))?;
+			}
 			if !owns {
 				for (var, t) in s.scopes.last_mut().expect("scope").split_off(n) {
 					if !s.is_affine(&t) {

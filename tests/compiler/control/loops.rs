@@ -133,7 +133,7 @@ fn for_each_string_bytes_and_map_entries() {
 	let src = indoc! {r#"
 		loop i in 0.."hi".len() { print("hi"[i]) }
 		sum := 0
-		loop (k, v) in [ "a" = 1, "bb" = 2 ] {
+		loop v, k in [ "a" = 1, "bb" = 2 ] {
 			sum += k.len() * v
 		}
 		sum
@@ -142,15 +142,18 @@ fn for_each_string_bytes_and_map_entries() {
 }
 
 #[test]
-fn map_entries_are_tuples() {
+fn keyed_loops() {
 	let src = indoc! {r#"
 		i := 1
 		m := ["a{i}" = "x{i}"]
-		loop e in m { print(e) }
-		loop (k, _) in m { print(k) }
+		loop v in m do print(v)
+		loop v, k in m do print(k, v)
+		loop x, i in ["p" "q"] do print(x, i)
 	"#};
-	check(src, [r#"("a1", "x1")"#, "a1"]);
+	check(src, ["x1", "a1 x1", "p 0", "q 1"]);
 	assert_clean(src);
+	fail(r#"loop (k, v) in ["a" = 1] do k"#, "loop v, k in m");
+	fail("loop x, i in 0..2 do x", "not keyed");
 }
 
 // breaks with values

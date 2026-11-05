@@ -488,7 +488,7 @@ fn enum_indexed_arrays() {
 			xs[.b] += 1
 			ws: [E]string = .[.a = "x", .c = "z", _ = ""]
 			print(xs, xs[.b], xs.len(), ws)
-			loop (e, w) in ws { print(e, w) }
+			loop w, e in ws { print(e, w) }
 		"#},
 		[r#"[0, 5, 0] 5 3 ["x", "", "z"]"#, "a x", "b ", "c z"],
 	);
@@ -496,7 +496,7 @@ fn enum_indexed_arrays() {
 		indoc! {"
 			S :: enum { ok = 200, missing = 404 }
 			xs: [S]int = .[3 4]
-			loop (s, x) in xs { print(s, x) }
+			loop x, s in xs { print(s, x) }
 		"},
 		["ok 3", "missing 4"],
 	);

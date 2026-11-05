@@ -357,11 +357,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		})
 		.boxed();
 
+	let name = spanned(p.def_name.clone().map(Expr::Ident));
+	let loop_names = (p.pat.clone().or(name.clone()).map(Box::new))
+		.then(just(Token::Comma).ignore_then(name.map(Box::new)).or_not())
+		.then_ignore(just(Token::In))
+		.boxed();
 	let for_expr = just(Token::Loop)
 		.ignore_then(label.or_not())
 		.then(just(Token::With).or_not())
-		.then(p.pat.clone().or(spanned(p.def_name.clone().map(Expr::Ident))))
-		.then_ignore(just(Token::In))
+		.then(loop_names.clone())
 		.then(
 			just(Token::Move)
 				.ignore_then(header_expr.clone())
@@ -370,14 +374,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.map(Box::new),
 		)
 		.then(p.block.clone())
-		.validate(|((((label, with), pat), iter), mut body), ex, emitter| {
+		.validate(|((((label, with), (pat, key)), iter), mut body), ex, emitter| {
 			if with.is_some() && !open_bound(&pat, &mut body) {
 				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
 			}
 			(
 				Expr::For {
 					label,
-					pat: Box::new(pat),
+					pat,
+					key,
 					iter,
 					body,
 				},
@@ -450,15 +455,15 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	let arm_loop = just(Token::Comp)
 		.ignore_then(just(Token::Loop))
-		.ignore_then(p.pat.clone().or(spanned(p.def_name.clone().map(Expr::Ident))).map(Box::new))
-		.then_ignore(just(Token::In))
+		.ignore_then(loop_names)
 		.then(header_expr.clone().map(Box::new))
 		.then(brace(spanned(match_arm.clone().map(Expr::Arm)).repeated().collect()))
-		.map_with(|((pat, iter), body), ex| {
+		.map_with(|(((pat, key), iter), body), ex| {
 			let comp = (
 				Expr::For {
 					label: None,
 					pat,
+					key,
 					iter,
 					body,
 				},

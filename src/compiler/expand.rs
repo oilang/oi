@@ -74,8 +74,11 @@ fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 		Expr::Bind { name, .. } if !name.starts_with('%') => f(name),
 		Expr::PatBind {
 			pat, mutable: Some(_), ..
-		}
-		| Expr::For { pat, .. } => pat_names(pat).into_iter().filter(|n| !n.starts_with('%')).for_each(f),
+		} => pat_names(pat).into_iter().filter(|n| !n.starts_with('%')).for_each(f),
+		Expr::For { pat, key, .. } => (std::iter::once(pat).chain(key))
+			.flat_map(|pat| pat_names(pat))
+			.filter(|n| !n.starts_with('%'))
+			.for_each(f),
 		Expr::AnonFn { params, .. } => params
 			.iter_mut()
 			.filter(|p| !p.name.is_empty() && !p.name.starts_with('%'))

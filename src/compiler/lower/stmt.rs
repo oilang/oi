@@ -380,8 +380,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// TODO: revisit after adding the Iterator trait
-				Expr::For { label, pat, iter, body } => {
-					last = self.collected(want, stmt_target, |s| s.for_loop(label.as_deref(), pat, iter, body))?
+				Expr::For {
+					label,
+					pat,
+					key,
+					iter,
+					body,
+				} => {
+					let pats = (&**pat, key.as_deref());
+					last = self.collected(want, stmt_target, |s| s.for_loop(label.as_deref(), pats, iter, body))?
 				}
 
 				Expr::FieldAssign { name, field, value } => {

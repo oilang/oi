@@ -154,6 +154,7 @@ pub enum Expr {
 	For {
 		label: Option<String>,
 		pat: Box<Spanned<Expr>>,
+		key: Option<Box<Spanned<Expr>>>,
 		iter: Box<Spanned<Expr>>,
 		body: Vec<Spanned<Expr>>,
 	},

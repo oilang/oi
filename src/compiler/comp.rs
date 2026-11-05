@@ -588,8 +588,11 @@ pub(crate) fn fold(
 	}
 
 	// comp loop
-	if let Expr::For { pat, body, .. } = &mut inner.0 {
-		let vars = super::expand::pat_names(pat);
+	if let Expr::For { pat, key, body, .. } = &mut inner.0 {
+		let vars: Vec<_> = std::iter::once(pat)
+			.chain(key)
+			.flat_map(|pat| super::expand::pat_names(pat))
+			.collect();
 		if !vars.is_empty() {
 			// var used as a type
 			let splice = |var: &str| (Expr::UnquoteExpr(Box::new((Expr::Ident(var.into()), span))), span);
