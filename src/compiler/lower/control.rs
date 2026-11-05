@@ -1329,30 +1329,47 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Drive an Iterator.
+	// Drive an Iterator, or a Keyed by its key.
 	fn iter_loop(
 		&mut self,
 		label: Option<&str>,
-		pat: &Spanned<Expr>,
+		(pat, key): (&Spanned<Expr>, Option<&Spanned<Expr>>),
 		body: &[Spanned<Expr>],
 		(val, typ): TypedVal,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
+		let keyed = self.claims(&typ, role::KEYED) && (key.is_some() || !self.claims(&typ, role::ITERATOR));
+		if let Some(key) = key.filter(|_| !keyed) {
+			return fail(format!("{typ} is not keyed"), key.1, "not keyed");
+		}
+
 		let iter =
 			(self.find_fill(&format!("{}.iter", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, "iter"));
 		let (it, it_typ) = match iter {
 			Some(sig) if self.claims(&typ, role::ITERABLE) => self.emit_call(&sig, &[val]),
 			_ => (val, typ),
 		};
-		let next = (self.find_fill(&format!("{}.next", it_typ.key()), 0, &it_typ))
-			.or_else(|| self.resolve_method(&it_typ, "next"));
+		let step = if keyed { "pairs" } else { "next" };
+		let next = (self.find_fill(&format!("{}.{step}", it_typ.key()), 0, &it_typ))
+			.or_else(|| self.resolve_method(&it_typ, step));
 		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
 		let (Some(next), Some(item)) = (next, item) else {
-			return fail(
-				format!("cannot iterate over {it_typ}"),
-				span,
-				"its `Iterator` claim has no `next(mut self) ?T`",
-			);
+			let note = format!("no `{step}` on its claim");
+			return fail(format!("cannot iterate over {it_typ}"), span, note);
+		};
+
+		// make the cursor
+		let after = match &item {
+			Typ::Tuple(fields) if keyed => {
+				let opt_key = self.types.core_enum(role::OPTION, std::slice::from_ref(&fields[1].1));
+				let none = self.make_option(&opt_key, None);
+				self.untemp(none);
+				let var = self.b.declare_var(self.int);
+				self.b.def_var(var, none);
+				self.own_local(var, &opt_key);
+				Some((var, opt_key))
+			}
+			_ => None,
 		};
 
 		// `mut self` without inline slots
@@ -1367,7 +1384,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// keeps a plain `?T` as its pack
 		let outer = self.pack_call.replace(span);
-		let (yielded, opt) = self.emit_call_at(&next, &[it], Some(span));
+		let mut args = vec![it];
+		args.extend(after.as_ref().map(|(var, _)| self.b.use_var(*var)));
+		let (yielded, opt) = self.emit_call_at(&next, &args, Some(span));
 		self.pack_call = outer;
 
 		let tag = self.enum_tag(&opt, yielded);
@@ -1385,7 +1404,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (mut frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
 			s.temp(yielded, &opt);
 			let v = s.take_payload(yielded, &opt, &item);
-			s.bind_pat(pat, v, &item, Some(false))?;
+			let (Some((var, opt_key)), Typ::Tuple(fields)) = (&after, &item) else {
+				s.bind_pat(pat, v, &item, Some(false))?;
+				return s.block(body);
+			};
+			let (value, key_val) = (s.ld_typ(v, 0, &fields[0].1), s.ld_typ(v, 8, &fields[1].1));
+			s.bind_pat(pat, value, &fields[0].1, Some(false))?;
+			if let Some(key) = key {
+				s.bind_pat(key, key_val, &fields[1].1, Some(false))?;
+			}
+			let last = s.b.use_var(*var);
+			s.release_value(last, opt_key);
+			let last = s.make_option(opt_key, Some(key_val));
+			s.untemp(last);
+			s.b.def_var(*var, last);
 			s.block(body)
 		})?;
 		if let Some(vt) = flow {
@@ -1432,11 +1464,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) {
-			return match key {
-				Some(key) => fail(format!("{typ} is not keyed"), key.1, "not keyed"),
-				None => self.iter_loop(label, pat, body, (val, typ), span),
-			};
+		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) || self.claims(&typ, role::KEYED) {
+			return self.iter_loop(label, (pat, key), body, (val, typ), span);
 		}
 
 		let zero = self.b.ins().iconst(self.int, 0);

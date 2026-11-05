@@ -156,6 +156,25 @@ fn keyed_loops() {
 	fail("loop x, i in 0..2 do x", "not keyed");
 }
 
+#[test]
+fn keyed_protocol() {
+	let src = indoc! {"
+		Ring :: struct { items: []int, start: int }
+		Ring : Keyed[int, int] < {
+			pairs :: fn(self; after: ?int) ?(int, int) {
+				i :: (after or -1) + 1
+				if i >= self.items.len() do return none
+				(self.items[(self.start + i) % self.items.len()], i)
+			}
+		}
+		ring := Ring.{ [1 2 3], 1 }
+		loop x, i in ring do print(i, x)
+		loop x in ring do x
+	"};
+	check(src, ["0 2", "1 3", "2 1", "[2, 3, 1]"]);
+	assert_clean(src);
+}
+
 // breaks with values
 
 #[test]

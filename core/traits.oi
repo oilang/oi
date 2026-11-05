@@ -171,6 +171,12 @@ FilterIter[I, T] : Iterator[T] < {
 }
 pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 
+## A collection walked by key.
+## `pairs(none)` is the first entry, `pairs(k)` is the one after `k`.
+pub Keyed[K, V] :: trait {
+	pairs: fn(self; after: ?K) ?(V, K)
+}
+
 # rendering
 
 ## Accepts written values, like a buffer or an output stream.
