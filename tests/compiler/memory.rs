@@ -293,3 +293,31 @@ fn ranges_newtype_prints_and_ast_items_are_freed() {
 		print(m! { 1; 2 })
 	"});
 }
+
+#[test]
+fn unwrapped_drop_payloads_drop_once() {
+	let src = indoc! {r#"
+		Res :: struct { fd: int }
+		Res : Drop < {
+			drop :: fn(mut self) do print("drop", self.fd)
+		}
+		open :: fn(k: int) ?Res {
+			if k > 0 do Res.{ fd = k } else do none
+		}
+		must :: fn(k: int) !Res {
+			if k > 0 do Res.{ fd = k } else do error("no")
+		}
+		opens :: fn(k: int) ?[]Res {
+			if k > 0 do .[Res.{ fd = k }] else do none
+		}
+		fwd :: fn(k: int) !Res { r := must(k)?; r }
+		pass :: fn(k: int) ?[]Res { o := opens(k); o }
+		a, ok := open(1)
+		f := fwd(2) or Res.{ fd = 9 }
+		xs := opens(3) or .[]
+		ys, some := pass(4)
+		print("end")
+	"#};
+	check(src, ["end", "drop 4", "drop 3", "drop 2", "drop 1"]);
+	assert_clean(src);
+}

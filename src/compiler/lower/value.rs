@@ -1266,8 +1266,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (happy, payload, failure) = if from == res {
 			let tag = self.enum_tag(res, val);
 			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
-			let (payload, zero) = (self.ld_typ(val, 8, &ok), self.owned_zero(&ok));
-			(happy, self.b.ins().select(happy, payload, zero), self.ld_word(val, 8))
+			// own a moved binding's box so its payload can move out
+			if self.is_affine(&ok) && !self.temps.contains_key(&val) {
+				self.temp(val, res);
+			}
+			let payload = self.payload_or_zero(val, res, span)?;
+			(happy, payload, self.ld_word(val, 8))
 		} else {
 			match self.coerce(val, from, &ok, span)? {
 				(v, t) if t == ok => (yes, v, none),

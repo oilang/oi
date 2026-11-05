@@ -730,18 +730,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.flagged.extend(late.map(|(v, _)| *v));
 			lowered
 		} else {
-			self.pack_operand(value)
+			self.take_operand(value)
 		};
 		let (val, typ) = lowered?;
-
-		// unwrapping an affine payload consumes the binding
-		if let Expr::Ident(_) = value.0
-			&& self.enum_box(&typ)
-			&& self.fallible_split(&typ).is_some_and(|(t, _)| self.is_affine(&t))
-		{
-			self.move_out(value, &typ)?;
-			self.temp(val, &typ);
-		}
 
 		let (payload, inner) = match self.fallible_split(&typ) {
 			Some((inner, err)) => {
@@ -800,15 +791,67 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result).expect("`or` always yields"))
 	}
 
-	// A some payload, moved out of an owned box if affine.
+	// Lowers an unwrap operand, moving out a binding with an affine payload.
+	pub(super) fn take_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
+		let (val, typ) = self.pack_operand(value)?;
+		if let Expr::Ident(_) = value.0
+			&& self.enum_box(&typ)
+			&& self.fallible_split(&typ).is_some_and(|(t, _)| self.is_affine(&t))
+		{
+			self.move_out(value, &typ)?;
+			self.temp(val, &typ);
+		}
+		Ok((val, typ))
+	}
+
+	// A some payload, moved out of an owned box or pack if affine.
 	fn take_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
 		let payload = self.flow_payload(val, typ, inner);
-		if !(self.is_affine(inner) && self.enum_box(typ) && self.temps.contains_key(&val)) {
+		let Some(&owner) = self.temps.get(&val).filter(|_| self.is_affine(inner)) else {
 			return payload;
+		};
+
+		if self.enum_box(typ) {
+			let gone = self.b.ins().iconst(self.int, -1);
+			self.st(val, 0, gone);
+			return self.unbox_ret(payload, inner);
 		}
-		let gone = self.b.ins().iconst(self.int, -1);
-		self.st(val, 0, gone);
-		self.unbox_ret(payload, inner)
+
+		// a happy pack holds nothing but its payload
+		if self.trailing(typ).is_some() {
+			let null = self.b.ins().iconst(self.int, 0);
+			self.b.def_var(owner, null);
+			self.flagged.push(owner);
+		}
+		payload
+	}
+
+	// Take a happy `?T` or `!T` payload, else make a zero.
+	pub(super) fn payload_or_zero(&mut self, val: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
+		let (inner, err) = self.fallible_split(typ).expect("a `?T` or `!T`");
+		let tag = self.enum_tag(typ, val);
+		let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
+
+		// a shared payload, copied in by the caller
+		if !self.is_affine(&inner) {
+			let payload = self.flow_payload(val, typ, &inner);
+			return Ok(self.or_zero(happy, payload, &inner, span)?.0);
+		}
+
+		let (out, join) = (self.b.declare_var(cl_type(&inner, self.int)), self.b.create_block());
+
+		let (take, sad) = self.fork(happy);
+		self.b.switch_to_block(sad);
+
+		let zero = self.zero_or_err(&inner, span)?;
+		self.b.def_var(out, zero);
+		self.b.ins().jump(join, &[]);
+		self.b.switch_to_block(take);
+
+		let payload = self.take_payload(val, typ, &inner);
+		self.b.def_var(out, payload);
+		self.enter(join);
+		Ok(self.b.use_var(out))
 	}
 
 	// Jump to an `or` fallback, via a conversion block filled in once `$` is known.
@@ -957,7 +1000,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Returns `none`/error from the enclosing fn on the sad path.
 	// Panics when called in `main`.
 	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
-		let (val, typ) = self.pack_operand(value)?;
+		let (val, typ) = self.take_operand(value)?;
 		let Some((inner, err)) = self.fallible_split(&typ) else {
 			let msg = format!("`?` needs a `?T` or `!T` value, got {typ}");
 			return fail(msg, value.1, "not a `?T` or `!T` value");
@@ -1019,7 +1062,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		self.b.switch_to_block(happy_block);
-		let payload = self.flow_payload(val, &typ, &inner);
+		let payload = self.take_payload(val, &typ, &inner);
 		Ok((payload, inner))
 	}
 
@@ -1511,10 +1554,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& let Some((inner, err)) = self.fallible_split(typ).filter(|_| self.trailing(typ).is_none())
 		{
 			let tag = self.enum_tag(typ, val);
-			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
-			let payload = self.opt_payload(val, typ, &inner, 8);
-			let zero = self.zero_or_err(&inner, pat.1)?;
-			let payload = self.b.ins().select(happy, payload, zero);
+			let payload = self.payload_or_zero(val, typ, pat.1)?;
 			let (flag, flag_typ) = match err {
 				None => (tag, Typ::Bool),
 				Some(err) => {

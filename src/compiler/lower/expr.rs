@@ -77,7 +77,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// `val` when `hit`, else zero.
-	fn or_zero(&mut self, hit: Value, val: Value, typ: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
+	pub(super) fn or_zero(&mut self, hit: Value, val: Value, typ: &Typ, span: Span) -> Result<TypedVal, Diagnostic> {
 		let zero = self.zero_or_err(typ, span)?;
 		self.temp(zero, typ);
 		Ok((self.b.ins().select(hit, val, zero), typ.clone()))
