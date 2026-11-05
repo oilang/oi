@@ -91,22 +91,18 @@ Bits[E] : Length < {
 	}
 }
 
-BitsIter[E] :: struct { set: Bits[E], at: int }
-
-BitsIter[E] : Iterator[E] < {
-	next :: fn(mut self) ?E {
-		loop self.at < E.count {
-			self.at += 1
-			if self.set.words[(self.at - 1) / 64] & u64.(1) << (self.at - 1) % 64 != 0 {
-				return E.from_index(self.at - 1)
+## A set is walked in index order, each member keyed by itself.
+Bits[E] : Keyed[E, E] < {
+	pairs :: fn(self; after: ?E) ?(E, E) {
+		i := 0
+		if e := after do i = e.index() + 1
+		loop i < E.count {
+			if self.words[i / 64] & u64.(1) << i % 64 != 0 {
+				e :: E.from_index(i)?
+				return (e, e)
 			}
+			i += 1
 		}
 		none
-	}
-}
-
-Bits[E] : Iterable[BitsIter[E]] < {
-	iter :: fn(self) BitsIter[E] {
-		.{ self, 0 }
 	}
 }

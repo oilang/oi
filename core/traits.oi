@@ -169,7 +169,6 @@ FilterIter[I, T] : Iterator[T] < {
 		}
 	}
 }
-pub Iterable[Iter] :: trait { iter: fn(self) Iter }
 
 ## A collection walked by key.
 ## `pairs(none)` is the first entry, `pairs(k)` is the one after `k`.

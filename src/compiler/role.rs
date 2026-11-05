@@ -24,7 +24,6 @@ pub(crate) const RECV: &str = "core::Recv";
 pub(crate) const INDEX: &str = "core::Index";
 pub(crate) const INDEX_ASSIGN: &str = "core::IndexAssign";
 pub(crate) const ITERATOR: &str = "core::Iterator";
-pub(crate) const ITERABLE: &str = "core::Iterable";
 pub(crate) const KEYED: &str = "core::Keyed";
 pub(crate) const ERROR: &str = "core::Error";
 pub(crate) const ALLOCATOR: &str = "core::Allocator";

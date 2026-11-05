@@ -39,10 +39,6 @@ Range : Iterator[int] < {
 	}
 }
 
-Range : Iterable[Range] < {
-	iter :: fn(self) Self { self }
-}
-
 # ffi
 
 ## An untyped pointer for C boundaries.

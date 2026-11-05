@@ -141,12 +141,26 @@ fn juxt_enum_shorthand_arg() {
 }
 
 #[test]
-fn newline_led_dot_stays_access() {
+fn newline_led() {
+	// newline led dot stays access
 	let src = indoc! {r#"
 		"ab"
 			.len()
 	"#};
 	check(src, "2");
+
+	// newline led paren starts an expression
+	let src = indoc! {"
+		f :: fn(i: int) ?int {
+			if i > 2 do return none
+			(i + 1)
+		}
+		x := 5
+		y := x
+		(x + 1)
+		print(f(1), f(5), y)
+	"};
+	check(src, "some.(2) none 5");
 }
 
 #[test]

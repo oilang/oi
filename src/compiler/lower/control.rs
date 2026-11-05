@@ -1343,19 +1343,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			return fail(format!("{typ} is not keyed"), key.1, "not keyed");
 		}
 
-		let iter =
-			(self.find_fill(&format!("{}.iter", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, "iter"));
-		let (it, it_typ) = match iter {
-			Some(sig) if self.claims(&typ, role::ITERABLE) => self.emit_call(&sig, &[val]),
-			_ => (val, typ),
-		};
 		let step = if keyed { "pairs" } else { "next" };
-		let next = (self.find_fill(&format!("{}.{step}", it_typ.key()), 0, &it_typ))
-			.or_else(|| self.resolve_method(&it_typ, step));
+		let next =
+			(self.find_fill(&format!("{}.{step}", typ.key()), 0, &typ)).or_else(|| self.resolve_method(&typ, step));
 		let item = next.as_ref().and_then(|n| self.types.option_inner(&n.ret));
 		let (Some(next), Some(item)) = (next, item) else {
 			let note = format!("no `{step}` on its claim");
-			return fail(format!("cannot iterate over {it_typ}"), span, note);
+			return fail(format!("cannot iterate over {typ}"), span, note);
 		};
 
 		// make the cursor
@@ -1373,9 +1367,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		// `mut self` without inline slots
-		let it = match next.access[0] == Access::Mut && it_typ.slots().is_none() {
-			true => self.frame_slots(&[it]),
-			false => it,
+		let it = match (next.access[0] == Access::Mut, typ.slots().is_some()) {
+			(true, false) => self.frame_slots(&[val]),
+			(true, true) => {
+				let copy = self.copy_bind(val, &typ);
+				self.temp(copy, &typ);
+				copy
+			}
+			_ => val,
 		};
 
 		let (header, exit) = (self.b.create_block(), self.b.create_block());
@@ -1464,7 +1463,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 		body: &[Spanned<Expr>],
 	) -> Result<TypedVal, Diagnostic> {
-		if self.claims(&typ, role::ITERABLE) || self.claims(&typ, role::ITERATOR) || self.claims(&typ, role::KEYED) {
+		if self.claims(&typ, role::ITERATOR) || self.claims(&typ, role::KEYED) {
 			return self.iter_loop(label, (pat, key), body, (val, typ), span);
 		}
 

@@ -37,7 +37,7 @@ fn cstr_from_slice_copies() {
 fn cstr_from_literal_is_zero_cost() {
 	check(
 		indoc! {r#"
-			f :: fn(p: cstr) string { unsafe p.str() }
+			f :: fn(p: cstr) string do unsafe p.str()
 			print(f("hey"))
 		"#},
 		"hey",
@@ -85,10 +85,11 @@ fn string_iterates_by_rune() {
 	check(
 		indoc! {r#"
 			s :: "h\u{2603}"
-			loop r in s { print(r) }
-			loop i in 0..s.len() { print(s[i]) }
+			loop r in s do print(r)
+			loop i in 0..s.len() do print(s[i])
+			loop r, i in "h\u{2603}i" do print(i, r)
 		"#},
-		["h", "\u{2603}", "104", "226", "152", "131"],
+		["h", "\u{2603}", "104", "226", "152", "131", "0 h", "1 \u{2603}", "4 i"],
 	);
 }
 

@@ -92,9 +92,10 @@ fn range_values() {
 		loop i in r {
 			sum = sum + i
 		}
+		loop i in r do sum += i
 		print(-4..4, 1 + 1..2 + 3, make(3, 7), sum)
 	"};
-	check(src, "-4..4 2..5 3..7 6");
+	check(src, "-4..4 2..5 3..7 12");
 }
 
 #[test]

@@ -111,32 +111,31 @@ string :< {
 	}
 }
 
-## Cursor over a string's codepoints.
-pub Runes :: struct { s: string, at: int }
-
-Runes : Iterator[rune] < {
-	next :: fn(mut self) ?rune {
-		if self.at >= self.s.len() do return none
-		lead :: int.(self.s[self.at])
-		n :: match true {
-			lead < 0x80 => 1,
-			lead < 0xe0 => 2,
-			lead < 0xf0 => 3,
-			else => 4
-		}
-		if self.at + n > self.s.len() do return none # truncated tail
+## A string is walked by byte offset, each rune keyed by where it starts.
+string : Keyed[int, rune] < {
+	pairs :: fn(self; after: ?int) ?(rune, int) {
+		at := 0
+		if i := after do at = i + utf8_len(int.(self[i]))
+		if at >= self.len() do return none
+		lead :: int.(self[at])
+		n :: utf8_len(lead)
+		if at + n > self.len() do return none # truncated tail
 		c := if n == 1 { lead } else { lead & (0x7f >> n) }
 		loop k in 1..n {
-			c = (c << 6) | (int.(self.s[self.at + k]) & 0x3f)
+			c = (c << 6) | (int.(self[at + k]) & 0x3f)
 		}
-		self.at += n
-		rune.(c)
+		(rune.(c), at)
 	}
 }
 
-## Iterating a string walks its codepoints.
-string : Iterable[Runes] < {
-	iter :: fn(self) Runes { Runes.{ self, 0 } }
+## Bytes in the UTF-8 sequence started by `lead`.
+utf8_len :: fn(lead: int) int {
+	match {
+		lead < 0x80 => 1,
+		lead < 0xe0 => 2,
+		lead < 0xf0 => 3,
+		else => 4
+	}
 }
 
 rune :< {
@@ -239,23 +238,22 @@ string16 : From[string] < {
 	}
 }
 
-## Cursor over a string16's codepoints.
-pub Runes16 :: struct { s: []u16, at: int }
-
-Runes16 : Iterator[rune] < {
-	next :: fn(mut self) ?rune {
-		if self.at >= self.s.len() do return none
-
-		hi :: int.(self.s[self.at])
-		self.at += 1
-		if hi < 0xd800 || hi > 0xdbff || self.at >= self.s.len() do return rune.(hi)
-		lo :: int.(self.s[self.at])
-		if lo < 0xdc00 || lo > 0xdfff do return rune.(hi) # lone surrogate
-		self.at += 1
-		rune.(0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00))
+## A string16 is walked by UTF-16 unit, each rune keyed by where it starts.
+string16 : Keyed[int, rune] < {
+	pairs :: fn(self; after: ?int) ?(rune, int) {
+		at := 0
+		if i := after do at = i + utf16_len(self.0, i)
+		if at >= self.0.len() do return none
+		hi :: int.(self.0[at])
+		if utf16_len(self.0, at) == 1 do return (rune.(hi), at)
+		(rune.(0x10000 + ((hi - 0xd800) << 10) + (int.(self.0[at + 1]) - 0xdc00)), at)
 	}
 }
 
-string16 : Iterable[Runes16] < {
-	iter :: fn(self) Runes16 { Runes16.{ self.0, 0 } }
+## Units in the codepoint at `at`.
+utf16_len :: fn(units: []u16, at: int) int {
+	hi :: int.(units[at])
+	if hi < 0xd800 || hi > 0xdbff || at + 1 >= units.len() { return 1 }
+	lo :: int.(units[at + 1])
+	if lo < 0xdc00 || lo > 0xdfff { 1 } else { 2 }
 }

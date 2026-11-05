@@ -156,7 +156,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// same-line trailing functions
 	let trail_from = |min: Trails| trail.clone().contextual().configure(move |_, ctx: &Trails| *ctx >= min);
 	let call_args = |bare: Trails| {
-		args.clone()
+		(p.same_line.clone().ignore_then(args.clone()))
 			.then(trail_from(Trails::Methods).or_not())
 			.map(|(mut args, func)| {
 				args.extend(func);
