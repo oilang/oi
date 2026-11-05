@@ -53,6 +53,70 @@ fn index_reads_zero_and_flow_sees_option() {
 }
 
 #[test]
+fn producers_by_consumer() {
+	let src = indoc! {r#"
+		find :: fn(n: int) ?int { if n > 0 do n else do none }
+		parse :: fn(n: int) !int { if n > 0 do n else do error("bad") }
+		open :: fn(k: int) (n: int, err: ?Error) {
+			if k > 0 do k,
+			none else do 0,
+			error("shut")
+		}
+		hits :: fn(m: [string]int, a: any) ?int {
+			find(1)? + m["a"]? + int.(a)?
+		}
+		miss :: fn(m: [string]int) ?int do m["z"]?
+		m := ["a" = 1]
+		a: any = 5
+		loop {
+			w := m["a"] or break
+			x := int.(a) or break
+			y := parse(2) or break
+			z := open(2) or break
+			print(w + x + y + z)
+			v := m["z"] or break
+			print("no")
+		}
+		loop v := m["z"] do print("no")
+		loop v := parse(0) do print("no")
+		loop v := open(0) do print("no")
+		loop v := int.(a) {
+			print(v)
+			break
+		}
+		print(hits(m, a), miss(m))
+		print(
+			m["z"] and $ or -1,
+			int.(a) and $ * 2 or 0,
+			find(2) and $ or -1,
+			parse(0) and $ or -1,
+			open(2) and $ or 0,
+		)
+		x := find(2)
+		y := parse(0)
+		v, ok := find(0) or find(0)
+		print(
+			x,
+			y,
+			find(0) or find(3),
+			m["z"] or m["a"],
+			v,
+			ok,
+		)
+	"#};
+	check(
+		src,
+		[
+			"10",
+			"5",
+			"some.(7) none",
+			"-1 10 2 -1 2",
+			r#"some.(2) err.("bad") some.(3) 1 0 false"#,
+		],
+	);
+}
+
+#[test]
 fn tuple_returns_through_fn_values() {
 	let src = indoc! {"
 		divmod :: fn(a, b: int) (q, r: int) { a / b, a % b }
