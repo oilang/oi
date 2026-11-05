@@ -950,8 +950,9 @@ impl<'a, M: Module> Translator<'a, M> {
 							return self.or_zero(hit, val, &v, expr.1);
 						}
 						let opt = self.types.core_enum(role::OPTION, std::slice::from_ref(&v));
-						if rc::opt_niche(&opt) {
-							return Ok((raw, opt));
+						if self.types.opt_niche(&opt).is_some() {
+							let none = self.make_option(&opt, None);
+							return Ok((self.b.ins().select(hit, raw, none), opt));
 						}
 						let out = self.make_option(&opt, None);
 						self.when(hit, |s| {

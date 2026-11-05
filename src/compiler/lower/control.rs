@@ -1559,8 +1559,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => (tag, Typ::Bool),
 				Some(err) => {
 					let flag_typ = self.types.core_enum(role::OPTION, std::slice::from_ref(&err));
-					if rc::opt_niche(&flag_typ) {
-						let (e, none) = (self.ld_typ(val, 8, &err), self.b.ins().iconst(self.int, 0));
+					if self.types.opt_niche(&flag_typ).is_some() {
+						let (e, none) = (self.ld_typ(val, 8, &err), self.make_option(&flag_typ, None));
 						(self.b.ins().select(tag, e, none), flag_typ)
 					} else {
 						let flag = self.call_alloc(2);

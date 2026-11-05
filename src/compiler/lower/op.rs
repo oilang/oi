@@ -92,7 +92,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			typ if let Some(slots) = eq_slots(typ) => self.slots_eq(lhs, rhs, 0, &slots, &typ.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(lhs, rhs, typ, span),
 			Typ::Map(..) => self.emit_map_eq(lhs, rhs, typ, span),
-			typ if typ.is_enumish() && enum_boxed(&self.variants_of(typ)) && !rc::opt_niche(typ) => {
+			typ if typ.is_enumish() && enum_boxed(&self.variants_of(typ)) && self.types.opt_niche(typ).is_none() => {
 				self.emit_enum_eq(lhs, rhs, typ, &self.variants_of(typ), span)
 			}
 			typ if comparable(typ) => Ok(self.emit_eq(lhs, rhs, typ)),
@@ -745,7 +745,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let rank = self.opt_payload(order, &opt, &inner, 8);
 					let hit = self.b.ins().icmp_imm(IntCC::SignedLessThan, rank, 1 + negated as i64);
 					self.b.ins().band(some, hit)
-				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || rc::opt_niche(l)) {
+				} else if l.is_enumish() && (!enum_boxed(&self.variants_of(l)) || self.types.opt_niche(l) == Some(0)) {
 					self.b.ins().icmp(icc, lv, rv)
 				} else {
 					let claimable = matches!(l, Typ::Struct(..)) || matches!(l, Typ::Enum(n) if sugar(n).is_none());

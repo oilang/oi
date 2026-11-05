@@ -154,3 +154,27 @@ fn anon_none_infers_for_fn_options() {
 	"};
 	check(src, "true true");
 }
+
+#[test]
+fn fieldless_enum_options_allocate_nothing() {
+	let src = indoc! {"
+		Dir :: enum { up, down }
+		count := 0
+		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		pick :: fn(k: int) ?Dir {
+			if k > 0 do .down else do none
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			kept := pick(1)
+			missed: ?Dir = Option.none
+			allocs := count
+			print(kept, missed, match missed { .some.(_) => 1, .none => 2 }, allocs)
+		}
+	"};
+	check(src, "some.(down) none 2 0");
+}

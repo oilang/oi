@@ -197,7 +197,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Access(..) => unreachable!("an access mod only marks params inside a fn"),
 			Typ::Const(_) => unreachable!("a comptime value param is never a runtime slot"),
-			Typ::Enum(_) if rc::opt_niche(typ) => self.b.ins().iconst(self.int, 0),
+			Typ::Enum(_) if let Some(none) = self.types.opt_niche(typ) => self.b.ins().iconst(self.int, none),
 			// default to first variant, with zeroed payload fields
 			Typ::Enum(_) | Typ::Sum(..) => {
 				let variants = self.variants_of(typ);
@@ -557,8 +557,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		} else if let Some((lead, opt)) = self.trailing(typ) {
 			let slot = self.ld_typ(val, lead as i32 * 8, opt);
 			self.enum_tag(opt, slot)
-		} else if rc::opt_niche(typ) {
-			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, 0);
+		} else if let Some(none) = self.types.opt_niche(typ) {
+			let nz = self.b.ins().icmp_imm(IntCC::NotEqual, val, none);
 			self.b.ins().uextend(self.int, nz)
 		} else if enum_boxed(&self.variants_of(typ)) {
 			self.ld_word(val, 0)
@@ -631,8 +631,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Build an Option value.
 	pub(super) fn make_option(&mut self, typ: &Typ, some: Option<Value>) -> Value {
-		if rc::opt_niche(typ) {
-			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, 0));
+		if let Some(none) = self.types.opt_niche(typ) {
+			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, none));
 		}
 		let variants = self.variants_of(typ);
 		let val = match some {
@@ -643,9 +643,20 @@ impl<'a, M: Module> Translator<'a, M> {
 		val
 	}
 
+	// Build a named enum's variant, with a niche Option as its bare word.
+	fn make_variant(&mut self, typ: &Typ, variants: &[VariantInfo], disc: i64, fields: &[Value]) -> Value {
+		let val = match (self.types.opt_niche(typ), fields) {
+			(Some(_), [some]) => self.copy_in(*some, &variants[1].payload[0]),
+			(Some(none), _) => self.b.ins().iconst(self.int, none),
+			_ => self.make_enum(variants, disc, fields),
+		};
+		self.temp(val, typ);
+		val
+	}
+
 	// A payload slot of a variant.
 	pub(super) fn opt_payload(&mut self, val: Value, typ: &Typ, inner: &Typ, off: i32) -> Value {
-		if rc::opt_niche(typ) {
+		if self.types.opt_niche(typ).is_some() {
 			val
 		} else {
 			self.ld_typ(val, off, inner)
@@ -990,9 +1001,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let variants = self.enum_variants(instance);
 		let disc = variants.iter().find(|v| v.name == variant).expect("declared above").disc;
-		let val = self.make_enum(&variants, disc, &fields);
-		self.temp(val, &typ);
-		Ok((val, typ))
+		Ok((self.make_variant(&typ, &variants, disc, &fields), typ))
 	}
 
 	// Make and check enum variant.
@@ -1037,10 +1046,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			fields
 		};
-		let val = self.make_enum(&variants, disc, &fields);
 		let typ = Typ::Enum(name.to_string());
-		self.temp(val, &typ);
-		Ok((val, typ))
+		Ok((self.make_variant(&typ, &variants, disc, &fields), typ))
 	}
 
 	// Tuple struct constructor.

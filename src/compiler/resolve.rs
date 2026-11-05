@@ -189,6 +189,19 @@ impl<'a> TypeCtx<'a> {
 		vs.iter().find(|v| v.name == atom).map(|v| v.disc)
 	}
 
+	// A niche Option's none word.
+	pub fn opt_niche(&self, typ: &Typ) -> Option<i64> {
+		let Typ::Enum(n) = typ else { return None };
+		let arg = n.strip_prefix(role::OPTION)?.strip_prefix('[')?;
+		let bare = arg.split(' ').find(|w| !w.starts_with('@'))?;
+		if arg.starts_with('^') || bare.starts_with("fn(") || bare == "Error]" {
+			return Some(0);
+		}
+		let enums = self.enums.borrow();
+		let variants = enums.get(bare.strip_suffix(']')?).filter(|vs| !enum_boxed(vs))?;
+		(0..).find(|tag| variants.iter().all(|v| v.disc != *tag))
+	}
+
 	// A generic instance's substitution.
 	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
 		TypeCtx { type_params, ..self }
@@ -692,6 +705,7 @@ impl TypeCtx<'_> {
 		let (ok, flag, slot) = match self.result_parts(ret) {
 			Some((ok, Typ::Error)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[Typ::Error])),
 			Some(_) => return None,
+			None if self.opt_niche(ret).is_some() => return None,
 			None => (self.option_inner(ret)?, role::PACK_OK, Typ::Bool),
 		};
 		self.inert(&ok, &mut vec![])
