@@ -45,7 +45,7 @@ tags: []
 - compound types `rust`
 - `discard`/`pass` `nim gdscript`
 - macros `rust revo`
-- ~~multiple returns `v go lua`~~ (replaced by destructured named results)
+- multiple returns `odin go lua`
 - enum literals `zig v`
 - doc comments `zig v rust`
 - namespaced variables/functions`clojure revo`

@@ -443,7 +443,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if !catch_all {
 				let variants = self.variants_of(&st);
 				let covered = pats()
-					.map(|p| self.enum_pattern(p, &st).map(|(d, _)| d))
+					.map(|p| self.enum_pattern(&split_subs(p).0, &st).map(|(d, _)| d))
 					.collect::<Result<Vec<_>, _>>()?;
 				let missing: Vec<_> = variants
 					.iter()

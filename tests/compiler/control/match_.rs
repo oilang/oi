@@ -277,3 +277,21 @@ fn match_without_subject() {
 	"#};
 	check(src, "medium");
 }
+
+#[test]
+fn match_nested_binds_cover_variants() {
+	let src = indoc! {r#"
+		P :: struct { x: (int, int), y: int }
+		pair: ?(int, int) = .some.((1, 2))
+		print(match pair {
+			.some.((x, y)) => x + y,
+			.none => 0
+		})
+		point: ?P = .some.(P.{ x = (3, 4), y = 5 })
+		print(match point {
+			.some.(P.{ x = (a, b), y }) => a + b + y,
+			.none => 0
+		})
+	"#};
+	check(src, ["3", "12"]);
+}

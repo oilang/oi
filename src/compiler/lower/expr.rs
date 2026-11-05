@@ -889,7 +889,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => self.array_lit(elems, None, expr.1),
 			},
 
-			Expr::DotArray(None, elems) => match hint {
+			Expr::DotArray(None, elems) => match hint.and_then(|t| self.types.happy(t)).as_ref().or(hint) {
 				Some(Typ::Array(elem)) => self.array_lit(elems, Some(elem), expr.1),
 				Some(t @ Typ::FixedArray(..)) if elems.is_empty() => Ok((self.zero_or_err(t, expr.1)?, t.clone())),
 				Some(Typ::FixedArray(elem, n)) => self.fixed_lit(elems, Some((elem, *n)), expr.1),
