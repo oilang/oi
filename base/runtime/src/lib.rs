@@ -1,6 +1,7 @@
 #![feature(f16)]
 //! Backend-agnostic functions a compiled Oi program calls at runtime.
 
+use indexmap::IndexMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
@@ -1039,7 +1040,7 @@ fn map_key(tag: i64, bits: i64) -> MapKey {
 }
 
 pub struct OiMap {
-	entries: HashMap<MapKey, i64>,
+	entries: IndexMap<MapKey, i64>,
 	rc: i64,
 	desc: *const i64,
 }
@@ -1062,7 +1063,7 @@ unsafe fn map_box(a: *const Allocator, map: OiMap) -> *mut OiMap {
 
 #[unsafe(export_name = "oi_map_new")]
 pub unsafe extern "C" fn map_new(a: *const Allocator, desc: *const i64) -> *mut OiMap {
-	let entries = HashMap::new();
+	let entries = IndexMap::new();
 	unsafe { map_box(a, OiMap { entries, rc: 1, desc }) }
 }
 
@@ -1141,7 +1142,7 @@ pub unsafe extern "C" fn map_set(a: *const Allocator, map: *mut OiMap, tag: i64,
 #[unsafe(export_name = "oi_map_delete")]
 pub unsafe extern "C" fn map_delete(a: *const Allocator, map: *mut OiMap, tag: i64, bits: i64) -> *mut OiMap {
 	let map = unsafe { &mut *map_cow(a, map) };
-	if let Some(mut old) = map.entries.remove(&map_key(tag, bits)) {
+	if let Some(mut old) = map.entries.shift_remove(&map_key(tag, bits)) {
 		unsafe { value_hook(map.desc, 2, &mut old) };
 	}
 	map

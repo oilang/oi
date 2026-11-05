@@ -153,6 +153,18 @@ fn delete_key() {
 }
 
 #[test]
+fn insertion_order() {
+	let src = indoc! {r#"
+		m := ["e" = 1, "b" = 2, "d" = 3]
+		m["b"] = 20
+		m.delete["d"]
+		m["c"] = 5
+		loop v, k in m do print(k, v)
+	"#};
+	check(src, ["e 1", "b 20", "c 5"]);
+}
+
+#[test]
 fn deleted_key_then_lookup_reads_zero() {
 	check(
 		indoc! {r#"

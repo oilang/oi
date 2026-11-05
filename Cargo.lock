@@ -977,6 +977,7 @@ name = "oi-runtime"
 version = "0.2.0"
 dependencies = [
  "fastrand",
+ "indexmap",
 ]
 
 [[package]]
