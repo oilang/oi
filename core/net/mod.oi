@@ -4,6 +4,8 @@ use math
 
 malloc : fn(n: usize) ptr : foreign
 free : fn(p: ptr) : foreign
+calloc : fn(n: usize, size: usize) ptr : foreign
+memcpy : fn(dst: ptr, src: ptr, n: usize) ptr : foreign
 socket : fn(domain: i32, kind: i32, proto: i32) i32 : foreign
 bind : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
 accept : fn(fd: i32, addr: ptr, len: ptr) i32 : foreign
@@ -26,6 +28,24 @@ c_listen : fn(fd: i32, backlog: i32) i32 : foreign
 	zero: u64
 }
 
+## Connect to the unix socket at the given path.
+pub connect_unix :: fn(path: string) !Conn {
+	if path.len() > 107 do return error("path too long {path}")
+
+	fd :: unsafe socket(1, 1, 0)
+	defer or discard unsafe close(fd)
+
+	# sockaddr_un: u16 family then a zeroed 108 byte path
+	buf :: unsafe calloc(110, 1)
+	defer unsafe free(buf)
+
+	unsafe buf.write(u16.(1))
+	discard unsafe memcpy(buf.offset(2), path.ptr, usize.(path.len()))
+	if unsafe c_connect(fd, buf, 110) != 0 do return error("cannot connect to {path}")
+
+	Conn.{ fd }
+}
+
 pub Conn :: struct { fd: i32 }
 pub Listener :: struct { fd: i32 }
 
@@ -45,7 +65,9 @@ sock :: fn(host: string, port: int, serve: bool) !i32 {
 	ip :: unsafe inet_addr(h.cstr())
 	if ip == 4294967295 { return error("bad address {host}") }
 	fd :: unsafe socket(2, 1, 0)
+	defer or discard unsafe close(fd)
 	buf := unsafe malloc(Addr.size)
+	defer unsafe free(buf)
 	unsafe buf.write(i32.(1))
 
 	if serve {
@@ -58,11 +80,8 @@ sock :: fn(host: string, port: int, serve: bool) !i32 {
 	} else {
 		unsafe c_connect(fd, buf, 16) == 0
 	}
-	unsafe free(buf)
-	if ok { return fd }
-
-	_ := unsafe close(fd)
-	error(if serve { "cannot listen on port {port}" } else { "cannot connect to {host}:{port}" })
+	if !ok { return error(if serve { "cannot listen on port {port}" } else { "cannot connect to {host}:{port}" }) }
+	fd
 }
 
 Listener :< {
