@@ -1164,6 +1164,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		if let Some((Expr::Gen { pat, key, iter }, _)) = cond {
+			return self.for_loop(label, (pat, key.as_deref()), iter, body).map(Some);
+		}
 		self.rewrap_writes(body);
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);

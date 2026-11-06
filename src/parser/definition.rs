@@ -377,10 +377,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.then(just(Token::Comma).ignore_then(name.map(Box::new)).or_not())
 		.then_ignore(just(Token::In))
 		.boxed();
-	let for_expr = just(Token::Loop)
-		.ignore_then(label.or_not())
-		.then(just(Token::With).or_not())
-		.then(loop_names.clone())
+	let generator = loop_names
+		.clone()
 		.then(
 			just(Token::Move)
 				.ignore_then(header_expr.clone())
@@ -388,17 +386,21 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.or(header_expr.clone())
 				.map(Box::new),
 		)
+		.map_with(|((pat, key), iter), ex| (Expr::Gen { pat, key, iter }, ex.span()))
+		.boxed();
+	let for_expr = just(Token::Loop)
+		.ignore_then(label.or_not())
+		.then(just(Token::With).or_not())
+		.then(generator.clone())
 		.then(p.block.clone())
-		.validate(|((((label, with), (pat, key)), iter), mut body), ex, emitter| {
-			if with.is_some() && !open_bound(&pat, &mut body) {
+		.validate(|(((label, with), cond), mut body), ex, emitter| {
+			if with.is_some() && !matches!(&cond.0, Expr::Gen { pat, .. } if open_bound(pat, &mut body)) {
 				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
 			}
 			(
-				Expr::For {
+				Expr::Loop {
 					label,
-					pat,
-					key,
-					iter,
+					cond: Some(Box::new(cond)),
 					body,
 				},
 				ex.span(),
@@ -470,16 +472,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	let arm_loop = just(Token::Comp)
 		.ignore_then(just(Token::Loop))
-		.ignore_then(loop_names)
-		.then(header_expr.clone().map(Box::new))
+		.ignore_then(generator)
 		.then(brace(spanned(match_arm.clone().map(Expr::Arm)).repeated().collect()))
-		.map_with(|(((pat, key), iter), body), ex| {
+		.map_with(|(cond, body), ex| {
 			let comp = (
-				Expr::For {
+				Expr::Loop {
 					label: None,
-					pat,
-					key,
-					iter,
+					cond: Some(Box::new(cond)),
 					body,
 				},
 				ex.span(),

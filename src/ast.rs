@@ -151,12 +151,11 @@ pub enum Expr {
 		cond: Option<Box<Spanned<Expr>>>,
 		body: Vec<Spanned<Expr>>,
 	},
-	For {
-		label: Option<String>,
+	// `pat, key in iter`, a loop header clause
+	Gen {
 		pat: Box<Spanned<Expr>>,
 		key: Option<Box<Spanned<Expr>>>,
 		iter: Box<Spanned<Expr>>,
-		body: Vec<Spanned<Expr>>,
 	},
 	// `:name { ... }`
 	Labeled {
@@ -445,6 +444,7 @@ impl Expr {
 			| Expr::UnquoteExpr(v)
 			| Expr::UnquoteSplat(v)
 			| Expr::Comp(v)
+			| Expr::Gen { iter: v, .. }
 			| Expr::Resolved(_, v)
 			| Expr::Unsafe(v) => f(One(v)),
 			Expr::Annotated(anns, v) => {
@@ -494,7 +494,7 @@ impl Expr {
 				f(List(body));
 			}
 			Expr::Break(_, value) => value.iter_mut().for_each(|v| f(One(v))),
-			Expr::For { iter: v, body, .. } | Expr::OrElse { value: v, body } | Expr::AndThen { value: v, body } => {
+			Expr::OrElse { value: v, body } | Expr::AndThen { value: v, body } => {
 				f(One(v));
 				f(List(body));
 			}

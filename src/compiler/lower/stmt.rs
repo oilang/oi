@@ -379,18 +379,6 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok(None);
 				}
 
-				// TODO: revisit after adding the Iterator trait
-				Expr::For {
-					label,
-					pat,
-					key,
-					iter,
-					body,
-				} => {
-					let pats = (&**pat, key.as_deref());
-					last = self.collected(want, stmt_target, |s| s.for_loop(label.as_deref(), pats, iter, body))?
-				}
-
 				Expr::FieldAssign { name, field, value } => {
 					self.check_static_write(name, field, stmt.1)?;
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;

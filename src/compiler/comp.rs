@@ -588,7 +588,11 @@ pub(crate) fn fold(
 	}
 
 	// comp loop
-	if let Expr::For { pat, key, body, .. } = &mut inner.0 {
+	if let Expr::Loop {
+		cond: Some(cond), body, ..
+	} = &mut inner.0
+		&& let Expr::Gen { pat, key, .. } = &mut cond.0
+	{
 		let vars: Vec<_> = std::iter::once(pat)
 			.chain(key)
 			.flat_map(|pat| super::expand::pat_names(pat))

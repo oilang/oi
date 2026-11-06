@@ -1036,16 +1036,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),
 			Expr::Propagate(value) => self.propagate(value, expr.1),
 
-			Expr::For {
-				label,
-				pat,
-				key,
-				iter,
-				body,
-			} => self.collected(true, hint, |s| {
-				s.for_loop(label.as_deref(), (pat, key.as_deref()), iter, body)
-			}),
-
 			Expr::Block(body) => match hint {
 				// bare blocks are treated as fn literals when they match an expected/inferred fn type
 				Some(t @ Typ::Fn(..)) => {
@@ -1260,6 +1250,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::MacroDef { .. } => unreachable!("removed by macro expansion"),
 			Expr::Quote(stmts) => self.quote(stmts, expr.1),
 			Expr::Arm(_) => Err(Diagnostic::new("a match arm only fits in a match", expr.1.into_range())),
+			Expr::Gen { .. } => Err(Diagnostic::new(
+				"a generator only fits in a loop header",
+				expr.1.into_range(),
+			)),
 			Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {
 				fail("unquotes only make sense inside a quote", expr.1, "stray unquote")
 			}
