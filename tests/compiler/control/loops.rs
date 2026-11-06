@@ -320,7 +320,7 @@ fn nest_clauses() {
 		loop y in 0..2; x in 0..2 { if x == y do continue; print(y, x) }
 		print(loop y in 0..3; x in 0..3 { if y == 1 do break x })
 	"};
-	let grid = "[(0 0) (1 0) (2 0) (0 1) (1 1) (2 1)]";
+	let grid = "[(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]";
 	check(src, [grid, "1 0", "2 0", "2 1", "0 1", "1 0", "some.(0)"]);
 }
 

@@ -5,7 +5,7 @@ use std::ops::Range;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
-use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
+use super::{FieldDef, FnSig, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
 use crate::ast::{Expr, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, fail};
 
@@ -70,12 +70,15 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// Spread each `@c` struct arg of a foreign call into its C ABI params.
-	pub(super) fn c_args(&mut self, params: &[FnParam], vals: &[Value]) -> Vec<Value> {
+	// Spread a foreign call's `@c` struct args into C ABI params, after any returned struct's buffer.
+	pub(super) fn c_args(&mut self, sig: &FnSig, vals: &[Value]) -> Vec<Value> {
 		let arch = self.module.isa().triple().architecture;
 		let mut out = vec![];
+		if let Some([(None, _)]) = sig.ret.c_by_val(&self.types, arch).as_deref() {
+			out.push(self.stack_slot(sig.ret.c_size_align(&self.types).expect("validated").0));
+		}
 		for (i, &v) in vals.iter().enumerate() {
-			let typ = params.get(i).map(|p| &p.typ);
+			let typ = sig.params.get(i).map(|p| &p.typ);
 			let by_val = typ.and_then(|t| t.c_by_val(&self.types, arch));
 			let (Some(Typ::Struct(_, fields)), Some(regs)) = (typ, by_val) else {
 				out.push(v);
@@ -88,6 +91,23 @@ impl<M: Module> Translator<'_, M> {
 			}
 		}
 		out
+	}
+
+	// Gather a foreign call's `@c` struct result from its registers or buffer.
+	pub(super) fn c_ret(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Option<Value> {
+		let regs = typ.c_by_val(&self.types, self.module.isa().triple().architecture)?;
+		let Typ::Struct(_, fields) = typ else { return None };
+		let c = match regs[..] {
+			[(None, _)] => self.b.func.dfg.inst_args(call)[0],
+			_ => self.stack_slot(c_layout(fields, &self.types).expect("validated").size.next_multiple_of(8)),
+		};
+		let rets = self.b.inst_results(call).to_vec();
+		for (v, at) in rets.into_iter().zip(regs.iter().filter_map(|r| r.0)) {
+			self.b.ins().store(MemFlags::trusted(), v, c, at);
+		}
+		let oi = self.zero(typ);
+		self.copy_fields(oi, c, 0, fields, false);
+		Some(oi)
 	}
 
 	// A `ptr` cast to a fn type.

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cranelift::codegen;
+use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
@@ -2131,10 +2132,15 @@ impl<M: Module> Compiler<M> {
 				Some(regs) => regs.into_iter().map(|(_, p)| p).collect(),
 				None => vec![AbiParam::new(param_cl(t, a, int))],
 			}));
+			match ret.c_by_val(&types, arch).as_deref() {
+				Some([(None, _)]) => sig.params.insert(0, AbiParam::special(int, ArgumentPurpose::StructReturn)),
+				Some(regs) => sig.returns.extend(regs.iter().map(|(_, p)| *p)),
+				None => sig.returns.extend(abi_returns(&ret, &types, int)),
+			}
 		} else {
 			sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
+			sig.returns.extend(abi_returns(&ret, &types, int));
 		}
-		sig.returns.extend(abi_returns(&ret, &types, int));
 		let id = self.module.declare_function(symbol, linkage, &sig).expect("declare function");
 		FnSig {
 			id,
