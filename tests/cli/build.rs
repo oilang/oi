@@ -99,6 +99,7 @@ fn c_structs_cross_by_value() {
 		Vec2 vec2(float x) { return (Vec2){ x, x * 2 }; }
 		Small twice(Small s) { return (Small){ s.a * 2, s.b * 2 }; }
 		Big bump(Big b) { b.inner.k++; b.d[2]++; return b; }
+		double spill(long a, long b, long c, long d, long e, long f, Small s, double g) { return f + s.a * 10 + s.b * 100 + g * 1000; }
 	"};
 	let main = indoc! {r#"
 		@c
@@ -115,6 +116,7 @@ fn c_structs_cross_by_value() {
 		vec2 : fn(x: f32) Vec2 : foreign
 		twice : fn(s: Small) Small : foreign
 		bump : fn(b: Big) Big : foreign
+		spill : fn(a: int, b: int, c: int, d: int, e: int, f: int, s: Small, g: f64) f64 : foreign
 		print(unsafe small(1, Small.{ a = 2, b = 0.5 }))
 		print(unsafe big(Big.{ n = 1, inner = Inner.{ k = 2, on = true }, d = .[0.25 0.25 0.5] }, 10))
 		v := unsafe vec2(1.5)
@@ -122,10 +124,11 @@ fn c_structs_cross_by_value() {
 		b := unsafe bump(Big.{ n = 1, inner = Inner.{ k = 2, on = true }, d = .[0.25 0.25 0.5] })
 		print(v.x + v.y, s.a, s.b)
 		print(b.n, b.inner.k, b.inner.on, b.d[2])
+		print(unsafe spill(0, 0, 0, 0, 0, 1, Small.{ a = 2, b = 3.0 }, 4.0))
 	"#};
 	let dir = Project::new().file("dep.c", dep).file("main.oi", main);
 	cc_shared(&dir, &format!("{DLL_PREFIX}dep{DLL_SUFFIX}"));
-	dir.check(["3.5", "15.0", "4.5 4 1.0", "1 3 true 1.5"]);
+	dir.check(["3.5", "15.0", "4.5 4 1.0", "1 3 true 1.5", "4321.0"]);
 }
 
 #[test]

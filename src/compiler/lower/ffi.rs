@@ -7,6 +7,7 @@ use cranelift_module::Module;
 
 use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
 use crate::ast::{Access, Expr, Span, Spanned, TypeExpr};
+use crate::compiler::{CRegs, c_spread};
 use crate::diagnostics::{Diagnostic, fail};
 
 impl<M: Module> Translator<'_, M> {
@@ -77,9 +78,10 @@ impl<M: Module> Translator<'_, M> {
 		if let Some([(None, _)]) = ret.c_by_val(&self.types, arch).as_deref() {
 			out.push(self.stack_slot(ret.c_size_align(&self.types).expect("validated").0));
 		}
+		let mut spread = c_spread(params.iter().map(|p| &p.typ), ret, &self.types, arch).into_iter();
 		for (i, &v) in vals.iter().enumerate() {
 			let typ = params.get(i).map(|p| &p.typ);
-			let by_val = typ.and_then(|t| t.c_by_val(&self.types, arch));
+			let by_val = spread.next().flatten();
 			let (Some(Typ::Struct(_, fields)), Some(regs)) = (typ, by_val) else {
 				out.push(v);
 				continue;
@@ -95,20 +97,23 @@ impl<M: Module> Translator<'_, M> {
 
 	// Gather a foreign call's `@c` struct result from its registers or buffer.
 	pub(super) fn c_ret(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Option<Value> {
-		let vals = match typ.c_by_val(&self.types, self.module.isa().triple().architecture)?[..] {
+		let regs = typ.c_by_val(&self.types, self.module.isa().triple().architecture);
+		let vals = match regs.as_deref()? {
 			[(None, _)] => vec![self.b.func.dfg.inst_args(call)[0]],
 			_ => self.b.inst_results(call).to_vec(),
 		};
-		self.c_gather(typ, &vals).map(|(oi, _)| oi)
+		self.c_gather(typ, regs, &vals).map(|(oi, _)| oi)
 	}
 
 	// Convert a C ABI fn's params to Oi values, gathering each `@c` struct from its ABI params.
 	pub(crate) fn c_params(&mut self, params: &[(String, Typ, Access)], mut vals: &[Value]) -> Vec<Value> {
+		let arch = self.module.isa().triple().architecture;
+		let spread = c_spread(params.iter().map(|(_, t, _)| t), &Typ::unit(), &self.types, arch);
 		let mut out = vec![];
-		for (_, typ, _) in params {
+		for ((_, typ, _), regs) in params.iter().zip(spread) {
 			let (val, used) = match typ {
 				Typ::Fn(..) => (self.fn_cell(vals[0]), 1),
-				_ => self.c_gather(typ, vals).unwrap_or_else(|| (self.c_norm(vals[0], typ), 1)),
+				_ => self.c_gather(typ, regs, vals).unwrap_or_else(|| (self.c_norm(vals[0], typ), 1)),
 			};
 			out.push(val);
 			vals = &vals[used..];
@@ -117,9 +122,9 @@ impl<M: Module> Translator<'_, M> {
 	}
 
 	// Rebuild a `@c` struct from its leading ABI values, registers at their offsets or a pointer to its copy.
-	fn c_gather(&mut self, typ: &Typ, vals: &[Value]) -> Option<(Value, usize)> {
-		let regs = typ.c_by_val(&self.types, self.module.isa().triple().architecture)?;
+	fn c_gather(&mut self, typ: &Typ, regs: Option<CRegs>, vals: &[Value]) -> Option<(Value, usize)> {
 		let Typ::Struct(_, fields) = typ else { return None };
+		let regs = regs?;
 		let c = match regs[..] {
 			[(None, _)] => vals[0],
 			_ => self.stack_slot(c_layout(fields, &self.types).expect("validated").size.next_multiple_of(8)),

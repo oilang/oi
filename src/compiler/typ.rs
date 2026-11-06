@@ -301,7 +301,7 @@ impl Typ {
 	}
 
 	// A `@c` struct's by-value ABI params, at their offsets or `None` for a pointer to its copy.
-	pub fn c_by_val(&self, types: &TypeCtx, arch: Architecture) -> Option<Vec<(Option<i32>, AbiParam)>> {
+	pub fn c_by_val(&self, types: &TypeCtx, arch: Architecture) -> Option<CRegs> {
 		let size = self.c_size_align(types).filter(|_| matches!(self, Typ::Struct(..)))?.0;
 		let (x86, scalars) = (arch == Architecture::X86_64, c_scalars(self, 0, types));
 		let sse = |at: i32| x86 && scalars.iter().filter(|s| s.0 / 8 == at / 8).all(|s| s.1.is_float());
@@ -558,13 +558,14 @@ pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<A
 // A C ABI fn's params and returns, `@c` structs spread per the target.
 pub(crate) fn c_abi_sig<'t>(
 	sig: &mut Signature,
-	params: impl Iterator<Item = (&'t Typ, Access)>,
+	params: impl Iterator<Item = (&'t Typ, Access)> + Clone,
 	ret: &Typ,
 	types: &TypeCtx,
 	arch: Architecture,
 	int: types::Type,
 ) {
-	sig.params.extend(params.flat_map(|(t, a)| match t.c_by_val(types, arch) {
+	let spread = c_spread(params.clone().map(|(t, _)| t), ret, types, arch);
+	sig.params.extend(params.zip(spread).flat_map(|((t, a), regs)| match regs {
 		Some(regs) => regs.into_iter().map(|(_, p)| p).collect(),
 		None => vec![AbiParam::new(param_cl(t, a, int))],
 	}));
@@ -573,6 +574,36 @@ pub(crate) fn c_abi_sig<'t>(
 		Some(regs) => sig.returns.extend(regs.iter().map(|(_, p)| *p)),
 		None => sig.returns.extend(abi_returns(ret, types, int)),
 	}
+}
+
+pub(crate) type CRegs = Vec<(Option<i32>, AbiParam)>;
+
+// Each param's `@c` struct ABI params, whole on the stack once SysV runs out of int or SSE regs for it.
+pub(crate) fn c_spread<'t>(
+	params: impl Iterator<Item = &'t Typ>,
+	ret: &Typ,
+	types: &TypeCtx,
+	arch: Architecture,
+) -> Vec<Option<CRegs>> {
+	let sret = matches!(ret.c_by_val(types, arch).as_deref(), Some([(None, _)]));
+	let mut free = [6 - sret as usize, 8];
+	let spread = |t: &Typ| {
+		let regs = t.c_by_val(types, arch);
+		let mut need = [0, 0];
+		for (_, p) in regs.iter().flatten().filter(|r| r.0.is_some()) {
+			need[p.value_type.is_float() as usize] += 1;
+		}
+		if regs.is_none() {
+			need[matches!(t.newtype().unwrap_or(t), Typ::Float(_)) as usize] = 1;
+		}
+		if regs.is_some() && arch == Architecture::X86_64 && (need[0] > free[0] || need[1] > free[1]) {
+			let sarg = ArgumentPurpose::StructArgument(t.c_size_align(types)?.0.next_multiple_of(8));
+			return Some(vec![(None, AbiParam::special(types::I64, sarg))]);
+		}
+		free = [free[0].saturating_sub(need[0]), free[1].saturating_sub(need[1])];
+		regs
+	};
+	params.map(spread).collect()
 }
 
 // The access mod a param carries.
