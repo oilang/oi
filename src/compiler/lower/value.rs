@@ -1143,7 +1143,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				return Ok((val, vt));
 			}
 			check_ann_typ(self.types, anns, &vt, value.1)?;
-			if ps.iter().any(|p| matches!(p.typ, Typ::Fn(..))) && !self.c_callable(Some(value)) {
+			if ps.iter().any(|p| matches!(p.typ, Typ::Fn(..) | Typ::Struct(..))) && !self.c_callable(Some(value)) {
 				let msg = "this fn is called from C";
 				return fail(msg, value.1, "mark it with `@c`");
 			}

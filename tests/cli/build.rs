@@ -168,6 +168,40 @@ fn export_annotation_marks_c_abi_fns() {
 }
 
 #[test]
+fn c_calls_oi_with_structs_by_value() {
+	let src = indoc! {"
+		@c
+		Vec2 :: struct { x: f32, y: f32 }
+		@c
+		Big :: struct { n: int, d: [3]f64 }
+		@export
+		sum :: fn(v: Vec2, b: Big) f64 { f64.(v.x + v.y) + f64.(b.n) + b.d[2] }
+		@export
+		apply :: fn(f: @c fn(v: Vec2) f32, v: Vec2) f32 { f(v) }
+	"};
+	let caller = indoc! {r#"
+		#include <stdio.h>
+		typedef struct { float x, y; } Vec2;
+		typedef struct { long n; double d[3]; } Big;
+		extern double sum(Vec2, Big);
+		extern float apply(float (*)(Vec2), Vec2);
+		static float dot(Vec2 v) { return v.x * v.y; }
+		int main(void) {
+			Vec2 v = { 1.5, 2 };
+			printf("%g %g\n", sum(v, (Big){ 7, { 0.5, 1.5, 2.5 } }), apply(dot, v));
+			return 0;
+		}
+	"#};
+	let dir = Project::new().file("main.oi", src).file("caller.c", caller);
+	dir.ok(&["build", "--lib"]);
+	let lib = dir.as_ref().join(format!("{DLL_PREFIX}main{DLL_SUFFIX}"));
+	let mut cc = Command::new("cc");
+	cc.arg("caller.c").arg(lib).args(["-o", "caller"]).current_dir(&dir);
+	assert!(cc.output().unwrap().status.success());
+	assert_eq!(trim(&bin(dir.as_ref().join("caller")).stdout), "13 3");
+}
+
+#[test]
 fn structs_traits_and_generics_reach_the_linker() {
 	let src = indoc! {r#"
 		Animal :: trait { speak : fn(self) string }

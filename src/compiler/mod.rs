@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cranelift::codegen;
-use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
@@ -142,9 +141,8 @@ fn check_params(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 
 // Check that every param and return are C friendly.
 pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
-	match (ps.iter().map(|p| &p.typ))
-		.chain((!ret.is_unit()).then_some(ret))
-		.find(|t| !t.is_c_repr(&types))
+	match (ps.iter().map(|p| &p.typ).find(|t| !t.is_c_param(&types)))
+		.or((!ret.is_unit() && !ret.is_c_repr(&types)).then_some(ret))
 	{
 		Some(t) => {
 			let msg = format!("`{name}` can't cross the C ABI");
@@ -1676,8 +1674,7 @@ impl<M: Module> Compiler<M> {
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
 			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
 			let ctx = ctx.unwrap_or(Some(CONTEXT.into())).filter(|_| !foreign);
-			let mut sig = self.declare_fn((&sym, linkage), params, access, ret, ctx, types);
-			sig.foreign = foreign;
+			let mut sig = self.declare_fn((&sym, linkage, foreign), params, access, ret, ctx, types);
 			sig.unsafe_call = is_unsafe;
 			sig.pure = pure.is_some();
 			sig.default = item.default;
@@ -1748,7 +1745,7 @@ impl<M: Module> Compiler<M> {
 					check_c_sig(types, bare, ps, r, span)?;
 				}
 			}
-			let sig = self.declare_fn((bare, Linkage::Import), params, access, ret, None, types);
+			let sig = self.declare_fn((bare, Linkage::Import, true), params, access, ret, None, types);
 			funcs.insert(name.clone(), sig);
 		}
 
@@ -2024,6 +2021,9 @@ impl<M: Module> Compiler<M> {
 			pure: sig.pure,
 			..def
 		};
+		if sig.foreign {
+			self.ctx.func.signature = self.module.declarations().get_function_decl(sig.id).signature.clone();
+		}
 		self.translate(def, funcs, types)?;
 		self.finish_fn(sym);
 		Ok(())
@@ -2116,7 +2116,7 @@ impl<M: Module> Compiler<M> {
 	// Declare a hoisted fn's signature ahead of its body.
 	fn declare_fn(
 		&mut self,
-		(symbol, linkage): (&str, Linkage),
+		(symbol, linkage, foreign): (&str, Linkage, bool),
 		params: Vec<FnParam>,
 		access: Vec<Access>,
 		ret: Typ,
@@ -2126,17 +2126,9 @@ impl<M: Module> Compiler<M> {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
 		let typed = params.iter().zip(&access).map(|(p, a)| (&p.typ, *a));
-		if linkage == Linkage::Import {
+		if foreign {
 			let arch = self.module.isa().triple().architecture;
-			sig.params.extend(typed.flat_map(|(t, a)| match t.c_by_val(&types, arch) {
-				Some(regs) => regs.into_iter().map(|(_, p)| p).collect(),
-				None => vec![AbiParam::new(param_cl(t, a, int))],
-			}));
-			match ret.c_by_val(&types, arch).as_deref() {
-				Some([(None, _)]) => sig.params.insert(0, AbiParam::special(int, ArgumentPurpose::StructReturn)),
-				Some(regs) => sig.returns.extend(regs.iter().map(|(_, p)| *p)),
-				None => sig.returns.extend(abi_returns(&ret, &types, int)),
-			}
+			c_abi_sig(&mut sig, typed, &ret, &types, arch, int);
 		} else {
 			sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
 			sig.returns.extend(abi_returns(&ret, &types, int));
@@ -2147,7 +2139,7 @@ impl<M: Module> Compiler<M> {
 			params,
 			access,
 			ret,
-			foreign: ctx.is_none(),
+			foreign,
 			ctx,
 			unsafe_call: linkage == Linkage::Import,
 			pure: false,
@@ -2236,7 +2228,9 @@ impl<M: Module> Compiler<M> {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let typed = def.params.iter().map(|(_, t, a)| (t, *a));
 		let ptrs = def.ctx.is_some() as usize + !def.captures.is_empty() as usize;
-		b.func.signature.params.extend(abi_params(typed, ptrs, int));
+		if !def.foreign {
+			b.func.signature.params.extend(abi_params(typed, ptrs, int));
+		}
 		let block = b.create_block();
 		b.append_block_params_for_function_params(block);
 		b.switch_to_block(block);
@@ -2297,17 +2291,17 @@ impl<M: Module> Compiler<M> {
 		let (mut trans, block) = self.translator(&def, funcs, types);
 
 		trans.seed_statics(&inits)?;
-		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
+		let mut param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
+		if def.foreign {
+			param_vals = trans.c_params(def.params, &param_vals);
+		}
 		for (i, ((name, typ, access), &val)) in def.params.iter().zip(param_vals.iter()).enumerate() {
-			let val = match typ {
-				_ if !def.foreign => val,
-				Typ::Fn(..) => trans.fn_cell(val),
-				_ => trans.c_norm(val, typ),
-			};
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);
-			if *access == Access::Move || (def.decls.get(i).is_some_and(|p| p.mutable) && trans.is_affine(typ)) {
+			// a gathered `@c` struct is a fresh copy
+			let owned = *access == Access::Move || def.foreign && matches!(typ, Typ::Struct(..));
+			if owned || (def.decls.get(i).is_some_and(|p| p.mutable) && trans.is_affine(typ)) {
 				trans.own_local(var, typ);
 				if let Some(p) = def.decls.get(i).filter(|_| trans.is_linear(typ)) {
 					trans.linear.push((var, (name.clone(), p.span)));

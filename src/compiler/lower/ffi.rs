@@ -5,8 +5,8 @@ use std::ops::Range;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
-use super::{FieldDef, FnSig, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
-use crate::ast::{Expr, Span, Spanned, TypeExpr};
+use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
+use crate::ast::{Access, Expr, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, fail};
 
 impl<M: Module> Translator<'_, M> {
@@ -70,15 +70,15 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// Spread a foreign call's `@c` struct args into C ABI params, after any returned struct's buffer.
-	pub(super) fn c_args(&mut self, sig: &FnSig, vals: &[Value]) -> Vec<Value> {
+	// Spread a C ABI call's `@c` struct args into C ABI params, after any returned struct's buffer.
+	pub(super) fn c_args(&mut self, params: &[FnParam], ret: &Typ, vals: &[Value]) -> Vec<Value> {
 		let arch = self.module.isa().triple().architecture;
 		let mut out = vec![];
-		if let Some([(None, _)]) = sig.ret.c_by_val(&self.types, arch).as_deref() {
-			out.push(self.stack_slot(sig.ret.c_size_align(&self.types).expect("validated").0));
+		if let Some([(None, _)]) = ret.c_by_val(&self.types, arch).as_deref() {
+			out.push(self.stack_slot(ret.c_size_align(&self.types).expect("validated").0));
 		}
 		for (i, &v) in vals.iter().enumerate() {
-			let typ = sig.params.get(i).map(|p| &p.typ);
+			let typ = params.get(i).map(|p| &p.typ);
 			let by_val = typ.and_then(|t| t.c_by_val(&self.types, arch));
 			let (Some(Typ::Struct(_, fields)), Some(regs)) = (typ, by_val) else {
 				out.push(v);
@@ -95,19 +95,41 @@ impl<M: Module> Translator<'_, M> {
 
 	// Gather a foreign call's `@c` struct result from its registers or buffer.
 	pub(super) fn c_ret(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Option<Value> {
+		let vals = match typ.c_by_val(&self.types, self.module.isa().triple().architecture)?[..] {
+			[(None, _)] => vec![self.b.func.dfg.inst_args(call)[0]],
+			_ => self.b.inst_results(call).to_vec(),
+		};
+		self.c_gather(typ, &vals).map(|(oi, _)| oi)
+	}
+
+	// Convert a C ABI fn's params to Oi values, gathering each `@c` struct from its ABI params.
+	pub(crate) fn c_params(&mut self, params: &[(String, Typ, Access)], mut vals: &[Value]) -> Vec<Value> {
+		let mut out = vec![];
+		for (_, typ, _) in params {
+			let (val, used) = match typ {
+				Typ::Fn(..) => (self.fn_cell(vals[0]), 1),
+				_ => self.c_gather(typ, vals).unwrap_or_else(|| (self.c_norm(vals[0], typ), 1)),
+			};
+			out.push(val);
+			vals = &vals[used..];
+		}
+		out
+	}
+
+	// Rebuild a `@c` struct from its leading ABI values, registers at their offsets or a pointer to its copy.
+	fn c_gather(&mut self, typ: &Typ, vals: &[Value]) -> Option<(Value, usize)> {
 		let regs = typ.c_by_val(&self.types, self.module.isa().triple().architecture)?;
 		let Typ::Struct(_, fields) = typ else { return None };
 		let c = match regs[..] {
-			[(None, _)] => self.b.func.dfg.inst_args(call)[0],
+			[(None, _)] => vals[0],
 			_ => self.stack_slot(c_layout(fields, &self.types).expect("validated").size.next_multiple_of(8)),
 		};
-		let rets = self.b.inst_results(call).to_vec();
-		for (v, at) in rets.into_iter().zip(regs.iter().filter_map(|r| r.0)) {
+		for (&v, at) in vals.iter().zip(regs.iter().filter_map(|r| r.0)) {
 			self.b.ins().store(MemFlags::trusted(), v, c, at);
 		}
 		let oi = self.zero(typ);
 		self.copy_fields(oi, c, 0, fields, false);
-		Some(oi)
+		Some((oi, regs.len()))
 	}
 
 	// A `ptr` cast to a fn type.

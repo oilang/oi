@@ -1,5 +1,5 @@
 use super::*;
-use crate::compiler::{CONTEXT, comp, role};
+use crate::compiler::{CONTEXT, c_abi_sig, comp, role};
 
 // A chosen fill and the args to call it on.
 type Picked = (FnSig, Vec<Spanned<Expr>>);
@@ -840,13 +840,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			let ctx = self.ctx_value(want);
 			vals.push(ctx);
 		}
-		let import = self.module.declarations().get_function_decl(sig.id).linkage == Linkage::Import;
-		if import {
-			vals = self.c_args(sig, &vals);
+		if sig.foreign {
+			vals = self.c_args(&sig.params, &sig.ret, &vals);
 		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
-		let (ret_val, ret) = match import.then(|| self.c_ret(call, &sig.ret)).flatten() {
+		let (ret_val, ret) = match sig.foreign.then(|| self.c_ret(call, &sig.ret)).flatten() {
 			Some(val) => (val, sig.ret.clone()),
 			None => self.returned(call, &sig.ret, sig.foreign, span),
 		};
@@ -870,7 +869,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => None,
 		};
 		let (typ, pure) = match typ {
-			Typ::Annotated(anns, inner) if is_pure(anns) || is_isolated(anns) || want.is_some() => {
+			Typ::Annotated(anns, inner) if c_abi || is_pure(anns) || is_isolated(anns) || want.is_some() => {
 				(&**inner, is_pure(anns))
 			}
 			typ => (typ, false),
@@ -900,11 +899,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (mut vals, lent) = self.call_args(name, params, recv, None, args, span)?;
 		let mut sig = self.module.make_signature();
-		sig.params
-			.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, self.int))));
+		if c_abi {
+			let arch = self.module.isa().triple().architecture;
+			let typed = params.iter().map(|p| (&p.typ, Access::Read));
+			c_abi_sig(&mut sig, typed, ret, &self.types, arch, self.int);
+			vals = self.c_args(params, ret, &vals);
+		} else {
+			sig.params
+				.extend(params.iter().map(|p| AbiParam::new(cl_type(&p.typ, self.int))));
+			sig.returns.extend(abi_returns(ret, &self.types, self.int));
+		}
 		let (addr, env) = match callee {
-			Callee::Addr(addr) => (addr, None),
-			Callee::Object(obj) => (self.ld_word(obj, 0), Some(obj)),
+			Callee::Object(obj) if !c_abi => (self.ld_word(obj, 0), Some(obj)),
+			Callee::Object(addr) | Callee::Addr(addr) => (addr, None),
 		};
 		if !c_abi && want != Some("none") {
 			let want = want.unwrap_or(CONTEXT);
@@ -918,7 +925,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			sig.params.push(AbiParam::new(self.int));
 			vals.push(obj);
 		}
-		sig.returns.extend(abi_returns(ret, &self.types, self.int));
 		let sig_ref = self.b.import_signature(sig);
 		let call = self.b.ins().call_indirect(sig_ref, addr, &vals);
 		let (ret_val, ret) = self.returned(call, ret, c_abi, Some(span));

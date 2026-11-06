@@ -285,9 +285,7 @@ impl Typ {
 	// Whether a value can cross the C ABI.
 	pub fn is_c_repr(&self, types: &TypeCtx) -> bool {
 		match self.newtype().unwrap_or(self) {
-			Typ::Fn(ps, r) => (ps.iter().map(|p| &p.typ))
-				.chain((!r.is_unit()).then_some(&**r))
-				.all(|t| t.is_c_repr(types)),
+			Typ::Fn(ps, r) => ps.iter().all(|p| p.typ.is_c_param(types)) && (r.is_unit() || r.is_c_repr(types)),
 			Typ::Annotated(_, t) => t.is_c_repr(types),
 			Typ::Enum(name) => types.is_c(name),
 			t => matches!(
@@ -295,6 +293,11 @@ impl Typ {
 				Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Bool | Typ::CStr
 			),
 		}
+	}
+
+	// Whether a value can be a C fn's param, `@c` structs by value.
+	pub fn is_c_param(&self, types: &TypeCtx) -> bool {
+		self.is_c_repr(types) || matches!(self, Typ::Struct(n, _) if types.is_c(n))
 	}
 
 	// A `@c` struct's by-value ABI params, at their offsets or `None` for a pointer to its copy.
@@ -549,6 +552,26 @@ pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<A
 	match types.ret_pack(ret).as_ref().unwrap_or(ret) {
 		Typ::Tuple(fields) => fields.iter().map(|(_, t)| AbiParam::new(cl_type(t, int))).collect(),
 		ret => vec![AbiParam::new(cl_type(ret, int))],
+	}
+}
+
+// A C ABI fn's params and returns, `@c` structs spread per the target.
+pub(crate) fn c_abi_sig<'t>(
+	sig: &mut Signature,
+	params: impl Iterator<Item = (&'t Typ, Access)>,
+	ret: &Typ,
+	types: &TypeCtx,
+	arch: Architecture,
+	int: types::Type,
+) {
+	sig.params.extend(params.flat_map(|(t, a)| match t.c_by_val(types, arch) {
+		Some(regs) => regs.into_iter().map(|(_, p)| p).collect(),
+		None => vec![AbiParam::new(param_cl(t, a, int))],
+	}));
+	match ret.c_by_val(types, arch).as_deref() {
+		Some([(None, _)]) => sig.params.insert(0, AbiParam::special(int, ArgumentPurpose::StructReturn)),
+		Some(regs) => sig.returns.extend(regs.iter().map(|(_, p)| *p)),
+		None => sig.returns.extend(abi_returns(ret, types, int)),
 	}
 }
 
