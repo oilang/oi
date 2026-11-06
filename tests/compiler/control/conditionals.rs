@@ -172,6 +172,8 @@ fn header_clauses() {
 		if a := f(), b := f(), a > b do print(a) else do print("no")
 		if n := 12; n > 9; n > 99 do print(n) else do print("small")
 		if a := f(); b := g() do print(a + b) else do print("miss")
+		k := 2
+		if k in [1 2], a := f() do print(k + a)
 	"#};
-	check(src, ["no", "small", "miss"]);
+	check(src, ["no", "small", "miss", "7"]);
 }

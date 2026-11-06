@@ -430,12 +430,21 @@ impl<'a, M: Module> Translator<'a, M> {
 						fallthrough,
 						..
 					} = self.loops[i];
+
+					// a bare `break` ends the loop the way running out does
+					if let (None, Some(end)) = (payload, fallthrough) {
+						self.release_scopes(depth, None)?;
+						self.b.ins().jump(end, &[]);
+						return Ok(None);
+					}
+
 					// the first `break` creates the exit block
 					let exit = exit.unwrap_or_else(|| {
 						let exit = self.b.create_block();
 						self.loops[i].exit = Some(exit);
 						exit
 					});
+
 					// a bare `break` yields unit, so mixing it with a break-with-value is a type mismatch
 					let (v, t) = match payload {
 						Some(e) => {

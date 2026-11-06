@@ -306,25 +306,42 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.ignore_then(p.type_expr.clone())
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 
-	// `,` chains clauses with `&&`, and `;` groups them into a header block
-	let header = (header_cond.clone())
-		.foldl_with(
-			just(Token::Comma).ignore_then(header_cond.clone()).repeated(),
-			|lhs, rhs, ex| (Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs)), ex.span()),
-		)
-		.separated_by(just(Token::Semicolon))
-		.at_least(1)
-		.collect::<Vec<_>>()
-		.map_with(|mut groups, ex| match groups.len() {
-			1 => groups.remove(0),
-			_ => (Expr::Block(groups), ex.span()),
-		})
+	let name = spanned(p.def_name.clone().map(Expr::Ident));
+	let loop_names = (p.pat.clone().or(name.clone()).map(Box::new))
+		.then(just(Token::Comma).ignore_then(name.map(Box::new)).or_not())
+		.then_ignore(just(Token::In))
 		.boxed();
+	let generator = loop_names
+		.then(
+			just(Token::Move)
+				.ignore_then(header_expr.clone())
+				.map_with(|e, ex| (Expr::ArgMod(Access::Move, Box::new(e)), ex.span()))
+				.or(header_expr.clone())
+				.map(Box::new),
+		)
+		.map_with(|((pat, key), iter), ex| (Expr::Gen { pat, key, iter }, ex.span()))
+		.boxed();
+
+	// `,` chains clauses with `&&`, and `;` groups them into a header block
+	let header = |clause: P<'token, I, Spanned<Expr>>| {
+		(clause.clone())
+			.foldl_with(just(Token::Comma).ignore_then(clause).repeated(), |lhs, rhs, ex| {
+				(Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs)), ex.span())
+			})
+			.separated_by(just(Token::Semicolon))
+			.at_least(1)
+			.collect::<Vec<_>>()
+			.map_with(|mut groups, ex| match groups.len() {
+				1 => groups.remove(0),
+				_ => (Expr::Block(groups), ex.span()),
+			})
+			.boxed()
+	};
 
 	let if_expr = recursive(|if_expr| {
 		just(Token::If)
 			.ignore_then(just(Token::With).or_not())
-			.then(header.clone())
+			.then(header(header_cond.clone().boxed()))
 			.then(p.block.clone())
 			.then(
 				just(Token::Else)
@@ -351,16 +368,22 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let label = select! { Token::Atom(a) => a };
 	let loop_expr = just(Token::Loop)
 		.ignore_then(label.or_not())
+		.then(just(Token::With).or_not())
 		.then(
 			p.block_ast
 				.clone()
 				.map(Some)
 				.then(p.same_line.clone().ignore_then(p.block.clone()))
 				.or(p.block.clone().map(|body| (None, body)))
-				.or(header.map(Some).then(p.block.clone()))
+				.or(header(generator.clone().or(header_cond.clone()).boxed())
+					.map(Some)
+					.then(p.block.clone()))
 				.or(header_expr.clone().map(|e| (None, vec![e]))),
 		)
-		.map_with(|(label, (cond, body)), ex| {
+		.validate(|((label, with), (cond, mut body)), ex, emitter| {
+			if with.is_some() && !matches!(&cond, Some((Expr::Gen { pat, .. }, _)) if open_bound(pat, &mut body)) {
+				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
+			}
 			(
 				Expr::Loop {
 					label,
@@ -372,41 +395,6 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		})
 		.boxed();
 
-	let name = spanned(p.def_name.clone().map(Expr::Ident));
-	let loop_names = (p.pat.clone().or(name.clone()).map(Box::new))
-		.then(just(Token::Comma).ignore_then(name.map(Box::new)).or_not())
-		.then_ignore(just(Token::In))
-		.boxed();
-	let generator = loop_names
-		.clone()
-		.then(
-			just(Token::Move)
-				.ignore_then(header_expr.clone())
-				.map_with(|e, ex| (Expr::ArgMod(Access::Move, Box::new(e)), ex.span()))
-				.or(header_expr.clone())
-				.map(Box::new),
-		)
-		.map_with(|((pat, key), iter), ex| (Expr::Gen { pat, key, iter }, ex.span()))
-		.boxed();
-	let for_expr = just(Token::Loop)
-		.ignore_then(label.or_not())
-		.then(just(Token::With).or_not())
-		.then(generator.clone())
-		.then(p.block.clone())
-		.validate(|(((label, with), cond), mut body), ex, emitter| {
-			if with.is_some() && !matches!(&cond.0, Expr::Gen { pat, .. } if open_bound(pat, &mut body)) {
-				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
-			}
-			(
-				Expr::Loop {
-					label,
-					cond: Some(Box::new(cond)),
-					body,
-				},
-				ex.span(),
-			)
-		})
-		.boxed();
 	let break_expr = just(Token::Break)
 		.ignore_then(p.same_line.clone().ignore_then(label).or_not())
 		.then(p.same_line.clone().ignore_then(p.expr.clone().map(Box::new)).or_not())
@@ -693,7 +681,6 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		comp_expr,
 		unsafe_expr,
 		with_expr,
-		for_expr,
 		loop_expr,
 		break_expr.or(return_expr).or(defer_expr).or(discard_expr).or(fallthrough_expr),
 		continue_expr.or(cancel_expr),

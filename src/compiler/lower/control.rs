@@ -60,6 +60,13 @@ fn chained(cond: &Expr) -> bool {
 	}
 }
 
+type Pats<'e> = (&'e Spanned<Expr>, Option<&'e Spanned<Expr>>);
+
+type Emit<'e, 'a, M> = Box<dyn FnOnce(&mut Translator<'a, M>) -> Result<(), Diagnostic> + 'e>;
+
+// A generator's step at the top of each round, and its cleanup after the loop.
+type Cursor<'e, 'a, M> = (Emit<'e, 'a, M>, Option<Emit<'e, 'a, M>>);
+
 impl<'a, M: Module> Translator<'a, M> {
 	// Lower branching control flow constructs.
 	pub(super) fn branching(
@@ -1164,27 +1171,34 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		if let Some((Expr::Gen { pat, key, iter }, _)) = cond {
-			return self.for_loop(label, (pat, key.as_deref()), iter, body).map(Some);
-		}
 		self.rewrap_writes(body);
+		let mut gens = vec![];
+		let rest = cond.map(|c| self.generators(c, &mut gens)).transpose()?.flatten();
+		let (steps, drops): (Vec<_>, Vec<_>) = gens.into_iter().unzip();
+		let zipped = !steps.is_empty();
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
-		let cond = cond.map(|c| self.clauses(c)).transpose()?;
+		let cond = rest.as_ref().map(|c| self.clauses(c)).transpose()?;
 		let cond = cond.as_ref();
 
 		// a conditional loop branches, into the body or out through `fallthrough`
 		let (exit, fallthrough) = match cond {
 			None => (None, None),
-			Some((c, _)) if infallible(c) || chained(c) => (None, None),
+			Some((c, _)) if zipped || infallible(c) || chained(c) => (None, None),
 			Some(cond) => {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
 					// non-bool headers are iterated
 					self.b.seal_block(top);
-					let wild = (Expr::Ident("_".into()), cond.1);
-					return self.for_value(label, (&wild, None), (cv, ct), false, cond.1, body).map(Some);
+					self.hidden_local("$iter".into(), cv, ct);
+					let ident = |name: &str| Box::new((Expr::Ident(name.into()), cond.1));
+					let iter = Expr::Gen {
+						pat: ident("_"),
+						key: None,
+						iter: ident("$iter"),
+					};
+					return self.loop_expr(label, Some(&(iter, cond.1)), body);
 				}
 				let exit = self.b.create_block();
 				let (body_block, fallthrough) = self.fork(cv);
@@ -1194,33 +1208,48 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		// a body expression that can fall through ends the loop when it does
-		let (mut frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| match (cond, body) {
-			(Some(c), _) if infallible(&c.0) => {
-				s.pack_operand(c)?;
-				match s.unwrap_arm(c, body) {
-					Some((id, arm)) => {
-						s.match_expr(&id, &[arm], None, Some(&[(Expr::Break(None, None), c.1)]), None, c.1)
+		let (mut frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| {
+			for step in steps {
+				step(s)?;
+			}
+
+			// breaks yield an Option once a clause can fail
+			if cond.is_some_and(|c| chained(&c.0) && !infallible(&c.0)) {
+				s.ended();
+			}
+
+			let end = |span| [(Expr::Break(None, None), span)];
+			match (cond, body) {
+				(Some(c), _) if infallible(&c.0) => {
+					s.pack_operand(c)?;
+					match s.unwrap_arm(c, body) {
+						Some((id, arm)) => {
+							s.ended();
+							s.match_expr(&id, &[arm], None, Some(&end(c.1)), None, c.1)
+						}
+						None => s.block(body),
 					}
-					None => s.block(body),
 				}
+				(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
+					let arm = MatchArm {
+						patterns: vec![(**pat).clone()],
+						body: body.to_vec(),
+						..Default::default()
+					};
+					s.match_expr(value, &[arm], None, Some(&end(*sp)), None, *sp)
+				}
+				(Some(c), _) if zipped || chained(&c.0) => s.conditional(c, body, Some(&end(c.1)), None, c.1, true),
+				(_, [(Expr::Match { subject, arms, .. }, sp)]) if !zipped => {
+					s.match_expr(subject, arms, None, Some(&end(*sp)), None, *sp)
+				}
+				(Some(c), _) => s.unwrapped(&c.0, true, body, None),
+				(None, _) => s.block(body),
 			}
-			(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
-				let arm = MatchArm {
-					patterns: vec![(**pat).clone()],
-					body: body.to_vec(),
-					..Default::default()
-				};
-				s.match_expr(value, &[arm], None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
-			}
-			(Some(c), _) if chained(&c.0) => {
-				s.conditional(c, body, Some(&[(Expr::Break(None, None), c.1)]), None, c.1, true)
-			}
-			(_, [(Expr::Match { subject, arms, .. }, sp)]) => {
-				s.match_expr(subject, arms, None, Some(&[(Expr::Break(None, None), *sp)]), None, *sp)
-			}
-			(Some(c), _) => s.unwrapped(&c.0, true, body, None),
-			(None, _) => s.block(body),
 		})?;
+
+		if let Some(ended) = frame.fallthrough.filter(|_| fallthrough.is_none()) {
+			self.b.seal_block(ended);
+		}
 
 		if let Some(vt) = flow {
 			self.loop_tail(&mut frame, vt);
@@ -1228,11 +1257,34 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.b.seal_block(top);
 
-		match frame.exit {
-			Some(exit) => Ok(Some(self.loop_end(frame, exit))),
-			// an infinite loop with no `break` never falls through
-			None => Ok(None),
+		let Some(exit) = frame.exit else {
+			// an infinite loop with no break never falls through
+			return Ok(None);
+		};
+		let out = self.loop_end(frame, exit);
+		for drop in drops.into_iter().flatten() {
+			drop(self)?;
 		}
+		Ok(Some(out))
+	}
+
+	// Set up a header's generators, leaving its binds and tests in order.
+	fn generators<'e>(
+		&mut self,
+		cond: &'e Spanned<Expr>,
+		gens: &mut Vec<Cursor<'e, 'a, M>>,
+	) -> Result<Option<Spanned<Expr>>, Diagnostic> {
+		Ok(match &cond.0 {
+			Expr::Gen { pat, key, iter } => {
+				gens.push(self.for_loop((pat, key.as_deref()), iter)?);
+				None
+			}
+			Expr::Binary(BinOp::And, lhs, rhs) => match (self.generators(lhs, gens)?, self.generators(rhs, gens)?) {
+				(Some(lhs), Some(rhs)) => Some((Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs)), cond.1)),
+				(lhs, rhs) => lhs.or(rhs),
+			},
+			_ => Some(cond.clone()),
+		})
 	}
 
 	// `v := opt` re-matches `v` to bind the payload, and a pack's `v` views its leading slots.
@@ -1363,15 +1415,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Drive an Iterator, or a Keyed by its key.
-	fn iter_loop(
+	// Set up an Iterator, or a Keyed walked by its key.
+	fn iter_loop<'e>(
 		&mut self,
-		label: Option<&str>,
-		(pat, key): (&Spanned<Expr>, Option<&Spanned<Expr>>),
-		body: &[Spanned<Expr>],
+		(pat, key): Pats<'e>,
 		(val, typ): TypedVal,
 		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
+	) -> Result<Emit<'e, 'a, M>, Diagnostic> {
 		let keyed = self.claims(&typ, role::KEYED) && (key.is_some() || !self.claims(&typ, role::ITERATOR));
 		if let Some(key) = key.filter(|_| !keyed) {
 			return fail(format!("{typ} is not keyed"), key.1, "not keyed");
@@ -1413,35 +1463,28 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => val,
 		};
 
-		let (header, exit) = (self.b.create_block(), self.b.create_block());
-		self.b.ins().jump(header, &[]);
-		self.b.switch_to_block(header);
+		Ok(Box::new(move |s: &mut Self| {
+			// keeps a plain `?T` as its pack
+			let outer = s.pack_call.replace(span);
+			let mut args = vec![it];
+			args.extend(after.as_ref().map(|(var, _)| s.b.use_var(*var)));
+			let (yielded, opt) = s.emit_call_at(&next, &args, Some(span));
+			s.pack_call = outer;
 
-		// keeps a plain `?T` as its pack
-		let outer = self.pack_call.replace(span);
-		let mut args = vec![it];
-		args.extend(after.as_ref().map(|(var, _)| self.b.use_var(*var)));
-		let (yielded, opt) = self.emit_call_at(&next, &args, Some(span));
-		self.pack_call = outer;
+			let tag = s.enum_tag(&opt, yielded);
+			let (body_block, done) = s.fork(tag);
 
-		let tag = self.enum_tag(&opt, yielded);
-		let (body_block, done) = self.fork(tag);
+			// each pass owns what gets yielded by `next`
+			s.untemp(yielded);
+			s.b.switch_to_block(done);
+			s.release_value(yielded, &opt);
+			s.leave()?;
 
-		// each pass owns what gets yielded by `next`
-		self.untemp(yielded);
-		self.b.switch_to_block(done);
-		self.release_value(yielded, &opt);
-		let fallthrough = self.b.create_block();
-		self.b.ins().jump(fallthrough, &[]);
-		self.b.seal_block(fallthrough);
-
-		self.b.switch_to_block(body_block);
-		let (mut frame, flow) = self.in_loop(label, Some(header), Some(exit), Some(fallthrough), |s| {
+			s.b.switch_to_block(body_block);
 			s.temp(yielded, &opt);
 			let v = s.take_payload(yielded, &opt, &item);
 			let (Some((var, opt_key)), Typ::Tuple(fields)) = (&after, &item) else {
-				s.bind_pat(pat, v, &item, Some(false))?;
-				return s.block(body);
+				return s.bind_pat(pat, v, &item, Some(false));
 			};
 			let (value, key_val) = (s.ld_typ(v, 0, &fields[0].1), s.ld_typ(v, 8, &fields[1].1));
 			s.bind_pat(pat, value, &fields[0].1, Some(false))?;
@@ -1455,62 +1498,61 @@ impl<'a, M: Module> Translator<'a, M> {
 			if s.enum_box(opt_key) && !s.slot_owns(&fields[1].1) {
 				let some = s.b.ins().iconst(s.int, 1);
 				s.store_slots(last, &[some, key_val]);
-				return s.block(body);
+				return Ok(());
 			}
 
 			s.release_value(last, opt_key);
 			let last = s.make_option(opt_key, Some(key_val));
 			s.untemp(last);
 			s.b.def_var(*var, last);
-			s.block(body)
-		})?;
-		if let Some(vt) = flow {
-			self.loop_tail(&mut frame, vt);
-			self.b.ins().jump(header, &[]);
-		}
-		self.b.seal_block(header);
-		Ok(self.loop_end(frame, exit))
+			Ok(())
+		}))
 	}
 
-	pub(super) fn for_loop(
-		&mut self,
-		label: Option<&str>,
-		pats: (&Spanned<Expr>, Option<&Spanned<Expr>>),
-		iter: &Spanned<Expr>,
-		body: &[Spanned<Expr>],
-	) -> Result<TypedVal, Diagnostic> {
-		self.rewrap_writes(body);
-		self.header_scoped(|s| {
-			let (iter, consume) = match &iter.0 {
-				Expr::ArgMod(Access::Move, x) => (&**x, true),
-				_ => (iter, false),
-			};
-			let iter = s.header(iter)?;
-			let (val, typ) = s.expr(iter)?;
-			let owns = consume && matches!(&typ, Typ::Array(e) if s.is_affine(e));
-			if consume {
-				s.move_out(iter, &typ)?;
-				s.untemp(val);
-				if !owns {
-					s.temp(val, &typ);
-				}
+	// The block a failed clause leaves a loop through, made on first use.
+	fn ended(&mut self) -> Block {
+		let frame = self.loops.last_mut().expect("loop frame");
+		frame.exit.get_or_insert_with(|| self.b.create_block());
+		*frame.fallthrough.get_or_insert_with(|| self.b.create_block())
+	}
+
+	// Leave a loop's round through `ended`, releasing what it bound so far.
+	fn leave(&mut self) -> Result<(), Diagnostic> {
+		let to = self.ended();
+		self.release_scopes(self.loops.last().expect("loop frame").depth, None)?;
+		self.b.ins().jump(to, &[]);
+		Ok(())
+	}
+
+	// Set up a generator over its iterable.
+	fn for_loop<'e>(&mut self, pats: Pats<'e>, iter: &Spanned<Expr>) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
+		let (iter, consume) = match &iter.0 {
+			Expr::ArgMod(Access::Move, x) => (&**x, true),
+			_ => (iter, false),
+		};
+		let iter = self.header(iter)?;
+		let (val, typ) = self.expr(iter)?;
+		let owns = consume && matches!(&typ, Typ::Array(e) if self.is_affine(e));
+		if consume {
+			self.move_out(iter, &typ)?;
+			self.untemp(val);
+			if !owns {
+				self.temp(val, &typ);
 			}
-			s.for_value(label, pats, (val, typ), owns, iter.1, body)
-		})
+		}
+		self.for_value(pats, (val, typ), owns, iter.1)
 	}
 
-	fn for_value(
+	fn for_value<'e>(
 		&mut self,
-		label: Option<&str>,
-		(pat, key): (&Spanned<Expr>, Option<&Spanned<Expr>>),
+		(pat, key): Pats<'e>,
 		(val, typ): TypedVal,
 		owns: bool,
 		span: Span,
-		body: &[Spanned<Expr>],
-	) -> Result<TypedVal, Diagnostic> {
+	) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
 		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
 		if self.claims(&typ, role::ITERATOR) || !direct && self.claims(&typ, role::KEYED) {
-			return self.iter_loop(label, (pat, key), body, (val, typ), span);
+			return Ok((self.iter_loop((pat, key), (val, typ), span)?, None));
 		}
 
 		let zero = self.b.ins().iconst(self.int, 0);
@@ -1550,17 +1592,26 @@ impl<'a, M: Module> Translator<'a, M> {
 		let counter = self.b.declare_var(self.b.func.dfg.value_type(zero));
 		self.b.def_var(counter, zero);
 
-		let (header, latch, exit) = (self.b.create_block(), self.b.create_block(), self.b.create_block());
-		self.b.ins().jump(header, &[]);
+		// release vars skipped by `break`
+		let elem = src.1.clone();
+		let drop = move |s: &mut Self| {
+			let lo = s.b.use_var(counter);
+			let n = s.b.ins().isub(limit, lo);
+			s.elems_rc(val, lo, n, &elem, false);
+			s.rt_call("array_release", &[val]);
+			Ok(())
+		};
 
-		self.b.switch_to_block(header);
-		let iv = self.b.use_var(counter);
-		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
-		let (body_block, fallthrough) = self.fork(more);
+		let step = move |s: &mut Self| {
+			let iv = s.b.use_var(counter);
+			let more = s.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
+			let (body_block, done) = s.fork(more);
+			s.b.switch_to_block(done);
+			s.leave()?;
 
-		self.b.switch_to_block(body_block);
-		let iv = self.b.use_var(counter);
-		let (mut frame, flow) = self.in_loop(label, Some(latch), Some(exit), Some(fallthrough), |s| {
+			s.b.switch_to_block(body_block);
+			let next = s.b.ins().iadd_imm(iv, 1);
+			s.b.def_var(counter, next);
 			let (data, elem) = &src;
 			let item = s.load_nth(*data, iv, elem);
 			let n = s.scopes.last().map_or(0, Vec::len);
@@ -1583,33 +1634,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 			}
-			s.block(body)
-		})?;
-
-		if let Some(vt) = flow {
-			self.loop_tail(&mut frame, vt);
-			self.b.ins().jump(latch, &[]);
-		}
-		self.b.seal_block(latch);
-
-		self.b.switch_to_block(latch);
-		let iv = self.b.use_var(counter);
-		let next = self.b.ins().iadd_imm(iv, 1);
-		self.b.def_var(counter, next);
-		self.b.ins().jump(header, &[]);
-		self.b.seal_block(header);
-
-		let out = self.loop_end(frame, exit);
-		// release what a `break` skipped
-		if owns {
-			let iv = self.b.use_var(counter);
-			let lo = self.b.ins().iadd_imm(iv, 1);
-			let lo = self.b.ins().smin(lo, limit);
-			let n = self.b.ins().isub(limit, lo);
-			self.elems_rc(val, lo, n, &src.1, false);
-			self.rt_call("array_release", &[val]);
-		}
-		Ok(out)
+			Ok(())
+		};
+		Ok((Box::new(step), owns.then(|| Box::new(drop) as Emit<'e, 'a, M>)))
 	}
 
 	// Bind or assign a pattern's names against a value.

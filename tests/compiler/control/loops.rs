@@ -195,16 +195,25 @@ fn infinite_loop_break_value() {
 #[test]
 fn for_loop_break_value_or_else() {
 	let hit = indoc! {"
-		xs := [1, 5, 20]
+		xs := [1 5 20]
 		loop x in xs { if x > 9 do break x } or -1
 	"};
 	check(hit, "20");
 
 	let miss = indoc! {"
-		xs := [1, 5, 9]
+		xs := [1 5 9]
 		loop x in xs { if x > 9 do break x } or -1
 	"};
 	check(miss, "-1");
+
+	let bare = indoc! {"
+		xs := [1 5 20]
+		loop x in xs {
+			if x == 5 do break
+			if x > 9 do break x
+		} or -1
+	"};
+	check(bare, "-1");
 }
 
 #[test]
@@ -282,6 +291,22 @@ fn header_bind_then_test() {
 		print(loop n := it.next(); n < 5 do n * 10)
 	"};
 	check(src, ["0", "1", "[30, 40]"]);
+}
+
+#[test]
+fn zip_clauses() {
+	let src = indoc! {r#"
+		xs := ["a" "b" "c" "d"]
+		q := 5..7
+		loop x in xs, n := q.next() { print(x, n) }
+		print(loop x in xs, n in 1..9, x != "c" do "{x}{n}")
+		it := 0..9
+		print(loop n := it.next() { if n > 3 do break n })
+		print(loop x in [1 5 9], x < 3 { if x == 5 do break x })
+		v := loop x := 5 do break x; print(v)
+	"#};
+	check(src, ["a 5", "b 6", r#"["a1", "b2"]"#, "some.(4)", "none", "5"]);
+	assert_clean(src);
 }
 
 #[test]
