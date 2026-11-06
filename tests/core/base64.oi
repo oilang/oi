@@ -1,0 +1,22 @@
+use encoding.base64.{ encode, decode }
+
+test! "rfc 4648 vectors" {
+	vectors :: [ "" "f" "fo" "foo" "foob" "fooba" "foobar" ]
+	encoded :: [ "" "Zg==" "Zm8=" "Zm9v" "Zm9vYg==" "Zm9vYmE=" "Zm9vYmFy" ]
+	loop i in 0..vectors.len() {
+		assert! encode(vectors[i]) == encoded[i]
+		assert! (decode(encoded[i]) or "") == vectors[i]
+	}
+	assert! (decode("Zg") or "") == "f"
+}
+
+test! "url alphabet" {
+	raw :: string.([ u8.(251) 255 ])
+	assert! encode(raw) == "+/8="
+	assert! encode(raw, url = true) == "-_8="
+	assert! (decode("-_8=", url = true) or "") == raw
+}
+
+test! "bad input" {
+	assert! (decode("Zm9v!") or $.message()) == "base64: bad char at 4"
+}
