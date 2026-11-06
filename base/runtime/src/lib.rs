@@ -80,19 +80,22 @@ fn emit(sink: i64, s: &str) {
 	}
 }
 
-// String header layout.
+// String header layout, counted on the header since strings are immutable.
+// A view's `owner` holds its bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct StrHeader {
 	data: i64,
 	len: i64,
+	rc: i64,
+	owner: *mut StrHeader,
 }
 
 /// Read a string handle's bytes, excluding the trailing NUL.
 /// # Safety
 /// `header` must point to a valid string header.
 pub unsafe fn str_bytes<'a>(header: *const StrHeader) -> &'a [u8] {
-	let StrHeader { data, len } = unsafe { *header };
+	let StrHeader { data, len, .. } = unsafe { *header };
 	unsafe { bytes(data, len) }
 }
 
@@ -110,20 +113,28 @@ unsafe fn str_lossy<'a>(header: *const StrHeader) -> std::borrow::Cow<'a, str> {
 	String::from_utf8_lossy(unsafe { str_bytes(header) })
 }
 
-/// Allocate a fresh string handle owning a copy of `bytes`, plus a trailing NUL for C interop.
+/// Allocate a fresh string handle owning a copy of `bytes` right after it, plus a trailing NUL for C interop.
 pub fn str_new(a: *const Allocator, bytes: &[u8]) -> *const StrHeader {
 	let len = bytes.len() as i64;
 	unsafe {
-		let data = raw_alloc(a, len + 1);
-		std::ptr::copy_nonoverlapping(bytes.as_ptr(), data, bytes.len());
-		str_header(a, data as i64, len)
+		let out = str_header(a, len + 1, 0, len, std::ptr::null_mut());
+		(*out).data = out.add(1) as i64;
+		std::ptr::copy_nonoverlapping(bytes.as_ptr(), (*out).data as *mut u8, bytes.len());
+		out
 	}
 }
 
-// Strings are never freed, so their handles skip alloc's counted prefix.
-unsafe fn str_header(a: *const Allocator, data: i64, len: i64) -> *const StrHeader {
-	let out = unsafe { raw_alloc(a, size_of::<StrHeader>() as i64) } as *mut StrHeader;
-	unsafe { *out = StrHeader { data, len } };
+// A counted string header with `extra` bytes of room after it.
+unsafe fn str_header(a: *const Allocator, extra: i64, data: i64, len: i64, owner: *mut StrHeader) -> *mut StrHeader {
+	let out = unsafe { alloc(a, size_of::<StrHeader>() as i64 + extra) } as *mut StrHeader;
+	unsafe {
+		*out = StrHeader {
+			data,
+			len,
+			rc: 1,
+			owner,
+		}
+	};
 	out
 }
 
@@ -208,6 +219,8 @@ pub unsafe extern "C" fn panic_oob(ctx: *const i64, index: i64, len: i64, at: *c
 	let msg = StrHeader {
 		data: text.as_ptr() as i64,
 		len: text.len() as i64,
+		rc: IMMORTAL,
+		owner: std::ptr::null_mut(),
 	};
 	unsafe { abort_with(ctx, at, "", &msg) }
 }
@@ -323,7 +336,7 @@ pub unsafe extern "C" fn str_concat(
 /// `header` must point to a valid string header.
 #[unsafe(export_name = "oi_str_cstr")]
 pub unsafe extern "C" fn str_cstr(header: *const StrHeader) -> i64 {
-	let StrHeader { data, len } = unsafe { *header };
+	let StrHeader { data, len, .. } = unsafe { *header };
 	if data != 0 && unsafe { *((data + len) as *const u8) } == 0 {
 		return data;
 	}
@@ -595,7 +608,7 @@ pub unsafe extern "C" fn array_owned(header: *const Header) -> i64 {
 }
 
 /// Give a shared array its own buffer before a write, returning the elements copied.
-/// No-op when the buffer is null or unshared.
+/// Noop when the buffer is null or unshared.
 /// # Safety
 /// `header` must point to a valid array header.
 #[unsafe(export_name = "oi_array_cow")]
@@ -671,7 +684,7 @@ pub unsafe extern "C" fn slice(
 	unsafe { new_header(a, h) }
 }
 
-/// View a range of a string through a fresh handle sharing the same buffer.
+/// View a range of a string through a fresh handle sharing the same bytes.
 /// # Safety
 /// `header` must point to a valid string header.
 #[unsafe(export_name = "oi_str_slice")]
@@ -681,12 +694,40 @@ pub unsafe extern "C" fn str_slice(
 	start: i64,
 	end: i64,
 ) -> *const StrHeader {
-	let StrHeader { data, len } = unsafe { *header };
+	let StrHeader { data, len, .. } = unsafe { *header };
 	if start < 0 || start > end || end > len {
 		eprintln!("slice range {start}..{end} out of bounds for string of length {len}");
 		die();
 	}
-	unsafe { str_header(a, data + start, end - start) }
+	unsafe { str_header(a, 0, data + start, end - start, str_share(header as *mut StrHeader)) }
+}
+
+/// Share a string handle, a noop on literals.
+/// # Safety
+/// `header` must be null or point to a valid string header.
+#[unsafe(export_name = "oi_str_share")]
+pub unsafe extern "C" fn str_share(header: *mut StrHeader) -> *mut StrHeader {
+	if !header.is_null() && unsafe { (*header).rc } != IMMORTAL {
+		unsafe { (*header).rc += 1 };
+	}
+	header
+}
+
+/// Drop one ref to a string, freeing it and releasing its owner at zero.
+/// # Safety
+/// `header` must be null or point to a valid string header.
+#[unsafe(export_name = "oi_str_release")]
+pub unsafe extern "C" fn str_release(header: *mut StrHeader) {
+	if header.is_null() || unsafe { (*header).rc } == IMMORTAL {
+		return;
+	}
+	unsafe {
+		(*header).rc -= 1;
+		if (*header).rc == 0 {
+			str_release((*header).owner);
+			free(header.cast());
+		}
+	}
 }
 
 /// Write a `mut` slice projection back into its parent buffer at `lo`.
@@ -789,12 +830,12 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 		for _ in 0..*desc {
 			let e = *p;
 			p = p.add(1);
-			let slot = *(fields.add((e >> 2) as usize) as *const *mut u8);
+			let slot = *(fields.add((e & !7) as usize) as *const *mut u8);
 			if slot.is_null() {
-				p = p.add((e & 3 == 1) as usize);
+				p = p.add((e & 7 == 1) as usize);
 				continue;
 			}
-			match e & 3 {
+			match e & 7 {
 				0 => visit(slot),
 				1 => {
 					trace(slot, *p as *const i64, drop, &mut *visit);
@@ -802,6 +843,7 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 				}
 				2 if drop => array_release(slot.cast()),
 				3 if drop => map_release(slot.cast()),
+				4 if drop => str_release(slot.cast()),
 				_ => {}
 			}
 		}

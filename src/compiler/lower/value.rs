@@ -36,7 +36,8 @@ pub(crate) fn define_ptr_data<M: Module>(m: &mut M, sym: &str, target: DataId, t
 
 pub(crate) fn define_str<M: Module>(m: &mut M, sym: &str, s: &str) -> DataId {
 	let bytes = define_data(m, sym, [s.as_bytes(), &[0]].concat());
-	define_ptr_data(m, &format!("{sym}_hdr"), bytes, &(s.len() as i64).to_le_bytes())
+	let tail = [s.len() as i64, runtime::IMMORTAL, 0].map(i64::to_le_bytes).concat();
+	define_ptr_data(m, &format!("{sym}_hdr"), bytes, &tail)
 }
 
 impl<'a, M: Module> Translator<'a, M> {

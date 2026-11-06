@@ -364,14 +364,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut words = vec![0i64, slots.iter().any(cyclic) as i64, 0, 0];
 		let mut relocs = Vec::new();
 		for (i, t) in slots.iter().enumerate() {
-			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map
-			let off = ((i * 8) as i64) << 2;
+			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map, 4 string
+			let off = (i * 8) as i64;
 			// fn envs aren't traced, so a cycle through one leaks
 			if let Some((_, release)) = handle_fns(t).filter(|(_, r)| *r != "fn_release") {
 				words.push(
 					off | match release {
 						"array_release" => 2,
 						"map_release" => 3,
+						"str_release" => 4,
 						_ => 0,
 					},
 				);
@@ -734,6 +735,7 @@ pub(super) fn inline(typ: &Typ) -> Option<(Typ, usize)> {
 pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 	match typ {
 		Typ::Array(_) => Some(("array_share", "array_release")),
+		Typ::Str => Some(("str_share", "str_release")),
 		Typ::Map(..) => Some(("map_share", "map_release")),
 		Typ::Fn(..) | Typ::Closure(..) => Some(("ref_share", "fn_release")),
 		Typ::Annotated(a, t) if helpers::is_isolated(a) => handle_fns(t),

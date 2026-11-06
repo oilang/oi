@@ -122,7 +122,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			.funcs
 			.get(&key)
 			.unwrap_or_else(|| panic!("`{key}` is not declared in `core/rt`"));
-		let (id, unit) = (sig.id, sig.ret.is_unit());
+		let (id, unit, fresh) = (sig.id, sig.ret.is_unit(), sig.ret == Typ::Str);
 		let allocs = matches!(sig.params.first().map(|p| &p.typ), Some(Typ::Struct(n, _)) if n == role::ALLOC);
 		let routed;
 		let args = match allocs {
@@ -135,7 +135,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.out.wanted.push(id);
 		let func = self.module.declare_func_in_func(id, self.b.func);
 		let call = self.b.ins().call(func, args);
-		(!unit).then(|| self.b.inst_results(call)[0])
+		let out = (!unit).then(|| self.b.inst_results(call)[0]);
+		if fresh {
+			self.temp(out.unwrap(), &Typ::Str);
+		}
+		out
 	}
 
 	// Fold a call to a comp function to its literal.

@@ -836,7 +836,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = if field == "keys" { k } else { v };
 					let typ = Typ::Array(elem.clone());
 					let header = self.map_entries(ptr, field == "keys", elem);
-					let header = self.owning(header, elem);
+					// keys are fresh, but values belong to the map
+					if field == "values" {
+						self.owning(header, elem);
+					}
 					self.temp(header, &typ);
 					return Ok((header, typ));
 				}

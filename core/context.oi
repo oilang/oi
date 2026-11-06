@@ -54,7 +54,7 @@ pub system_allocator :: fn() Alloc {
 }
 
 ## A fresh bump arena.
-## Allocating is a pointer bump, freeing is a no-op, and `free_all` rewinds.
+## Allocating is a pointer bump, freeing is a noop, and `free_all` rewinds.
 pub arena :: fn() Alloc {
 	c :: chunk(CHUNK)
 	a :: raw(24)

@@ -106,6 +106,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				let out = if key { key_typ } else { val_typ };
 				let flag = self.b.ins().iconst(self.int, key as i64);
 				let bits = self.rt_call("map_at", &[coll, at, flag]).unwrap();
+				if key {
+					self.temp(bits, out);
+				}
 				Ok(Some((self.unmap_bits(bits, out), (**out).clone())))
 			}
 
@@ -130,6 +133,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			field("line", Expr::Int(line as i128)),
 		];
 		self.struct_lit(role::SRC, &[], &fields, span, None)
+			.inspect(|out| self.untemp(out.0))
 	}
 
 	// Rebuild a named type's definition as an Ast.

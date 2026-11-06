@@ -321,3 +321,21 @@ fn unwrapped_drop_payloads_drop_once() {
 	check(src, ["end", "drop 4", "drop 3", "drop 2", "drop 1"]);
 	assert_clean(src);
 }
+
+#[test]
+fn string_views_outlive_their_parents() {
+	let src = indoc! {r#"
+		Named :: struct { name: string }
+		tail :: fn(n: int) string {
+			whole := "ab" + n.str()
+			whole[1..]
+		}
+		greet :: fn() string do "hi"
+		view := tail(42)
+		named := Named.{ name = tail(7) }
+		names := [view named.name greet()]
+		print(view, named.name, names)
+	"#};
+	check(src, r#"b42 b7 ["b42", "b7", "hi"]"#);
+	assert_clean(src);
+}
