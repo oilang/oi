@@ -840,6 +840,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			let ctx = self.ctx_value(want);
 			vals.push(ctx);
 		}
+		if self.module.declarations().get_function_decl(sig.id).linkage == Linkage::Import {
+			vals = self.c_args(&sig.params, &vals);
+		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
 		let (ret_val, ret) = self.returned(call, &sig.ret, sig.foreign, span);

@@ -5,7 +5,7 @@ use std::ops::Range;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
-use super::{FieldDef, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
+use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
 use crate::ast::{Expr, Span, Spanned, TypeExpr};
 use crate::diagnostics::{Diagnostic, fail};
 
@@ -68,6 +68,26 @@ impl<M: Module> Translator<'_, M> {
 				)
 			}
 		}
+	}
+
+	// Spread each `@c` struct arg of a foreign call into its C ABI params.
+	pub(super) fn c_args(&mut self, params: &[FnParam], vals: &[Value]) -> Vec<Value> {
+		let arch = self.module.isa().triple().architecture;
+		let mut out = vec![];
+		for (i, &v) in vals.iter().enumerate() {
+			let typ = params.get(i).map(|p| &p.typ);
+			let by_val = typ.and_then(|t| t.c_by_val(&self.types, arch));
+			let (Some(Typ::Struct(_, fields)), Some(regs)) = (typ, by_val) else {
+				out.push(v);
+				continue;
+			};
+			let c = self.stack_slot(c_layout(fields, &self.types).expect("validated").size.next_multiple_of(8));
+			self.copy_fields(v, c, 0, fields, true);
+			for (at, p) in regs {
+				out.push(at.map_or(c, |at| self.b.ins().load(p.value_type, MemFlags::trusted(), c, at)));
+			}
+		}
+		out
 	}
 
 	// A `ptr` cast to a fn type.

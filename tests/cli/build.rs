@@ -89,6 +89,32 @@ fn link_annotation_accepts_a_file_path() {
 }
 
 #[test]
+fn c_structs_cross_by_value() {
+	let dep = indoc! {"
+		typedef struct { int a; double b; } Small;
+		typedef struct { long n; struct { int k; _Bool on; } inner; double d[3]; } Big;
+		double small(long pad, Small s) { return pad + s.a + s.b; }
+		double big(Big b, long tail) { return b.n + b.inner.k + b.inner.on + b.d[0] + b.d[1] + b.d[2] + tail; }
+	"};
+	let main = indoc! {r#"
+		@c
+		Small :: struct { a: i32, b: f64 }
+		@c
+		Inner :: struct { k: i32, on: bool }
+		@c
+		Big :: struct { n: int, inner: Inner, d: [3]f64 }
+		@link.{"dep"}
+		small : fn(pad: int, s: Small) f64 : foreign
+		big : fn(b: Big, tail: int) f64 : foreign
+		print(unsafe small(1, Small.{ a = 2, b = 0.5 }))
+		print(unsafe big(Big.{ n = 1, inner = Inner.{ k = 2, on = true }, d = .[0.25, 0.25, 0.5] }, 10))
+	"#};
+	let dir = Project::new().file("dep.c", dep).file("main.oi", main);
+	cc_shared(&dir, &format!("{DLL_PREFIX}dep{DLL_SUFFIX}"));
+	dir.check(["3.5", "15.0"]);
+}
+
+#[test]
 fn export_annotation_marks_c_abi_fns() {
 	let src = indoc! {r#"
 		use cext

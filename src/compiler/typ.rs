@@ -3,7 +3,9 @@
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::prelude::*;
+use target_lexicon::Architecture;
 
 use crate::ast::{Access, Annotation, Expr, Param, Span, Spanned, TypeExpr};
 use crate::compiler::resolve::TypeCtx;
@@ -173,6 +175,22 @@ pub(crate) fn c_layout(fields: &[FieldDef], types: &TypeCtx) -> Option<CLayout> 
 	})
 }
 
+// Each scalar of a C layout at its offset, as its register type.
+fn c_scalars(typ: &Typ, at: i32, types: &TypeCtx) -> Vec<(i32, types::Type)> {
+	match typ.newtype().unwrap_or(typ) {
+		Typ::Struct(_, fields) => (fields.iter().zip(c_layout(fields, types).expect("validated").offsets))
+			.flat_map(|(f, off)| c_scalars(&f.typ, at + off as i32, types))
+			.collect(),
+		Typ::FixedArray(e, n) => {
+			let size = e.c_size_align(types).expect("validated").0 as i32;
+			(0..*n as i32).flat_map(|i| c_scalars(e, at + i * size, types)).collect()
+		}
+		Typ::Float(32) => vec![(at, types::F32)],
+		Typ::Float(_) => vec![(at, types::F64)],
+		_ => vec![(at, types::I64)],
+	}
+}
+
 impl Typ {
 	pub fn unit() -> Typ {
 		Typ::Tuple(vec![])
@@ -277,6 +295,24 @@ impl Typ {
 				Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Bool | Typ::CStr
 			),
 		}
+	}
+
+	// A `@c` struct's by-value ABI params, at their offsets or `None` for a pointer to its copy.
+	pub fn c_by_val(&self, types: &TypeCtx, arch: Architecture) -> Option<Vec<(Option<i32>, AbiParam)>> {
+		let size = self.c_size_align(types).filter(|_| matches!(self, Typ::Struct(..)))?.0;
+		let (x86, scalars) = (arch == Architecture::X86_64, c_scalars(self, 0, types));
+		let sse = |at: i32| x86 && scalars.iter().filter(|s| s.0 / 8 == at / 8).all(|s| s.1.is_float());
+		let word = |at| (at, if sse(at) { types::F64 } else { types::I64 });
+		let hfa = scalars.len() <= 4 && scalars.iter().all(|s| s.1.is_float() && s.1 == scalars[0].1);
+		let regs: Vec<_> = if matches!(arch, Architecture::Aarch64(_)) && hfa {
+			scalars
+		} else if size <= 16 {
+			(0..size as i32).step_by(8).map(word).collect()
+		} else {
+			let sarg = AbiParam::special(types::I64, ArgumentPurpose::StructArgument(size.next_multiple_of(8)));
+			return Some(vec![(None, if x86 { sarg } else { AbiParam::new(types::I64) })]);
+		};
+		Some(regs.into_iter().map(|(at, t)| (Some(at), AbiParam::new(t))).collect())
 	}
 
 	// Properly size a C enum.

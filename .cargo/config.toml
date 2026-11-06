@@ -1,2 +1,8 @@
 [unstable]
 bindeps = true
+
+[build]
+jobs = 16
+
+[env]
+RUST_TEST_THREADS = "8"

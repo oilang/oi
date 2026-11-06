@@ -2125,7 +2125,15 @@ impl<M: Module> Compiler<M> {
 		let int = self.module.target_config().pointer_type();
 		let mut sig = self.module.make_signature();
 		let typed = params.iter().zip(&access).map(|(p, a)| (&p.typ, *a));
-		sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
+		if linkage == Linkage::Import {
+			let arch = self.module.isa().triple().architecture;
+			sig.params.extend(typed.flat_map(|(t, a)| match t.c_by_val(&types, arch) {
+				Some(regs) => regs.into_iter().map(|(_, p)| p).collect(),
+				None => vec![AbiParam::new(param_cl(t, a, int))],
+			}));
+		} else {
+			sig.params.extend(abi_params(typed, ctx.is_some() as usize, int));
+		}
 		sig.returns.extend(abi_returns(&ret, &types, int));
 		let id = self.module.declare_function(symbol, linkage, &sig).expect("declare function");
 		FnSig {
