@@ -925,7 +925,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ if c_abi => self.c_norm(rets[0], typ),
 			Typ::Tuple(_) => self.frame_slots(&rets),
 			_ if keep && let Some(pack) = self.types.ret_pack(typ) => return (self.frame_slots(&rets), pack),
-			_ if rets.len() == 2 => self.pack_box(&rets, typ),
+			_ if rets.len() > 1 => self.pack_box(&rets, typ),
 			_ => self.unbox_ret(rets[0], typ),
 		};
 		(val, typ.clone())
@@ -936,19 +936,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (ok, err) = self.fallible_split(typ).expect("a return pack");
 		let out = self.call_alloc(2);
 		let none = self.pack_none(&self.types.ret_pack(typ).expect("a return pack"));
+		let (&flag, lead) = slots.split_last().expect("a return pack");
+		let payload = match lead {
+			[one] => *one,
+			many => self.heap_slots(many),
+		};
 		// a set flag is tag 1, `some` or `err`
-		let set = self.b.ins().icmp_imm(IntCC::NotEqual, slots[1], none);
+		let set = self.b.ins().icmp_imm(IntCC::NotEqual, flag, none);
 		let tag = self.b.ins().uextend(self.int, set);
 		self.st(out, 0, tag);
-		self.st(out, 8, slots[0]);
+		self.st(out, 8, payload);
 		let failed = match err {
 			Some(_) => set,
-			None => self.b.ins().icmp_imm(IntCC::Equal, slots[1], 0),
+			None => self.b.ins().icmp_imm(IntCC::Equal, flag, 0),
 		};
 		self.when(failed, |s| {
-			s.release_value(slots[0], &ok);
+			s.release_field(payload, &ok);
 			if err.is_some() {
-				s.st(out, 8, slots[1]);
+				s.st(out, 8, flag);
 			}
 		});
 		out

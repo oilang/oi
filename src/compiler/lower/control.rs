@@ -179,6 +179,24 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if infallible(&cond.0) {
 			return self.scoped(|s| {
+				// a local `?T` owning nothing unwraps in place, uncopied
+				if let Expr::Bind {
+					name,
+					typ: None,
+					value: Some(src),
+					..
+				} = &cond.0
+					&& let Expr::Ident(local) = &src.0
+					&& let Some((inner, None)) = s.vars.get(local).and_then(|l| s.fallible_split(&l.typ))
+					&& !s.needs_release(&inner)
+				{
+					let arm = MatchArm {
+						patterns: vec![(Expr::Ident(name.clone()), cond.1)],
+						body: then.to_vec(),
+						..Default::default()
+					};
+					return s.match_expr(src, &[arm], els, Some(&[]), target, span);
+				}
 				s.pack_operand(cond)?;
 				if let Some((id, arm)) = s.unwrap_arm(cond, then) {
 					return s.match_expr(&id, &[arm], els, Some(&[]), target, span);
@@ -741,11 +759,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A propagator payload, and the error type if it's a Result or partial pack.
 	pub(super) fn fallible_split(&self, typ: &Typ) -> Option<(Typ, Option<Typ>)> {
 		if let (Some((lead, opt)), Typ::Tuple(fields)) = (self.trailing(typ), typ) {
-			let payload = match &fields[..lead] {
-				[(_, one)] => one.clone(),
-				many => Typ::Tuple(many.to_vec()),
-			};
-			return Some((payload, self.types.option_inner(opt)));
+			return Some((lead_typ(&fields[..lead]), self.types.option_inner(opt)));
 		}
 		let res = self.types.result_parts(typ).map(|(ok, err)| (ok, Some(err)));
 		res.or_else(|| Some((self.types.option_inner(typ)?, None)))

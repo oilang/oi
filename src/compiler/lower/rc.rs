@@ -691,7 +691,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A bind takes its own copy.
 	pub(crate) fn copy_bind(&mut self, val: Value, typ: &Typ) -> Value {
-		if self.handover(val, typ) || matches!(typ, Typ::Tuple(_)) && self.temps.contains_key(&val) {
+		if self.handover(val, typ) || typ.slots().is_some() && self.temps.contains_key(&val) {
 			self.untemp(val);
 			return val;
 		}

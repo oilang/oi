@@ -729,8 +729,15 @@ impl TypeCtx<'_> {
 			None if self.opt_niche(ret).is_some() => return None,
 			None => (self.option_inner(ret)?, role::PACK_OK, Typ::Bool),
 		};
+
+		let word = |(_, t): &(_, Typ)| matches!(t, Typ::Int(_) | Typ::UInt(_) | Typ::Float(_) | Typ::Rune | Typ::Str);
+		let lead = match &ok {
+			Typ::Tuple(fields) if fields.len() > 1 && fields.iter().all(word) => fields.clone(),
+			ok => vec![(None, ok.clone())],
+		};
+
 		(self.inert(&ok, &mut vec![]) && (slot == Typ::Bool || self.opt_niche(&slot).is_some()))
-			.then(|| Typ::Tuple(vec![(None, ok), (Some(flag.into()), slot)]))
+			.then(|| Typ::Tuple([lead, vec![(Some(flag.into()), slot)]].concat()))
 	}
 
 	// Whether a payload rides a pack, with no `Drop` to run on its zero and no `?Self` to rebox behind a vtable.
@@ -764,12 +771,13 @@ impl TypeCtx<'_> {
 	// The `?T` or `!T` a return pack stands for.
 	pub fn pack_ret(&self, pack: &Typ) -> Option<Typ> {
 		let Typ::Tuple(fields) = pack else { return None };
-		let [(_, ok), (Some(name), slot)] = &fields[..] else {
+		let [lead @ .., (Some(name), slot)] = &fields[..] else {
 			return None;
 		};
+		let ok = lead_typ(lead);
 		match name.as_str() {
-			role::PACK_ERR => Some(self.core_enum(role::RESULT, &[ok.clone(), self.option_inner(slot)?])),
-			role::PACK_OK => Some(self.core_enum(role::OPTION, std::slice::from_ref(ok))),
+			role::PACK_ERR => Some(self.core_enum(role::RESULT, &[ok, self.option_inner(slot)?])),
+			role::PACK_OK => Some(self.core_enum(role::OPTION, &[ok])),
 			_ => None,
 		}
 	}

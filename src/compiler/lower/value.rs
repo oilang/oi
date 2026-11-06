@@ -686,6 +686,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			.unwrap_or(0)
 	}
 
+	// A spread pack as the (payload, flag) pair two names bind.
+	pub(super) fn regroup(&mut self, val: Value, typ: Typ) -> TypedVal {
+		match (&typ, self.trailing(&typ)) {
+			(Typ::Tuple(fields), Some((lead @ 2.., _))) if self.types.pack_ret(&typ).is_some() => {
+				let flag = self.ld_typ(val, lead as i32 * 8, &fields[lead].1);
+				let pair = vec![(None, lead_typ(&fields[..lead])), fields[lead].clone()];
+				(self.frame_slots(&[val, flag]), Typ::Tuple(pair))
+			}
+			_ => (val, typ),
+		}
+	}
+
 	// The happy payload, a pack's leading slots viewed in place.
 	pub(super) fn flow_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
 		match self.trailing(typ) {
@@ -1307,8 +1319,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			Some(_) => self.b.ins().select(happy, none, failure),
 			None => self.b.ins().uextend(self.int, happy),
 		};
-		let payload = self.copy_in(payload, &ok);
-		let frame = self.frame_slots(&[payload, flag]);
+		// spread words own nothing, so no copy
+		let mut slots: Vec<_> = match self.trailing(pack) {
+			Some((1, _)) => vec![self.copy_in(payload, &ok)],
+			_ => (ok.slots().unwrap_or_default().iter().enumerate())
+				.map(|(i, field)| self.ld_typ(payload, i as i32 * 8, field))
+				.collect(),
+		};
+		slots.push(flag);
+		let frame = self.frame_slots(&slots);
 		self.temp(frame, pack);
 		Ok((frame, pack.clone()))
 	}

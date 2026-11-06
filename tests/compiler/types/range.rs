@@ -72,7 +72,7 @@ fn spreads_into_a_vararg() {
 #[test]
 fn subscripts_with_a_range_value() {
 	check(
-		["xs :: [1, 2, 3, 4]", "r := 1..3", "print(xs[r], xs[1..])"],
+		["xs :: [1 2 3 4]", "r := 1..3", "print(xs[r], xs[1..])"],
 		"[2, 3] [2, 3, 4]",
 	);
 }
@@ -80,7 +80,7 @@ fn subscripts_with_a_range_value() {
 #[test]
 fn spread_rejections() {
 	fail_rt("[..(3..)]", "open range");
-	fail_rt(["xs :: [1, 2, 3, 4]", "r := 0..2..4", "print(xs[r])"], "strided");
+	fail_rt(["xs :: [1 2 3 4]", "r := 0..2..4", "print(xs[r])"], "strided");
 }
 
 #[test]

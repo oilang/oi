@@ -150,7 +150,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				// pattern bindings
 				Expr::PatBind { pat, value, mutable } => {
 					let (ptr, typ) = match &pat.0 {
-						Expr::Tuple(names) if names.len() == 2 => self.take_operand(value)?,
+						Expr::Tuple(names) if names.len() == 2 => {
+							let (val, typ) = self.take_operand(value)?;
+							self.regroup(val, typ)
+						}
 						_ => self.expr(value)?,
 					};
 					if i + 1 == stmts.len() {

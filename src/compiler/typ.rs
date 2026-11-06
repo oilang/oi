@@ -359,9 +359,10 @@ impl fmt::Display for Typ {
 			Typ::Atom => write!(f, "atom"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
 			Typ::Tuple(fields)
-				if let [(_, ok), (Some(n), slot)] = &fields[..]
+				if let [lead @ .., (Some(n), slot)] = &fields[..]
 					&& [role::PACK_OK, role::PACK_ERR].contains(&&**n) =>
 			{
+				let ok = lead_typ(lead);
 				match slot.to_string().strip_prefix('?') {
 					Some(err) if err != "Error" => write!(f, "Result[{ok}, {err}]"),
 					_ => write!(f, "{}{ok}", if n == role::PACK_OK { "?" } else { "!" }),
@@ -482,6 +483,14 @@ pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
 		Typ::Const(lit) => TypeExpr::Value(Box::new(((**lit).clone(), Span::default()))),
 		_ => return None,
 	})
+}
+
+// A pack's leading slots as the one value they carry.
+pub(crate) fn lead_typ(lead: &[(Option<String>, Typ)]) -> Typ {
+	match lead {
+		[(_, one)] => one.clone(),
+		many => Typ::Tuple(many.to_vec()),
+	}
 }
 
 // A param's ABI type.

@@ -209,7 +209,7 @@ fn error_slots() {
 
 #[test]
 fn tuple_and_enum_payloads_ride_packs() {
-	// the tuple keeps its own block, the `?T` box is gone
+	// a tuple of words spreads into the pack slots, nothing is boxed
 	let src = indoc! {r#"
 		count := 0
 		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
@@ -248,7 +248,7 @@ fn tuple_and_enum_payloads_ride_packs() {
 	"#};
 	check(
 		src,
-		["0 up 1", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
+		["0 up 0", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
 	);
 }
 
@@ -307,8 +307,10 @@ fn header_binds_allocate_nothing() {
 			if k % 2 == 0 do k / 2 else do none
 		}
 		main :: fn() {
+			o: ?int = 4
 			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			sum := 0
+			if v := o do sum += v
 			if v := half(10) do sum += v
 			if v := half(3) do sum += 100 else do sum += 1
 			if v := parse(2) do sum += v
@@ -320,7 +322,7 @@ fn header_binds_allocate_nothing() {
 			print(sum, count)
 		}
 	"#};
-	check(src, "15 0");
+	check(src, "19 0");
 
 	let drain = indoc! {r#"
 		use sync
@@ -432,5 +434,5 @@ fn keyed_loop_reuses_its_key() {
 			print(sum, count)
 		}
 	"#};
-	check(src, "33 5");
+	check(src, "33 1");
 }
