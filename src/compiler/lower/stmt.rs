@@ -515,7 +515,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// The frame a `break`/`continue` targets, unlabeled ones skip labeled blocks.
 	fn loop_target(&self, label: Option<&str>, kw: &str, span: Span) -> Result<usize, Diagnostic> {
-		let hit = |f: &LoopFrame| label.map_or(f.top.is_some(), |l| f.label.as_deref() == Some(l));
+		let nested = |f: &LoopFrame| kw == "break" && f.label.as_deref() == Some(control::DIM);
+		let hit = |f: &LoopFrame| label.map_or(f.top.is_some() && !nested(f), |l| f.label.as_deref() == Some(l));
 		match (self.loops.iter().rposition(hit), label) {
 			(Some(i), _) => Ok(i),
 			(None, Some(l)) => fail(format!("no enclosing `:{l}` to {kw}"), span, "not inside that label"),

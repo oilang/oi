@@ -310,6 +310,21 @@ fn zip_clauses() {
 }
 
 #[test]
+fn nest_clauses() {
+	let src = indoc! {"
+		print(loop y in ..2; x in ..3 do (x, y))
+		count :: fn(y: int) ?int {
+			if y < 3 do return y; none
+		}
+		loop y in [1 2 5 2]; n := count(y); x in ..n { print(y, x) }
+		loop y in 0..2; x in 0..2 { if x == y do continue; print(y, x) }
+		print(loop y in 0..3; x in 0..3 { if y == 1 do break x })
+	"};
+	let grid = "[(0 0) (1 0) (2 0) (0 1) (1 1) (2 1)]";
+	check(src, [grid, "1 0", "2 0", "2 1", "0 1", "1 0", "some.(0)"]);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

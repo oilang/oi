@@ -60,6 +60,18 @@ fn chained(cond: &Expr) -> bool {
 	}
 }
 
+// Labels the inner levels of a `;` nest.
+pub(super) const DIM: &str = "$dim";
+
+// Whether a clause group has a generator.
+fn has_gen(group: &Expr) -> bool {
+	match group {
+		Expr::Gen { .. } => true,
+		Expr::Binary(BinOp::And, lhs, rhs) => has_gen(&lhs.0) || has_gen(&rhs.0),
+		_ => false,
+	}
+}
+
 type Pats<'e> = (&'e Spanned<Expr>, Option<&'e Spanned<Expr>>);
 
 type Emit<'e, 'a, M> = Box<dyn FnOnce(&mut Translator<'a, M>) -> Result<(), Diagnostic> + 'e>;
@@ -83,6 +95,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				else_body,
 			} => s.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
 			Expr::Loop { label, cond, body } => {
+				let want = want && label.as_deref() != Some(DIM);
 				s.collected(want, hint, |s| s.loop_expr(label.as_deref(), cond.as_deref(), body))
 			}
 			Expr::Labeled { label, body } => s.looped(|s| s.labeled(label, body, expr.1)),
@@ -1171,6 +1184,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		// `;` nests, each generator group after the first opens an inner level
+		if let Some((Expr::Block(groups), span)) = cond
+			&& groups.iter().any(|group| has_gen(&group.0))
+		{
+			let and = |lhs, rhs| (Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs)), *span);
+			let mut levels = groups
+				.chunk_by(|_, next| !has_gen(&next.0))
+				.map(|level| level.iter().cloned().reduce(and));
+			let outer = levels.next().flatten();
+			let body = levels.rev().fold(body.to_vec(), |body, cond| {
+				let (label, cond) = (Some(DIM.into()), cond.map(Box::new));
+				vec![(Expr::Loop { label, cond, body }, *span)]
+			});
+			return self.loop_expr(label, outer.as_ref(), &body);
+		}
 		self.rewrap_writes(body);
 		let mut gens = vec![];
 		let rest = cond.map(|c| self.generators(c, &mut gens)).transpose()?.flatten();
@@ -1208,7 +1236,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		// a body expression that can fall through ends the loop when it does
-		let (mut frame, flow) = self.in_loop(label, Some(top), exit, fallthrough, |s| {
+		let (frame, _) = self.in_loop(label, Some(top), exit, fallthrough, |s| {
 			for step in steps {
 				step(s)?;
 			}
@@ -1251,10 +1279,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.seal_block(ended);
 		}
 
-		if let Some(vt) = flow {
-			self.loop_tail(&mut frame, vt);
-			self.b.ins().jump(top, &[]);
-		}
 		self.b.seal_block(top);
 
 		let Some(exit) = frame.exit else {
@@ -1343,6 +1367,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			collect: top.and_then(|_| self.collect.take()).map(|h| (h, Typ::unit())),
 		});
 		let flow = self.scoped(body)?;
+		if let (Some(top), Some(vt)) = (top, flow.clone()) {
+			// a round's tail goes back to `top`, and an inner `;` level's goes back to the loop it nests in
+			let at = self.loops.iter().rposition(|f| f.label.as_deref() != Some(DIM));
+			self.loop_tail(at.expect("loop frame"), vt);
+			self.b.ins().jump(top, &[]);
+		}
 		Ok((self.loops.pop().expect("loop frame"), flow))
 	}
 
@@ -1364,17 +1394,18 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Push a tail onto the loop's array, or release it.
-	fn loop_tail(&mut self, frame: &mut LoopFrame, (v, t): TypedVal) {
+	fn loop_tail(&mut self, at: usize, (v, t): TypedVal) {
+		let frame = &self.loops[at];
 		let valued = frame.result.as_ref().is_some_and(|(_, r)| !r.is_unit());
-		match &mut frame.collect {
-			Some((hdr, elem)) if !t.is_unit() && !valued => {
+		match frame.collect {
+			Some((hdr, _)) if !t.is_unit() && !valued => {
 				let moved = self.handover(v, &t);
 				let owned = self.copy_in(v, &t);
 				if owned != v && !moved {
 					self.release_value(v, &t);
 				}
-				self.push(*hdr, owned, &t);
-				*elem = t;
+				self.push(hdr, owned, &t);
+				self.loops[at].collect = Some((hdr, t));
 			}
 			_ => self.release_value(v, &t),
 		}
