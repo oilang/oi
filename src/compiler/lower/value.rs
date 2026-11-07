@@ -1,7 +1,7 @@
 use super::generic::{Infer, mangle};
 use super::*;
 use crate::ast::{Param, record_args};
-use crate::compiler::{comp, role};
+use crate::compiler::{CONTEXT, comp, role};
 
 // Give a symbol its bytes.
 pub(crate) fn define_once<M: Module>(m: &mut M, id: DataId, desc: &DataDescription) {
@@ -1138,9 +1138,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				let key = self.qualify(n).into_owned();
 				self.out.roots.push(key);
 			}
-			self.c_callback = true;
+			let outer = std::mem::replace(&mut self.c_callback, true);
 			let checked = self.check_expr(value, inner);
-			self.c_callback = false;
+			self.c_callback = outer;
 			let (val, vt) = checked?;
 			if vt != **inner {
 				return Ok((val, vt));
@@ -1203,6 +1203,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& **inner == *to
 			&& ctx_mark(anns).is_none()
 		{
+			if anns.iter().any(|a| a == role::C)
+				&& let Typ::Fn(ps, _) = &**inner
+			{
+				return match self.c_callback {
+					true => Ok((val, from.clone())),
+					false => self.ctx_thunk(val, from, ps.len(), CONTEXT, span),
+				};
+			}
+
 			let bare = is_pure(anns) || is_isolated(anns);
 			let val = if bare { val } else { self.fn_cell(val) };
 			return Ok((val, to.clone()));
@@ -1340,7 +1349,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		zero
 	}
 
-	// A `@ctx` closure with its embedded context.
+	// A closure on the ctx calling `val`.
 	fn ctx_thunk(&mut self, val: Value, from: &Typ, arity: usize, t: &str, span: Span) -> Result<TypedVal, Diagnostic> {
 		self.hidden_local("$f".into(), val, from.clone());
 		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
@@ -1350,8 +1359,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			args,
 		};
 		self.anon_ctx = Some(t.into());
-		let sig = AnonSig::Inferred(from.clone());
-		self.declare_anon_fn(&None, &[], false, sig, &[(call, span)], span)
+
+		let sig = match from {
+			Typ::Annotated(_, inner) => inner,
+			from => from,
+		};
+
+		self.declare_anon_fn(&None, &[], false, AnonSig::Inferred(sig.clone()), &[(call, span)], span)
 	}
 
 	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.

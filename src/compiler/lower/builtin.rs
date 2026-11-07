@@ -331,6 +331,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			return self.cast_fn_ptr(val, target, span);
 		}
+		if let (Typ::TupleStruct(p, _), Typ::Annotated(anns, _)) = (target, &typ)
+			&& p == role::PTR
+			&& anns.iter().any(|a| a == role::C)
+		{
+			return Ok((val, target.clone()));
+		}
 		if let (Typ::TupleStruct(p, _), Typ::Fn(params, ret)) = (target, &typ)
 			&& p == role::PTR
 		{

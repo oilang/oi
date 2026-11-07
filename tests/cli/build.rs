@@ -125,10 +125,13 @@ fn c_structs_cross_by_value() {
 		print(v.x + v.y, s.a, s.b)
 		print(b.n, b.inner.k, b.inner.on, b.d[2])
 		print(unsafe spill(0, 0, 0, 0, 0, 1, Small.{ a = 2, b = 3.0 }, 4.0))
+		f := unsafe small
+		apply :: fn(g: fn(pad: int, s: Small) f64) f64 { g(2, Small.{ a = 2, b = 0.5 }) }
+		print(f(1, Small.{ a = 2, b = 0.5 }), apply(unsafe small))
 	"#};
 	let dir = Project::new().file("dep.c", dep).file("main.oi", main);
 	cc_shared(&dir, &format!("{DLL_PREFIX}dep{DLL_SUFFIX}"));
-	dir.check(["3.5", "15.0", "4.5 4 1.0", "1 3 true 1.5", "4321.0"]);
+	dir.check(["3.5", "15.0", "4.5 4 1.0", "1 3 true 1.5", "4321.0", "3.5 4.5"]);
 }
 
 #[test]

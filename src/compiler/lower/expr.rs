@@ -131,7 +131,8 @@ impl<'a, M: Module> Translator<'a, M> {
 							self.require_unsafe(name, expr.1)?;
 						}
 						let obj = self.fn_object(sig.id);
-						Ok((obj, sig.value_typ()))
+						let val = if sig.foreign { self.ld_word(obj, 0) } else { obj };
+						Ok((val, sig.value_typ()))
 					}
 					None => {
 						let key = self.qualify(name);

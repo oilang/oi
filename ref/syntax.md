@@ -118,7 +118,7 @@ on_init :: fn(get: ptr) bool { !get.is_null() }
 # `@c` on a fn type is a C fn pointer
 # a foreign decl's fn params are implicitly `@c`
 GetProc :: @c fn(name: cstr) ptr
-atexit : fn(cb: @c fn()) i32 : foreign
+atexit : fn(cb: fn()) i32 : foreign
 
 # a `@c fn` can cast a `ptr`
 create : fn(init: @c fn(get: GetProc) bool) ptr : foreign

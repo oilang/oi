@@ -104,7 +104,7 @@ impl FnSig {
 	pub(crate) fn ctx_marked(&self, typ: Typ) -> Typ {
 		match self.ctx.as_deref() {
 			Some(CONTEXT) => typ,
-			None if self.foreign => typ,
+			None if self.foreign => Typ::Annotated(vec![role::C.into()], typ.into()),
 			t => Typ::Annotated(vec![ctx_name(t)], Box::new(typ)),
 		}
 	}
