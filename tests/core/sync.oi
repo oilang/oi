@@ -155,6 +155,14 @@ test! "strings cross threads unshared" {
 	assert! total == 400000
 }
 
+test! "maps cross threads unshared" {
+	text := "{1}tail"
+	m := [text[0..1] = text[0..3]]
+	at := m["1"].ptr
+	t := sync.spawn! { m["1"].ptr != at }
+	assert! t.wait()
+}
+
 test! "threads block in syscalls" {
 	fds := [i32.(0) i32.(0)]
 	assert! unsafe libc.pipe(fds.ptr) == 0

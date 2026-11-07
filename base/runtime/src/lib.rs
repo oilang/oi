@@ -1249,6 +1249,17 @@ pub unsafe extern "C" fn map_at(map: *mut OiMap, at: i64, key: i64) -> i64 {
 	if key != 0 { key_bits(k) } else { *v }
 }
 
+/// The value slot of the entry at `at`.
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer with an entry at `at`.
+#[unsafe(export_name = "oi_map_slot")]
+pub unsafe extern "C" fn map_slot(map: *mut OiMap, at: i64) -> *mut i64 {
+	unsafe { &mut (*map).entries }
+		.get_index_mut(at as usize)
+		.expect("an entry at `at`")
+		.1
+}
+
 /// Run a boxed fn on a new, detached thread, with that thread's root context.
 /// # Safety
 /// `job` must be an owned `any` holding a fn.

@@ -31,6 +31,7 @@ pub oi_map_len : fn(m: ptr) isize : foreign
 pub oi_map_entries : fn(m: ptr, keys: isize, width: isize) ptr : foreign
 pub oi_map_find : fn(m: ptr, tag: isize, bits: isize, out: ptr) isize : foreign
 pub oi_map_at : fn(m: ptr, at: isize, key: isize) isize : foreign
+pub oi_map_slot : fn(m: ptr, at: isize) ptr : foreign
 
 # rc
 pub oi_array_share : fn(h: ptr) ptr : foreign

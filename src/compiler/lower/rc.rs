@@ -100,7 +100,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				val
 			}
 
-			Typ::Map(..) => self.rt_call("map_cow", &[val]).unwrap(),
+			Typ::Map(_, elem) => {
+				let map = self.rt_call("map_cow", &[val]).unwrap();
+				if self.slot_owns(elem) {
+					let len = self.rt_call("map_len", &[map]).unwrap();
+					self.repeat(len, |s, i| {
+						let slot = s.rt_call("map_slot", &[map, i]).unwrap();
+						let ev = s.ld_typ(slot, 0, elem);
+						let ev = s.unshare(ev, elem);
+						s.st(slot, 0, ev);
+					});
+				}
+				map
+			}
 			Typ::Str => self.rt_call("str_unshare", &[val]).unwrap(),
 			t if self.enum_box(t) => {
 				self.owned_payloads(val, t, |s, off, t| {
