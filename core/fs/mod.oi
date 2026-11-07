@@ -1,21 +1,7 @@
 module fs
 
 use rt
-
-fopen : fn(path: cstr, mode: cstr) ptr : foreign
-fgetc : fn(stream: ptr) i32 : foreign
-fwrite : fn(buf: ptr, size: usize, n: usize, stream: ptr) usize : foreign
-fclose : fn(stream: ptr) i32 : foreign
-access : fn(path: cstr, mode: i32) i32 : foreign
-opendir : fn(path: cstr) ptr : foreign
-readdir : fn(dir: ptr) ptr : foreign
-closedir : fn(dir: ptr) i32 : foreign
-
-@link.{name = "remove"}
-c_remove : fn(path: cstr) i32 : foreign
-
-@link.{name = "mkdir"}
-c_mkdir : fn(path: cstr, mode: u32) i32 : foreign
+use libc
 
 check :: fn(ok: bool, what: string, path: Path) ! {
 	if !ok do return error("cannot {what} {path}")
@@ -23,16 +9,16 @@ check :: fn(ok: bool, what: string, path: Path) ! {
 
 ## Read a file's contents as raw bytes.
 pub read_bytes :: fn(path: Path) ![]u8 {
-	f := unsafe fopen(path.cstr(), "rb")
+	f := unsafe libc.fopen(path.cstr(), "rb")
 	check(!f.is_null(), "open", path)?
 
 	out: []u8
 	loop {
-		c := unsafe fgetc(f)
+		c := unsafe libc.fgetc(f)
 		if c < 0 do break
 		out << u8.(c)
 	}
-	unsafe fclose(f)
+	unsafe libc.fclose(f)
 
 	out
 }
@@ -54,11 +40,11 @@ pub append :: fn(path: Path, s: string) ! {
 }
 
 spill :: fn(path: Path, s: string, mode: cstr) ! {
-	f := unsafe fopen(path.cstr(), mode)
+	f := unsafe libc.fopen(path.cstr(), mode)
 	check(!f.is_null(), "open", path)?
 
-	n :: unsafe fwrite(s.ptr, 1, usize.(s.len()), f)
-	_ := unsafe fclose(f)
+	n :: unsafe libc.fwrite(s.ptr, 1, usize.(s.len()), f)
+	_ := unsafe libc.fclose(f)
 
 	if int.(n) != s.len() {
 		return error("short write to {path}")
@@ -67,27 +53,27 @@ spill :: fn(path: Path, s: string, mode: cstr) ! {
 
 ## Whether a file or directory exists.
 pub exists :: fn(path: Path) bool {
-	unsafe access(path.cstr(), 0) == 0
+	unsafe libc.access(path.cstr(), 0) == 0
 }
 
 ## Delete a file or empty directory.
 pub remove :: fn(path: Path) ! {
-	check(unsafe c_remove(path.cstr()) == 0, "remove", path)?
+	check(unsafe libc.remove(path.cstr()) == 0, "remove", path)?
 }
 
 ## Create a directory.
 pub mkdir :: fn(path: Path) ! {
-	check(unsafe c_mkdir(path.cstr(), 0o755) == 0, "create", path)?
+	check(unsafe libc.mkdir(path.cstr(), 0o755) == 0, "create", path)?
 }
 
 ## Get list of entries in a directory.
 pub list :: fn(path: Path) ![]string {
-	d := unsafe opendir(path.cstr())
+	d := unsafe libc.opendir(path.cstr())
 	check(!d.is_null(), "open", path)?
 
 	out: []string
 	loop {
-		e := unsafe readdir(d)
+		e := unsafe libc.readdir(d)
 		if e.is_null() do break
 
 		name :: unsafe rt.oi_dirent_name(e).str()
@@ -95,6 +81,6 @@ pub list :: fn(path: Path) ![]string {
 			out << name
 		}
 	}
-	_ := unsafe closedir(d)
+	_ := unsafe libc.closedir(d)
 	out
 }

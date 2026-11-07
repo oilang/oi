@@ -1,14 +1,7 @@
 module time
 
 use math.{ round }
-
-malloc : fn(n: usize) ptr : foreign
-free : fn(p: ptr) : foreign
-clock_gettime : fn(clock: i32, spec: ptr) i32 : foreign
-nanosleep : fn(req: ptr, rem: ptr) i32 : foreign
-localtime : fn(t: ptr) ptr : foreign
-gmtime : fn(t: ptr) ptr : foreign
-strftime : fn(buf: ptr, max: usize, fmt: cstr, tm: ptr) usize : foreign
+use libc
 
 @c
 Spec :: struct {
@@ -17,10 +10,10 @@ Spec :: struct {
 }
 
 clock :: fn(id: i32) int {
-	p := unsafe malloc(Spec.size)
-	_ := unsafe clock_gettime(id, p)
+	p := unsafe libc.malloc(Spec.size)
+	_ := unsafe libc.clock_gettime(id, p)
 	s :: unsafe p.read[Spec]()
-	unsafe free(p)
+	unsafe libc.free(p)
 	s.sec * 1000000000 + s.nsec
 }
 
@@ -136,11 +129,11 @@ Time :< {
 	pub format :: fn(self; fmt: string) string { self.zoned(false, fmt) }
 
 	zoned :: fn(self; utc: bool, fmt: string) string {
-		buf := unsafe malloc(128)
+		buf := unsafe libc.malloc(128)
 		unsafe buf.write(self.ns / 1000000000)
-		n :: unsafe strftime(buf, 128, fmt.cstr(), if utc do gmtime(buf) else do localtime(buf))
+		n :: unsafe libc.strftime(buf, 128, fmt.cstr(), if utc do libc.gmtime(buf) else do libc.localtime(buf))
 		out :: unsafe buf.string(int.(n))
-		unsafe free(buf)
+		unsafe libc.free(buf)
 		out
 	}
 }
@@ -153,8 +146,8 @@ pub measure :: fn(f: fn()) Duration {
 }
 
 pub sleep :: fn(d: Duration) {
-	p := unsafe malloc(Spec.size)
+	p := unsafe libc.malloc(Spec.size)
 	unsafe p.write(Spec.{ d.ns / 1000000000, d.ns % 1000000000 })
-	_ := unsafe nanosleep(p, ptr.(0))
-	unsafe free(p)
+	_ := unsafe libc.nanosleep(p, ptr.(0))
+	unsafe libc.free(p)
 }

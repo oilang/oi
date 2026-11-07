@@ -1,0 +1,51 @@
+module libc
+
+# memory
+pub malloc : fn(n: usize) ptr : foreign
+pub calloc : fn(n: usize, size: usize) ptr : foreign
+pub free : fn(p: ptr) : foreign
+pub memcpy : fn(dst: ptr, src: ptr, n: usize) ptr : foreign
+
+# files
+pub fopen : fn(path: cstr, mode: cstr) ptr : foreign
+pub fgetc : fn(stream: ptr) i32 : foreign
+pub fwrite : fn(buf: ptr, size: usize, n: usize, stream: ptr) usize : foreign
+pub fclose : fn(stream: ptr) i32 : foreign
+pub access : fn(path: cstr, mode: i32) i32 : foreign
+pub opendir : fn(path: cstr) ptr : foreign
+pub readdir : fn(dir: ptr) ptr : foreign
+pub closedir : fn(dir: ptr) i32 : foreign
+pub remove : fn(path: cstr) i32 : foreign
+pub mkdir : fn(path: cstr, mode: u32) i32 : foreign
+
+# descriptors
+pub pipe : fn(fds: ptr) i32 : foreign
+pub read : fn(fd: i32, buf: ptr, n: usize) isize : foreign
+pub write : fn(fd: i32, buf: ptr, n: usize) isize : foreign
+pub close : fn(fd: i32) i32 : foreign
+
+# sockets
+pub socket : fn(domain: i32, kind: i32, proto: i32) i32 : foreign
+pub bind : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
+pub listen : fn(fd: i32, backlog: i32) i32 : foreign
+pub accept : fn(fd: i32, addr: ptr, len: ptr) i32 : foreign
+pub connect : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
+pub send : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
+pub recv : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
+pub setsockopt : fn(fd: i32, level: i32, name: i32, val: ptr, len: u32) i32 : foreign
+pub inet_addr : fn(host: cstr) u32 : foreign
+
+# process
+pub getenv : fn(name: cstr) ptr : foreign
+pub setenv : fn(name: cstr, value: cstr, overwrite: i32) i32 : foreign
+pub getcwd : fn(buf: ptr, size: usize) ptr : foreign
+pub getpid : fn() i32 : foreign
+pub system : fn(cmd: cstr) i32 : foreign
+pub exit : fn(code: i32) : foreign
+
+# time
+pub clock_gettime : fn(clock: i32, spec: ptr) i32 : foreign
+pub nanosleep : fn(req: ptr, rem: ptr) i32 : foreign
+pub localtime : fn(t: ptr) ptr : foreign
+pub gmtime : fn(t: ptr) ptr : foreign
+pub strftime : fn(buf: ptr, max: usize, fmt: cstr, tm: ptr) usize : foreign

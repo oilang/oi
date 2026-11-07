@@ -1,24 +1,7 @@
 module net
 
 use math
-
-malloc : fn(n: usize) ptr : foreign
-free : fn(p: ptr) : foreign
-calloc : fn(n: usize, size: usize) ptr : foreign
-memcpy : fn(dst: ptr, src: ptr, n: usize) ptr : foreign
-socket : fn(domain: i32, kind: i32, proto: i32) i32 : foreign
-bind : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
-accept : fn(fd: i32, addr: ptr, len: ptr) i32 : foreign
-send : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
-recv : fn(fd: i32, buf: ptr, n: usize, flags: i32) isize : foreign
-close : fn(fd: i32) i32 : foreign
-setsockopt : fn(fd: i32, level: i32, name: i32, val: ptr, len: u32) i32 : foreign
-inet_addr : fn(host: cstr) u32 : foreign
-
-@link.{name = "connect"}
-c_connect : fn(fd: i32, addr: ptr, len: u32) i32 : foreign
-@link.{name = "listen"}
-c_listen : fn(fd: i32, backlog: i32) i32 : foreign
+use libc
 
 ## sockaddr_in
 @c Addr :: struct {
@@ -32,16 +15,16 @@ c_listen : fn(fd: i32, backlog: i32) i32 : foreign
 pub connect_unix :: fn(path: string) !Conn {
 	if path.len() > 107 do return error("path too long {path}")
 
-	fd :: unsafe socket(1, 1, 0)
-	defer or discard unsafe close(fd)
+	fd :: unsafe libc.socket(1, 1, 0)
+	defer or discard unsafe libc.close(fd)
 
 	# sockaddr_un: u16 family then a zeroed 108 byte path
-	buf :: unsafe calloc(110, 1)
-	defer unsafe free(buf)
+	buf :: unsafe libc.calloc(110, 1)
+	defer unsafe libc.free(buf)
 
 	unsafe buf.write(u16.(1))
-	discard unsafe memcpy(buf.offset(2), path.ptr, usize.(path.len()))
-	if unsafe c_connect(fd, buf, 110) != 0 do return error("cannot connect to {path}")
+	discard unsafe libc.memcpy(buf.offset(2), path.ptr, usize.(path.len()))
+	if unsafe libc.connect(fd, buf, 110) != 0 do return error("cannot connect to {path}")
 
 	Conn.{ fd }
 }
@@ -62,23 +45,23 @@ pub listen :: fn(port: int) !Listener {
 ## A TCP socket connected to / serving on `host:port`.
 sock :: fn(host: string, port: int, serve: bool) !i32 {
 	h :: if host == "localhost" { "127.0.0.1" } else { host }
-	ip :: unsafe inet_addr(h.cstr())
+	ip :: unsafe libc.inet_addr(h.cstr())
 	if ip == 4294967295 { return error("bad address {host}") }
-	fd :: unsafe socket(2, 1, 0)
-	defer or discard unsafe close(fd)
-	buf := unsafe malloc(Addr.size)
-	defer unsafe free(buf)
+	fd :: unsafe libc.socket(2, 1, 0)
+	defer or discard unsafe libc.close(fd)
+	buf := unsafe libc.malloc(Addr.size)
+	defer unsafe libc.free(buf)
 	unsafe buf.write(i32.(1))
 
 	if serve {
 		# SO_REUSEADDR
-		_ := unsafe setsockopt(fd, 1, 2, buf, 4)
+		_ := unsafe libc.setsockopt(fd, 1, 2, buf, 4)
 	}
 	unsafe buf.write(Addr.{ 2, u16.((port >> 8) | ((port & 255) << 8)), ip, 0 })
 	ok :: if serve {
-		unsafe bind(fd, buf, 16) == 0 && unsafe c_listen(fd, 128) == 0
+		unsafe libc.bind(fd, buf, 16) == 0 && unsafe libc.listen(fd, 128) == 0
 	} else {
-		unsafe c_connect(fd, buf, 16) == 0
+		unsafe libc.connect(fd, buf, 16) == 0
 	}
 	if !ok { return error(if serve { "cannot listen on port {port}" } else { "cannot connect to {host}:{port}" }) }
 	fd
@@ -87,13 +70,13 @@ sock :: fn(host: string, port: int, serve: bool) !i32 {
 Listener :< {
 	## Block until a client connects.
 	pub accept :: fn(self) !Conn {
-		fd :: unsafe accept(self.fd, ptr.(0), ptr.(0))
+		fd :: unsafe libc.accept(self.fd, ptr.(0), ptr.(0))
 		if fd < 0 { return error("accept failed") }
 		Conn.{ fd }
 	}
 
 	pub close :: fn(self) {
-		discard unsafe close(self.fd)
+		discard unsafe libc.close(self.fd)
 	}
 }
 
@@ -103,7 +86,7 @@ Conn :< {
 		sent := 0
 		discard loop sent < s.len() {
 			# MSG_NOSIGNAL
-			n :: unsafe send(self.fd, s.ptr.offset(sent), usize.(s.len() - sent), 16384)
+			n :: unsafe libc.send(self.fd, s.ptr.offset(sent), usize.(s.len() - sent), 16384)
 			if n < 0 { return error("write failed") }
 			sent += int.(n)
 		}
@@ -111,15 +94,15 @@ Conn :< {
 
 	## Receive up to `max` bytes, empty once the peer has closed.
 	pub read :: fn(self; max := 4096) !string {
-		buf := unsafe malloc(usize.(max))
-		n :: unsafe recv(self.fd, buf, usize.(max), 0)
+		buf := unsafe libc.malloc(usize.(max))
+		n :: unsafe libc.recv(self.fd, buf, usize.(max), 0)
 		out :: unsafe buf.string(math.max(0, int.(n)))
-		unsafe free(buf)
+		unsafe libc.free(buf)
 		if n < 0 { return error("read failed") }
 		out
 	}
 
 	pub close :: fn(self) {
-		discard unsafe close(self.fd)
+		discard unsafe libc.close(self.fd)
 	}
 }

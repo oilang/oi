@@ -1,5 +1,6 @@
 use sync
 use time
+use libc
 
 Job :: struct { id: int }
 
@@ -154,20 +155,14 @@ test! "strings cross threads unshared" {
 	assert! total == 400000
 }
 
-pipe : fn(fds: ptr) i32 : foreign
-@link.{name = "read"}
-c_read : fn(fd: i32, buf: ptr, n: usize) isize : foreign
-@link.{name = "write"}
-c_write : fn(fd: i32, buf: ptr, n: usize) isize : foreign
-
 test! "threads block in syscalls" {
 	fds := [i32.(0) i32.(0)]
-	assert! unsafe pipe(fds.ptr) == 0
+	assert! unsafe libc.pipe(fds.ptr) == 0
 	buf := [0]
-	reader := sync.spawn! unsafe c_read(fds[0], buf.ptr, 8)
+	reader := sync.spawn! unsafe libc.read(fds[0], buf.ptr, 8)
 	time.sleep(5.ms())
-	discard unsafe c_write(fds[1], "hi".ptr, 2)
+	discard unsafe libc.write(fds[1], "hi".ptr, 2)
 	assert! reader.wait() == 2
 	# left blocked, the process still exits
-	discard sync.spawn! unsafe c_read(fds[0], buf.ptr, 8)
+	discard sync.spawn! unsafe libc.read(fds[0], buf.ptr, 8)
 }
