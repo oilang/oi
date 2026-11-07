@@ -1,0 +1,85 @@
+module hash
+
+mask :: 0xffffffff
+
+rotl :: fn(word: int, by: int) int {
+	((word << by) | (word >> (32 - by))) & mask
+}
+
+## The 20 raw bytes of the SHA-1 digest of a string's bytes.
+pub sha1 :: fn(s: string) string {
+	bytes := []u8.(s)
+	bytes << 128
+	loop bytes.len() % 64 != 56 do bytes << 0
+	loop shift in 0..8 {
+		bytes << u8.((s.len() * 8 >> (56 - shift * 8)) & 255)
+	}
+
+	state := [ 0x67452301 0xEFCDAB89 0x98BADCFE 0x10325476 0xC3D2E1F0 ]
+	loop block in ..(bytes.len() / 64) {
+		schedule: []int
+		loop word in ..16 {
+			at :: block * 64 + word * 4
+			schedule << (
+				(int.(bytes[at]) << 24) | (int.(bytes[at + 1]) << 16) | (int.(bytes[at + 2]) << 8) | int.(bytes[at + 3])
+			)
+		}
+		loop round in 16..80 {
+			schedule << rotl(
+				schedule[round - 3] ~ schedule[round - 8] ~ schedule[round - 14] ~ schedule[round - 16],
+				1,
+			)
+		}
+
+		# a..e are the RFC 3174 working registers
+		a := state[0]
+		b := state[1]
+		c := state[2]
+		d := state[3]
+		e := state[4]
+
+		loop round in ..80 {
+			mix := 0
+			constant := 0
+			if round < 20 {
+				mix = (b & c) | (!b & mask & d)
+				constant = 0x5A827999
+			} else if round < 40 {
+				mix = b ~ c ~ d
+				constant = 0x6ED9EBA1
+			} else if round < 60 {
+				mix = (b & c) | (b & d) | (c & d)
+				constant = 0x8F1BBCDC
+			} else {
+				mix = b ~ c ~ d
+				constant = 0xCA62C1D6
+			}
+			next :: (
+				rotl(a, 5) + mix + e + constant + schedule[round]
+			) & mask
+
+			e = d
+			d = c
+			c = rotl(b, 30)
+			b = a
+			a = next
+		}
+
+		state = [
+			(state[0] + a) & mask,
+			(state[1] + b) & mask,
+			(state[2] + c) & mask,
+			(state[3] + d) & mask,
+			(state[4] + e) & mask,
+		]
+	}
+
+	out: []u8
+	loop word in state {
+		loop shift in 0..4 {
+			out << u8.((word >> (24 - shift * 8)) & 255)
+		}
+	}
+
+	string.(out)
+}
