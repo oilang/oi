@@ -38,6 +38,7 @@ pub oi_array_release : fn(h: ptr) : foreign
 pub oi_array_owned : fn(h: ptr) isize : foreign
 pub oi_str_share : fn(s: ptr) ptr : foreign
 pub oi_str_release : fn(s: ptr) : foreign
+pub oi_str_unshare : fn(alloc: Alloc, s: ptr) ptr : foreign
 pub oi_map_share : fn(m: ptr) ptr : foreign
 pub oi_map_release : fn(m: ptr) : foreign
 pub oi_ref_share : fn(p: ptr) ptr : foreign

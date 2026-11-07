@@ -101,6 +101,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Typ::Map(..) => self.rt_call("map_cow", &[val]).unwrap(),
+			Typ::Str => self.rt_call("str_unshare", &[val]).unwrap(),
 			t if self.enum_box(t) => {
 				self.owned_payloads(val, t, |s, off, t| {
 					let pv = s.ld_typ(val, off, t);

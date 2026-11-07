@@ -68,16 +68,18 @@ impl Decode for Sink {
 }
 
 thread_local! {
-	static BUF: RefCell<String> = const { RefCell::new(String::new()) };
+	static BUF: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
 // Route a fragment to its sink.
-fn emit(sink: i64, s: &str) {
+fn emit(sink: i64, s: &[u8]) {
+	use std::io::Write;
 	match Sink::from_i64(sink) {
-		Sink::Out => print!("{s}"),
-		Sink::Err => eprint!("{s}"),
-		Sink::Buf => BUF.with(|b| b.borrow_mut().push_str(s)),
+		Sink::Out => std::io::stdout().write_all(s),
+		Sink::Err => std::io::stderr().write_all(s),
+		Sink::Buf => Ok(BUF.with(|b| b.borrow_mut().extend_from_slice(s))),
 	}
+	.unwrap_or_else(|e| fatal!("write failed: {e}"))
 }
 
 // String header layout, counted on the header since strings are immutable.
@@ -139,7 +141,7 @@ unsafe fn str_header(a: *const Allocator, extra: i64, data: i64, len: i64, owner
 }
 
 // Render one value to a string.
-fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
+fn render(tag: Tag, bits: i64, width: i64) -> String {
 	match tag {
 		Tag::Bool => (bits == 1).to_string(),
 		Tag::Int => bits.to_string(),
@@ -149,22 +151,17 @@ fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 			32 => format!("{:?}", f32::from_bits(bits as u32)),
 			_ => format!("{:?}", f64::from_bits(bits as u64)),
 		},
-		Tag::Str | Tag::Raw => {
-			let s = unsafe { str_lossy(bits as *const StrHeader) };
-			if quote && matches!(tag, Tag::Str) {
-				format!("{s:?}")
-			} else {
-				s.into_owned()
-			}
-		}
+		Tag::Str | Tag::Raw => format!("{:?}", unsafe { str_lossy(bits as *const StrHeader) }),
 	}
 }
 
 // Write a rendered value fragment.
 #[unsafe(export_name = "oi_write")]
 pub extern "C" fn write(tag: i64, bits: i64, width: i64, quote: i64, sink: i64) {
-	let s = render(Tag::from_i64(tag), bits, width, quote != 0);
-	emit(sink, &s);
+	match (Tag::from_i64(tag), quote != 0) {
+		(Tag::Str, false) | (Tag::Raw, _) => emit(sink, unsafe { str_bytes(bits as *const StrHeader) }),
+		(tag, _) => emit(sink, render(tag, bits, width).as_bytes()),
+	}
 }
 
 #[unsafe(export_name = "oi_write_wide")]
@@ -174,7 +171,7 @@ pub extern "C" fn write_wide(n: i128, signed: i64, sink: i64) {
 	} else {
 		(n as u128).to_string()
 	};
-	emit(sink, &s);
+	emit(sink, s.as_bytes());
 }
 
 // Handle ops cranelift doesn't do for us.
@@ -205,7 +202,7 @@ pub extern "C" fn float_to_wide(x: f64, signed: i64) -> i128 {
 #[unsafe(export_name = "oi_write_sep")]
 pub extern "C" fn write_sep(i: i64, sink: i64) {
 	if i > 0 {
-		emit(sink, ", ");
+		emit(sink, b", ");
 	}
 }
 
@@ -399,7 +396,7 @@ pub extern "C" fn str_mark() -> i64 {
 // Split the buffer tail from `mark` into a fresh string handle.
 #[unsafe(export_name = "oi_str_take")]
 pub extern "C" fn str_take(a: *const Allocator, mark: i64) -> *const StrHeader {
-	BUF.with(|b| str_new(a, b.borrow_mut().split_off(mark as usize).as_bytes()))
+	BUF.with(|b| str_new(a, &b.borrow_mut().split_off(mark as usize)))
 }
 
 // Active managed allocations, for leak checks.
@@ -711,6 +708,19 @@ pub unsafe extern "C" fn str_share(header: *mut StrHeader) -> *mut StrHeader {
 		unsafe { (*header).rc += 1 };
 	}
 	header
+}
+
+/// Give a string its own bytes, so only one thread counts them.
+/// # Safety
+/// `header` must be null or point to a valid string header, owned by the caller.
+#[unsafe(export_name = "oi_str_unshare")]
+pub unsafe extern "C" fn str_unshare(a: *const Allocator, header: *mut StrHeader) -> *mut StrHeader {
+	if header.is_null() || unsafe { (*header).rc == IMMORTAL || ((*header).rc == 1 && (*header).owner.is_null()) } {
+		return header;
+	}
+	let out = str_new(a, unsafe { str_bytes(header) });
+	unsafe { str_release(header) };
+	out as *mut StrHeader
 }
 
 /// Drop one ref to a string, freeing it and releasing its owner at zero.
