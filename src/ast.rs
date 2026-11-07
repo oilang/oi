@@ -412,6 +412,9 @@ impl Expr {
 			}
 			Expr::StructDef { fields, .. } => fields.iter_mut().map(|p| &mut p.typ).collect(),
 			Expr::Claim { traits, .. } => traits.iter_mut().flat_map(|(_, ts)| ts).map(|(t, _)| t).collect(),
+			Expr::Call { type_args, .. } | Expr::MethodCall { type_args, .. } => {
+				type_args.iter_mut().map(|(t, _)| t).collect()
+			}
 			_ => vec![],
 		}
 	}
@@ -683,6 +686,7 @@ pub enum TypeExpr {
 	Unquote(Box<Spanned<Expr>>),
 	Value(Box<Spanned<Expr>>),
 	Infer(Box<Spanned<Expr>>),
+	Resolved(String),
 }
 
 impl TypeExpr {
@@ -715,7 +719,8 @@ impl TypeExpr {
 			| TypeExpr::AtomSum(_)
 			| TypeExpr::Unquote(_)
 			| TypeExpr::Value(_)
-			| TypeExpr::Infer(_) => {}
+			| TypeExpr::Infer(_)
+			| TypeExpr::Resolved(_) => {}
 		}
 		f(self);
 	}
@@ -733,6 +738,7 @@ impl TypeExpr {
 	pub fn from_expr(e: &Expr) -> Option<TypeExpr> {
 		match e {
 			Expr::Ident(n) => Some(TypeExpr::Name(n.clone())),
+			Expr::Resolved(q, _) => Some(TypeExpr::Resolved(q.clone())),
 			Expr::TypePat(t) => Some(t.clone()),
 			Expr::Tuple(fields) if !fields.is_empty() && fields.iter().all(|(n, _)| n.is_none()) => fields
 				.iter()

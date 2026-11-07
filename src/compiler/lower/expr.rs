@@ -167,7 +167,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.b.ins().iconst(self.int, holds as i64), Typ::Bool));
 				}
 				if let Some(te) = TypeExpr::from_expr(&subject.0)
-					&& (matches!(subject.0, Expr::TypePat(_))
+					&& (matches!(subject.0, Expr::TypePat(_) | Expr::Resolved(..))
 						|| matches!(&te, TypeExpr::Name(name) | TypeExpr::Generic(name, _) if !self.vars.contains_key(name)))
 				{
 					let typ = self.types.resolve(&te, subject.1)?;

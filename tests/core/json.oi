@@ -1,4 +1,4 @@
-use json.{ Json, Arr, Obj, parse }
+use json.{ Json, Arr, Obj, parse, decode }
 
 as[T] :: fn(j: Json) T {
 	match j {
@@ -8,8 +8,7 @@ as[T] :: fn(j: Json) T {
 }
 
 test! "extension api" {
-	# TODO: revisit with `r#""#` style strings
-	src :: "{{\"header\": {{\"version_major\": 4}}, \"classes\": [{{\"name\": \"Node\", \"methods\": [{{\"name\": \"get_name\", \"hash\": 3218959716}}]}}]}}"
+	src :: r"""{"header": {"version_major": 4}, "classes": [{"name": "Node", "methods": [{"name": "get_name", "hash": 3218959716}]}]}"""
 	top :: as[Obj](parse(src) or { :null })
 	assert! as[float](as[Obj](top["header"])["version_major"]) == 4.0
 	method :: as[Obj](as[Arr](as[Obj](as[Arr](top["classes"])[0])["methods"])[0])
@@ -18,16 +17,29 @@ test! "extension api" {
 }
 
 test! "escapes" {
-	assert! as[string](parse("\"a\\n\\\"b\\u00e9\"") or { :null }) == "a\n\"bé"
-	assert! as[string](parse("\"\\ud83d\\ude00\"") or { :null }) == "😀"
+	assert! as[string](parse(r""" "a\n\"b\u00e9" """) or { :null }) == "a\n\"bé"
+	assert! as[string](parse(r""" "\ud83d\ude00" """) or { :null }) == "😀"
 }
 
 test! "malformed" {
 	assert! as[string](parse("[1, 2") or { $.message() }) == "expected a comma at 5"
-	assert! as[string](parse("{{\"a\": }}") or { $.message() }) == "invalid number at 6"
+	assert! as[string](parse(r"""{"a": }""") or { $.message() }) == "invalid number at 6"
 }
 
 test! "str" {
-	src :: "{{\"a\":[1,2.5,true,null,\"x\\ny\"]}}"
+	src :: r"""{"a":[1,2.5,true,null,"x\ny"]}"""
 	assert! (parse(src) or { :null }).str() == src
+}
+
+Inner :: struct { name: string, ok: bool }
+Outer :: struct { n: int, x: float, inner: Inner, tag: ?string, xs: []int }
+
+test! "decode" {
+	src :: r"""{"n": 3, "x": 1.5, "inner": {"name": "a", "ok": true}, "xs": [1, 2], "extra": 0}"""
+	out :: decode[Outer](src) or { panic!($.message()) }
+	assert! out.n == 3 && out.x == 1.5 && out.inner.name == "a" && out.inner.ok
+	assert! out.tag == none && out.xs == [1, 2]
+	msg := ""
+	decode[Inner](r"""{"ok": true}""") or { msg = $.message(); Inner.{} }
+	assert! msg == "missing field name"
 }

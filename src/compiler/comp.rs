@@ -258,6 +258,10 @@ pub(crate) fn instantiate(
 				&& let Some(Typ::Const(lit)) = types.type_params.get(n)
 			{
 				*e = (**lit).clone();
+			} else if let Expr::Ident(n) = e
+				&& let Some(t @ TypeExpr::Resolved(_)) = types.type_params.get(n).and_then(type_expr)
+			{
+				*e = super::expand::type_ast(&t);
 			} else if let Expr::Ident(n)
 			| Expr::Bind {
 				name: n, value: None, ..

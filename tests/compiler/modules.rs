@@ -362,6 +362,28 @@ fn generic_struct_fields_resolve_in_their_module() {
 }
 
 #[test]
+fn reflected_defs_resolve_in_the_callers_module() {
+	Project::new()
+		.main([
+			"use m",
+			"P :: struct { x: int }",
+			"main :: fn() { print(m.copy(P.{x = 3})) }",
+		])
+		.lib(
+			"m",
+			[
+				"P :: struct { s: string }",
+				"pub copy[T] :: fn(v: T) T {
+					T.{
+						comp loop f in def(T).items { %{f.name} = v.%{f.name} }
+					}
+				}",
+			],
+		)
+		.check("P.{x = 3}");
+}
+
+#[test]
 fn trait_fields_resolve_in_their_defining_module() {
 	Project::new()
 		.file(

@@ -9,7 +9,7 @@ use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
 
-use super::Compiler;
+use super::{Compiler, display_name};
 
 use Child::{List, One};
 
@@ -458,8 +458,27 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 			} else {
 				(Expr::Annotated(notes, Box::new(def.clone())), def.1)
 			};
-			Some((name, def))
+			Some((name, def, scope))
 		});
+
+		let mut defs: Vec<_> = defs.collect();
+
+		// find type name defs, across modules
+		let keys: HashSet<_> = defs.iter().map(|d| d.0.clone()).collect();
+		for (_, def, scope) in &mut defs {
+			def.0.walk(&mut |e| {
+				for t in e.types() {
+					t.walk_mut(&mut |t| {
+						if let TypeExpr::Name(n) = t
+							&& let Some(key) = keys.get(&scope.qualify_name(n))
+						{
+							*t = TypeExpr::Resolved(key.clone());
+						}
+					});
+				}
+			});
+		}
+		let defs = defs.into_iter().map(|(name, def, _)| (name, def));
 
 		DEFS.set((Scope::default(), String::new(), defs.collect(), ex.publics.clone()));
 
@@ -1064,9 +1083,13 @@ pub(crate) extern "C" fn rt_ast_int(a: *mut Spanned<Expr>) -> i64 {
 }
 
 // A type as an Ast.
-fn type_ast(t: &TypeExpr) -> Expr {
+pub(super) fn type_ast(t: &TypeExpr) -> Expr {
 	match t {
 		TypeExpr::Name(n) => Expr::Ident(n.clone()),
+		TypeExpr::Resolved(q) => Expr::Resolved(
+			q.clone(),
+			Box::new((Expr::Ident(display_name(q).into()), Span::default())),
+		),
 		t => Expr::TypePat(t.clone()),
 	}
 }

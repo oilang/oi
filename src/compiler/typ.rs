@@ -491,7 +491,7 @@ impl PartialEq for Typ {
 
 // Spell a type back out as source, for signatures created by the compiler.
 pub(crate) fn type_expr(typ: &Typ) -> Option<TypeExpr> {
-	let named = |n: &String| (!n.contains('[')).then(|| TypeExpr::Name(n.clone()));
+	let named = |n: &String| (!n.contains('[')).then(|| TypeExpr::Resolved(n.clone()));
 	Some(match typ {
 		Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_) | Typ::Bool | Typ::Str | Typ::CStr => {
 			TypeExpr::Name(typ.to_string())

@@ -65,7 +65,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			"type_info" => {
-				let [(Expr::Ident(name), at)] = args else {
+				let [(name @ (Expr::Ident(_) | Expr::Resolved(..)), at)] = args else {
 					return fail("`type_info` takes one type name", span, "expected a struct or enum");
 				};
 				let def = self.type_def(name, *at)?;
@@ -137,7 +137,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Rebuild a named type's definition as an Ast.
-	fn type_def(&self, name: &str, span: Span) -> Result<Expr, Diagnostic> {
+	fn type_def(&self, name: &Expr, span: Span) -> Result<Expr, Diagnostic> {
 		let field = |f: &FieldDef| Param {
 			default: f.default.clone(),
 			annotations: f.annotations.clone(),
@@ -147,7 +147,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				span,
 			)
 		};
-		Ok(match self.peeled(&self.types.named(name, span)?) {
+		let named = TypeExpr::from_expr(name).expect("a type name");
+		Ok(match self.peeled(&self.types.resolve(&named, span)?) {
 			Typ::Struct(n, fields) => Expr::StructDef {
 				name: display_name(&n).into(),
 				type_params: vec![],

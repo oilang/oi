@@ -255,6 +255,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(Some(id));
 		}
 
+		if *target == Typ::Ast && matches!(value.0, Expr::Resolved(..)) {
+			return Ok(Some(self.quote(std::slice::from_ref(value), value.1)?.0));
+		}
 		if *target == Typ::Ast
 			&& let Some((n, q)) = match &value.0 {
 				Expr::Ident(n) if !self.vars.contains_key(n) => Some((n, self.qualify(n).into_owned())),
