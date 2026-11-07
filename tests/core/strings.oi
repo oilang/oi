@@ -71,3 +71,13 @@ test! "string16" {
 	assert! s.str() == "hé😀"
 	assert! (loop r in s do r).len() == 3
 }
+
+test! "arbitrary bytes" {
+	s := string.([u8.(0x81) u8.(0) u8.(0xff)])
+	assert! s.len() == 3 && []u8.(s[1..3]) == [u8.(0) u8.(0xff)]
+	assert! "<{s}>" == "<" + s + ">"
+	seen: [string]int
+	seen[s] = 1
+	seen[s[0..1]] = 2
+	assert! seen[s] == 1 && seen.len() == 2
+}

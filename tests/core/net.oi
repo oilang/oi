@@ -3,9 +3,10 @@ use net
 test! "loopback" {
 	l :: net.listen(40917) or { return }
 	c :: net.connect("localhost", 40917) or { return }
-	c.write("ping") or { return }
+	bytes := string.([u8.(0) u8.(0xff) u8.(0x81)])
+	c.write(bytes) or { return }
 	s :: l.accept() or { return }
-	assert! (s.read() or "") == "ping"
+	assert! (s.read() or "") == bytes
 	c.close()
 	assert! (s.read() or "-") == ""
 	s.close()
