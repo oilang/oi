@@ -335,6 +335,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& p == role::PTR
 		{
 			check_c_sig(self.types, "@c fn", params, ret, value.1)?;
+			self.c_callable(value, params, ret)?;
 			return Ok((self.ld_word(val, 0), target.clone()));
 		}
 		if let (Typ::Array(e), Typ::Str) = (target, &typ)

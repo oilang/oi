@@ -176,15 +176,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Whether C may call this fn value.
-	pub(super) fn c_callable(&self, arg: Option<&Spanned<Expr>>) -> bool {
-		match arg.map(|a| &a.0) {
-			Some(Expr::Ident(n)) if !self.vars.contains_key(n) => {
+	// Require `@c` on a fn C calls with fn or struct params or return.
+	pub(super) fn c_callable(&self, arg: &Spanned<Expr>, params: &[FnParam], ret: &Typ) -> Result<(), Diagnostic> {
+		let callable = match &arg.0 {
+			Expr::Ident(n) if !self.vars.contains_key(n) => {
 				self.funcs.get(self.qualify(n).as_ref()).is_none_or(|s| s.foreign)
 			}
-			Some(Expr::AnonFn { .. }) => false,
+			Expr::AnonFn { .. } => false,
 			_ => true,
+		};
+		let oi_abi = (params.iter().map(|p| &p.typ))
+			.chain([ret])
+			.any(|t| matches!(t, Typ::Fn(..) | Typ::Struct(..)));
+		if oi_abi && !callable {
+			return fail("this fn is called from C", arg.1, "mark it with `@c`");
 		}
+		Ok(())
 	}
 
 	// `m.item` through an import, as its module and the name it narrows to.

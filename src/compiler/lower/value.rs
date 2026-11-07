@@ -1146,13 +1146,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				return Ok((val, vt));
 			}
 			check_ann_typ(self.types, anns, &vt, value.1)?;
-			let oi_abi = (ps.iter().map(|p| &p.typ))
-				.chain([&**ret])
-				.any(|t| matches!(t, Typ::Fn(..) | Typ::Struct(..)));
-			if oi_abi && !self.c_callable(Some(value)) {
-				let msg = "this fn is called from C";
-				return fail(msg, value.1, "mark it with `@c`");
-			}
+			self.c_callable(value, ps, ret)?;
 			return Ok((self.ld_word(val, 0), target.clone()));
 		}
 		// a variant's constructor builds the refined type
