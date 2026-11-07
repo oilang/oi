@@ -180,18 +180,22 @@ fn c_calls_oi_with_structs_by_value() {
 		@export
 		sum :: fn(v: Vec2, b: Big) f64 { f64.(v.x + v.y) + f64.(b.n) + b.d[2] }
 		@export
-		apply :: fn(f: @c fn(v: Vec2) f32, v: Vec2) f32 { f(v) }
+		grow :: fn(n: int, b: Big) Big { .{ n = b.n + n, d = b.d } }
+		@export
+		apply :: fn(f: @c fn(v: Vec2) Vec2, g: @c fn(n: int) Big, v: Vec2) Vec2 { .{ x = f(v).y, y = f32.(g(4).n) } }
 	"};
 	let caller = indoc! {r#"
 		#include <stdio.h>
 		typedef struct { float x, y; } Vec2;
 		typedef struct { long n; double d[3]; } Big;
 		extern double sum(Vec2, Big);
-		extern float apply(float (*)(Vec2), Vec2);
-		static float dot(Vec2 v) { return v.x * v.y; }
+		extern Big grow(long, Big);
+		extern Vec2 apply(Vec2 (*)(Vec2), Big (*)(long), Vec2);
+		static Vec2 flip(Vec2 v) { return (Vec2){ v.y, v.x }; }
+		static Big make(long n) { return (Big){ n, { 0.5, 1.5, 2.5 } }; }
 		int main(void) {
-			Vec2 v = { 1.5, 2 };
-			printf("%g %g\n", sum(v, (Big){ 7, { 0.5, 1.5, 2.5 } }), apply(dot, v));
+			Vec2 v = { 1.5, 2 }, a = apply(flip, make, v);
+			printf("%g %g %g\n", sum(v, grow(3, make(7))), a.x, a.y);
 			return 0;
 		}
 	"#};
@@ -201,7 +205,7 @@ fn c_calls_oi_with_structs_by_value() {
 	let mut cc = Command::new("cc");
 	cc.arg("caller.c").arg(lib).args(["-o", "caller"]).current_dir(&dir);
 	assert!(cc.output().unwrap().status.success());
-	assert_eq!(trim(&bin(dir.as_ref().join("caller")).stdout), "13 3");
+	assert_eq!(trim(&bin(dir.as_ref().join("caller")).stdout), "16 1.5 4");
 }
 
 #[test]

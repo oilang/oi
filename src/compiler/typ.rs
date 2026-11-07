@@ -285,7 +285,7 @@ impl Typ {
 	// Whether a value can cross the C ABI.
 	pub fn is_c_repr(&self, types: &TypeCtx) -> bool {
 		match self.newtype().unwrap_or(self) {
-			Typ::Fn(ps, r) => ps.iter().all(|p| p.typ.is_c_param(types)) && (r.is_unit() || r.is_c_repr(types)),
+			Typ::Fn(ps, r) => ps.iter().all(|p| p.typ.is_c_param(types)) && (r.is_unit() || r.is_c_param(types)),
 			Typ::Annotated(_, t) => t.is_c_repr(types),
 			Typ::Enum(name) => types.is_c(name),
 			t => matches!(

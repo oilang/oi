@@ -141,8 +141,9 @@ fn check_params(name: &str, params: &[Param]) -> Result<(), Diagnostic> {
 
 // Check that every param and return are C friendly.
 pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ, span: Span) -> Result<(), Diagnostic> {
-	match (ps.iter().map(|p| &p.typ).find(|t| !t.is_c_param(&types)))
-		.or((!ret.is_unit() && !ret.is_c_repr(&types)).then_some(ret))
+	match (ps.iter().map(|p| &p.typ))
+		.chain((!ret.is_unit()).then_some(ret))
+		.find(|t| !t.is_c_param(&types))
 	{
 		Some(t) => {
 			let msg = format!("`{name}` can't cross the C ABI");
@@ -2253,6 +2254,7 @@ impl<M: Module> Compiler<M> {
 			world: &self.world,
 			out: &mut self.out,
 			c_callback: false,
+			c_abi: def.foreign,
 			comptime: self.stage0,
 			ret: def.ret.clone().map(|(t, s)| (types.ret_pack(&t).unwrap_or(t), s)),
 			loops: vec![],

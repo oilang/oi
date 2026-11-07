@@ -2,6 +2,7 @@
 
 use std::ops::Range;
 
+use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
@@ -99,16 +100,34 @@ impl<M: Module> Translator<'_, M> {
 	pub(super) fn c_ret(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Option<Value> {
 		let regs = typ.c_by_val(&self.types, self.module.isa().triple().architecture);
 		let vals = match regs.as_deref()? {
-			[(None, _)] => vec![self.b.func.dfg.inst_args(call)[0]],
+			[(None, _)] => vec![self.b.func.dfg.inst_variable_args(call)[0]],
 			_ => self.b.inst_results(call).to_vec(),
 		};
 		self.c_gather(typ, regs, &vals).map(|(oi, _)| oi)
 	}
 
-	// Convert a C ABI fn's params to Oi values, gathering each `@c` struct from its ABI params.
-	pub(crate) fn c_params(&mut self, params: &[(String, Typ, Access)], mut vals: &[Value]) -> Vec<Value> {
+	// Scatter a C ABI fn's `@c` struct result into its registers or the caller's buffer.
+	pub(super) fn c_rets(&mut self, val: Value, typ: &Typ) -> Option<Vec<Value>> {
 		let arch = self.module.isa().triple().architecture;
-		let spread = c_spread(params.iter().map(|(_, t, _)| t), &Typ::unit(), &self.types, arch);
+		let Typ::Struct(_, fields) = typ else { return None };
+		let regs = typ.c_by_val(&self.types, arch).filter(|_| self.c_abi)?;
+		let sret = self.b.func.special_param(ArgumentPurpose::StructReturn);
+		let buf = sret.unwrap_or_else(|| {
+			self.stack_slot(c_layout(fields, &self.types).expect("validated").size.next_multiple_of(8))
+		});
+		self.copy_fields(val, buf, 0, fields, true);
+		let regs = regs.into_iter().filter_map(|(at, p)| Some((at?, p.value_type)));
+		let loads = regs.map(|(at, cl)| self.b.ins().load(cl, MemFlags::trusted(), buf, at));
+		Some(loads.collect())
+	}
+
+	// Convert a C ABI fn's params to Oi values, gathering each `@c` struct from its ABI params.
+	pub(crate) fn c_params(&mut self, params: &[(String, Typ, Access)], vals: &[Value]) -> Vec<Value> {
+		let arch = self.module.isa().triple().architecture;
+		let ret = self.ret.clone().map_or(Typ::unit(), |r| r.0);
+		let spread = c_spread(params.iter().map(|(_, t, _)| t), &ret, &self.types, arch);
+		let sret = self.b.func.signature.uses_special_param(ArgumentPurpose::StructReturn);
+		let mut vals = &vals[sret as usize..];
 		let mut out = vec![];
 		for ((_, typ, _), regs) in params.iter().zip(spread) {
 			let (val, used) = match typ {

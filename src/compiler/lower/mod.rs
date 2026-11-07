@@ -55,6 +55,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub world: &'a World,
 	pub out: &'a mut Artifacts,
 	pub c_callback: bool,
+	pub c_abi: bool,
 	pub comptime: bool,
 	pub ret: Option<(Typ, Span)>,
 	pub loops: Vec<LoopFrame>,

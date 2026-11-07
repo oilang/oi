@@ -845,10 +845,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, &vals);
-		let (ret_val, ret) = match sig.foreign.then(|| self.c_ret(call, &sig.ret)).flatten() {
-			Some(val) => (val, sig.ret.clone()),
-			None => self.returned(call, &sig.ret, sig.foreign, span),
-		};
+		let (ret_val, ret) = self.returned(call, &sig.ret, sig.foreign, span);
 		self.temp(ret_val, &ret);
 		(ret_val, ret)
 	}
@@ -939,6 +936,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let keep = span.is_some() && span == self.pack_call;
 		let val = match typ {
 			_ if typ.is_unit() => self.unit_value().0,
+			_ if c_abi && let Some(val) = self.c_ret(call, typ) => val,
 			_ if c_abi => self.c_norm(rets[0], typ),
 			Typ::Tuple(_) => self.frame_slots(&rets),
 			_ if keep && let Some(pack) = self.types.ret_pack(typ) => return (self.frame_slots(&rets), pack),

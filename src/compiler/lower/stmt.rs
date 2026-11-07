@@ -616,6 +616,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let frame = self.frame_slots(&rets);
 				(rets, frame)
 			}
+			_ if let Some(rets) = self.c_rets(val, &typ) => (rets, val),
 			_ => {
 				let val = self.copy_in(val, &typ);
 				(vec![val], val)
@@ -623,7 +624,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		self.release_scopes(0, Some((final_val, typ.clone())))?;
 		// take return type from the first return
-		if self.b.func.signature.returns.is_empty() {
+		if !self.c_abi && self.b.func.signature.returns.is_empty() {
 			self.b.func.signature.returns.extend(abi_returns(&typ, &self.types, self.int));
 		}
 		self.b.ins().return_(&rets);

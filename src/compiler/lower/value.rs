@@ -1127,7 +1127,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Coerces variant shorthands, atoms, and `none`.
 	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if let Typ::Annotated(anns, inner) = target
-			&& let Typ::Fn(ps, _) = &**inner
+			&& let Typ::Fn(ps, ret) = &**inner
 			&& anns.iter().any(|a| a == role::C)
 		{
 			let value = match &value.0 {
@@ -1146,7 +1146,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				return Ok((val, vt));
 			}
 			check_ann_typ(self.types, anns, &vt, value.1)?;
-			if ps.iter().any(|p| matches!(p.typ, Typ::Fn(..) | Typ::Struct(..))) && !self.c_callable(Some(value)) {
+			let oi_abi = (ps.iter().map(|p| &p.typ))
+				.chain([&**ret])
+				.any(|t| matches!(t, Typ::Fn(..) | Typ::Struct(..)));
+			if oi_abi && !self.c_callable(Some(value)) {
 				let msg = "this fn is called from C";
 				return fail(msg, value.1, "mark it with `@c`");
 			}
