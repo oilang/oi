@@ -31,6 +31,7 @@ fn break_and_continue() {
 		sum + i
 	"};
 	check(src, "41");
+	check(["i := 0", "loop i < 5 { if i == 3 { break }", "i += 1 }", "i"], "3");
 	fail("break", "outside of a loop");
 	fail("continue", "outside of a loop");
 }

@@ -1242,9 +1242,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					return self.loop_expr(label, Some(&(iter, cond.1)), body);
 				}
+
 				let exit = self.b.create_block();
-				let (body_block, fallthrough) = self.fork(cv);
+				let (body_block, fallthrough) = (self.b.create_block(), self.b.create_block());
+				self.b.ins().brif(cv, body_block, &[], fallthrough, &[]);
+				self.b.seal_block(body_block);
 				self.b.switch_to_block(body_block);
+
 				(Some(exit), Some(fallthrough))
 			}
 		};
@@ -1289,7 +1293,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 		})?;
 
-		if let Some(ended) = frame.fallthrough.filter(|_| fallthrough.is_none()) {
+		if let Some(ended) = frame.fallthrough {
 			self.b.seal_block(ended);
 		}
 
