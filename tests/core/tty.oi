@@ -1,5 +1,7 @@
 use tty
 use libc
+use sync
+use time
 
 openpty : fn(primary: ptr, replica: ptr, name: ptr, termios: ptr, size: ptr) i32 : foreign
 
@@ -27,6 +29,8 @@ test! "raw and restore" {
 
 test! "resizes" {
 	[_ replica] := pty()
+	# an earlier thread must not swallow the signal
+	discard sync.spawn! { time.sleep(50.ms()) }
 	resized := tty.resizes(replica)
 	buf :: unsafe libc.malloc(tty.Size.size)
 	unsafe buf.write(tty.Size.{ rows = 24, cols = 80, xpixel = 0, ypixel = 0 })

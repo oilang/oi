@@ -7,6 +7,8 @@ use rand
 use hash
 use encoding.base64
 
+max_message :: 16 * 1024 * 1024 # 16 MiB
+
 pub Ws :: struct {
 	conn: net.Conn
 	pending: string
@@ -56,6 +58,9 @@ Ws :< {
 		binary := false
 		loop {
 			head :: self.take(2)?
+			if int.(head[1]) & 128 != 0 {
+				return error("ws: masked frame from server")
+			}
 			len := int.(head[1]) & 127
 			if len > 125 {
 				extended :: self.take(if len == 126 do 2 else do 8)?
@@ -63,6 +68,9 @@ Ws :< {
 				loop i in 0..extended.len() {
 					len = (len << 8) | int.(extended[i])
 				}
+			}
+			if len < 0 || data.len() + len > max_message {
+				return error("ws: message too large")
 			}
 			payload :: self.take(len)?
 

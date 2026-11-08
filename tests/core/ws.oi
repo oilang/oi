@@ -19,7 +19,7 @@ test! "echo, ping and close" {
 	socket := ws.connect(client, "localhost", "/") or panic!("upgrade failed")
 	message :: socket.recv() or panic!("recv failed")
 	assert! message.data == text && !message.binary
-	socket.send(text) or panic!("send failed")
+	socket.send(text, false) or panic!("send failed")
 	socket.close()
 
 	# masked, "oi" is "53" and close code 1000 is "Y\xb2"

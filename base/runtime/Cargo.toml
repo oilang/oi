@@ -9,3 +9,4 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 fastrand = "2.5.0"
 indexmap = "2.14.0"
+libc = "0.2"

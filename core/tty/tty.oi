@@ -24,6 +24,8 @@ use sync
 	pub ypixel: u16
 }
 
+oi_signal_pipe : fn(sig: i32) i32 : foreign
+
 ## A terminal's state before `raw`.
 pub Saved :: struct {
 	fd: i32
@@ -48,6 +50,12 @@ pub raw :: fn(fd: i32) !Saved {
 	}
 
 	saved
+}
+
+Saved : Drop < {
+	drop :: fn(mut self) {
+		discard self.restore()
+	}
 }
 
 Saved :< {
@@ -76,24 +84,18 @@ pub size :: fn(fd: i32) !Size {
 }
 
 ## The size of `fd` on each SIGWINCH.
-## Blocks SIGWINCH on the calling thread, so call it before spawning others.
 pub resizes :: fn(fd: i32) sync.Chan[Size] {
-	# glibc sigset_t
-	set :: unsafe libc.calloc(128, 1)
-
-	# SIGWINCH, SIG_BLOCK
-	discard unsafe libc.sigaddset(set, 28)
-	discard unsafe libc.pthread_sigmask(0, set, ptr.(0))
+	# SIGWINCH
+	pipe :: unsafe oi_signal_pipe(28)
 
 	out := sync.Chan[Size].{}
 	discard sync.spawn! {
-		sig := [i32.(0)]
+		byte := [u8.(0)]
 		loop {
-			discard unsafe libc.sigwait(set, sig.ptr)
+			if unsafe libc.read(pipe, byte.ptr, 1) <= 0 do break
 			current :: size(fd) or break
 			out <- current or break
 		}
-		unsafe libc.free(set)
 		out.close()
 	}
 

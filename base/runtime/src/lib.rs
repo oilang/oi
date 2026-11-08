@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::mem::size_of;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
@@ -1271,6 +1271,35 @@ pub unsafe extern "C" fn thread_spawn(job: usize) {
 		call(ctx_root(), f);
 		ref_release(job as *mut u8);
 	});
+}
+
+/// Write ends of the pipes `oi_signal_pipe` feeds, by signal number.
+static SIGNAL_PIPES: [AtomicI32; 65] = [const { AtomicI32::new(-1) }; 65];
+
+extern "C" fn signal_forward(sig: libc::c_int) {
+	let pipe = SIGNAL_PIPES[sig as usize].load(Ordering::Relaxed);
+	unsafe {
+		let errno = *libc::__errno_location();
+		libc::write(pipe, [0u8].as_ptr().cast(), 1);
+		*libc::__errno_location() = errno;
+	}
+}
+
+/// The read end of a pipe that gets a byte per signal, or -1.
+/// A later call for the same signal takes over.
+#[unsafe(export_name = "oi_signal_pipe")]
+pub extern "C" fn signal_pipe(sig: i32) -> i32 {
+	let mut ends = [0; 2];
+	if !(1..65).contains(&sig) || unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+		return -1;
+	}
+	SIGNAL_PIPES[sig as usize].store(ends[1], Ordering::Relaxed);
+	unsafe {
+		libc::fcntl(ends[1], libc::F_SETFL, libc::O_NONBLOCK);
+		// signal() is SA_RESTART on glibc and musl
+		libc::signal(sig, signal_forward as *const () as libc::sighandler_t);
+	}
+	ends[0]
 }
 
 /// Wait while `blocked`, up to `ns`, forever when negative.
