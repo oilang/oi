@@ -42,4 +42,6 @@ test! "decode" {
 	msg := ""
 	decode[Inner](r"""{"ok": true}""") or { msg = $.message(); Inner.{} }
 	assert! msg == "missing field name"
+	decode[int]("3.5") or { msg = $.message(); 0 }
+	assert! msg == "expected int, got 3.5"
 }

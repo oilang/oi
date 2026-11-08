@@ -1,0 +1,113 @@
+module ws
+
+## WebSocket client (RFC 6455), no extensions or TLS.
+
+use net
+use rand
+use hash
+use encoding.base64
+
+pub Ws :: struct {
+	conn: net.Conn
+	pending: string
+}
+
+## A received message, text unless `binary`.
+pub Message :: struct {
+	pub data: string
+	pub binary: bool
+}
+
+## `n` random bytes.
+noise :: fn(n: int) string {
+	string.(loop _ in ..n do u8.(rand.range(0, 256)))
+}
+
+## Upgrade `conn` with a GET of `path` on `host`.
+pub connect :: fn(conn: net.Conn, host: string, path: string) !Ws {
+	key :: base64.encode(noise(16))
+	upgrade :: "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+	conn.write("GET {path} HTTP/1.1\r\nHost: {host}\r\n{upgrade}Sec-WebSocket-Key: {key}\r\n\r\n")?
+
+	ws := Ws.{ conn }
+	loop !ws.pending.contains("\r\n\r\n") do ws.fill()?
+	head :: ws.pending.split("\r\n\r\n")[0]
+	ws.pending = ws.pending[(head.len() + 4)..]
+
+	lines :: head.split("\r\n")
+	if !lines[0].starts_with("HTTP/1.1 101") do return error("ws: upgrade refused: {lines[0]}")
+	accept :: base64.encode(hash.sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	accepted :: lines.any {
+		$.lower().starts_with("sec-websocket-accept:") && $[21..].trim() == accept
+	}
+	if !accepted do return error("ws: bad Sec-WebSocket-Accept")
+	ws
+}
+
+Ws :< {
+	## Send a message, text unless `binary`.
+	pub send :: fn(self; data: string, binary: bool) ! {
+		self.frame(if binary do 2 else do 1, data)
+	}
+
+	## Next message, reassembled from fragments, answering pings on the way.
+	pub recv :: fn(mut self) !Message {
+		data := ""
+		binary := false
+		loop {
+			head :: self.take(2)?
+			len := int.(head[1]) & 127
+			if len > 125 {
+				extended :: self.take(if len == 126 do 2 else do 8)?
+				len = 0
+				loop i in 0..extended.len() {
+					len = (len << 8) | int.(extended[i])
+				}
+			}
+			payload :: self.take(len)?
+
+			opcode :: int.(head[0]) & 15
+			if opcode == 8 do return error("ws: closed by peer")
+			if opcode == 9 do self.frame(10, payload)?
+			if opcode <= 2 {
+				if opcode != 0 do binary = opcode == 2
+				data += payload
+				if int.(head[0]) & 128 != 0 do return Message.{ data, binary }
+			}
+		}
+	}
+
+	## Send a normal closure and close the socket.
+	pub close :: fn(self) {
+		self.frame(8, string.([u8.(3) 232])) or {}
+		self.conn.close()
+	}
+
+	## Write one masked final frame.
+	frame :: fn(self; opcode: int, payload: string) ! {
+		len :: payload.len()
+		# TODO: match with no header and multi returns
+		code, width :: if len < 126 { len, 0 } else if len < 65536 { 126, 2 } else { 127, 8 }
+		out: []u8 = [u8.(128 | opcode) u8.(128 | code)]
+		loop at in ..width {
+			out << u8.((len >> ((width - 1 - at) * 8)) & 255)
+		}
+		mask :: noise(4)
+		out << []u8.(mask)
+		loop i in ..len do out << (payload[i] ~ mask[i % 4])
+		self.conn.write(string.(out))
+	}
+
+	fill :: fn(mut self) ! {
+		more :: self.conn.read()?
+		if more == "" do return error("ws: connection closed")
+		self.pending += more
+	}
+
+	take :: fn(mut self; n: int) !string {
+		loop self.pending.len() < n do self.fill()?
+		out :: self.pending[..n]
+		self.pending = self.pending[n..]
+		out
+	}
+}

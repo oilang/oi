@@ -190,7 +190,11 @@ pub from_json[T] :: fn(j: Json) !T {
 	comp match T {
 		Option[E] => match j { :null => return none, _ => from_json[E](j)? },
 		[]E => loop v in want[Arr](j)? { from_json[E](v)? },
-		int => int.(want[float](j)?),
+		int => {
+			n :: want[float](j)?
+			if float.(int.(n)) != n do return error("expected int, got {n}")
+			int.(n)
+		},
 		float, bool, string => want[T](j)?,
 		else => {
 			obj :: want[Obj](j)?
