@@ -1,0 +1,46 @@
+use tty
+use libc
+
+openpty : fn(primary: ptr, replica: ptr, name: ptr, termios: ptr, size: ptr) i32 : foreign
+
+pty :: fn() []i32 {
+	fds := [i32.(0) i32.(0)]
+	assert! unsafe openpty(fds.ptr, fds.ptr.offset(4), ptr.(0), ptr.(0), ptr.(0)) == 0
+	fds
+}
+
+## Whether ECHO is set in c_lflag.
+echoes :: fn(fd: i32) bool {
+	buf :: unsafe libc.malloc(60)
+	defer unsafe libc.free(buf)
+	discard unsafe libc.tcgetattr(fd, buf)
+	(unsafe buf.offset(12).read[u32]() & 8) != 0
+}
+
+test! "raw and restore" {
+	[_ replica] := pty()
+	saved :: tty.raw(replica) or panic!($.message())
+	assert! !echoes(replica)
+	saved.restore() or panic!($.message())
+	assert! echoes(replica)
+}
+
+test! "resizes" {
+	[_ replica] := pty()
+	resized := tty.resizes(replica)
+	buf :: unsafe libc.malloc(tty.Size.size)
+	unsafe buf.write(tty.Size.{ rows = 24, cols = 80, xpixel = 0, ypixel = 0 })
+	# TIOCSWINSZ
+	assert! unsafe libc.ioctl(replica, 0x5414, buf) == 0
+	discard unsafe libc.kill(unsafe libc.getpid(), 28)
+	assert! (resized.recv() or panic!("closed")).cols == 80
+}
+
+test! "input" {
+	[primary replica] := pty()
+	keys := tty.input(replica)
+	discard unsafe libc.write(primary, "hi\n".ptr, 3)
+	assert! keys.recv() == "hi\n"
+	discard unsafe libc.close(primary)
+	assert! keys.recv() == none
+}

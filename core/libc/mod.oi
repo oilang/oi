@@ -49,3 +49,15 @@ pub nanosleep : fn(req: ptr, rem: ptr) i32 : foreign
 pub localtime : fn(t: ptr) ptr : foreign
 pub gmtime : fn(t: ptr) ptr : foreign
 pub strftime : fn(buf: ptr, max: usize, fmt: cstr, tm: ptr) usize : foreign
+
+# terminals
+pub tcgetattr : fn(fd: i32, termios: ptr) i32 : foreign
+pub tcsetattr : fn(fd: i32, when: i32, termios: ptr) i32 : foreign
+pub cfmakeraw : fn(termios: ptr) : foreign
+pub ioctl : fn(fd: i32, request: u64, arg: ptr) i32 : foreign
+
+# signals
+pub sigaddset : fn(set: ptr, sig: i32) i32 : foreign
+pub pthread_sigmask : fn(how: i32, set: ptr, old: ptr) i32 : foreign
+pub sigwait : fn(set: ptr, sig: ptr) i32 : foreign
+pub kill : fn(pid: i32, sig: i32) i32 : foreign

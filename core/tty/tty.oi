@@ -1,0 +1,120 @@
+module tty
+
+use libc
+use sync
+
+## glibc termios
+# ref: https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/unix/sysv/linux/bits/termios-struct.h
+@c Termios :: struct {
+	iflag: u32
+	oflag: u32
+	cflag: u32
+	lflag: u32
+	line: u8
+	cc: [32]u8
+	ispeed: u32
+	ospeed: u32
+}
+
+## winsize
+@c pub Size :: struct {
+	pub rows: u16
+	pub cols: u16
+	pub xpixel: u16
+	pub ypixel: u16
+}
+
+## A terminal's state before `raw`.
+pub Saved :: struct {
+	fd: i32
+	termios: Termios
+}
+
+## Put `fd` in raw mode.
+pub raw :: fn(fd: i32) !Saved {
+	buf :: unsafe libc.malloc(Termios.size)
+	defer unsafe libc.free(buf)
+
+	if unsafe libc.tcgetattr(fd, buf) != 0 {
+		return error("tty: {fd} is not a terminal")
+	}
+
+	saved :: Saved.{ fd, unsafe buf.read[Termios]() }
+	unsafe libc.cfmakeraw(buf)
+
+	# TCSANOW
+	if unsafe libc.tcsetattr(fd, 0, buf) != 0 {
+		return error("tty: cannot make {fd} raw")
+	}
+
+	saved
+}
+
+Saved :< {
+	## Put the terminal back how `raw` found it.
+	pub restore :: fn(self) ! {
+		buf :: unsafe libc.malloc(Termios.size)
+		defer unsafe libc.free(buf)
+		unsafe buf.write(self.termios)
+		if unsafe libc.tcsetattr(self.fd, 0, buf) != 0 {
+			return error("tty: cannot restore {self.fd}")
+		}
+	}
+}
+
+## The size of the terminal at `fd`.
+pub size :: fn(fd: i32) !Size {
+	buf :: unsafe libc.malloc(Size.size)
+	defer unsafe libc.free(buf)
+
+	# TIOCGWINSZ
+	if unsafe libc.ioctl(fd, 0x5413, buf) != 0 {
+		return error("tty: cannot size {fd}")
+	}
+
+	unsafe buf.read[Size]()
+}
+
+## The size of `fd` on each SIGWINCH.
+## Blocks SIGWINCH on the calling thread, so call it before spawning others.
+pub resizes :: fn(fd: i32) sync.Chan[Size] {
+	# glibc sigset_t
+	set :: unsafe libc.calloc(128, 1)
+
+	# SIGWINCH, SIG_BLOCK
+	discard unsafe libc.sigaddset(set, 28)
+	discard unsafe libc.pthread_sigmask(0, set, ptr.(0))
+
+	out := sync.Chan[Size].{}
+	discard sync.spawn! {
+		sig := [i32.(0)]
+		loop {
+			discard unsafe libc.sigwait(set, sig.ptr)
+			current :: size(fd) or break
+			out <- current or break
+		}
+		unsafe libc.free(set)
+		out.close()
+	}
+
+	out
+}
+
+## The bytes read from `fd`, closed on EOF.
+pub input :: fn(fd: i32) sync.Chan[string] {
+	out := sync.Chan[string].{}
+
+	discard sync.spawn! {
+		buf :: unsafe libc.malloc(4096)
+		loop {
+			n :: unsafe libc.read(fd, buf, 4096)
+			if n <= 0 do break
+			out <- (unsafe buf.string(int.(n))) or break
+		}
+
+		unsafe libc.free(buf)
+		out.close()
+	}
+
+	out
+}
