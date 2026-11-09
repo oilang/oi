@@ -255,7 +255,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(Some(id));
 		}
 
-		if *target == Typ::Ast && matches!(value.0, Expr::Resolved(..)) {
+		if *target == Typ::Ast && matches!(value.0, Expr::Resolved(..) | Expr::TypePat(_)) {
 			return Ok(Some(self.quote(std::slice::from_ref(value), value.1)?.0));
 		}
 		if *target == Typ::Ast
@@ -1639,6 +1639,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((self.zero_or_err(t, span)?, t.clone()));
 		}
+		let param = self.types.type_params.get(name);
+		let target = param.filter(|t| matches!(t, Typ::Struct(..))).or(target);
 		let target = self.through_sum(target, |t| matches!(t, Typ::Struct(..) | Typ::TupleStruct(..)));
 		let target = target.as_ref();
 

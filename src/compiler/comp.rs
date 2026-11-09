@@ -259,7 +259,10 @@ pub(crate) fn instantiate(
 			{
 				*e = (**lit).clone();
 			} else if let Expr::Ident(n) = e
-				&& let Some(t @ TypeExpr::Resolved(_)) = types.type_params.get(n).and_then(type_expr)
+				&& let Some(t @ (TypeExpr::Resolved(_) | TypeExpr::Generic(..))) = types
+					.type_params
+					.get(n)
+					.map(|t| spell(t, &types.generics.instance_args.borrow()))
 			{
 				*e = super::expand::type_ast(&t);
 			} else if let Expr::Ident(n)

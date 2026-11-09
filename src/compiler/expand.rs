@@ -468,12 +468,12 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 		for (_, def, scope) in &mut defs {
 			def.0.walk(&mut |e| {
 				for t in e.types() {
-					t.walk_mut(&mut |t| {
-						if let TypeExpr::Name(n) = t
-							&& let Some(key) = keys.get(&scope.qualify_name(n))
-						{
-							*t = TypeExpr::Resolved(key.clone());
+					t.walk_mut(&mut |t| match t {
+						TypeExpr::Name(n) if let Some(key) = keys.get(&scope.qualify_name(n)) => {
+							*t = TypeExpr::Resolved(key.clone())
 						}
+						TypeExpr::Generic(n, _) if let Some(key) = keys.get(&scope.qualify_name(n)) => *n = key.clone(),
+						_ => {}
 					});
 				}
 			});
@@ -1032,11 +1032,22 @@ pub(crate) extern "C" fn rt_ast_parse(s: *const runtime::StrHeader) -> *mut Span
 #[unsafe(export_name = "oi_ast_def")]
 pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr> {
 	let def = DEFS.with_borrow(|(scope, _, defs, _)| {
-		let name = match unsafe { &(*a).0 } {
-			Expr::Resolved(q, _) => q.clone(),
-			e => scope.qualify_name(&written(e)),
+		let (name, args) = match unsafe { &(*a).0 } {
+			Expr::Resolved(q, _) => (q.clone(), &[][..]),
+			Expr::TypePat(TypeExpr::Generic(q, args)) => (q.clone(), &args[..]),
+			e => (scope.qualify_name(&written(e)), &[][..]),
 		};
-		defs.iter().find(|d| d.0 == name).map(|d| d.1.clone())
+		let mut def = defs.iter().find(|d| d.0 == name)?.1.clone();
+		def.0.walk(&mut |e| {
+			if let Expr::StructDef { type_params, .. } = e
+				&& !args.is_empty()
+			{
+				let params = std::mem::take(type_params).into_iter().map(|p| p.name);
+				let by: Vec<_> = params.zip(args.iter().cloned()).collect();
+				e.types().into_iter().for_each(|t| *t = super::subst(t, &by));
+			}
+		});
+		Some(def)
 	});
 	leak(def.unwrap_or_else(|| flag("`def` needs the name of a definition", empty())))
 }
