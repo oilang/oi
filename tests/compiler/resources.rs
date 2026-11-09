@@ -465,6 +465,26 @@ fn or_moves_the_payload_out_of_a_named_option() {
 }
 
 #[test]
+fn unwrapping_a_drop_payload_drops_it_once() {
+	let src = indoc! {r#"
+		open :: fn(fd: int) ?File {
+			if fd > 0 do File.{ fd } else do none
+		}
+		if f := open(1) { print(f.fd) }
+		match open(2) {
+			.some.(f) => print(f.fd),
+			.none => print(0)
+		}
+		match o := open(3) {
+			.some.(f) => print(f.fd),
+			.none => print(0)
+		}
+	"#};
+	check([FILE, src], ["1", "drop 1", "2", "drop 2", "3", "drop 3"]);
+	assert_clean([FILE, src]);
+}
+
+#[test]
 fn a_drop_claim_overrides_inferred_copy() {
 	let handle = indoc! {"
 		Handle :: struct { r: Ref }

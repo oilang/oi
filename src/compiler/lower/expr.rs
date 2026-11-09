@@ -54,7 +54,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn flow_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		match &value.0 {
 			Expr::Index { .. } | Expr::Cast { .. } | Expr::Bind { .. } => {
-				self.lower(value, Some(&Typ::Enum(role::OPTION.into())))
+				let (val, typ) = self.lower(value, Some(&Typ::Enum(role::OPTION.into())))?;
+				// rebind what the tail moved out by a read
+				if let Expr::Bind { name, mutable, .. } = &value.0
+					&& self.is_affine(&typ)
+				{
+					self.bind_local(name, val, typ.clone(), *mutable);
+				}
+				Ok((val, typ))
 			}
 			_ => self.expr(value),
 		}

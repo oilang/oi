@@ -161,7 +161,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn header<'e>(&mut self, h: &'e Spanned<Expr>) -> Result<&'e Spanned<Expr>, Diagnostic> {
 		let Expr::Block(body) = &h.0 else { return Ok(h) };
 		let [stmts @ .., tail] = &body[..] else { return Ok(h) };
-		match self.block(stmts)? {
+		// a unit tail keeps a trailing bind from moving out
+		match self.block_tail(stmts, Some(&Typ::unit()))? {
 			Some(_) => self.header(tail),
 			None => fail(
 				"this block never produces a value",
@@ -522,6 +523,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (sv, st) = self.flow_operand(subject)?;
 		let (sv, st) = self.deref(sv, &st);
 
+		// an arm that takes a payload consumes an owned subject
+		let takes = |pat: &Spanned<Expr>| {
+			self.enum_pattern(&split_subs(pat).0, &st)
+				.is_ok_and(|(_, binds)| binds.iter().any(|b| self.is_affine(&b.1)))
+		};
+		if self.enum_box(&st)
+			&& let Expr::Ident(name) = &subject.0
+			&& let Some(local) = self.vars.get(name)
+			&& self.scopes.iter().flatten().any(|(var, _)| *var == local.var)
+			&& arms
+				.iter()
+				.any(|arm| arm.guard.is_none() && matches!(&arm.patterns[..], [pat] if takes(pat)))
+		{
+			self.move_out(subject, &st)?;
+			self.temp(sv, &st);
+		}
+
 		// a non-enum match has no coverage to analyse, so it is all a gap
 		if !st.is_enumish() && else_body.is_none() {
 			else_body = gap.filter(|g| !g.is_empty());
@@ -617,10 +635,14 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					s.withs.push((name.clone(), None));
 				}
+				let owner = arm.guard.is_none() && s.temps.contains_key(&sv);
 				for ((base, base_typ), list) in &binds {
 					for (name, typ, off) in list {
 						let field = s.load_bind(*base, base_typ, typ, *off, span);
-						let field = s.copy_bind(field, typ);
+						let field = match owner && s.is_affine(typ) && s.enum_box(base_typ) {
+							true => s.take_boxed(*base, field, typ),
+							false => s.copy_bind(field, typ),
+						};
 						s.bind_local(name, field, typ.clone(), false);
 					}
 				}
@@ -903,9 +925,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		if self.enum_box(typ) {
-			let gone = self.b.ins().iconst(self.int, -1);
-			self.st(val, 0, gone);
-			return self.unbox_ret(payload, inner);
+			return self.take_boxed(val, payload, inner);
 		}
 
 		// a happy pack holds nothing but its payload
@@ -915,6 +935,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.flagged.push(owner);
 		}
 		payload
+	}
+
+	// Take a box's payload, leaving it empty.
+	fn take_boxed(&mut self, boxp: Value, payload: Value, typ: &Typ) -> Value {
+		let gone = self.b.ins().iconst(self.int, -1);
+		self.st(boxp, 0, gone);
+		self.unbox_ret(payload, typ)
 	}
 
 	// Take a happy Option or Result payload, else make a zero.
