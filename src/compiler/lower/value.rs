@@ -210,9 +210,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Tuple(_) => {
-				let slots = typ.slots().unwrap_or_default();
-				let zeros: Vec<_> = slots.iter().map(|slot| self.zero_slot(slot)).collect();
-				self.frame_slots(&zeros)
+				let layout = typ.layout().unwrap_or_default();
+				let ptr = self.stack_slot(layout.size);
+				for Field { off, typ: t } in layout.fields {
+					let zero = self.zero_slot(&t);
+					self.st(ptr, off, zero);
+				}
+				ptr
 			}
 			Typ::Array(_) => {
 				let z = self.b.ins().iconst(self.int, 0);
@@ -829,11 +833,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let typ = self.types.resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
-		let Typ::Struct(_, fields) = &typ else {
-			unreachable!("core `Range` is a struct")
-		};
-		let fields = fields.clone();
-		let ptr = self.struct_slot(&fields, &[true; 3])?;
+		let ptr = self.struct_slot(&typ, &[true; 3])?;
 		let end = end.map(|v| self.intcast(v, types::I64, true));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let end = self.make_option(&opt_typ, end);
@@ -1768,9 +1768,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			(fields.iter().enumerate()).any(|(j, (n, _))| n.as_ref().map_or(j == i, |n| *n == f.name))
 		};
 		let given: Vec<bool> = (struct_fields.iter().enumerate()).map(|(i, f)| !spread && set(i, f)).collect();
+		let styp = Typ::Struct(name.clone(), struct_fields.clone());
 		let ptr = match leading_spread {
-			Some(_) => self.stack_slot((struct_fields.len() * 8) as u32),
-			None => self.struct_slot(&struct_fields, &given)?,
+			Some(_) => self.stack_slot(styp.layout().unwrap_or_default().size),
+			None => self.struct_slot(&styp, &given)?,
 		};
 
 		let arity = |got: usize| {
@@ -1801,10 +1802,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !matches!(&typ, Typ::Struct(n, _) if *n == name) {
 					return fail(format!("cannot spread {typ} into `{name}`"), src.1, "type mismatch");
 				}
-				self.assign_slots(val, ptr, &typ.slots().unwrap_or_default(), i > 0);
+				self.assign_slots(val, ptr, &typ, i > 0);
 				continue;
 			}
-			let (idx, ftyp, base) = match field_name.as_deref() {
+			let (path, idx, ftyp) = match field_name.as_deref() {
 				None if i != prefix => {
 					return fail(
 						"positional fields go before named fields",
@@ -1816,44 +1817,43 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => {
 					self.check_member(&name, &struct_fields[i].name, value.1)?;
 					prefix += 1;
-					(i, struct_fields[i].typ.clone(), ptr)
+					(vec![], i, struct_fields[i].typ.clone())
 				}
 				Some(fname) => match self.struct_field(&name, &struct_fields, fname, value.1)? {
 					(path, idx, _) if path.is_empty() && idx < prefix => {
 						return fail(format!("`{fname}` was already set positionally"), value.1, "set twice");
 					}
-					(path, idx, ftyp) => (idx, ftyp, self.follow(ptr, &path)),
+					found => found,
 				},
 			};
+			let (base, layout) = self.follow(ptr, &styp, &path);
+			let off = layout.fields[idx].off;
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			closure_escape(&ftyp, value.1.into_range(), "stored in a field")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
-			if self.slot_owns(&ftyp) && !(base == ptr && given[idx]) {
+			if self.slot_owns(&ftyp) && !(path.is_empty() && given[idx]) {
 				// drop the zero/default this slot already owns
-				let old = self.ld_typ(base, (idx * 8) as i32, &ftyp);
+				let old = self.ld_typ(base, off, &ftyp);
 				// a resource nobody saw is freed
 				match (&ftyp, self.is_resource(&ftyp)) {
 					(Typ::Struct(..), true) => _ = self.rt_call("free", &[old]),
 					_ => self.release_field(old, &ftyp),
 				}
 			}
-			self.st(base, (idx * 8) as i32, val);
+			self.st(base, off, val);
 		}
 		self.check_required(&name, &struct_fields, fields, span)?;
-		let typ = Typ::Struct(name.clone(), struct_fields);
-		self.temp(ptr, &typ);
-		Ok((ptr, typ))
+		self.temp(ptr, &styp);
+		Ok((ptr, styp))
 	}
 
 	// A self-typed anonymous struct, named by its shape.
 	fn infer_anon(&mut self, entries: &[(Option<String>, Spanned<Expr>)]) -> Result<TypedVal, Diagnostic> {
-		let ptr = self.stack_slot((entries.len() * 8) as u32);
-		let mut fields: Vec<FieldDef> = Vec::with_capacity(entries.len());
-		for (i, (name, value)) in entries.iter().enumerate() {
+		let (mut fields, mut vals) = (Vec::new(), Vec::new());
+		for (name, value) in entries {
 			let (val, typ) = self.expr(value)?;
-			let val = self.copy_in(val, &typ);
-			self.st(ptr, (i * 8) as i32, val);
+			vals.push(self.copy_in(val, &typ));
 			fields.push(FieldDef {
 				name: name.clone().expect("guarded by the caller"),
 				typ,
@@ -1863,13 +1863,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			});
 		}
 		let shape: Vec<_> = fields.iter().map(|f| format!("{}: {}", f.name, f.typ)).collect();
-		Ok((ptr, Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields)))
+		let typ = Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields);
+		let layout = typ.layout().unwrap_or_default();
+		let ptr = self.stack_slot(layout.size);
+		for (field, val) in layout.fields.into_iter().zip(vals) {
+			self.st(ptr, field.off, val);
+		}
+		Ok((ptr, typ))
 	}
 
 	// Allocate a struct on the stack, initializing each field to its default, or null where `given`.
-	pub(super) fn struct_slot(&mut self, struct_fields: &[FieldDef], given: &[bool]) -> Result<Value, Diagnostic> {
-		let ptr = self.stack_slot((struct_fields.len() * 8) as u32);
-		for (i, f) in struct_fields.iter().enumerate() {
+	pub(super) fn struct_slot(&mut self, typ: &Typ, given: &[bool]) -> Result<Value, Diagnostic> {
+		let (Typ::Struct(_, struct_fields), Some(layout)) = (typ, typ.layout()) else {
+			unreachable!("a struct has a layout")
+		};
+		let ptr = self.stack_slot(layout.size);
+		for ((i, f), at) in struct_fields.iter().enumerate().zip(layout.fields) {
 			let init = if given.get(i) == Some(&true) {
 				self.b.ins().iconst(self.int, 0)
 			} else if let Some(default_expr) = &f.default {
@@ -1878,14 +1887,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				let val = self.check_typed(default_expr, &f.typ, "not a valid default for this field");
 				self.types = types;
 				self.copy_in(val?, &f.typ)
-			} else if let Typ::Struct(_, inner) = &f.typ {
+			} else if let Typ::Struct(..) = &f.typ {
 				// apply field defaults of inner structs
-				let slot = self.struct_slot(inner, &[])?;
+				let slot = self.struct_slot(&f.typ, &[])?;
 				self.heap_move(slot, &f.typ)
 			} else {
 				self.zero_slot(&f.typ)
 			};
-			self.st(ptr, (i * 8) as i32, init);
+			self.st(ptr, at.off, init);
 		}
 		Ok(ptr)
 	}
@@ -1934,12 +1943,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Copy slots between aggregates.
-	pub(super) fn assign_slots(&mut self, src: Value, dst: Value, slots: &[Typ], release_old: bool) {
-		for (i, t) in slots.iter().enumerate() {
-			let old = (release_old && self.slot_owns(t)).then(|| self.ld_typ(dst, (i * 8) as i32, t));
-			let fv = self.ld_typ(src, (i * 8) as i32, t);
+	pub(super) fn assign_slots(&mut self, src: Value, dst: Value, typ: &Typ, release_old: bool) {
+		for Field { off, typ: t } in &typ.layout().unwrap_or_default().fields {
+			let old = (release_old && self.slot_owns(t)).then(|| self.ld_typ(dst, *off, t));
+			let fv = self.ld_typ(src, *off, t);
 			let fv = self.copy_in(fv, t);
-			self.st(dst, (i * 8) as i32, fv);
+			self.st(dst, *off, fv);
 			if let Some(old) = old {
 				self.release_field(old, t);
 			}

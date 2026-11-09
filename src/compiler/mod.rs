@@ -1832,7 +1832,7 @@ impl<M: Module> Compiler<M> {
 			// associated types have no runtime slot, so they leave a hole
 			for (i, tf) in tfields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
 				let at = (methods.len() + i) * 8;
-				match structs.get(typ.as_str()).and_then(|fs| field_slot(fs, &tf.name)) {
+				match field_slot(&base, &typ, &tf.name) {
 					Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
 					None => {
 						let want = base.resolve(&tf.typ, tf.span)?;

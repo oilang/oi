@@ -766,7 +766,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		match self.vars.get(CTX).cloned() {
 			Some(local) => {
 				let ctx = self.read_local(&local);
-				self.follow(ctx, &local.typ.ctx_path(want).unwrap_or_default())
+				self.follow(ctx, &local.typ, &local.typ.ctx_path(want).unwrap_or_default()).0
 			}
 			None => self.rt_call("ctx_root", &[]).expect("`oi_ctx_root` returns a pointer"),
 		}
@@ -794,21 +794,22 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
 		let root = self.ctx_value(CONTEXT);
 		let Typ::Struct(_, fields) = typ else { return Ok(root) };
+		let layout = typ.layout().unwrap_or_default();
 		let Some(first) = fields.iter().position(|f| f.default.is_some()) else {
 			return Ok(root);
 		};
-		let slot = self.ld_word(root, (first * 8) as i32);
+		let slot = self.ld_word(root, layout.fields[first].off);
 		let unset = self.b.ins().icmp_imm(IntCC::Equal, slot, 0);
 		self.when(unset, |s| {
 			// defaults live as long as the thread
 			let sys = s.ld_word(root, 0);
 			let owner = s.rt_call("root_allocator", &[]).unwrap();
 			s.st(root, 0, owner);
-			for (i, f) in fields.iter().enumerate() {
+			for (f, at) in fields.iter().zip(layout.fields) {
 				let Some(default) = &f.default else { continue };
 				let val = s.check_typed(default, &f.typ, "not a valid default for this field")?;
 				let val = s.copy_in(val, &f.typ);
-				s.st(root, (i * 8) as i32, val);
+				s.st(root, at.off, val);
 			}
 			s.st(root, 0, sys);
 			Ok(root)

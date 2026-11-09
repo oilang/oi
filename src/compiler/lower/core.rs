@@ -168,9 +168,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Look through a chain of embed slots to the innermost struct pointer.
-	pub(super) fn follow(&mut self, ptr: Value, path: &[usize]) -> Value {
-		path.iter().fold(ptr, |p, o| self.ld_word(p, (o * 8) as i32))
+	// Look through a chain of embed slots to the innermost struct pointer and its layout.
+	pub(super) fn follow(&mut self, mut ptr: Value, typ: &Typ, path: &[usize]) -> (Value, Layout) {
+		let mut layout = typ.layout().unwrap_or_default();
+		for &i in path {
+			ptr = self.ld_word(ptr, layout.fields[i].off);
+			layout = layout.fields[i].typ.layout().unwrap_or_default();
+		}
+		(ptr, layout)
 	}
 
 	// Look up the binding that a mutation targets.

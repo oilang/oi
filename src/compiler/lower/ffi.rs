@@ -46,14 +46,14 @@ impl<M: Module> Translator<'_, M> {
 				let Some(fields) = self.c_fields(&typ, *ts)? else {
 					return Ok((self.c_load(&typ, c, 0), typ));
 				};
-				let oi = self.struct_slot(&fields, &[])?;
+				let oi = self.struct_slot(&typ, &[])?;
 				self.copy_fields(oi, c, 0, &fields, false);
 				Ok((oi, typ))
 			}
 			(false, Some(c), [], [value]) => {
 				let (oi, typ) = self.expr(value)?;
 				if self.oi_struct(&typ) {
-					self.assign_slots(oi, c, &typ.slots().unwrap_or_default(), false);
+					self.assign_slots(oi, c, &typ, false);
 				} else if let Some(fields) = self.c_fields(&typ, value.1)? {
 					self.copy_fields(oi, c, 0, &fields, true);
 				} else {

@@ -19,6 +19,7 @@ pub(super) fn field_binds<'a>(
 // A struct pattern's field bindings.
 pub(super) fn struct_pattern(
 	fdefs: &[FieldDef],
+	layout: &Layout,
 	pname: &str,
 	sname: &str,
 	entries: &[(Option<String>, Spanned<Expr>)],
@@ -40,7 +41,7 @@ pub(super) fn struct_pattern(
 				.iter()
 				.position(|f| f.name == field)
 				.ok_or_else(|| unknown_member(format!("struct `{sname}`"), "field", field, e.1))?;
-			Ok((local.clone(), fdefs[idx].typ.clone(), idx as i32 * 8))
+			Ok((local.clone(), fdefs[idx].typ.clone(), layout.fields[idx].off))
 		})
 		.collect()
 }

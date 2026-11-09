@@ -1909,7 +1909,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					self.qualify(name)
 				};
-				struct_pattern(fdefs, &pname, sname, fields, pat.1)
+				struct_pattern(fdefs, &typ.layout().unwrap_or_default(), &pname, sname, fields, pat.1)
 			}
 
 			(Expr::Array(elems), Typ::Array(elem) | Typ::FixedArray(elem, _)) => {

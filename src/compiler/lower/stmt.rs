@@ -188,13 +188,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					self.move_resource(value, &typ)?;
 					self.slots.retain(|s| s != name);
-					if let Some(slots) = typ.slots() {
+					if typ.slots().is_some() {
 						let dst = self.read_local(&local);
 						let resource = self.is_resource(&typ);
 						if resource {
 							self.release_value(dst, &typ);
 						}
-						self.assign_slots(val, dst, &slots, !resource);
+						self.assign_slots(val, dst, &typ, !resource);
 						self.settle(val, dst, &typ);
 					} else {
 						let val = self.copy_in(val, &typ);
@@ -386,9 +386,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::FieldAssign { name, field, value } => {
 					self.check_static_write(name, field, stmt.1)?;
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
-					let (path, idx, ftyp) = match self.peeled(&local.typ) {
+					let peeled = self.peeled(&local.typ);
+					let (path, idx, ftyp) = match &peeled {
 						Typ::Tuple(elems) | Typ::TupleStruct(_, elems) => {
-							let i = tuple_index(&elems, field, stmt.1)?;
+							let i = tuple_index(elems, field, stmt.1)?;
 							(Vec::new(), i, elems[i].1.clone())
 						}
 						_ if let Some(elems) = self.variant_fields(&local.typ) => {
@@ -396,13 +397,15 @@ impl<'a, M: Module> Translator<'a, M> {
 							(Vec::new(), i + 1, elems[i].1.clone())
 						}
 						// writes fall through embeds
-						Typ::Struct(sname, fields) => self.struct_field(&sname, &fields, field, stmt.1)?,
+						Typ::Struct(sname, fields) => self.struct_field(sname, fields, field, stmt.1)?,
 						_ => {
 							return fail(format!("`{name}` is not a struct"), stmt.1, "not a struct");
 						}
 					};
+
 					let val = self.stored(value, &ftyp, &format!("field `{field}` of type {ftyp}"), "a field")?;
 					let val = self.copy_in(val, &ftyp);
+
 					// newtypes
 					if local.typ.newtype().is_some() {
 						let old = self.read_local(&local);
@@ -410,14 +413,17 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.release_value(old, &ftyp);
 						continue;
 					}
+
 					let base = self.read_local(&local);
-					let ptr = self.follow(base, &path);
+					let (ptr, layout) = self.follow(base, &peeled, &path);
+					let off = layout.fields.get(idx).map_or(idx as i32 * 8, |f| f.off);
 					if self.slot_owns(&ftyp) {
 						let cl = self.b.func.dfg.value_type(val);
-						let old = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
+						let old = self.b.ins().load(cl, MemFlags::new(), ptr, off);
 						self.release_field(old, &ftyp);
 					}
-					self.st(ptr, (idx * 8) as i32, val);
+
+					self.st(ptr, off, val);
 				}
 
 				Expr::Break(label, payload) => {

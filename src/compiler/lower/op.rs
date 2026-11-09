@@ -199,10 +199,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<Value, Diagnostic> {
 		let mut acc = self.b.ins().iconst(types::I8, 1);
-		for (i, st) in slots.iter().enumerate() {
-			let fa = self.ld_typ(lhs, base + (i * 8) as i32, st);
-			let fb = self.ld_typ(rhs, base + (i * 8) as i32, st);
-			let eq = self.emit_val_eq(fa, fb, st, owner, span)?;
+		let tuple = Typ::Tuple(slots.iter().map(|t| (None, t.clone())).collect());
+		for Field { off, typ: st } in tuple.layout().unwrap_or_default().fields {
+			let fa = self.ld_typ(lhs, base + off, &st);
+			let fb = self.ld_typ(rhs, base + off, &st);
+			let eq = self.emit_val_eq(fa, fb, &st, owner, span)?;
 			let eq = self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0);
 			acc = self.b.ins().band(acc, eq);
 		}

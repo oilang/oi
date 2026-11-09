@@ -182,9 +182,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn comp_yield(&mut self, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
 		let (tag, bits) = match typ {
 			Typ::Struct(name, fields) => {
-				for (i, f) in fields.iter().enumerate() {
-					let fv = self.ld_typ(val, (i * 8) as i32, &f.typ);
-					self.comp_yield(fv, &f.typ, span)?;
+				for Field { off, typ: ft } in typ.layout().unwrap_or_default().fields {
+					let fv = self.ld_typ(val, off, &ft);
+					self.comp_yield(fv, &ft, span)?;
 				}
 				let name = self.str_const(name);
 				let nfields = self.b.ins().iconst(self.int, fields.len() as i64);
@@ -359,8 +359,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let (Typ::Struct(_, fs), Typ::Tuple(ts)) = (target, &typ)
 			&& fs.iter().map(|f| &f.typ).eq(ts.iter().map(|(_, t)| t))
 		{
-			let ptr = self.stack_slot((fs.len() * 8) as u32);
-			self.assign_slots(val, ptr, &target.slots().unwrap_or_default(), false);
+			let ptr = self.stack_slot(target.layout().unwrap_or_default().size);
+			self.assign_slots(val, ptr, target, false);
 			return Ok((ptr, target.clone()));
 		}
 		if let Typ::TupleStruct(_, fields) = target

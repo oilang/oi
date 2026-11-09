@@ -323,16 +323,12 @@ pub(super) fn check_impls<'p>(
 			}
 			let want = types.with_type_params(&sig_params).with_scope(home).resolve(&tf.typ, tf.span)?;
 			// let embedded structs satisfy field requirements
-			let stored = types
-				.structs
-				.get(typ)
-				.and_then(|fs| field_slot(fs, &tf.name))
-				.map(|(_, f)| &f.typ);
+			let stored = field_slot(&types, typ, &tf.name).map(|(_, t)| t);
 			let missing = || {
 				let msg = format!("`{typ}` is missing field `{} {want}` required by trait `{tn}`", tf.name);
 				fail(msg, span, "required by the trait")
 			};
-			if stored == Some(&want) {
+			if stored.as_ref() == Some(&want) {
 				continue;
 			}
 			if stored.is_some() {

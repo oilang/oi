@@ -8,8 +8,8 @@ use cranelift::prelude::*;
 use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module, ModuleError};
 
 use super::{
-	Artifacts, CTX, FieldDef, FnParam, FnSig, GenericEnumDef, GenericFnDef, GenericStructDef, Generics, Local,
-	LoopFrame, Typ, TypeCtx, VariantInfo, World, abi_returns, access_of, access_peel, access_wrap, ann_names,
+	Artifacts, CTX, Field, FieldDef, FnParam, FnSig, GenericEnumDef, GenericFnDef, GenericStructDef, Generics, Layout,
+	Local, LoopFrame, Typ, TypeCtx, VariantInfo, World, abi_returns, access_of, access_peel, access_wrap, ann_names,
 	builtin_claim, c_layout, check_ann_typ, check_c_sig, check_reserved, cl_int_for_width, cl_type, display_name,
 	elem_size, embeds, enum_boxed, enum_slots, escapes, has_ann, has_slot, is_c_struct, is_range, lead_typ, mentions,
 	object_safe, oi_symbol, role, sugar, sum_remap, trait_fns, type_expr, typeid, word_slot,

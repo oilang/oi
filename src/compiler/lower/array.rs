@@ -219,14 +219,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	// RC bump.
 	// The underlying buffer clone waits for a write.
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
-		if let Some(slots) = typ.slots() {
+		if let Some(layout) = typ.layout() {
 			// a move keeps blocks of its inline fields instead of deep-copying them
 			if self.handover(val, typ) {
 				self.untemp(val);
 				return self.heap_move(val, typ);
 			}
-			let heap = self.call_alloc(slots.len());
-			return self.copy_struct(val, heap, typ, &slots);
+			let heap = self.call_alloc_bytes(layout.size.into());
+			return self.copy_struct(val, heap, typ);
 		}
 		// a fixed array's buffer is inline, so a copy must escape the frame with its owner
 		if let Typ::FixedArray(elem, n) = typ.newtype().unwrap_or(typ) {
@@ -265,8 +265,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Copy an inline value's slots into `dst`, settling ownership.
-	pub(super) fn copy_struct(&mut self, val: Value, dst: Value, typ: &Typ, slots: &[Typ]) -> Value {
-		self.assign_slots(val, dst, slots, false);
+	pub(super) fn copy_struct(&mut self, val: Value, dst: Value, typ: &Typ) -> Value {
+		self.assign_slots(val, dst, typ, false);
 		self.settle(val, dst, typ);
 		dst
 	}

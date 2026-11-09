@@ -140,15 +140,30 @@ pub(crate) fn lends(f: &FieldDef) -> String {
 	}
 }
 
-// A field's encoded vtable slot.
-pub(crate) fn field_slot<'f>(fields: &'f [FieldDef], name: &str) -> Option<(i64, &'f FieldDef)> {
-	let direct = fields.iter().position(|f| f.name == name).map(|i| ((i * 8) as i64, &fields[i]));
-	direct.or_else(|| {
-		embeds(fields).find_map(|(o, _, inner)| {
-			let i = inner.iter().position(|f| f.name == name)?;
-			Some((((i * 8) as i64) << 32 | ((o * 8) as i64) | 1, &inner[i]))
-		})
-	})
+// A struct field's encoded vtable slot and type.
+pub(crate) fn field_slot(types: &TypeCtx, sname: &str, name: &str) -> Option<(i64, Typ)> {
+	let fields = types.structs.get(sname)?;
+	let outer = Typ::Struct(sname.into(), fields.clone());
+	let slot = |typ: &Typ, i: usize| typ.layout().map(|l| (l.fields[i].off as i64, l.fields[i].typ.clone()));
+	match fields.iter().position(|f| f.name == name) {
+		Some(i) => slot(&outer, i),
+		None => embeds(fields).find_map(|(o, _, inner)| {
+			let (off, typ) = slot(&fields[o].typ, inner.iter().position(|f| f.name == name)?)?;
+			Some((off << 32 | slot(&outer, o)?.0 | 1, typ))
+		}),
+	}
+}
+
+// A struct or tuple's fields at their byte offsets, and its size.
+#[derive(Default)]
+pub(crate) struct Layout {
+	pub fields: Vec<Field>,
+	pub size: u32,
+}
+
+pub(crate) struct Field {
+	pub off: i32,
+	pub typ: Typ,
 }
 
 // A struct's field offsets under the C ABI.
@@ -218,6 +233,16 @@ impl Typ {
 			}
 			_ => None,
 		}
+	}
+
+	// Lay out the slots, one word apiece.
+	pub fn layout(&self) -> Option<Layout> {
+		let slots = self.slots()?;
+		let size = slots.len() as u32 * 8;
+		let fields = (slots.into_iter().enumerate())
+			.map(|(i, typ)| Field { off: i as i32 * 8, typ })
+			.collect();
+		Some(Layout { fields, size })
 	}
 
 	pub fn bool_bytes(&self) -> Option<u16> {

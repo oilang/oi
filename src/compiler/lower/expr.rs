@@ -606,22 +606,22 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// make fn fields callable
-				if let Some((recv, Typ::Struct(_, sfields))) = &bound
+				if let Some((recv, styp @ Typ::Struct(_, sfields))) = &bound
 					&& let Some(i) = sfields.iter().position(|f| f.name == *method)
 				{
-					let ft = sfields[i].typ.clone();
-					let v = self.ld_typ(*recv, (i * 8) as i32, &ft);
+					let Field { off, typ: ft } = styp.layout().unwrap_or_default().fields.remove(i);
+					let v = self.ld_typ(*recv, off, &ft);
 					return self.call_value(method, Callee::Object(v), &ft, args, None, expr.1);
 				}
 
 				// instance calls pierce embedded structs
-				if let Some((recv_val, Typ::Struct(_, sfields))) = &bound {
+				if let Some((recv_val, styp @ Typ::Struct(_, sfields))) = &bound {
 					let owner = |sn: &str, _: &[FieldDef]| {
 						let key = format!("{sn}.{method}");
 						self.funcs.get(&key).map(|sig| (key, sig.clone()))
 					};
 					if let Some((path, (key, sig))) = self.pierce(sfields, method, expr.1, owner)? {
-						let embed = self.follow(*recv_val, &path);
+						let embed = self.follow(*recv_val, styp, &path).0;
 						return self.call_sig(&key, sig, Some(embed), recv_expr, args, expr.1);
 					}
 				}
@@ -851,8 +851,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					if !sfields.iter().any(|f| f.name == *field)
 						&& let Some((path, inner, ftyp)) = self.promoted(sfields, field, expr.1)?
 					{
-						let embed = self.follow(ptr, &path);
-						let v = self.ld_typ(embed, (inner * 8) as i32, &ftyp);
+						let (embed, layout) = self.follow(ptr, &typ, &path);
+						let v = self.ld_typ(embed, layout.fields[inner].off, &ftyp);
 						return Ok((v, ftyp));
 					}
 					// a trait const or default settles fields that aren't stored
@@ -883,7 +883,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if transparent {
 					return Ok((ptr, field_typ));
 				}
-				let v = self.ld_typ(ptr, (idx * 8) as i32, &field_typ);
+				let v = self.ld_typ(ptr, typ.layout().unwrap_or_default().fields[idx].off, &field_typ);
 				Ok((v, field_typ))
 			}
 
