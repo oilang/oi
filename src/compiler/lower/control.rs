@@ -217,22 +217,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if infallible(&cond.0) {
 			let flow = self.scoped(|s| {
-				// a local `?T` owning nothing unwraps in place, uncopied
-				if let Expr::Bind {
-					name,
-					typ: None,
-					value: Some(src),
-					..
-				} = &cond.0
-					&& let Expr::Ident(local) = &src.0
-					&& let Some((inner, None)) = s.vars.get(local).and_then(|l| s.fallible_split(&l.typ))
-					&& !s.needs_release(&inner)
-				{
-					let arm = MatchArm {
-						patterns: vec![(Expr::Ident(name.clone()), cond.1)],
-						body: mutable_copy(cond, then),
-						..Default::default()
-					};
+				if let Some((src, arm)) = s.in_place_arm(cond, then) {
 					return s.match_expr(src, &[arm], els, Some(&[]), target, span);
 				}
 				s.pack_operand(cond)?;
@@ -932,7 +917,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		payload
 	}
 
-	// Take a happy `?T` or `!T` payload, else make a zero.
+	// Take a happy Option or Result payload, else make a zero.
 	pub(super) fn payload_or_zero(&mut self, val: Value, typ: &Typ, span: Span) -> Result<Value, Diagnostic> {
 		let (inner, err) = self.fallible_split(typ).expect("a `?T` or `!T`");
 		let tag = self.enum_tag(typ, val);
@@ -1102,7 +1087,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result).expect("`and` always yields"))
 	}
 
-	// Unwraps `?T`/`!T`.
+	// Unwraps Option/Result.
 	// Returns `none`/error from the enclosing fn on the sad path.
 	// Panics when called in `main`.
 	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
@@ -1409,6 +1394,33 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some(((id, cond.1), arm))
 	}
 
+	// `v := local` on a Option owning nothing matches the local in place, uncopied.
+	fn in_place_arm<'e>(
+		&self,
+		cond: &'e Spanned<Expr>,
+		body: &[Spanned<Expr>],
+	) -> Option<(&'e Spanned<Expr>, MatchArm)> {
+		let Expr::Bind {
+			name,
+			typ: None,
+			value: Some(src),
+			..
+		} = &cond.0
+		else {
+			return None;
+		};
+		let Expr::Ident(local) = &src.0 else { return None };
+		let (inner, None) = self.fallible_split(&self.vars.get(local)?.typ)? else {
+			return None;
+		};
+		let arm = MatchArm {
+			patterns: vec![(Expr::Ident(name.clone()), cond.1)],
+			body: mutable_copy(cond, body),
+			..Default::default()
+		};
+		(!self.needs_release(&inner)).then_some((src, arm))
+	}
+
 	// A labeled block.
 	fn labeled(&mut self, label: &str, body: &[Spanned<Expr>], span: Span) -> Result<Option<TypedVal>, Diagnostic> {
 		let exit = self.b.create_block();
@@ -1570,7 +1582,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		Ok(Box::new(move |s: &mut Self| {
-			// keeps a plain `?T` as its pack
+			// keeps a plain Option as its pack
 			let outer = s.pack_call.replace(span);
 			let mut args = vec![it];
 			args.extend(after.as_ref().map(|(var, _)| s.b.use_var(*var)));

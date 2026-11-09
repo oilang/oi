@@ -317,10 +317,14 @@ fn header_binds_allocate_nothing() {
 				sum += v
 				k = v
 			}
+			loop v := o {
+				sum += v
+				if sum > 30 do break
+			}
 			print(sum, count)
 		}
 	"#};
-	check(src, "19 0");
+	check(src, "31 0");
 
 	let drain = indoc! {r#"
 		use sync
