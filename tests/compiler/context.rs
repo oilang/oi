@@ -17,10 +17,10 @@ fn ctx_shadowing() {
 #[test]
 fn c_fn_reads_the_root_ctx() {
 	let src = indoc! {"
-		@c
 		tick :: fn(n: i32) { print(ctx.thread, n) }
 		ctx :: Context.{ ..ctx, thread = 7 }
-		tick(1)
+		from_c: @c fn(n: i32) = tick
+		from_c(1)
 	"};
 	check(src, "0 1");
 }
@@ -143,7 +143,7 @@ fn an_installed_allocator_sees_every_allocation() {
 	let src = indoc! {"
 		count := 0
 
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc { count = count + 1 }
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -237,9 +237,9 @@ fn an_arena_grows_past_its_first_chunk() {
 #[test]
 fn temp_is_made_once_per_thread() {
 	let src = indoc! {"
-		@c
 		same :: fn(p: ptr) bool { ctx.temp.data == p }
-		print(same(ctx.temp.data))
+		from_c: @c fn(p: ptr) bool = same
+		print(from_c(ctx.temp.data))
 	"};
 	check(src, "true");
 }

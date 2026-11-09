@@ -160,7 +160,7 @@ fn fieldless_enum_options_allocate_nothing() {
 	let src = indoc! {"
 		Dir :: enum { up, down }
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)

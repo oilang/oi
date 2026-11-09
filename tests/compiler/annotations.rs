@@ -255,12 +255,11 @@ fn qualified_field_annotation() {
 }
 
 #[test]
-fn c_marked_fn_crosses_the_c_abi_without_a_symbol() {
+fn oi_fn_crosses_the_c_abi_without_a_symbol() {
 	check(
 		indoc! {r#"
 			@export
 			call_with_getter_cb :: fn(cb: fn(get: fn() i32) i32) i32 { 42 }
-			@c
 			my_cb :: fn(get: fn() i32) i32 { get() }
 			print(call_with_getter_cb(my_cb))
 		"#},
@@ -296,14 +295,14 @@ fn c_fns_take_plain_enums() {
 		indoc! {"
 			Mode :: enum { a, b, c = 3 }
 			S :: struct { f: @c fn(m: Mode) int }
-			@c pick :: fn(m: Mode) int {
+			pick :: fn(m: Mode) int {
 				match m { .a => 1, .c => 3, else => 0 }
 			}
 			print(S.{ f = pick }.f(.c))
 		"},
 		"3",
 	);
-	fail(["@c", "f :: fn(x: ?int) {}"], "`f` can't cross the C ABI");
+	fail(["@c", "f :: fn() {}"], "`@c` marks a C layout, not a fn");
 }
 
 #[test]

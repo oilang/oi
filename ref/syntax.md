@@ -110,13 +110,9 @@ Header :: struct { tag: u8, len: u32 }
 h := unsafe { p.read[Header]() }
 unsafe p.write(h)
 
-# `@c` on a fn makes it callable by C
-# `@export` is `@c` plus a public name
-@c
-on_init :: fn(get: ptr) bool { !get.is_null() }
-
 # `@c` on a fn type is a C fn pointer
 # a foreign decl's fn params are implicitly `@c`
+# an Oi fn passed as one gets a C ABI shim on the thread's root context
 GetProc :: @c fn(name: cstr) ptr
 atexit : fn(cb: fn()) i32 : foreign
 
@@ -2799,9 +2795,8 @@ tick :: fn() {
 @ctx(none)
 hash :: fn(x: int) int { x * 31 }
 
-# `@c` fns take/pass no ctx, instead getting the thread's root context
-@c
-on_tick :: fn(dt: f32) { ctx.thread }
+# fns C calls take/pass no ctx, instead getting the thread's root context
+@export on_tick :: fn(dt: f32) { ctx.thread }
 
 ## core
 

@@ -210,7 +210,7 @@ fn tuple_and_enum_payloads_ride_packs() {
 	// a tuple of words spreads into the pack slots, nothing is boxed
 	let src = indoc! {r#"
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -254,7 +254,7 @@ fn tuple_and_enum_payloads_ride_packs() {
 fn fallible_returns_allocate_nothing_on_success() {
 	let src = indoc! {r#"
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -293,7 +293,7 @@ fn fallible_returns_allocate_nothing_on_success() {
 fn header_binds_allocate_nothing() {
 	let src = indoc! {r#"
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc { count += 1 }
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -341,7 +341,7 @@ fn header_binds_allocate_nothing() {
 fn iterator_next_allocates_nothing() {
 	let src = indoc! {r#"
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -386,7 +386,7 @@ fn custom_error_returns_allocate_nothing() {
 	let src = indoc! {"
 		MyErr :: enum { bad, worse }
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)
@@ -413,7 +413,7 @@ fn custom_error_returns_allocate_nothing() {
 fn keyed_loop_reuses_its_key() {
 	let src = indoc! {r#"
 		count := 0
-		@c counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 			if mode == .alloc do count += 1
 			sys :: system_allocator()
 			sys.proc(sys.data, mode, size, align, old, old_size)

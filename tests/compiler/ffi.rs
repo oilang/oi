@@ -17,7 +17,7 @@ fn scalars_cross_ptr() {
 #[test]
 fn fn_casts_to_ptr() {
 	let src = indoc! {"
-		@c cb :: fn(n: i32) i32 { n + 1 }
+		cb :: fn(n: i32) i32 { n + 1 }
 		Cb :: @c fn(n: i32) i32
 		f := unsafe Cb.(ptr.(cb))
 		print(f(41), ptr.(0).is_null())

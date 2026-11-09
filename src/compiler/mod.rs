@@ -1645,10 +1645,9 @@ impl<M: Module> Compiler<M> {
 				.collect();
 			let access: Vec<Access> = item.params.iter().map(|p| p.access).collect();
 			check_params(&item.key, &item.params)?;
-			// `@export` / `@c`
+			// `@export`
 			let anns = self.annotations.get(&item.key);
 			let ann_span = |target| anns.into_iter().flatten().find_map(|a| Some((ann(a, target)?, a.1)));
-			let mut is_c_fn = false;
 			let is_unsafe = ann_span("unsafe").is_some();
 			let pure = ann_span(role::PURE).map(|(_, s)| s);
 			if let Some(span) = pure
@@ -1657,6 +1656,10 @@ impl<M: Module> Compiler<M> {
 				let msg = "a `@pure` fn can't take `mut` params";
 				return fail(msg, span, "mutation is a side effect");
 			}
+			if let Some((_, span)) = ann_span(role::C) {
+				let msg = "`@c` marks a C layout, not a fn";
+				return fail(msg, span, "drop it, or `@export` the fn for a C symbol");
+			}
 			if let Some((fields, span)) = ann_span(role::EXPORT) {
 				check_c_sig(types, &item.key, &params, &ret, span)?;
 				let sym = match fields.first() {
@@ -1664,14 +1667,10 @@ impl<M: Module> Compiler<M> {
 					_ => display_name(&item.key).replace('.', "_"),
 				};
 				self.exports.insert(item.key.clone(), sym);
-			} else if let Some((_, span)) = ann_span(role::C) {
-				check_c_sig(types, &item.key, &params, &ret, span)?;
-				is_c_fn = true;
 			}
 			let (sym, linkage) = self.symbol(&item.key);
 			// context-less fns
 			let foreign = self.exports.contains_key(&item.key)
-				|| is_c_fn
 				|| self.out.roots.contains(&item.key)
 				|| self.tests.iter().any(|(n, ..)| *n == item.key);
 			let ctx = anns.into_iter().flatten().find_map(|a| ctx_ann(item.scope, a));
