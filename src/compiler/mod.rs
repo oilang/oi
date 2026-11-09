@@ -1027,7 +1027,6 @@ impl<M: Module> Compiler<M> {
 		self.consts = program.consts.clone();
 		self.world.map = program.map.clone();
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
-		self.world.module_scopes = scopes.iter().map(|(&k, &v)| (k.to_string(), v.clone())).collect();
 		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
 		let scope_of = |key: &str| {
 			defs.get(key)
@@ -1043,7 +1042,6 @@ impl<M: Module> Compiler<M> {
 		// expand user macros to AST
 		let t = Instant::now();
 		let (mut program, mut stage0) = expand(program)?;
-		self.world.publics = program.publics.clone();
 		self.timings.push(("expand", t.elapsed()));
 		for m in &mut program.modules {
 			for item in &mut m.items {
@@ -1070,7 +1068,18 @@ impl<M: Module> Compiler<M> {
 		if self.aot {
 			(program.modules.iter_mut()).for_each(|m| m.items.retain(|(e, _)| !comptime_only(e)));
 		}
-		expand::prune(&mut program, &self.out.roots);
+		let filled = expand::prune(&mut program, &self.out.roots)?;
+		self.world.publics = program.publics.clone();
+		self.world.module_scopes = (program.modules.iter()).map(|m| (m.name.clone(), m.scope.clone())).collect();
+		if filled {
+			for (key, value) in &program.consts {
+				self.consts.entry(key.clone()).or_insert_with(|| value.clone());
+			}
+			for (key, anns) in &program.annotations {
+				let scope = &self.world.module_scopes[module_of(key).unwrap_or("main")];
+				self.annotations.entry(key.clone()).or_insert_with(|| qualify_anns(scope, anns));
+			}
+		}
 		// field amendments
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
 		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {

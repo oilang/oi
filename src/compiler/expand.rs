@@ -36,12 +36,12 @@ pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanne
 		annotations: program.annotations.clone(),
 		roots: program.roots.clone(),
 		core_origin: program.core_origin.clone(),
-		selected: vec![],
+		..Program::default()
 	}
 }
 
-// Drops library fns no kept code names, matched by last path segment.
-pub(super) fn prune(program: &mut Program, roots: &[String]) {
+// Drops library fns no kept code names, matched by last path segment, first parsing in the held files it names.
+pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Diagnostic> {
 	fn fn_name(e: &Spanned<Expr>) -> Option<&String> {
 		match Expr::peel_meta(e) {
 			([], _, (Expr::Fn { name, .. }, _)) => Some(name),
@@ -76,7 +76,10 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) {
 
 	// queued fns name themselves, so whatever stays in `fns` is dead
 	while let Some(item) = queue.pop() {
-		let mut mention = |n: &str| queue.extend(fns.remove(&simple(n)).into_iter().flatten());
+		let mut mention = |n: &str| {
+			queue.extend(fns.remove(&simple(n)).into_iter().flatten());
+			program.needed.insert(simple(n));
+		};
 		item.walk(&mut |e| {
 			if let Expr::Ident(n)
 			| Expr::Fn { name: n, .. }
@@ -100,6 +103,9 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) {
 	}
 
 	let dead: HashSet<_> = fns.into_keys().collect();
+	if program.fill()? {
+		return prune(program, roots).map(|_| true);
+	}
 	let live = |e: &Spanned<Expr>| fn_name(e).is_none_or(|n| !dead.contains(&simple(n)));
 	for m in &mut program.modules {
 		m.items.retain_mut(|item| {
@@ -109,6 +115,7 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) {
 			live(item)
 		});
 	}
+	Ok(false)
 }
 
 #[derive(Default)]

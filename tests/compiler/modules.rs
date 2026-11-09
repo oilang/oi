@@ -175,7 +175,7 @@ fn fn_ptr_cast_needs_a_c_signature() {
 
 #[test]
 fn foreign_unknown_symbol_fails() {
-	Project::foreign("", ["zzz_definitely_not_a_symbol : fn() int : foreign"]).fail_with("unknown foreign symbol");
+	Project::foreign(["unsafe cext.dne()"], ["pub dne : fn() int : foreign"]).fail_with("unknown foreign symbol");
 }
 
 #[test]
@@ -454,4 +454,30 @@ fn unnamed_lib_fns_are_never_checked() {
 			],
 		)
 		.check("5");
+}
+
+#[test]
+fn lib_files_parse_once_named() {
+	Project::new()
+		.main(["use util", "print(util.seven())"])
+		.lib(
+			"util",
+			[
+				r#"get! :: fn(n: Ast) Ast { `%{ident("val_" + n.str())}()` }"#,
+				"pub seven :: fn() int do get!(seven)",
+			],
+		)
+		.file(
+			"util/val.oi",
+			[
+				"module util",
+				"link :: fn() int do 7",
+				"val_seven :: fn() int do link()",
+			],
+		)
+		.file(
+			"util/stale.oi",
+			["module util", "pub Stale :: struct { m: Missing }", "Stale : Eq < {}"],
+		)
+		.check("7");
 }

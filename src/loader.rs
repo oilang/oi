@@ -170,6 +170,8 @@ pub struct Program {
 	pub roots: Vec<PathBuf>,
 	pub core_origin: HashSet<String>,
 	pub selected: Vec<(String, String, String, Span)>,
+	pub(crate) needed: HashSet<String>,
+	pub(crate) held: HashMap<String, Scan>,
 }
 
 impl Program {
@@ -365,6 +367,50 @@ pub fn parse_file(
 		.parse(Stream::from_iter(toks).map(eoi, |t| t))
 		.into_result()
 		.map_err(|errs| errs.iter().map(Diagnostic::from_rich).collect())
+}
+
+// A library file's top-level names and every name it mentions, read off its tokens.
+#[derive(Default)]
+pub(crate) struct Scan {
+	module: String,
+	base: Option<usize>,
+	decls: Vec<String>,
+	claims: Vec<Vec<String>>,
+	idents: HashSet<String>,
+	eager: bool,
+}
+
+fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
+	let name = |i: usize| match toks.get(i) {
+		Some((Token::Ident(n), _)) => Some(n.clone()),
+		_ => None,
+	};
+	let mut out = Scan {
+		module: module.into(),
+		eager,
+		..Scan::default()
+	};
+	let (mut depth, mut head, mut middle) = (0, 0, None);
+	for (i, (tok, _)) in toks.iter().enumerate() {
+		match tok {
+			Token::Ident(n) => {
+				out.idents.insert(n.clone());
+				out.eager |= matches!(toks.get(i + 1), Some((Token::Not, _)));
+				head = if depth == 0 { i } else { head };
+			}
+			Token::Use | Token::Comp => out.eager = true,
+			Token::At => out.eager |= matches!(name(i + 1).as_deref(), Some("test" | "export")),
+			Token::LParen | Token::LBracket | Token::LBrace => depth += 1,
+			Token::RParen | Token::RBracket | Token::RBrace => depth -= 1,
+			_ if depth > 0 => {}
+			Token::DoubleColon | Token::Bind => out.decls.extend(name(head)),
+			Token::Colon | Token::Assign if let Some(start) = middle.take() => out.decls.extend(name(start)),
+			Token::Colon => middle = Some(head),
+			Token::Lt if let Some(start) = middle.take() => out.claims.push((start..i).filter_map(name).collect()),
+			_ => {}
+		}
+	}
+	out
 }
 
 #[derive(Default)]
@@ -799,7 +845,17 @@ impl Loader {
 		let mut module = Module::new(name);
 		let mut imports = vec![];
 		self.prescan_module(name, &files);
-		let bases: Vec<usize> = files.into_iter().map(|(file, src)| self.program.map.push(file, src)).collect();
+		self.fill().map_err(|ds| self.report(ds))?;
+
+		// files nothing names yet stay in `held` for a later fill
+		let bases: Vec<usize> = (files.into_iter())
+			.filter_map(|(file, src)| {
+				let base = self.program.map.push(file.clone(), src);
+				let held = self.program.held.get_mut(&file).map(|held| held.base = Some(base));
+				held.is_none().then_some(base)
+			})
+			.collect();
+
 		let (map, raw) = (&self.program.map, &self.raw_macros);
 		let parsed: Vec<_> = std::thread::scope(|s| {
 			let jobs: Vec<_> = bases
@@ -939,17 +995,56 @@ impl Loader {
 		if !self.prescanned.insert(name.to_string()) {
 			return;
 		}
+		let from_core = self.program.core_origin.contains(name);
 		let mut imports = vec![];
-		for (_, src) in files {
-			let (raw, used) = prescan(&lex_at(src, 0));
+		for (path, src) in files {
+			let toks = lex_at(src, 0);
+			let (raw, used) = prescan(&toks);
 			self.raw_macros.extend(raw);
 			imports.extend(used);
+			self.program
+				.held
+				.insert(path.clone(), scan(name, name == "main" || from_core, &toks));
 		}
-		let from_core = self.program.core_origin.contains(name);
 		for m in imports {
 			if !self.prescanned.contains(&m) {
 				let inner = self.module_files(&m, from_core).unwrap_or_default();
 				self.prescan_module(&m, &inner);
+			}
+		}
+	}
+
+	// Parse held files that declare a needed name, closing over what they mention.
+	fn fill(&mut self) -> Result<bool, Vec<Diagnostic>> {
+		let mut filled = false;
+		loop {
+			let needed = &self.program.needed;
+			let fired: Vec<_> = (self.program.held)
+				.extract_if(|_, f| {
+					f.eager
+						|| f.decls.iter().any(|d| needed.contains(d))
+						|| f.claims.iter().any(|head| head.iter().all(|n| needed.contains(n)))
+				})
+				.map(|(_, f)| f)
+				.collect();
+			if fired.is_empty() {
+				return Ok(filled);
+			}
+			for f in fired {
+				self.program.needed.extend(f.idents);
+
+				let Some(base) = f.base else { continue };
+				let at = self.program.modules.iter().position(|m| m.name == f.module).unwrap();
+				let mut m = std::mem::replace(&mut self.program.modules[at], Module::new(&f.module));
+				m.scope.env.retain(|k, v| v.strip_prefix("core::") != Some(k));
+
+				let (file, src) = (self.program.map.locate_span(base..base).0, self.program.map.src(base));
+				let items = parse_file(file, src, base, &self.raw_macros)?;
+				let items = items.into_iter().flat_map(split_group).collect();
+				let scope = self.add_file(&mut m, &mut vec![], items).map_err(|d| vec![d])?;
+				m.scope.files.push((base..base + self.program.map.src(base).len(), scope));
+				self.program.modules[at] = m;
+				filled = true;
 			}
 		}
 	}
@@ -1020,6 +1115,7 @@ impl Loader {
 				if let Expr::Claim { typ, type_params, .. } = &mut item.0
 					&& !crate::compiler::TypeCtx::builtin_type(typ)
 					&& type_params.iter().all(|p| p.name != *typ)
+					&& (typ.starts_with(&own) || !typ.contains("::"))
 				{
 					*typ = m.scope.at(item.1).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
 					for _ in 0..aliases.len() {
@@ -1033,6 +1129,21 @@ impl Loader {
 }
 
 impl Program {
+	// Parse the held files `needed` now reaches.
+	pub(crate) fn fill(&mut self) -> Result<bool, Diagnostic> {
+		let mut loader = Loader {
+			program: std::mem::take(self),
+			..Loader::default()
+		};
+		let filled = loader.fill().map_err(|mut ds| ds.swap_remove(0));
+		if let Ok(true) = filled {
+			loader.seed_prelude();
+			loader.resolve_claims();
+		}
+		*self = loader.program;
+		filled
+	}
+
 	// Ensure selected names are public within their module, once macros have expanded.
 	pub(crate) fn check_selected(
 		&self,
@@ -1107,6 +1218,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	loader.program.publics.vis.insert("core::BUILD_OS".into(), Vis::Pub);
 	loader.program.publics.packages.insert(String::new(), root.to_path_buf());
 	loader.load_files("main", entry)?;
+	loader.fill().map_err(|ds| loader.report(ds))?;
 	loader.resolve_reexports();
 	loader.seed_prelude();
 	loader.resolve_claims();

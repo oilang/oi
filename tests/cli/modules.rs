@@ -28,7 +28,7 @@ fn private_fn_rejected() {
 #[test]
 fn module_headers_must_agree() {
 	let p = Project::new()
-		.main(["use foo", "print(foo.hi())"])
+		.main(["use foo", "print(foo.hi(), foo.yo())"])
 		.file("foo/a.oi", ["module foo", "pub hi :: fn() int { 1 }"])
 		.file("foo/b.oi", ["module bar", "pub yo :: fn() int { 2 }"]);
 	let out = err(p.run());
