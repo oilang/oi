@@ -286,20 +286,25 @@ impl<'a, M: Module> Translator<'a, M> {
 			};
 			return Ok((id, Typ::TypeId));
 		}
+
 		if let Some(out) = self.cast_prim(target, value, span)? {
 			return Ok(out);
 		}
+
 		let hint = match target {
 			Typ::TupleStruct(_, fields) if fields.len() == 1 => &fields[0].1,
 			t => t,
 		};
-		let (val, typ) = self.check_expr(value, hint)?;
+		let lit = matches!(value.0, Expr::AnonFn { .. }) && matches!(target, Typ::TupleStruct(p, _) if p == role::PTR);
+		let (val, typ) = self.for_c(self.c_callback || lit, |s| s.check_expr(value, hint))?;
 		if typ == *target {
 			return Ok((val, target.clone()));
 		}
+
 		if let Some(out) = self.assert_cast(val, &typ, target, span)? {
 			return Ok(out);
 		}
+
 		if let (Typ::Ref(_), Typ::TupleStruct(p, _)) = (target, &typ)
 			&& p == role::PTR
 		{
@@ -309,6 +314,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Typ::Annotated(vec![role::UNOWNED.into()], Box::new(target.clone())),
 			));
 		}
+
 		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
 			&& p == role::PTR
 		{
@@ -341,8 +347,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& p == role::PTR
 		{
 			check_c_sig(self.types, "@c fn", params, ret, value.1)?;
-			self.c_callable(value, params, ret)?;
-			return Ok((self.ld_word(val, 0), target.clone()));
+			return Ok((self.c_addr(value, val, params.len(), &typ)?, target.clone()));
 		}
 		if let (Typ::Array(e), Typ::Str) = (target, &typ)
 			&& **e == Typ::UInt(8)

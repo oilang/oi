@@ -1,7 +1,7 @@
 use super::call::{arg_slots, pack_varargs};
 use super::*;
 use crate::ast::TypeParam;
-use crate::compiler::{MAX_GENERIC_DEPTH, has_ann, role};
+use crate::compiler::{MAX_GENERIC_DEPTH, abi_params, c_abi_sig, has_ann, role};
 
 // Type params being solved for, and what they're bound to so far.
 pub(crate) struct Infer<'d> {
@@ -335,15 +335,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		let mut sig = self.module.make_signature();
-		sig.params
-			.extend(params.iter().map(|(_, t, a)| AbiParam::new(param_cl(t, *a, self.int))));
-		if def.ctx.is_some() {
-			sig.params.push(AbiParam::new(self.int)); // hidden `ctx`
+		let typed = params.iter().map(|(_, t, a)| (t, *a));
+		let foreign = self.out.roots.contains(&sym);
+		if foreign {
+			let arch = self.module.isa().triple().architecture;
+			c_abi_sig(&mut sig, typed, &ret, &types, arch, self.int);
+		} else {
+			let hidden = def.ctx.is_some() as usize + !def.captures.is_empty() as usize;
+			sig.params.extend(abi_params(typed, hidden, self.int));
+			sig.returns.extend(abi_returns(&ret, &types, self.int));
 		}
-		if !def.captures.is_empty() {
-			sig.params.push(AbiParam::new(self.int));
-		}
-		sig.returns.extend(abi_returns(&ret, &types, self.int));
+
 		let id = self
 			.module
 			.declare_function(&sym, Linkage::Local, &sig)
@@ -358,7 +360,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				})
 				.collect(),
 			ret,
-			foreign: false,
+			foreign,
 			ctx: def.ctx.clone(),
 			unsafe_call: false,
 			pure: def.pure || has_ann(self.types.consts.anns, name, role::PURE),

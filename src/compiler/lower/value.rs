@@ -1127,27 +1127,19 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Coerces variant shorthands, atoms, and `none`.
 	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if let Typ::Annotated(anns, inner) = target
-			&& let Typ::Fn(ps, ret) = &**inner
+			&& let Typ::Fn(ps, _) = &**inner
 			&& anns.iter().any(|a| a == role::C)
 		{
 			let value = match &value.0 {
 				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,
 				_ => value,
 			};
-			if let Expr::Ident(n) = &value.0 {
-				let key = self.qualify(n).into_owned();
-				self.out.roots.push(key);
-			}
-			let outer = std::mem::replace(&mut self.c_callback, true);
-			let checked = self.check_expr(value, inner);
-			self.c_callback = outer;
-			let (val, vt) = checked?;
+			let (val, vt) = self.for_c(true, |s| s.check_expr(value, inner))?;
 			if vt != **inner {
 				return Ok((val, vt));
 			}
 			check_ann_typ(self.types, anns, &vt, value.1)?;
-			self.c_callable(value, ps, ret)?;
-			return Ok((self.ld_word(val, 0), target.clone()));
+			return Ok((self.c_addr(value, val, ps.len(), inner)?, target.clone()));
 		}
 		// a variant's constructor builds the refined type
 		if let Some((variant, base)) = target.variant() {
@@ -1352,20 +1344,67 @@ impl<'a, M: Module> Translator<'a, M> {
 	// A closure on the ctx calling `val`.
 	fn ctx_thunk(&mut self, val: Value, from: &Typ, arity: usize, t: &str, span: Span) -> Result<TypedVal, Diagnostic> {
 		self.hidden_local("$f".into(), val, from.clone());
-		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
-		let call = Expr::Call {
-			name: "$f".into(),
-			type_args: vec![],
-			args,
-		};
 		self.anon_ctx = Some(t.into());
-
 		let sig = match from {
 			Typ::Annotated(_, inner) => inner,
 			from => from,
 		};
+		self.forwarder("$f", &None, arity, sig, span)
+	}
 
-		self.declare_anon_fn(&None, &[], false, AnonSig::Inferred(sig.clone()), &[(call, span)], span)
+	// A fn literal of shape `sig` passing its params on to `callee`.
+	fn forwarder(
+		&mut self,
+		callee: &str,
+		captures: &Option<Vec<crate::ast::Capture>>,
+		arity: usize,
+		sig: &Typ,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
+		let call = Expr::Call {
+			name: callee.into(),
+			type_args: vec![],
+			args,
+		};
+		self.declare_anon_fn(
+			captures,
+			&[],
+			false,
+			AnonSig::Inferred(sig.clone()),
+			&[(call, span)],
+			span,
+		)
+	}
+
+	// The code address C calls for `value`.
+	pub(super) fn c_addr(
+		&mut self,
+		value: &Spanned<Expr>,
+		val: Value,
+		arity: usize,
+		sig: &Typ,
+	) -> Result<Value, Diagnostic> {
+		let (expr, span) = value;
+		let name = match expr {
+			Expr::AnonFn { .. } | Expr::Block(_) => return Ok(self.ld_word(val, 0)),
+			Expr::Ident(n) if !self.vars.contains_key(n) => n,
+			_ => {
+				return fail(
+					"a `fn` value has no C address",
+					*span,
+					"pass the fn by name or a literal",
+				);
+			}
+		};
+		let key = self.qualify(name).into_owned();
+		if !self.out.c_shims.contains_key(&key) {
+			self.for_c(true, |s| s.forwarder(name, &Some(vec![]), arity, sig, *span))?;
+			let id = self.out.mono[self.out.roots.last().expect("a rooted shim")].id;
+			self.out.c_shims.insert(key.clone(), id);
+		}
+		let shim = self.module.declare_func_in_func(self.out.c_shims[&key], self.b.func);
+		Ok(self.b.ins().func_addr(self.int, shim))
 	}
 
 	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.

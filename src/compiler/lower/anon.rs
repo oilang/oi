@@ -178,7 +178,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			ctx,
 		};
 		let sym = format!("anon${}_{}", span.start, self.out.mono.len());
-		if self.c_callback {
+		if self.c_callback && resolved.is_empty() {
 			self.out.roots.push(oi_symbol(&sym));
 		}
 		let sig = self.declare_instance(&sym, &def, subst)?;
@@ -219,5 +219,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.temp(env, &typ);
 		Ok((env, typ))
+	}
+
+	// Run `f` with its fn literals marked as ones C calls.
+	pub(super) fn for_c<T>(&mut self, c: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+		let outer = std::mem::replace(&mut self.c_callback, c);
+		let out = f(self);
+		self.c_callback = outer;
+		out
 	}
 }

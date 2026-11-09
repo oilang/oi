@@ -87,15 +87,6 @@ fn annotation_rejections() {
 		["@export", "greet :: fn(name: string) int { 1 }"],
 		"has no C representation",
 	);
-	fail(
-		[
-			"@export",
-			"call_with_getter_cb :: fn(cb: fn(get: fn() i32) i32) i32 { 42 }",
-			"my_cb :: fn(get: fn() i32) i32 { get() }",
-			"print(call_with_getter_cb(my_cb))",
-		],
-		"mark it with `@c`",
-	);
 }
 
 #[test]

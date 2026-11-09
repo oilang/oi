@@ -613,6 +613,7 @@ struct Artifacts {
 	lowering: String,
 	wanted: Vec<FuncId>,
 	roots: Vec<String>,
+	c_shims: HashMap<String, FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	env_drops: Vec<(String, Typ)>,
 	any_types: Vec<Typ>,
@@ -1991,6 +1992,7 @@ impl<M: Module> Compiler<M> {
 				captures: &def.captures,
 				ctxless: sig.ctx.is_none().then(|| def.body.first().map_or(Span::default(), |s| s.1)),
 				self_fn: def.self_name.as_deref().map(|n| (n, &sig)),
+				foreign: sig.foreign,
 				root_ctx: self.out.roots.contains(&sym),
 				..FnDef::default()
 			};

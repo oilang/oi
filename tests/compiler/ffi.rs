@@ -23,10 +23,30 @@ fn fn_casts_to_ptr() {
 		print(f(41), ptr.(0).is_null())
 	"};
 	check(src, "42 true");
-	fail(
-		["@c V :: struct { x: f32 }", "f :: fn(v: V) f32 { v.x }", "ptr.(f)"],
-		"mark it with `@c`",
-	);
+}
+
+#[test]
+fn oi_fn_crosses_into_c_through_a_shim() {
+	let src = indoc! {"
+		@c V :: struct { x: f32, y: f32 }
+		@export
+		apply :: fn(f: @c fn(v: V) V) f32 {
+			f(.{ x = 1, y = 2 }).x
+		}
+		flip :: fn(v: V) V {
+			.{ x = v.y, y = v.x }
+		}
+		print(apply(flip), apply(fn(v: V) V { v }), ptr.(flip) == ptr.(flip))
+		C :: @c fn(v: V) V
+		lit := unsafe C.(
+			ptr.(fn(v: V) V {
+				.{ x = v.x + v.y, y = 0 }
+			})
+		)
+		print(lit(.{ x = 1, y = 2 }).x)
+	"};
+	check(src, ["2.0 1.0 true", "3.0"]);
+	fail(["f :: fn() {}", "g := f", "ptr.(g)"], "a `fn` value has no C address");
 }
 
 #[test]
