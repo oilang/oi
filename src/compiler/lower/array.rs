@@ -288,8 +288,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			s.rt_call("array_reserve", &[header, min_cap, size]);
 		});
 		let (data, len) = (self.array_data(header), self.array_len(header));
-		let off = self.b.ins().imul_imm(len, stride);
-		let addr = self.b.ins().iadd(data, off);
+		let addr = self.nth_addr(data, len, elem);
 		self.store_elem(addr, 0, elem, val);
 		let new_len = self.b.ins().iadd_imm(len, 1);
 		self.st(header, 8, new_len);
@@ -520,11 +519,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(exit);
 	}
 
-	// nth element of a raw data pointer.
-	pub(super) fn load_nth(&mut self, data: Value, idx: Value, elem: &Typ) -> Value {
+	// Address of the nth element of a raw data pointer.
+	pub(super) fn nth_addr(&mut self, data: Value, idx: Value, elem: &Typ) -> Value {
 		let stride = self.elem_stride(elem);
 		let off = self.b.ins().imul_imm(idx, stride);
-		let addr = self.b.ins().iadd(data, off);
+		self.b.ins().iadd(data, off)
+	}
+
+	pub(super) fn load_nth(&mut self, data: Value, idx: Value, elem: &Typ) -> Value {
+		let addr = self.nth_addr(data, idx, elem);
 		self.load_elem(addr, 0, elem)
 	}
 }

@@ -1318,7 +1318,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Option<Spanned<Expr>>, Diagnostic> {
 		Ok(match &cond.0 {
 			Expr::Gen { pat, key, iter } => {
-				gens.push(self.for_loop((pat, key.as_deref()), iter)?);
+				self.for_loop((pat, key.as_deref()), iter, gens)?;
 				None
 			}
 			Expr::Binary(BinOp::And, lhs, rhs) => match (self.generators(lhs, gens)?, self.generators(rhs, gens)?) {
@@ -1574,31 +1574,86 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Set up a generator over its iterable.
-	fn for_loop<'e>(&mut self, pats: Pats<'e>, iter: &Spanned<Expr>) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
+	fn for_loop<'e>(
+		&mut self,
+		(pat, key): Pats<'e>,
+		iter: &Spanned<Expr>,
+		gens: &mut Vec<Cursor<'e, 'a, M>>,
+	) -> Result<(), Diagnostic> {
+		let (pat, access) = match &pat.0 {
+			Expr::ArgMod(access, name) => (&**name, *access),
+			_ => (pat, Access::Read),
+		};
+		if let Some((Expr::ArgMod(..), span)) = key {
+			return fail("the key is not a place", *span, "`mut` goes on the item");
+		}
 		let (iter, consume) = match &iter.0 {
 			Expr::ArgMod(Access::Move, x) => (&**x, true),
-			_ => (iter, false),
+			_ => (iter, access == Access::Move),
 		};
 		let iter = self.header(iter)?;
-		let (val, typ) = self.expr(iter)?;
-		let owns = consume && matches!(&typ, Typ::Array(e) if self.is_affine(e));
+		let (mut val, typ) = self.expr(iter)?;
+		if access == Access::Mut {
+			self.mut_place(Self::place_root(iter), "only a mutable binding can be looped `mut`")?;
+		}
+
+		// resources are owned. a full-width array or map slot is viewed in place, the rest is written back
+		let given = match (access, typ.unkeyed()) {
+			(Access::Move, Typ::Array(e)) if self.is_affine(e) => access,
+			(Access::Mut, Typ::FixedArray(e, _)) if self.elem_stride(e) == elem_size(e) => access,
+			(Access::Mut, Typ::Array(e)) if self.elem_stride(e) == elem_size(e) => {
+				self.cow_array(val, e);
+				access
+			}
+			(Access::Mut, Typ::Map(_, v)) if !v.is_unit() => {
+				let (slot, _, lent) = self.lend_mut(iter)?;
+				let map = self.ld_word(slot, 0);
+				val = self.rt_call("map_cow", &[map]).unwrap();
+				self.st(slot, 0, val);
+				self.reload_lent(&[(slot, lent)])?;
+				access
+			}
+			_ => Access::Read,
+		};
+
 		if consume {
 			self.move_out(iter, &typ)?;
 			self.untemp(val);
-			if !owns {
+			if given != Access::Move {
 				self.temp(val, &typ);
 			}
 		}
-		self.for_value(pats, (val, typ), owns, iter.1)
+
+		gens.push(self.for_value((pat, key), (val, typ), given, iter.1)?);
+		let (Access::Mut, Access::Read, Expr::Ident(name), Some(key)) = (access, given, &pat.0, key) else {
+			return Ok(());
+		};
+
+		let index = Expr::Index {
+			collection: Box::new(iter.clone()),
+			index: Box::new(key.clone()),
+		};
+		let back = crate::ast::assign((index, iter.1), None, (Expr::Ident(name.clone()), pat.1), pat.1);
+		let step = move |s: &mut Self| {
+			let mut item = s.vars[name].clone();
+			item.mutable = true;
+			s.vars.insert(name.clone(), item);
+			s.defer(&None, &back, When::Always, false);
+			Ok(())
+		};
+		gens.push((Box::new(step), None));
+
+		Ok(())
 	}
 
 	fn for_value<'e>(
 		&mut self,
 		(pat, key): Pats<'e>,
 		(val, typ): TypedVal,
-		owns: bool,
+		access: Access,
 		span: Span,
 	) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
+		let owns = access == Access::Move;
 		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
 		if self.claims(&typ, role::ITERATOR) || !direct && self.claims(&typ, role::KEYED) {
 			return Ok((self.iter_loop((pat, key), (val, typ), span)?, None));
@@ -1662,12 +1717,28 @@ impl<'a, M: Module> Translator<'a, M> {
 			let next = s.b.ins().iadd_imm(iv, 1);
 			s.b.def_var(counter, next);
 			let (data, elem) = &src;
-			let item = s.load_nth(*data, iv, elem);
 			let n = s.scopes.last().map_or(0, Vec::len);
-			s.bind_pat(pat, item, elem, Some(false)).map_err(|d| match hint {
-				true => d.with_note("the key is a second name, as in `loop v, k in m`"),
-				false => d,
-			})?;
+
+			// `mut` items view their slot
+			if let (Access::Mut, Expr::Ident(name)) = (access, &pat.0) {
+				let slot = match keys {
+					Some(_) => s.rt_call("map_slot", &[val, iv]).unwrap(),
+					None => s.nth_addr(*data, iv, elem),
+				};
+				let var = s.b.declare_var(s.int);
+				s.b.def_var(var, slot);
+				let mut view = Local::plain(var, elem.clone(), true);
+				view.boxed = true;
+				s.vars.insert(name.clone(), view);
+			} else {
+				let item = s.load_nth(*data, iv, elem);
+				let item = if owns { s.unbox_ret(item, elem) } else { item };
+				s.bind_pat(pat, item, elem, Some(false)).map_err(|d| match hint {
+					true => d.with_note("the key is a second name, as in `loop v, k in m`"),
+					false => d,
+				})?;
+			}
+
 			if let Some(key) = key {
 				let (key_val, key_typ) = match (&keys, &enum_key) {
 					(Some((kdata, kt)), _) => (s.load_nth(*kdata, iv, kt), kt.clone()),

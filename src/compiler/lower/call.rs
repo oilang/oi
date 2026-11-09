@@ -750,7 +750,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Require a mutable binding place.
-	fn mut_place<'e>(&mut self, e: &'e Spanned<Expr>, msg: &str) -> Result<&'e String, Diagnostic> {
+	pub(super) fn mut_place<'e>(&mut self, e: &'e Spanned<Expr>, msg: &str) -> Result<&'e String, Diagnostic> {
 		let Expr::Ident(name) = &e.0 else {
 			return fail(msg, e.1, "not a binding");
 		};

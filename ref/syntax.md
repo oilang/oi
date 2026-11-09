@@ -1667,6 +1667,10 @@ main :: fn() {
 	loop _, k in m { print(k) }
 	loop r, i in "h☃i" { print(i, r) } # 0 h, 1 ☃, 4 i
 
+	# the bind takes param modifiers
+	loop mut x, i in xs { x += i } # writes land in xs
+	loop move f in fs do f.close() # each element owned by the body, fs is consumed
+
 	# a header is `;`-separated groups of `,`-separated clauses
 	# `,` steps every clause in the group each round, and the round ends when any clause ends
 	loop x in xs, y in ys { print(x, y) } # zip, shortest wins
@@ -2531,7 +2535,7 @@ main :: fn() {
 
 	# it's a binding qualifier like `mut`, and can go wherever a name is bound
 	update :: fn(with mut self; dt: f32) { pos += vel * dt }
-	loop with e in entities { pos += vel * dt }
+	loop with mut e in entities { pos += vel * dt }
 	with a, b { }
 
 	# works with anything with members

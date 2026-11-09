@@ -158,6 +158,31 @@ fn keyed_loops() {
 }
 
 #[test]
+fn mut_binds_write_back() {
+	let src = indoc! {r#"
+		P :: struct { a: int }
+		ps := [P.{1} P.{2}]
+		qs := ps
+		loop with mut p in ps do a *= 10
+		Q :: struct { m: [string]int }
+		q := Q.{ m = ["ab" = 1] }
+		loop mut v, k in q.m do v += k.len()
+		print(ps, qs, q.m)
+	"#};
+	check(src, r#"[P.{a = 10}, P.{a = 20}] [P.{a = 1}, P.{a = 2}] ["ab" = 3]"#);
+	assert_clean(src);
+
+	let src = indoc! {r#"
+		P :: struct { a: int }
+		rows: @soa []P
+		rows << P.{1}
+		loop mut row in rows do row.a += 1
+	"#};
+	check([src, "print(rows.a)"], "[2]");
+	fail(["xs := [1]", "loop mut x, mut i in xs {}"], "the key is not a place");
+}
+
+#[test]
 fn keyed_protocol() {
 	let src = indoc! {r#"
 		Ring :: struct { items: []int, start: int }

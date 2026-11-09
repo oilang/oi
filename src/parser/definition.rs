@@ -19,6 +19,9 @@ enum Dot {
 
 // `with` opens a bound name over the body.
 fn open_bound(bound: &Spanned<Expr>, body: &mut Vec<Spanned<Expr>>) -> bool {
+	if let Expr::ArgMod(_, name) = &bound.0 {
+		return open_bound(name, body);
+	}
 	let (Expr::Ident(name) | Expr::Bind { name, .. }) = &bound.0 else {
 		return false;
 	};
@@ -307,10 +310,18 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 
 	let name = spanned(p.def_name.clone().map(Expr::Ident));
-	let loop_names = (p.pat.clone().or(name.clone()).map(Box::new))
-		.then(just(Token::Comma).ignore_then(name.map(Box::new)).or_not())
+	let modded = (p.access.clone().then(name.clone()))
+		.map_with(|(a, e), ex| (Expr::ArgMod(a, Box::new(e)), ex.span()))
+		.or(name);
+	let loop_names = (p.pat.clone().or(modded.clone()).map(Box::new))
+		.then(just(Token::Comma).ignore_then(modded.map(Box::new)).or_not())
+		.map(|(pat, key)| {
+			let hidden = matches!(pat.0, Expr::ArgMod(Access::Mut, _)).then(|| (Expr::Ident("$key".into()), pat.1));
+			(pat, key.or(hidden.map(Box::new)))
+		})
 		.then_ignore(just(Token::In))
 		.boxed();
+
 	let generator = loop_names
 		.then(
 			just(Token::Move)

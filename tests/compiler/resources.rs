@@ -415,14 +415,19 @@ fn a_move_loop_owns_each_element() {
 	let close = "File :< { close :: fn(move self) int { self.fd } }";
 	let mk = "fs := loop i in 0..3 do File.{fd = i}";
 	check(
-		[FILE, close, mk, "print(loop f in move fs do f.close())"],
+		[FILE, close, mk, "print(loop move f in fs do f.close())"],
 		["drop 0", "drop 1", "drop 2", "[0, 1, 2]"],
 	);
 	check(
-		[FILE, mk, "loop f in move fs { if f.fd == 0 do break }"],
+		[FILE, mk, "loop move f in fs { if f.fd == 0 do break }"],
 		["drop 0", "drop 1", "drop 2"],
 	);
-	fail([FILE, close, mk, "loop f in fs { f.close() }"], "it is borrowed here");
+	fail(
+		[FILE, close, mk, "loop f in move fs { f.close() }"],
+		"`loop move x` bind owns",
+	);
+	let wide = "Pair :: struct { fd: int, tag: int }; Pair : Drop < { drop :: fn(mut self) {} }";
+	assert_clean([wide, "ps := loop i in 0..3 do Pair.{i, i}", "loop move p in ps do p.fd"]);
 }
 
 #[test]

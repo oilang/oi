@@ -78,7 +78,7 @@ Thread[T] : Pollable[T] < {
 ## Waits on each in turn.
 [T; W: Waitable[T]] []W : Waitable[[]T] < {
 	wait :: fn(move self) []T {
-		loop w in move self do w.wait()
+		loop move w in self do w.wait()
 	}
 }
 

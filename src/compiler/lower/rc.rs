@@ -660,6 +660,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let depth = depth.ok_or_else(|| {
 				Diagnostic::new(format!("cannot move `{name}`, it is borrowed here"), span.clone())
 					.with_label("only an owned binding can be moved")
+					.with_note("a `move x: T` param or a `loop move x` bind owns its value")
 			})?;
 			if let Some(frame) = self.loops.iter().rfind(|f| f.top.is_some())
 				&& depth < frame.depth
