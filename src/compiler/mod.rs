@@ -1019,6 +1019,9 @@ impl<M: Module> Compiler<M> {
 		self.builder_ctx = FunctionBuilderContext::new();
 
 		self.cache = cache::Store::open(&program.roots[0]);
+		if let Some(store) = self.cache.as_ref().filter(|_| !self.stage0) {
+			store.sweep();
+		}
 		self.world.core_origin = program.core_origin.clone();
 		self.world.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();

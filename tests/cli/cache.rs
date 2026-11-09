@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::SystemTime;
 
 use crate::common::{Project, Run, oi, ok};
 
@@ -35,4 +36,18 @@ fn disabled_cache_writes_nothing() {
 	let out = oi(&["run", "main.oi"]).current_dir(root).env("OI_CACHE", "0").run(None);
 	assert_eq!(ok(out), "3");
 	assert!(!root.join(".oi").exists());
+}
+
+#[test]
+fn run_sweeps_stale_entries() {
+	let dir = Project::new().file("main.oi", "1 + 2");
+	let root: &Path = dir.as_ref();
+	let stale = root.join(".oi/cache/stale");
+	std::fs::create_dir_all(root.join(".oi/cache")).unwrap();
+	std::fs::File::create(&stale)
+		.unwrap()
+		.set_modified(SystemTime::UNIX_EPOCH)
+		.unwrap();
+	assert_eq!(ok(dir.run()), "3");
+	assert!(!stale.exists());
 }
