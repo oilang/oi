@@ -254,6 +254,28 @@ fn loop_collects_tails() {
 }
 
 #[test]
+fn nested_tail_loop_collects_nothing() {
+	let src = indoc! {"
+		count := 0
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		main :: fn() {
+			xs := [1 2 3]
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			sum := 0
+			loop x in xs {
+				loop y in xs do sum += x * y
+			}
+			print(sum, count)
+		}
+	"};
+	check(src, "36 0");
+}
+
+#[test]
 fn break_value_errors() {
 	fail("x := break", "never produce a value");
 	fail("loop { x := continue }", "never produce a value");

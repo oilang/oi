@@ -1294,14 +1294,31 @@ impl<'a, M: Module> Translator<'a, M> {
 				s.ended();
 			}
 
+			// a tail nobody collects runs as a statement
+			let mut body = body.to_vec();
+			let at = s.loops.iter().rposition(|f| f.label.as_deref() != Some(DIM));
+			if let [.., (last, sp)] = &body[..]
+				&& !matches!((last, body.len()), (Expr::Match { .. }, 1))
+				&& at.is_some_and(|at| s.loops[at].collect.is_none())
+			{
+				body.push((Expr::Tuple(vec![]), *sp));
+			}
+			let body = &body[..];
+
 			let end = |span| [(Expr::Break(None, None), span)];
 			match (cond, body) {
 				// binds run in turn until one can miss
 				(Some(c), _) if infallible(&c.0) => {
 					let clauses = chain(c);
 					for (at, clause) in clauses.iter().enumerate() {
-						s.pack_operand(clause)?;
-						let Some((id, mut arm)) = s.unwrap_arm(clause, body) else {
+						let found = match s.in_place_arm(clause, body) {
+							Some((src, arm)) => Some((src.clone(), arm)),
+							None => {
+								s.pack_operand(clause)?;
+								s.unwrap_arm(clause, body)
+							}
+						};
+						let Some((id, mut arm)) = found else {
 							continue;
 						};
 						if let rest @ [_, ..] = &clauses[at + 1..] {
