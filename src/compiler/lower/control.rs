@@ -33,7 +33,18 @@ fn infallible(cond: &Expr) -> bool {
 	match cond {
 		Expr::Bind { .. } => true,
 		Expr::PatBind { pat, .. } => matches!(pat.0, Expr::Tuple(_) | Expr::Array(_) | Expr::StructLit { .. }),
+		Expr::Binary(BinOp::And, lhs, rhs) => infallible(&lhs.0) && infallible(&rhs.0),
+		Expr::Block(stmts) => !stmts.is_empty() && stmts.iter().all(|stmt| infallible(&stmt.0)),
 		_ => false,
+	}
+}
+
+// The clauses of a header chain.
+fn chain(cond: &Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	match &cond.0 {
+		Expr::Binary(BinOp::And, lhs, rhs) => [chain(lhs), chain(rhs)].concat(),
+		Expr::Block(stmts) => stmts.iter().flat_map(chain).collect(),
+		_ => vec![cond.clone()],
 	}
 }
 
@@ -1266,15 +1277,23 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			let end = |span| [(Expr::Break(None, None), span)];
 			match (cond, body) {
+				// binds run in turn until one can miss
 				(Some(c), _) if infallible(&c.0) => {
-					s.pack_operand(c)?;
-					match s.unwrap_arm(c, body) {
-						Some((id, arm)) => {
-							s.ended();
-							s.match_expr(&id, &[arm], None, Some(&end(c.1)), None, c.1)
+					let clauses = chain(c);
+					for (at, clause) in clauses.iter().enumerate() {
+						s.pack_operand(clause)?;
+						let Some((id, mut arm)) = s.unwrap_arm(clause, body) else {
+							continue;
+						};
+						if let rest @ [_, ..] = &clauses[at + 1..] {
+							let (cond, els) = (Box::new((Expr::Block(rest.to_vec()), c.1)), Some(end(c.1).to_vec()));
+							let then = std::mem::take(&mut arm.body);
+							arm.body = vec![(Expr::If { cond, then, els }, c.1)];
 						}
-						None => s.block(body),
+						s.ended();
+						return s.match_expr(&id, &[arm], None, Some(&end(c.1)), None, c.1);
 					}
+					s.block(body)
 				}
 				(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
 					let arm = MatchArm {

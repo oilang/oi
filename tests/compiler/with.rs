@@ -46,6 +46,17 @@ fn control_binds() {
 }
 
 #[test]
+fn multi_generator_headers() {
+	let src = indoc! {"
+		P :: struct { x: int }
+		Q :: struct { y: int }
+		loop with p in [P.{ 1 }], q in [Q.{ 2 }] do print(x + y)
+		loop with p in [P.{ 3 }]; q in [Q.{ 4 }] do print(x * y)
+	"};
+	check(src, ["3", "12"]);
+}
+
+#[test]
 fn item_subjects() {
 	let src = indoc! {"
 		use math

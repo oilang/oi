@@ -305,8 +305,11 @@ fn header_bind() {
 		it2 := 0..2
 		loop n := it2.next() { print(n) }
 		print(:done)
+		print(loop a := 1, b := 2 { break a + b } + 1)
+		o : ?int = 3
+		print(loop a := 1; b := o { break a + b })
 	"};
-	check(src, ["0", "1", "2", "0", "1", ":done"]);
+	check(src, ["0", "1", "2", "0", "1", ":done", "4", "some.(4)"]);
 }
 
 #[test]

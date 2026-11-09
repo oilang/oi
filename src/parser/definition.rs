@@ -29,6 +29,16 @@ fn open_bound(bound: &Spanned<Expr>, body: &mut Vec<Spanned<Expr>>) -> bool {
 	true
 }
 
+// `with` opens the item of every generator in a header.
+fn open_gens(cond: &Spanned<Expr>, body: &mut Vec<Spanned<Expr>>) -> bool {
+	match &cond.0 {
+		Expr::Gen { pat, .. } => open_bound(pat, body),
+		Expr::Binary(BinOp::And, lhs, rhs) => open_gens(lhs, body) | open_gens(rhs, body),
+		Expr::Block(groups) => groups.iter().fold(false, |opened, group| open_gens(group, body) | opened),
+		_ => false,
+	}
+}
+
 fn pipe_step((e, span): Spanned<Expr>) -> Spanned<Expr> {
 	match e {
 		Expr::Ident(name) => (
@@ -392,7 +402,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.or(header_expr.clone().map(|e| (None, vec![e]))),
 		)
 		.validate(|((label, with), (cond, mut body)), ex, emitter| {
-			if with.is_some() && !matches!(&cond, Some((Expr::Gen { pat, .. }, _)) if open_bound(pat, &mut body)) {
+			if with.is_some() && !cond.as_ref().is_some_and(|cond| open_gens(cond, &mut body)) {
 				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
 			}
 			(
