@@ -756,7 +756,7 @@ impl Compiler<ObjectModule> {
 		compiler
 	}
 
-	pub fn compile_object(mut self, program: &Program, timings: bool) -> Result<(Vec<u8>, Vec<String>), Diagnostic> {
+	pub fn compile_object(mut self, program: Program, timings: bool) -> Result<(Vec<u8>, Vec<String>), Diagnostic> {
 		let (t, n) = (Instant::now(), self.timings.len());
 		let entry = self.build(program)?;
 		self.time_codegen(t, n);
@@ -993,7 +993,7 @@ impl<M: Module> Compiler<M> {
 		define_data(m, sym, bytes.to_vec())
 	}
 
-	fn build(&mut self, program: &Program) -> Result<FuncId, Diagnostic> {
+	fn build(&mut self, program: Program) -> Result<FuncId, Diagnostic> {
 		let mut struct_items: Vec<(&str, &[Param])> = vec![];
 		let mut generics = Generics::default();
 		let mut enum_items: Vec<EnumItem> = vec![];
@@ -1067,6 +1067,7 @@ impl<M: Module> Compiler<M> {
 		if self.aot {
 			(program.modules.iter_mut()).for_each(|m| m.items.retain(|(e, _)| !comptime_only(e)));
 		}
+		expand::prune(&mut program, &self.out.roots);
 		// field amendments
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
 		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {
@@ -2416,7 +2417,7 @@ impl<M: Module> Compiler<M> {
 }
 
 impl Compiler {
-	pub fn compile(&mut self, program: &Program) -> Result<*const u8, Diagnostic> {
+	pub fn compile(&mut self, program: Program) -> Result<*const u8, Diagnostic> {
 		let (t, n) = (Instant::now(), self.timings.len());
 		let id = self.build(program)?;
 		self.module.finalize_definitions().expect("finalize definitions");
@@ -2434,7 +2435,7 @@ impl Compiler {
 	}
 
 	// Compile and run a stage-0 program, leaving `roots` callable.
-	pub(crate) fn run_stage0(&mut self, program: &Program, roots: Vec<String>) -> Result<(), Diagnostic> {
+	pub(crate) fn run_stage0(&mut self, program: Program, roots: Vec<String>) -> Result<(), Diagnostic> {
 		self.stage0 = true;
 		self.out.roots = roots;
 		let entry = self.compile(program)?;

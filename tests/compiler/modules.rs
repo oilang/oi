@@ -439,3 +439,19 @@ fn orphan_claims() {
 		.lib("show", ["pub Show :: trait { show: fn(self) int }"])
 		.fail_with("`P : Show` is an orphan claim");
 }
+
+#[test]
+fn unnamed_lib_fns_are_never_checked() {
+	Project::new()
+		.main(["use util", "print(util.half())"])
+		.lib(
+			"util",
+			[
+				"pub half :: fn() int do 5",
+				"pub stale :: fn(m: Missing) int do 0",
+				"pub P :: struct { x: int }",
+				"P :< { pub gone :: fn(self, m: Missing) {} }",
+			],
+		)
+		.check("5");
+}

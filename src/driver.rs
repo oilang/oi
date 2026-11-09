@@ -69,7 +69,8 @@ pub fn run_source(entry: Entry, root: &Path, args: &[String], opts: DebugOpts) -
 		}
 	}
 
-	let code = compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
+	let map = program.map.clone();
+	let code = compiler.compile(program).map_err(|e| e.report_mapped(&map))?;
 	if opts.check {
 		return Ok(());
 	}
@@ -123,9 +124,10 @@ pub fn build_source(
 ) -> Result<(), Reported> {
 	let mut compiler = Compiler::object(stem, lib);
 	let program = load(&mut compiler, entry, root)?;
+	let map = program.map.clone();
 	let (obj, link_libs) = compiler
-		.compile_object(&program, opts.timings)
-		.map_err(|e| e.report_mapped(&program.map))?;
+		.compile_object(program, opts.timings)
+		.map_err(|e| e.report_mapped(&map))?;
 	let tmp = std::env::temp_dir().join(format!("oi_{}", std::process::id()));
 	let write = |ext: &str, bytes: &[u8]| {
 		let path = tmp.with_extension(ext);
@@ -170,7 +172,8 @@ pub fn test_source(entry: Entry, root: &Path, patterns: &[String]) -> Result<(),
 	let mut compiler = Compiler::default();
 	compiler.include_tests = true;
 	let program = load(&mut compiler, entry, root)?;
-	compiler.compile(&program).map_err(|e| e.report_mapped(&program.map))?;
+	let map = program.map.clone();
+	compiler.compile(program).map_err(|e| e.report_mapped(&map))?;
 	let total = compiler.tests.len();
 	if !patterns.is_empty() {
 		compiler.tests.retain(|(_, display, _, tags)| {

@@ -666,7 +666,7 @@ pub(crate) fn fold(
 
 	let mut compiler = stage0.take().unwrap_or_default();
 	let ran = match DEPTH.fetch_add(1, Ordering::Relaxed) {
-		..8 => compiler.run_stage0(&synthetic, vec![name.clone()]),
+		..8 => compiler.run_stage0(synthetic, vec![name.clone()]),
 		_ => Err(Diagnostic::new("`comp` recurses without end", span.into_range())),
 	};
 

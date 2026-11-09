@@ -40,6 +40,77 @@ pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanne
 	}
 }
 
+// Drops library fns no kept code names, matched by last path segment.
+pub(super) fn prune(program: &mut Program, roots: &[String]) {
+	fn fn_name(e: &Spanned<Expr>) -> Option<&String> {
+		match Expr::peel_meta(e) {
+			([], _, (Expr::Fn { name, .. }, _)) => Some(name),
+			_ => None,
+		}
+	}
+
+	let simple = |name: &str| name.rsplit([':', '.']).next().unwrap_or_default().to_string();
+	let (mut queue, mut fns) = (vec![], HashMap::<_, Vec<_>>::new());
+	for m in &mut program.modules {
+		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
+		for item in &mut m.items {
+			let items = if matches!(&item.0, Expr::Claim { traits, .. } if traits.is_empty())
+				&& let (Expr::Claim { fills, fields, .. }, _) = item
+			{
+				queue.extend(fields.iter_mut().filter_map(|f| f.default.as_mut()).map(|d| &mut d.0));
+				fills.as_mut_slice()
+			} else {
+				std::slice::from_mut(item)
+			};
+			for e in items {
+				match fn_name(e).filter(|&n| !pinned && !program.annotations.contains_key(n) && !roots.contains(n)) {
+					Some(name) => fns.entry(simple(name)).or_default().push(&mut e.0),
+					None => queue.push(&mut e.0),
+				}
+			}
+		}
+	}
+
+	let seeds = program.consts.values_mut().chain(program.annotations.values_mut().flatten());
+	queue.extend(seeds.map(|(e, _)| e));
+
+	// queued fns name themselves, so whatever stays in `fns` is dead
+	while let Some(item) = queue.pop() {
+		let mut mention = |n: &str| queue.extend(fns.remove(&simple(n)).into_iter().flatten());
+		item.walk(&mut |e| {
+			if let Expr::Ident(n)
+			| Expr::Fn { name: n, .. }
+			| Expr::Call { name: n, .. }
+			| Expr::MethodCall { method: n, .. }
+			| Expr::Field { field: n, .. }
+			| Expr::StructLit { name: n, .. }
+			| Expr::EnumShorthand { variant: n, .. }
+			| Expr::Resolved(n, _) = e
+			{
+				mention(n);
+			}
+			for t in e.types() {
+				t.walk_mut(&mut |t| {
+					if let TypeExpr::Name(n) | TypeExpr::Generic(n, _) | TypeExpr::Resolved(n) = t {
+						mention(n);
+					}
+				});
+			}
+		});
+	}
+
+	let dead: HashSet<_> = fns.into_keys().collect();
+	let live = |e: &Spanned<Expr>| fn_name(e).is_none_or(|n| !dead.contains(&simple(n)));
+	for m in &mut program.modules {
+		m.items.retain_mut(|item| {
+			if let Expr::Claim { fills, .. } = &mut item.0 {
+				fills.retain(live);
+			}
+			live(item)
+		});
+	}
+}
+
 #[derive(Default)]
 struct Expander {
 	// stage-0 fns, in definition order
@@ -247,7 +318,7 @@ impl Expander {
 		});
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
-		compiler.run_stage0(&synthetic, self.macros.keys().cloned().collect())?;
+		compiler.run_stage0(synthetic, self.macros.keys().cloned().collect())?;
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.finalized(name);
 		}
@@ -413,12 +484,12 @@ impl Expander {
 }
 
 // Expand all macro calls across a program's modules, keeping the stage-0 JIT that ran them.
-pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnostic> {
+pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnostic> {
 	let mut ex = Expander {
-		publics: program.publics.clone(),
+		publics: out.publics.clone(),
 		..Default::default()
 	};
-	let mut out = lend(program, |_, _| {});
+	let selected = std::mem::take(&mut out.selected);
 	for m in &mut out.modules {
 		for item in std::mem::take(&mut m.items) {
 			match item.0 {
@@ -510,7 +581,7 @@ pub fn expand(program: &Program) -> Result<(Program, Option<Compiler>), Diagnost
 	}
 
 	out.publics = ex.publics;
-	out.check_selected(&program.selected, |q| ex.macros.contains_key(q))?;
+	out.check_selected(&selected, |q| ex.macros.contains_key(q))?;
 	Ok((out, ex.stage0))
 }
 
