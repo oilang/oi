@@ -286,6 +286,7 @@ where
 	let item = Recursive::declare();
 	let attr_macro = Recursive::declare();
 	let stmt = Recursive::declare();
+	let do_stmt = Recursive::declare();
 	let place = Recursive::declare();
 	let bind = Recursive::declare();
 
@@ -515,7 +516,7 @@ where
 		});
 
 	// blocks
-	let do_body = just(Token::Do).ignore_then(stmt.clone()).map(|s| vec![s]);
+	let do_body = just(Token::Do).ignore_then(do_stmt.clone()).map(|s| vec![s]);
 	let lines =
 		semi(stmt.clone())
 			.repeated()
@@ -564,6 +565,6 @@ where
 		juxt_expr: juxt_expr.clone().boxed(),
 	};
 	expr.define(definition::definition(&p, header_expr, header_cond, juxt_expr));
-	stmt::stmt(&p, stmt, place, bind);
+	stmt::stmt(&p, stmt, do_stmt, place, bind);
 	item::item(&p, item, attr_macro, anon_fields)
 }

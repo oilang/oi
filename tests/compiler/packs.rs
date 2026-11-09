@@ -58,9 +58,7 @@ fn producers_by_consumer() {
 		find :: fn(n: int) ?int { if n > 0 do n else do none }
 		parse :: fn(n: int) !int { if n > 0 do n else do error("bad") }
 		open :: fn(k: int) (n: int, err: ?Error) {
-			if k > 0 do k,
-			none else do 0,
-			error("shut")
+			if k > 0 do (k, none) else do (0, error("shut"))
 		}
 		hits :: fn(m: [string]int, a: any) ?int {
 			find(1)? + m["a"]? + int.(a)?
@@ -159,8 +157,8 @@ fn sum_cast_extracts_member_or_zero() {
 fn error_slots() {
 	// partial packs flow through their error slot
 	let src = indoc! {r#"
-		open :: fn(k: int) (n: int, err: ?Error) { if k > 0 do k, none else do 0, error("shut") }
-		pair :: fn(k: int) (a, b: int, err: ?Error) { if k > 0 do k, -k, none else do 0, 0, error("odd") }
+		open :: fn(k: int) (n: int, err: ?Error) { if k > 0 do (k, none) else do (0, error("shut")) }
+		pair :: fn(k: int) (a, b: int, err: ?Error) { if k > 0 do (k, -k, none) else do (0, 0, error("odd")) }
 		twice :: fn(k: int) (n: int, err: ?Error) { open(k)? * 2, none }
 		strict :: fn(k: int) !int { open(k)? }
 		if n := open(2) do print(n)

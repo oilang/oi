@@ -117,6 +117,7 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 pub(super) fn stmt<'token, I: Tokens<'token>>(
 	p: &Parsers<'token, I>,
 	mut stmt: Rec<'token, I, Spanned<Expr>>,
+	mut do_stmt: Rec<'token, I, Spanned<Expr>>,
 	mut place: Rec<'token, I, Spanned<Expr>>,
 	mut bind: Rec<'token, I, Spanned<Expr>>,
 ) {
@@ -244,5 +245,6 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 
 	// statements
 	place.define(destructure.or(list_bind).or(place_assign).or(assign.clone()).or(map_delete));
-	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(return_list).or(values));
+	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(return_list.clone()).or(values));
+	do_stmt.define(place.clone().or(return_list).or(p.juxt_expr.clone()));
 }

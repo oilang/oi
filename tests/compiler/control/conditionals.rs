@@ -16,6 +16,17 @@ fn else_if_chains() {
 }
 
 #[test]
+fn do_body_leaves_commas_to_the_call() {
+	check(
+		[
+			"f :: fn(a: int, b: int) int do a * b",
+			"print(f(if false do 2 else do 3, 5))",
+		],
+		"15",
+	);
+}
+
+#[test]
 fn no_else_yields_zero_value() {
 	check("if true { 42 }", "42");
 	check("if false { 42 }", "0");
