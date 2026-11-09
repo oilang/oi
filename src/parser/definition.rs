@@ -378,6 +378,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 						cond: Box::new(cond),
 						then,
 						els,
+						chain: false,
 					},
 					ex.span(),
 				)

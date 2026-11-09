@@ -344,15 +344,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// unwrapping the rest of a block
-				Expr::If { cond, then, els: None }
-					if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) =>
-				{
+				Expr::If {
+					cond, then, els: None, ..
+				} if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) => {
 					let els = Some(stmts[i + 1..].to_vec());
 					let guard = (
 						Expr::If {
 							cond: cond.clone(),
 							then: then.clone(),
 							els,
+							chain: false,
 						},
 						stmt.1,
 					);

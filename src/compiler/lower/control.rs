@@ -48,6 +48,35 @@ fn chain(cond: &Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	}
 }
 
+// An `if` on a header chain's clauses, whose `else` takes a miss.
+fn clause_if(cond: Spanned<Expr>, then: &[Spanned<Expr>], els: Option<&[Spanned<Expr>]>) -> Expr {
+	let (cond, then, els) = (Box::new(cond), then.to_vec(), els.map(<[_]>::to_vec));
+	Expr::If {
+		cond,
+		then,
+		els,
+		chain: true,
+	}
+}
+
+// A `:=` header bind's body, behind a mutable copy of what it unwrapped.
+fn mutable_copy(cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Vec<Spanned<Expr>> {
+	let Expr::Bind {
+		name, mutable: true, ..
+	} = &cond.0
+	else {
+		return body.to_vec();
+	};
+	let (name, value) = (name.clone(), Some(Box::new((Expr::Ident(name.clone()), cond.1))));
+	let copy = Expr::Bind {
+		mutable: true,
+		name,
+		typ: None,
+		value,
+	};
+	[vec![(copy, cond.1)], body.to_vec()].concat()
+}
+
 // Whether a body ends on every path without falling out.
 pub(super) fn diverges(body: &[Spanned<Expr>]) -> bool {
 	match body.last().map(|stmt| &stmt.0) {
@@ -99,7 +128,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		self.header_scoped(|s| match &expr.0 {
-			Expr::If { cond, then, els } => s.conditional(cond, then, els.as_deref(), hint, expr.1, want),
+			Expr::If { .. } => s.conditional(expr, hint, want),
 			Expr::Match {
 				subject,
 				arms,
@@ -169,27 +198,25 @@ impl<'a, M: Module> Translator<'a, M> {
 	// If all branches diverge, returns None.
 	pub(super) fn conditional(
 		&mut self,
-		cond: &Spanned<Expr>,
-		then: &[Spanned<Expr>],
-		els: Option<&[Spanned<Expr>]>,
+		(node, span): &Spanned<Expr>,
 		target: Option<&Typ>,
-		span: Span,
 		want: bool,
 	) -> Result<Option<TypedVal>, Diagnostic> {
+		let Expr::If { cond, then, els, chain } = node else {
+			unreachable!()
+		};
+		let (els, span) = (els.as_deref(), *span);
 		let cond = &self.clauses(cond)?;
 		if let Expr::Binary(BinOp::And, lhs, rhs) = &cond.0
 			&& chained(&cond.0)
 		{
-			let inner = Expr::If {
-				cond: rhs.clone(),
-				then: then.to_vec(),
-				els: els.map(<[_]>::to_vec),
-			};
-			return self.conditional(lhs, &[(inner, cond.1)], els, target, span, want);
+			let inner = (clause_if((**rhs).clone(), then, els), cond.1);
+			let head = clause_if((**lhs).clone(), &[inner], els);
+			return self.conditional(&(head, span), target, want);
 		}
 
 		if infallible(&cond.0) {
-			return self.scoped(|s| {
+			let flow = self.scoped(|s| {
 				// a local `?T` owning nothing unwraps in place, uncopied
 				if let Expr::Bind {
 					name,
@@ -203,7 +230,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					let arm = MatchArm {
 						patterns: vec![(Expr::Ident(name.clone()), cond.1)],
-						body: then.to_vec(),
+						body: mutable_copy(cond, then),
 						..Default::default()
 					};
 					return s.match_expr(src, &[arm], els, Some(&[]), target, span);
@@ -214,14 +241,21 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				if let Some([first, ..]) = els
-					&& !matches!(then, [(Expr::If { .. }, inner)] if inner.start <= cond.1.start)
+					&& !chain
 				{
 					let msg = "this binding always succeeds, so `else` can never run";
 					return fail(msg, first.1, "unreachable");
 				}
 
 				s.block_tail(then, target)
-			});
+			})?;
+
+			if let Some((v, t)) = &flow {
+				// yields a temp, so a statement drops it
+				self.temp(*v, t);
+			}
+
+			return Ok(flow);
 		}
 
 		if let Expr::PatBind { pat, value, .. } = &cond.0 {
@@ -1286,9 +1320,11 @@ impl<'a, M: Module> Translator<'a, M> {
 							continue;
 						};
 						if let rest @ [_, ..] = &clauses[at + 1..] {
-							let (cond, els) = (Box::new((Expr::Block(rest.to_vec()), c.1)), Some(end(c.1).to_vec()));
 							let then = std::mem::take(&mut arm.body);
-							arm.body = vec![(Expr::If { cond, then, els }, c.1)];
+							arm.body = vec![(
+								clause_if((Expr::Block(rest.to_vec()), c.1), &then, Some(&end(c.1))),
+								c.1,
+							)];
 						}
 						s.ended();
 						return s.match_expr(&id, &[arm], None, Some(&end(c.1)), None, c.1);
@@ -1303,7 +1339,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					s.match_expr(value, &[arm], None, Some(&end(*sp)), None, *sp)
 				}
-				(Some(c), _) if zipped || chained(&c.0) => s.conditional(c, body, Some(&end(c.1)), None, c.1, true),
+				(Some(c), _) if zipped || chained(&c.0) => {
+					s.conditional(&(clause_if(c.clone(), body, Some(&end(c.1))), c.1), None, true)
+				}
 				(_, [(Expr::Match { subject, arms, .. }, sp)]) if !zipped => {
 					s.match_expr(subject, arms, None, Some(&end(*sp)), None, *sp)
 				}
@@ -1365,7 +1403,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let arm = MatchArm {
 			patterns: vec![(pat, cond.1)],
-			body: body.to_vec(),
+			body: mutable_copy(cond, body),
 			..Default::default()
 		};
 		Some(((id, cond.1), arm))

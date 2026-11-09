@@ -145,6 +145,7 @@ pub enum Expr {
 		cond: Box<Spanned<Expr>>,
 		then: Vec<Spanned<Expr>>,
 		els: Option<Vec<Spanned<Expr>>>,
+		chain: bool,
 	},
 	Loop {
 		label: Option<String>,
@@ -487,7 +488,7 @@ impl Expr {
 				f(One(recv));
 				args.iter_mut().for_each(|a| f(One(a)));
 			}
-			Expr::If { cond, then, els } => {
+			Expr::If { cond, then, els, .. } => {
 				f(One(cond));
 				f(List(then));
 				els.iter_mut().for_each(|e| f(List(e)));

@@ -167,6 +167,32 @@ fn header_bind_unwraps() {
 }
 
 #[test]
+fn header_bind_is_mutable() {
+	let src = indoc! {r#"
+		x : ?int = 3
+		if i := x { i += 1; print(i) }
+		f :: fn() ?string do "a"
+		loop s := f() { s += "b"; print(s); break }
+	"#};
+	check(src, ["4", "ab"]);
+	assert_clean(src);
+}
+
+#[test]
+fn header_bind_statement_drops_its_value() {
+	let src = indoc! {r#"
+		g :: fn(xs: []string; after: ?string) int {
+			i := 0
+			if k := after { loop n in xs { i = 1 } }
+			i
+		}
+		print(g(["a"], none), g(["a"], "b"))
+	"#};
+	check(src, "0 1");
+	assert_clean(src);
+}
+
+#[test]
 fn header_binds_stay_in_the_construct() {
 	check("if (x := 5) > 9 { print(0) } else if x > 1 { print(x) }", "5");
 	check("if { x := 5; x > 1 } { print(x) }", "5");
@@ -185,6 +211,7 @@ fn header_clauses() {
 		if a := f(); b := g() do print(a + b) else do print("miss")
 		k := 2
 		if k in [1 2], a := f() do print(k + a)
+		if a := g(), b := 2 do print(a + b) else do print("miss")
 	"#};
-	check(src, ["no", "small", "miss", "7"]);
+	check(src, ["no", "small", "miss", "7", "miss"]);
 }

@@ -181,7 +181,7 @@ pub(crate) fn instantiate(
 		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
 	};
 	while let Some(mut inner) = first_comp(body) {
-		if let Expr::If { cond, then, els } = &inner.0
+		if let Expr::If { cond, then, els, .. } = &inner.0
 			&& let Expr::PatBind { pat, value, .. } = &cond.0
 			&& as_type(value).is_some_and(|typ| !matches!(typ, Typ::Const(_)))
 		{
@@ -519,7 +519,7 @@ pub(crate) fn fold(
 	}
 
 	// conditional compilation
-	while let Expr::If { cond, then, els } = inner.0 {
+	while let Expr::If { cond, then, els, .. } = inner.0 {
 		let span = cond.1;
 		let arm = match fold(*cond, target, consts, program, stage0)? {
 			Expr::Bool(true) => then,
