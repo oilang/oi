@@ -402,7 +402,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if !self.world.trait_impls.contains(&(target.key(), tn.to_string())) {
 				return Ok(Some((self.make_option(&opt, None), opt)));
 			}
-			self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", target.key())))
+			self.vtable_addr(&target.key(), tn)
 		};
 
 		let got = self.ld_word(obj, 0);

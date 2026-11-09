@@ -60,6 +60,22 @@ fn ast_fns_stay_out_of_the_binary() {
 }
 
 #[test]
+fn unreachable_fns_stay_out_of_the_binary() {
+	let src = indoc! {r#"
+		Point :: struct { x: int }
+		Point : Display < {
+			fmt :: fn(self; mut w: Write) do w.write(never_called())
+		}
+		never_called :: fn() string do "no"
+		print(1)
+	"#};
+	let dir = Project::new().file("main.oi", src);
+	dir.ok(&["build", "main.oi", "-o", "hi"]);
+	let binary = std::fs::read(dir.as_ref().join("hi")).unwrap();
+	assert!(!binary.windows(12).any(|w| w == b"never_called"));
+}
+
+#[test]
 fn link_annotation_adds_lib_to_link_line() {
 	let main = indoc! {r#"
 		use cext

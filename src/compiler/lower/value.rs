@@ -113,6 +113,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.ins().iadd_imm(base, 16)
 	}
 
+	// The address of the type/trait vtable, queued on first use.
+	pub(super) fn vtable_addr(&mut self, typ: &str, tn: &str) -> Value {
+		let sym = oi_symbol(&format!("vtable_{typ}_{tn}"));
+		if self.module.declarations().get_name(&sym).is_none() {
+			self.out.vtables.push((typ.into(), tn.into()));
+		}
+		self.data_addr(&sym)
+	}
+
 	// The address of a data symbol.
 	pub(super) fn data_addr(&mut self, sym: &str) -> Value {
 		let id = self.module.declare_data(sym, Linkage::Local, false, false).unwrap();
@@ -1459,8 +1468,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Box `val` (an instance of `typ`) behind its `typ`/`tn` vtable. The box owns a heap copy.
 	pub(super) fn box_trait_object(&mut self, val: Value, typ: &Typ, tn: &str) -> Value {
-		let sym = oi_symbol(&format!("vtable_{}_{tn}", typ.key()));
-		let vtable = self.data_addr(&sym);
+		let vtable = self.vtable_addr(&typ.key(), tn);
 		let mut val = self.copy_in(val, typ);
 		// stash a value without inline slots in a cell
 		if typ.slots().is_none() {

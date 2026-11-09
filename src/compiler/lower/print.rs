@@ -26,7 +26,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			(!sig.default).then_some(sig)
 		};
 		if let Some(sig) = own(self, "fmt") {
-			let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{}[string]", role::SINK, role::WRITE)));
+			let vtable = self.vtable_addr(role::SINK, &format!("{}[string]", role::WRITE));
 			let id = self.b.ins().iconst(self.int, sink as i64);
 			let data = self.lent_block(&[], &[id]);
 			let obj = self.lent_object(vtable, data);

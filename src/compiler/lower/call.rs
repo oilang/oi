@@ -574,7 +574,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				&& self.claims(&typ, tn)
 			{
 				self.check_cell_object(&typ, tn, arg.1)?;
-				let vtable = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
+				let vtable = self.vtable_addr(&typ.key(), tn);
 				let data = if typ.slots().is_some() {
 					self.ld_word(cell, 0)
 				} else {

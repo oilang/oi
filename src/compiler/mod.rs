@@ -11,7 +11,7 @@ use cranelift::codegen::isa::TargetIsa;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, Module, ModuleReloc};
-use cranelift_object::{ObjectBuilder, ObjectModule};
+use cranelift_object::{ObjectBuilder, ObjectModule, object::SymbolScope};
 use target_lexicon::BinaryFormat;
 
 use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam, int_word};
@@ -612,6 +612,8 @@ struct Artifacts {
 	depths: HashMap<String, usize>,
 	lowering: String,
 	wanted: Vec<FuncId>,
+	vtables: Vec<(String, String)>,
+	unreached: Vec<FuncId>,
 	roots: Vec<String>,
 	c_shims: HashMap<String, FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
@@ -759,10 +761,20 @@ impl Compiler<ObjectModule> {
 		let entry = self.build(program)?;
 		self.time_codegen(t, n);
 		self.emit_entry(entry);
+
 		if timings {
 			self.report_timings();
 		}
-		Ok((self.module.finish().emit().expect("emit object"), self.link_libs))
+
+		let mut product = self.module.finish();
+		for id in self.out.unreached {
+			// unreached fns stay local, so the linker drops them
+			if let Some((sym, false)) = product.functions[id] {
+				product.object.symbol_mut(sym).scope = SymbolScope::Compilation;
+			}
+		}
+
+		Ok((product.emit().expect("emit object"), self.link_libs))
 	}
 
 	fn emit_entry(&mut self, entry: FuncId) {
@@ -1001,6 +1013,7 @@ impl<M: Module> Compiler<M> {
 		self.static_inits.clear();
 		self.tests.clear();
 		self.out.wanted.clear();
+		self.out.vtables.clear();
 		self.out.pending.clear();
 		self.module.clear_context(&mut self.ctx);
 		self.builder_ctx = FunctionBuilderContext::new();
@@ -1757,121 +1770,14 @@ impl<M: Module> Compiler<M> {
 			.map(|(i, item)| (funcs[&item.key].id, i))
 			.filter(|(id, _)| !self.defined.contains(id))
 			.collect();
-		if self.aot {
-			self.out.wanted.extend(unlowered.keys().copied());
-		} else {
-			self.out.wanted.extend(
-				self.tests
-					.iter()
-					.map(|(key, ..)| key)
-					.chain(self.exports.keys())
-					.chain(self.out.roots.iter())
-					.filter_map(|key| funcs.get(key).map(|sig| sig.id)),
-			);
-		}
-
-		// a `str` wrapper per struct
-		let mut render = HashMap::new();
-		for (name, _) in self.world.trait_impls.clone() {
-			if render.contains_key(&name) {
-				continue;
-			}
-			let styp = base.named(&name, Span::default())?;
-			let cell = styp.slots().is_none();
-			let recv = if cell { Typ::ISize } else { styp.clone() };
-			let param = [("self".into(), recv, Access::Read)];
-			let def = FnDef {
-				params: &param,
-				..FnDef::default()
-			};
-			let (mut trans, block) = self.translator(&def, &funcs, base);
-			let mut val = trans.b.block_params(block)[0];
-			if cell {
-				val = trans.b.ins().load(cl_type(&styp, trans.int), MemFlags::new(), val, 0);
-			}
-			let s = trans.derived_str(val, &styp, false);
-			trans.emit_return(s, Typ::Str, Span::default())?;
-			trans.b.finalize();
-			render.insert(name.clone(), self.finish_fn(&oi_symbol(&format!("{name}#str"))));
-		}
-
-		// define vtables now that every concrete method has a FuncId
-		for (typ, tn) in self.world.trait_impls.clone() {
-			if is_hook_trait(&tn) {
-				continue;
-			}
-			let ((_, tparams, tfields, tmethods, home), sub) = base.trait_instance(&tn);
-			if sub.is_empty() && tparams.iter().any(|p| p.default.is_none()) {
-				continue;
-			}
-
-			// an instance picks the claim whose sig fits
-			let types = base.with_type_params(&sub).with_scope(home);
-			let fill = |(n, params, ret): TraitFn| {
-				let key = format!("{typ}.{n}");
-				if !has_slot(tmethods, n) {
-					return Some(None);
-				}
-				if sub.is_empty() {
-					return funcs.get(&key).map(Some);
-				}
-				let ret = ret.as_ref().map_or(Ok(Typ::unit()), |(te, sp)| types.resolve(te, *sp));
-				let want = (params.iter().skip(1).map(|p| types.param(&p.typ, p.span)).chain([ret]))
-					.collect::<Result<Vec<_>, _>>()
-					.ok()?;
-				let fits = |s: &FnSig| s.params.iter().skip(1).map(|p| access_peel(&p.typ)).chain([&s.ret]).eq(&want);
-				(funcs.iter().find(|(k, s)| k.split('#').next() == Some(&key) && fits(s))).map(|(_, s)| Some(s))
-			};
-
-			let Some(methods) = trait_fns(tmethods).map(fill).collect::<Option<Vec<_>>>() else {
-				continue;
-			};
-
-			let mut bytes = vec![0u8; (methods.len() + tfields.len() + 1) * 8];
-			let mut const_slots = Vec::new();
-			// associated types have no runtime slot, so they leave a hole
-			for (i, tf) in tfields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
-				let at = (methods.len() + i) * 8;
-				match field_slot(&base, &typ, &tf.name) {
-					Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
-					None => {
-						let want = base.resolve(&tf.typ, tf.span)?;
-						let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
-						if let Expr::Cast { args, .. } = &lit
-							&& let [(Expr::Atom(a), _)] = &args[..]
-						{
-							lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
-						}
-						let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
-						const_slots.push((at, self.const_cell(&sym, &lit, &want)));
-					}
-				}
-			}
-			let mut desc = DataDescription::new();
-			desc.define(bytes.into_boxed_slice());
-			for (off, cell) in const_slots {
-				let gv = self.module.declare_data_in_data(cell, &mut desc);
-				desc.write_data_addr(off as u32, gv, 2);
-			}
-			let cell = base.named(&typ, Span::default())?.slots().is_none();
-			for (i, sig) in methods.iter().enumerate().filter_map(|(i, sig)| sig.map(|s| (i, s))) {
-				self.out.wanted.push(sig.id);
-				let id = match cell && sig.access[0] != Access::Mut {
-					true => self.cell_thunk(sig.id, &format!("{typ}_{tn}#{i}")),
-					false => sig.id,
-				};
-				let fref = self.module.declare_func_in_data(id, &mut desc);
-				desc.write_function_addr((i * 8) as u32, fref);
-			}
-			let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);
-			desc.write_function_addr(((methods.len() + tfields.len()) * 8) as u32, fref);
-			let sym = oi_symbol(&format!("vtable_{typ}_{tn}"));
-			let id = self
-				.module
-				.declare_data(&sym, Linkage::Local, false, false)
-				.expect("declare vtable");
-			define_once(&mut self.module, id, &desc);
-		}
+		self.out.wanted.extend(
+			self.tests
+				.iter()
+				.map(|(key, ..)| key)
+				.chain(self.exports.keys())
+				.chain(self.out.roots.iter())
+				.filter_map(|key| funcs.get(key).map(|sig| sig.id)),
+		);
 
 		// one zeroed cell per static
 		for (name, annot, init, scope, span) in static_items {
@@ -1939,7 +1845,119 @@ impl<M: Module> Compiler<M> {
 		let entry_id = self.finish_fn("oi_main");
 		let id = self.compile_entry(entry_id, typ, &funcs, types);
 
+		let mut render = HashMap::new();
 		loop {
+			// define the vtables code references, and their `str` wrappers
+			let claims = std::mem::take(&mut self.out.vtables);
+			for (name, _) in claims.clone() {
+				if render.contains_key(&name) {
+					continue;
+				}
+
+				let styp = base.named(&name, Span::default())?;
+				let cell = styp.slots().is_none();
+				let recv = if cell { Typ::ISize } else { styp.clone() };
+				let param = [("self".into(), recv, Access::Read)];
+				let def = FnDef {
+					params: &param,
+					..FnDef::default()
+				};
+
+				let (mut trans, block) = self.translator(&def, &funcs, base);
+				let mut val = trans.b.block_params(block)[0];
+				if cell {
+					val = trans.b.ins().load(cl_type(&styp, trans.int), MemFlags::new(), val, 0);
+				}
+
+				let s = trans.derived_str(val, &styp, false);
+				trans.emit_return(s, Typ::Str, Span::default())?;
+				trans.b.finalize();
+				render.insert(name.clone(), self.finish_fn(&oi_symbol(&format!("{name}#str"))));
+			}
+
+			for (typ, tn) in claims {
+				if is_hook_trait(&tn) {
+					continue;
+				}
+
+				let ((_, tparams, tfields, tmethods, home), sub) = base.trait_instance(&tn);
+				if sub.is_empty() && tparams.iter().any(|p| p.default.is_none()) {
+					continue;
+				}
+
+				// an instance picks the claim whose sig fits
+				let types = base.with_type_params(&sub).with_scope(home);
+				let fill = |(n, params, ret): TraitFn| {
+					let key = format!("{typ}.{n}");
+					if !has_slot(tmethods, n) {
+						return Some(None);
+					}
+					if sub.is_empty() {
+						return funcs.get(&key).map(Some);
+					}
+
+					let ret = ret.as_ref().map_or(Ok(Typ::unit()), |(te, sp)| types.resolve(te, *sp));
+					let want = (params.iter().skip(1).map(|p| types.param(&p.typ, p.span)).chain([ret]))
+						.collect::<Result<Vec<_>, _>>()
+						.ok()?;
+					let fits =
+						|s: &FnSig| s.params.iter().skip(1).map(|p| access_peel(&p.typ)).chain([&s.ret]).eq(&want);
+					(funcs.iter().find(|(k, s)| k.split('#').next() == Some(&key) && fits(s))).map(|(_, s)| Some(s))
+				};
+
+				let Some(methods) = trait_fns(tmethods).map(fill).collect::<Option<Vec<_>>>() else {
+					continue;
+				};
+
+				let mut bytes = vec![0u8; (methods.len() + tfields.len() + 1) * 8];
+				let mut const_slots = Vec::new();
+				// associated types have no runtime slot, so they leave a hole
+				for (i, tf) in tfields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
+					let at = (methods.len() + i) * 8;
+					match field_slot(&base, &typ, &tf.name) {
+						Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
+						None => {
+							let want = base.resolve(&tf.typ, tf.span)?;
+							let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
+							if let Expr::Cast { args, .. } = &lit
+								&& let [(Expr::Atom(a), _)] = &args[..]
+							{
+								lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
+							}
+							let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
+							const_slots.push((at, self.const_cell(&sym, &lit, &want)));
+						}
+					}
+				}
+
+				let mut desc = DataDescription::new();
+				desc.define(bytes.into_boxed_slice());
+				for (off, cell) in const_slots {
+					let gv = self.module.declare_data_in_data(cell, &mut desc);
+					desc.write_data_addr(off as u32, gv, 2);
+				}
+
+				let cell = base.named(&typ, Span::default())?.slots().is_none();
+				for (i, sig) in methods.iter().enumerate().filter_map(|(i, sig)| sig.map(|s| (i, s))) {
+					self.out.wanted.push(sig.id);
+					let id = match cell && sig.access[0] != Access::Mut {
+						true => self.cell_thunk(sig.id, &format!("{typ}_{tn}#{i}")),
+						false => sig.id,
+					};
+					let fref = self.module.declare_func_in_data(id, &mut desc);
+					desc.write_function_addr((i * 8) as u32, fref);
+				}
+
+				let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);
+				desc.write_function_addr(((methods.len() + tfields.len()) * 8) as u32, fref);
+
+				let sym = oi_symbol(&format!("vtable_{typ}_{tn}"));
+				let id = self
+					.module
+					.declare_data(&sym, Linkage::Local, false, false)
+					.expect("declare vtable");
+				define_once(&mut self.module, id, &desc);
+			}
 			while let Some(id) = self.out.wanted.pop() {
 				let Some(i) = unlowered.remove(&id) else { continue };
 				let item = &others[i];
@@ -1969,7 +1987,7 @@ impl<M: Module> Compiler<M> {
 			let Some((sym, mut def, mut subst)) =
 				self.out.pending.pop().or_else(|| self.compile_printers(&funcs, types))
 			else {
-				if self.out.wanted.is_empty() {
+				if self.out.wanted.is_empty() && self.out.vtables.is_empty() {
 					break;
 				}
 				continue;
@@ -1998,6 +2016,7 @@ impl<M: Module> Compiler<M> {
 			self.lower_fn(&sym, &sig, (&def.params, &def.ret), fn_def, &funcs, types)?;
 		}
 
+		self.out.unreached = unlowered.into_keys().collect();
 		self.hoisted = funcs;
 		self.out.instances = generics.instance_args.take();
 
@@ -2068,7 +2087,8 @@ impl<M: Module> Compiler<M> {
 			.checked_sub(1))
 		{
 			// the `any` printer waits for every fn that might coerce a new type
-			if matches!(self.out.printers[i].1, Typ::Any | Typ::TypeId) && !self.out.wanted.is_empty() {
+			let settled = self.out.wanted.is_empty() && self.out.vtables.is_empty();
+			if matches!(self.out.printers[i].1, Typ::Any | Typ::TypeId) && !settled {
 				return self.out.pending.pop();
 			}
 
@@ -2107,11 +2127,11 @@ impl<M: Module> Compiler<M> {
 		self.out.pending.pop()
 	}
 
-	// A fn's object symbol.
+	// A fn's object symbol, an import until lowering defines it.
 	fn symbol(&self, key: &str) -> (String, Linkage) {
 		match self.exports.get(key) {
 			Some(sym) => (sym.clone(), Linkage::Export),
-			None => (oi_symbol(key), Linkage::Local),
+			None => (oi_symbol(key), Linkage::Import),
 		}
 	}
 

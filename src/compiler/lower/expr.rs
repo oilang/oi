@@ -205,7 +205,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !self.world.trait_impls.contains(&(typ.key(), tn.clone())) {
 					return Ok((self.b.ins().iconst(self.int, *negated as i64), Typ::Bool));
 				}
-				let want = self.data_addr(&oi_symbol(&format!("vtable_{}_{tn}", typ.key())));
+				let want = self.vtable_addr(&typ.key(), &tn);
 				let got = self.ld_word(obj, 0);
 				let hit = self.b.ins().icmp(cc, got, want);
 				Ok((self.b.ins().uextend(self.int, hit), Typ::Bool))
