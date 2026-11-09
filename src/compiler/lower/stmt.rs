@@ -416,14 +416,16 @@ impl<'a, M: Module> Translator<'a, M> {
 
 					let base = self.read_local(&local);
 					let (ptr, layout) = self.follow(base, &peeled, &path);
-					let off = layout.fields.get(idx).map_or(idx as i32 * 8, |f| f.off);
-					if self.slot_owns(&ftyp) {
-						let cl = self.b.func.dfg.value_type(val);
-						let old = self.b.ins().load(cl, MemFlags::new(), ptr, off);
-						self.release_field(old, &ftyp);
-					}
 
-					self.st(ptr, off, val);
+					// variant fields
+					let variant = Field {
+						off: idx as i32 * 8,
+						words: 1,
+						typ: ftyp,
+					};
+					let field = layout.fields.into_iter().nth(idx).unwrap_or(variant);
+					self.rc_field(ptr, &field, false);
+					self.st_field(ptr, &field, val);
 				}
 
 				Expr::Break(label, payload) => {

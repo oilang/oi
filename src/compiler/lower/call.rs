@@ -794,7 +794,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(crate) fn root_ctx(&mut self, typ: &Typ) -> Result<Value, Diagnostic> {
 		let root = self.ctx_value(CONTEXT);
 		let Typ::Struct(_, fields) = typ else { return Ok(root) };
-		let layout = typ.layout().unwrap_or_default();
+		let layout = self.types.layout(typ).unwrap_or_default();
 		let Some(first) = fields.iter().position(|f| f.default.is_some()) else {
 			return Ok(root);
 		};
@@ -966,7 +966,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// A returned inline value's box moves into a frame slot.
 	pub(super) fn unbox_ret(&mut self, val: Value, typ: &Typ) -> Value {
-		let Some((elem, n)) = rc::inline(typ) else { return val };
+		let Some((elem, n)) = rc::inline(typ, &self.types) else {
+			return val;
+		};
 		let slot = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
 		self.fixed_move(slot, val, &elem, n, true);
 		self.rt_call("free", &[val]);

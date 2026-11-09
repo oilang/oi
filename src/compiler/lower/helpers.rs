@@ -177,6 +177,24 @@ impl<M: Module> Translator<'_, M> {
 		self.b.ins().store(MemFlags::new(), val, base, off);
 	}
 
+	// A field, an inline Option as a pointer into its owner.
+	pub(super) fn ld_field(&mut self, base: Value, field: &Field) -> Value {
+		match field.words {
+			1 => self.ld_typ(base, field.off, &field.typ),
+			_ => self.b.ins().iadd_imm(base, field.off as i64),
+		}
+	}
+
+	// Store an owned value, an inline Option taking its box's words and freeing the box.
+	pub(super) fn st_field(&mut self, base: Value, field: &Field, val: Value) {
+		if field.words == 1 {
+			return self.st(base, field.off, val);
+		}
+		let at = self.ld_field(base, field);
+		self.fixed_move(at, val, &Typ::Int(64), field.words as usize, true);
+		self.rt_call("free", &[val]);
+	}
+
 	// Store values into consecutive slots of `ptr`.
 	pub(super) fn store_slots(&mut self, ptr: Value, vals: &[Value]) {
 		for (i, v) in vals.iter().enumerate() {

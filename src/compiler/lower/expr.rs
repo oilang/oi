@@ -609,9 +609,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some((recv, styp @ Typ::Struct(_, sfields))) = &bound
 					&& let Some(i) = sfields.iter().position(|f| f.name == *method)
 				{
-					let Field { off, typ: ft } = styp.layout().unwrap_or_default().fields.remove(i);
-					let v = self.ld_typ(*recv, off, &ft);
-					return self.call_value(method, Callee::Object(v), &ft, args, None, expr.1);
+					let field = self.types.layout(styp).unwrap_or_default().fields.remove(i);
+					let v = self.ld_field(*recv, &field);
+					return self.call_value(method, Callee::Object(v), &field.typ, args, None, expr.1);
 				}
 
 				// instance calls pierce embedded structs
@@ -852,7 +852,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& let Some((path, inner, ftyp)) = self.promoted(sfields, field, expr.1)?
 					{
 						let (embed, layout) = self.follow(ptr, &typ, &path);
-						let v = self.ld_typ(embed, layout.fields[inner].off, &ftyp);
+						let v = self.ld_field(embed, &layout.fields[inner]);
 						return Ok((v, ftyp));
 					}
 					// a trait const or default settles fields that aren't stored
@@ -865,6 +865,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 				// a newtype has no heap block
 				let transparent = typ.newtype().is_some();
+				let layout = self.types.layout(&typ).unwrap_or_default();
 				// structs are just fully-named tuples at the codegen level
 				let typ = match typ {
 					Typ::Struct(_, fields) => Typ::Tuple(fields.into_iter().map(|f| (Some(f.name), f.typ)).collect()),
@@ -883,7 +884,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if transparent {
 					return Ok((ptr, field_typ));
 				}
-				let v = self.ld_typ(ptr, typ.layout().unwrap_or_default().fields[idx].off, &field_typ);
+				let v = self.ld_field(ptr, &layout.fields[idx]);
 				Ok((v, field_typ))
 			}
 

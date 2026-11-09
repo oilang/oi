@@ -62,24 +62,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether a value is a heap-boxed enum, freed and copied inline.
 	pub(super) fn enum_box(&self, typ: &Typ) -> bool {
-		let Typ::Enum(n) = typ else { return false };
-		enum_boxed(&self.variants_of(typ))
-			&& self.types.opt_niche(typ).is_none()
-			&& !self.reaches(typ, n, &mut Vec::new())
-	}
-
-	// Whether a type's parts reach back to enum `name`.
-	fn reaches(&self, typ: &Typ, name: &str, seen: &mut Vec<String>) -> bool {
-		let parts = match typ {
-			Typ::Enum(n) if n == name && !seen.is_empty() => return true,
-			Typ::Enum(n) if !seen.contains(n) => {
-				seen.push(n.clone());
-				self.variants_of(typ).into_iter().flat_map(|v| v.payload).collect()
-			}
-			Typ::Array(t) | Typ::FixedArray(t, _) | Typ::Map(_, t) => vec![(**t).clone()],
-			t => t.slots().unwrap_or_default(),
-		};
-		parts.iter().any(|t| self.reaches(t, name, seen))
+		self.types.enum_box(typ)
 	}
 
 	// Give an owned value its own copy of every buffer it reaches.
@@ -115,19 +98,22 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Str => self.rt_call("str_unshare", &[val]).unwrap(),
 			t if self.enum_box(t) => {
-				self.owned_payloads(val, t, |s, off, t| {
-					let pv = s.ld_typ(val, off, t);
-					let pv = s.unshare(pv, t);
-					s.st(val, off, pv);
+				self.owned_payloads(val, t, |s, payload| {
+					let pv = s.ld_field(val, payload);
+					let pv = s.unshare(pv, &payload.typ);
+					s.st(val, payload.off, pv);
 				});
 				val
 			}
 
 			t => {
-				for Field { off, typ: t } in &t.layout().unwrap_or_default().fields {
-					let fv = self.ld_typ(val, *off, t);
-					let fv = self.unshare(fv, t);
-					self.st(val, *off, fv);
+				for field in &self.types.layout(t).unwrap_or_default().fields {
+					let fv = self.ld_field(val, field);
+					let fv = self.unshare(fv, &field.typ);
+					// an inline Option unshares in place
+					if field.words == 1 {
+						self.st(val, field.off, fv);
+					}
 				}
 				val
 			}
@@ -236,23 +222,25 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.rc_slots(val, typ, false);
 		} else if self.enum_box(typ) {
-			self.owned_payloads(val, typ, |s, off, t| {
-				let pv = s.ld_typ(val, off, t);
-				s.release_field(pv, t);
-			});
+			self.owned_payloads(val, typ, |s, payload| s.rc_field(val, payload, false));
 			self.rt_call("free", &[val]);
 		}
 	}
 
-	// Visit each owned payload slot of an enum box under its live tag.
-	pub(super) fn owned_payloads(&mut self, val: Value, typ: &Typ, mut f: impl FnMut(&mut Self, i32, &Typ)) {
+	// Visit each owned payload field of an enum box under its live tag.
+	pub(super) fn owned_payloads(&mut self, val: Value, typ: &Typ, mut f: impl FnMut(&mut Self, &Field)) {
 		let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 		for v in self.variants_of(typ) {
-			let owned: Vec<_> = (v.payload.iter().enumerate()).filter(|(_, t)| self.slot_owns(t)).collect();
+			let owned: Vec<_> = (v.payload.into_iter().enumerate())
+				.map(|(i, typ)| Field {
+					off: (i as i32 + 1) * 8,
+					words: 1,
+					typ,
+				})
+				.filter(|field| self.slot_owns(&field.typ))
+				.collect();
 			if !owned.is_empty() {
-				self.on_variant(tag, v.disc, done, |s| {
-					owned.iter().for_each(|(i, t)| f(s, (*i as i32 + 1) * 8, t))
-				});
+				self.on_variant(tag, v.disc, done, |s| owned.iter().for_each(|field| f(s, field)));
 			}
 		}
 		self.enter(done);
@@ -261,14 +249,30 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Release an owned field, freeing an inline value's own block.
 	pub(super) fn release_field(&mut self, val: Value, typ: &Typ) {
 		self.release_value(val, typ);
-		if inline(typ).is_some() {
+		if inline(typ, &self.types).is_some() {
 			self.rt_call("free", &[val]);
+		}
+	}
+
+	// Retain (copy in place) or release what a field owns, an inline Option its payload.
+	pub(super) fn rc_field(&mut self, base: Value, field: &Field, retain: bool) {
+		if !self.slot_owns(&field.typ) {
+			return;
+		}
+		let val = self.ld_field(base, field);
+		match (field.words, retain) {
+			(1, true) => {
+				let val = self.copy_in(val, &field.typ);
+				self.st(base, field.off, val);
+			}
+			(1, false) => self.release_field(val, &field.typ),
+			_ => self.owned_payloads(val, &field.typ, |s, payload| s.rc_field(val, payload, retain)),
 		}
 	}
 
 	// Whether a struct/tuple/array slot holds a value it must release.
 	pub(super) fn slot_owns(&self, typ: &Typ) -> bool {
-		inline(typ).is_some() || self.needs_release(typ)
+		inline(typ, &self.types).is_some() || self.needs_release(typ)
 	}
 
 	// Retain (copy in place) or release the owned elements of an array.
@@ -294,17 +298,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Retain (copy in place) or release the owned slots of an aggregate.
 	fn rc_slots(&mut self, val: Value, typ: &Typ, retain: bool) {
-		for Field { off, typ: t } in &typ.layout().unwrap_or_default().fields {
-			if !self.slot_owns(t) {
-				continue;
-			}
-			let fv = self.ld_typ(val, *off, t);
-			if retain {
-				let fv = self.copy_in(fv, t);
-				self.st(val, *off, fv);
-			} else {
-				self.release_field(fv, t);
-			}
+		for field in &self.types.layout(typ).unwrap_or_default().fields {
+			self.rc_field(val, field, retain);
 		}
 	}
 
@@ -316,7 +311,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		val: Value,
 		typ: &Typ,
 	) -> Result<(), Diagnostic> {
-		let Some(layout) = typ.layout() else { return Ok(()) };
+		let Some(layout) = self.types.layout(typ) else {
+			return Ok(());
+		};
 		let binds = self.pat_binds(pat, typ)?;
 		let moved: Vec<i32> = binds.iter().filter(|b| self.is_affine(&b.1)).map(|b| b.2).collect();
 		if moved.is_empty() {
@@ -331,15 +328,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.move_resource(subject, typ)?;
 		self.untemp(val);
-		let owned: Vec<_> = layout.fields.iter().filter(|f| self.slot_owns(&f.typ)).collect();
-		for Field { off, typ: t } in owned {
-			let fv = self.ld_typ(val, *off, t);
-			match moved.contains(off) {
+		for field in &layout.fields {
+			match moved.contains(&field.off) {
+				true if field.words > 1 => {}
 				true => {
-					let fv = self.unbox_ret(fv, t);
-					self.st(val, *off, fv);
+					let fv = self.ld_typ(val, field.off, &field.typ);
+					let fv = self.unbox_ret(fv, &field.typ);
+					self.st(val, field.off, fv);
 				}
-				false => self.release_field(fv, t),
+				false => self.rc_field(val, field, false),
 			}
 		}
 		Ok(())
@@ -367,7 +364,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Some(id);
 		}
 
-		let slots = typ.layout().expect("box layout").fields;
+		let slots = self.types.layout(typ).expect("box layout").fields;
 
 		if !self.is_resource(typ) && !slots.iter().any(|f| self.slot_owns(&f.typ)) {
 			return None;
@@ -375,7 +372,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let mut words = vec![0i64, slots.iter().any(|f| cyclic(&f.typ)) as i64, 0, 0];
 		let mut relocs = Vec::new();
-		for Field { off, typ: t } in &slots {
+		for Field { off, typ: t, .. } in &slots {
 			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map, 4 string
 			let off = *off as i64;
 			// fn envs aren't traced, so a cycle through one leaks
@@ -448,14 +445,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			t => (t.key(), Typ::Tuple(vec![(None, t.clone())])),
 		};
 		let descv = self.trace_desc(&key, &shape);
-		let layout = shape.layout().expect("box layout");
+		let layout = self.types.layout(&shape).expect("box layout");
 		let boxp = self.rc_alloc(layout.size.into(), &[descv]);
-		for Field { off, .. } in layout.fields {
-			let v = match typ.slots() {
-				Some(_) => self.ld_word(ptr, off),
-				None => ptr,
-			};
-			self.st(boxp, off, v);
+		match typ.slots() {
+			Some(_) => _ = self.fixed_move(boxp, ptr, &Typ::Int(64), layout.size as usize / 8, true),
+			None => self.st(boxp, 0, ptr),
 		}
 		boxp
 	}
@@ -715,7 +709,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let dst = self.stack_slot((*n as i64 * self.elem_stride(elem)) as u32);
 				self.fixed_move(dst, val, elem, *n, false)
 			}
-			t if let Some(layout) = t.layout() => {
+			t if let Some(layout) = self.types.layout(t) => {
 				let dst = self.stack_slot(layout.size);
 				self.copy_struct(val, dst, typ)
 			}
@@ -738,10 +732,10 @@ pub(crate) fn base_name(name: &str) -> &str {
 pub(super) type Owned = Vec<Vec<(Variable, Typ)>>;
 
 // An inline value's element type and count within its owner.
-pub(super) fn inline(typ: &Typ) -> Option<(Typ, usize)> {
+pub(super) fn inline(typ: &Typ, types: &TypeCtx) -> Option<(Typ, usize)> {
 	match typ.unkeyed() {
 		Typ::FixedArray(elem, n) => Some(((**elem).clone(), *n)),
-		t => Some((Typ::Int(64), t.slots()?.len())),
+		t => Some((Typ::Int(64), types.layout(t)?.size as usize / 8)),
 	}
 }
 

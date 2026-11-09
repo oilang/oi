@@ -1909,7 +1909,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					self.qualify(name)
 				};
-				struct_pattern(fdefs, &typ.layout().unwrap_or_default(), &pname, sname, fields, pat.1)
+				let layout = self.types.layout(typ).unwrap_or_default();
+				struct_pattern(fdefs, &layout, &pname, sname, fields, pat.1)
 			}
 
 			(Expr::Array(elems), Typ::Array(elem) | Typ::FixedArray(elem, _)) => {
@@ -1934,6 +1935,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				let idx = self.b.ins().iconst(self.int, off as i64);
 				self.load_index((subject, typ), idx, span)
 			}
+			_ if self.types.inline_opt(typ, field) && self.is_affine(field) => {
+				let words = [self.ld_word(subject, off), self.ld_word(subject, off + 8)];
+				self.heap_slots(&words)
+			}
+			_ if self.types.inline_opt(typ, field) => self.b.ins().iadd_imm(subject, off as i64),
 			_ => self.opt_payload(subject, typ, field, off),
 		}
 	}

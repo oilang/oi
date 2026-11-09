@@ -144,7 +144,7 @@ pub(crate) fn lends(f: &FieldDef) -> String {
 pub(crate) fn field_slot(types: &TypeCtx, sname: &str, name: &str) -> Option<(i64, Typ)> {
 	let fields = types.structs.get(sname)?;
 	let outer = Typ::Struct(sname.into(), fields.clone());
-	let slot = |typ: &Typ, i: usize| typ.layout().map(|l| (l.fields[i].off as i64, l.fields[i].typ.clone()));
+	let slot = |typ: &Typ, i: usize| types.layout(typ).map(|l| (l.fields[i].off as i64, l.fields[i].typ.clone()));
 	match fields.iter().position(|f| f.name == name) {
 		Some(i) => slot(&outer, i),
 		None => embeds(fields).find_map(|(o, _, inner)| {
@@ -163,6 +163,7 @@ pub(crate) struct Layout {
 
 pub(crate) struct Field {
 	pub off: i32,
+	pub words: i32,
 	pub typ: Typ,
 }
 
@@ -233,16 +234,6 @@ impl Typ {
 			}
 			_ => None,
 		}
-	}
-
-	// Lay out the slots, one word apiece.
-	pub fn layout(&self) -> Option<Layout> {
-		let slots = self.slots()?;
-		let size = slots.len() as u32 * 8;
-		let fields = (slots.into_iter().enumerate())
-			.map(|(i, typ)| Field { off: i as i32 * 8, typ })
-			.collect();
-		Some(Layout { fields, size })
 	}
 
 	pub fn bool_bytes(&self) -> Option<u16> {

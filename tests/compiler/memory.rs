@@ -287,7 +287,7 @@ fn zeros_returns_and_any_casts_are_freed() {
 #[test]
 fn ranges_newtype_prints_and_ast_items_are_freed() {
 	assert_clean(indoc! {"
-		loop i in 0..2 {}
+		loop i in ..2 {}
 		print(ptr.(0))
 		m! :: fn(a: Ast) Ast { [x y] := a.items; x }
 		print(m! { 1; 2 })
@@ -338,4 +338,25 @@ fn string_views_outlive_their_parents() {
 	"#};
 	check(src, r#"b42 b7 ["b42", "b7", "hi"]"#);
 	assert_clean(src);
+}
+
+#[test]
+fn ranges_allocate_nothing_for_their_end() {
+	let src = indoc! {r#"
+		count := 0
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			sum := 0
+			r := ..3
+			loop i in r do sum += i
+			loop i in r do sum += i
+			print(sum, count)
+		}
+	"#};
+	check(src, "6 0");
 }

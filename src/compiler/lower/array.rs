@@ -219,7 +219,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// RC bump.
 	// The underlying buffer clone waits for a write.
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
-		if let Some(layout) = typ.layout() {
+		if let Some(layout) = self.types.layout(typ) {
 			// a move keeps blocks of its inline fields instead of deep-copying them
 			if self.handover(val, typ) {
 				self.untemp(val);
@@ -251,11 +251,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				.map(|i| self.ld_word(val, i * 8))
 				.collect();
 			let dst = self.heap_slots(&words);
-			self.owned_payloads(val, typ, |s, off, t| {
-				let pv = s.ld_typ(val, off, t);
-				let pv = s.copy_in(pv, t);
-				s.st(dst, off, pv);
-			});
+			self.owned_payloads(dst, typ, |s, payload| s.rc_field(dst, payload, true));
 			return dst;
 		}
 		let Some((share, _)) = rc::handle_fns(typ) else {

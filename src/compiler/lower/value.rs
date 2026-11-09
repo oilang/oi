@@ -168,7 +168,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Move an inline value into a fresh heap block.
 	pub(super) fn heap_move(&mut self, val: Value, typ: &Typ) -> Value {
-		let Some((elem, n)) = rc::inline(typ) else { return val };
+		let Some((elem, n)) = rc::inline(typ, &self.types) else {
+			return val;
+		};
 		let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
 		self.fixed_move(heap, val, &elem, n, true)
 	}
@@ -219,11 +221,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Tuple(_) => {
-				let layout = typ.layout().unwrap_or_default();
+				let layout = self.types.layout(typ).unwrap_or_default();
 				let ptr = self.stack_slot(layout.size);
-				for Field { off, typ: t } in layout.fields {
-					let zero = self.zero_slot(&t);
-					self.st(ptr, off, zero);
+				for field in layout.fields {
+					let zero = self.zero_slot(&field.typ);
+					self.st_field(ptr, &field, zero);
 				}
 				ptr
 			}
@@ -843,13 +845,11 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<TypedVal, Diagnostic> {
 		let typ = self.types.resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
 		let ptr = self.struct_slot(&typ, &[true; 3])?;
-		let end = end.map(|v| self.intcast(v, types::I64, true));
-		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
-		let end = self.make_option(&opt_typ, end);
-		self.untemp(end);
+		let tag = self.b.ins().iconst(self.int, end.is_some() as i64);
+		let end = end.map_or(tag, |v| self.intcast(v, types::I64, true));
 		let start = self.intcast(start, types::I64, true);
 		let step = self.intcast(step, types::I64, true);
-		self.store_slots(ptr, &[start, end, step]);
+		self.store_slots(ptr, &[start, tag, end, step]);
 		self.temp(ptr, &typ);
 		Ok((ptr, typ))
 	}
@@ -857,8 +857,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	// (start, end, step, open)
 	pub(super) fn range_parts(&mut self, range: Value) -> (Value, Value, Value, Value) {
 		let start = self.ld_typ(range, 0, &Typ::Int(64));
-		let opt = self.ld_word(range, 8);
-		let step = self.ld_typ(range, 16, &Typ::Int(64));
+		let opt = self.b.ins().iadd_imm(range, 8);
+		let step = self.ld_typ(range, 24, &Typ::Int(64));
 		let opt_typ = self.types.core_enum(role::OPTION, &[Typ::Int(64)]);
 		let tag = self.enum_tag(&opt_typ, opt);
 		let open = self.b.ins().icmp_imm(IntCC::Equal, tag, 0);
@@ -1778,7 +1778,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let given: Vec<bool> = (struct_fields.iter().enumerate()).map(|(i, f)| !spread && set(i, f)).collect();
 		let styp = Typ::Struct(name.clone(), struct_fields.clone());
 		let ptr = match leading_spread {
-			Some(_) => self.stack_slot(styp.layout().unwrap_or_default().size),
+			Some(_) => self.stack_slot(self.types.layout(&styp).unwrap_or_default().size),
 			None => self.struct_slot(&styp, &given)?,
 		};
 
@@ -1835,21 +1835,21 @@ impl<'a, M: Module> Translator<'a, M> {
 				},
 			};
 			let (base, layout) = self.follow(ptr, &styp, &path);
-			let off = layout.fields[idx].off;
+			let field = &layout.fields[idx];
 			let val = self.check_typed(value, &ftyp, "type mismatch")?;
 			closure_escape(&ftyp, value.1.into_range(), "stored in a field")?;
 			self.move_resource(value, &ftyp)?;
 			let val = self.copy_in(val, &ftyp);
 			if self.slot_owns(&ftyp) && !(path.is_empty() && given[idx]) {
 				// drop the zero/default this slot already owns
-				let old = self.ld_typ(base, off, &ftyp);
+				let old = self.ld_field(base, field);
 				// a resource nobody saw is freed
 				match (&ftyp, self.is_resource(&ftyp)) {
 					(Typ::Struct(..), true) => _ = self.rt_call("free", &[old]),
-					_ => self.release_field(old, &ftyp),
+					_ => self.rc_field(base, field, false),
 				}
 			}
-			self.st(base, off, val);
+			self.st_field(base, field, val);
 		}
 		self.check_required(&name, &struct_fields, fields, span)?;
 		self.temp(ptr, &styp);
@@ -1872,23 +1872,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let shape: Vec<_> = fields.iter().map(|f| format!("{}: {}", f.name, f.typ)).collect();
 		let typ = Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields);
-		let layout = typ.layout().unwrap_or_default();
+		let layout = self.types.layout(&typ).unwrap_or_default();
 		let ptr = self.stack_slot(layout.size);
 		for (field, val) in layout.fields.into_iter().zip(vals) {
-			self.st(ptr, field.off, val);
+			self.st_field(ptr, &field, val);
 		}
 		Ok((ptr, typ))
 	}
 
-	// Allocate a struct on the stack, initializing each field to its default, or null where `given`.
+	// Allocate a struct on the stack, each field at its default unless `given`.
 	pub(super) fn struct_slot(&mut self, typ: &Typ, given: &[bool]) -> Result<Value, Diagnostic> {
-		let (Typ::Struct(_, struct_fields), Some(layout)) = (typ, typ.layout()) else {
+		let (Typ::Struct(_, struct_fields), Some(layout)) = (typ, self.types.layout(typ)) else {
 			unreachable!("a struct has a layout")
 		};
 		let ptr = self.stack_slot(layout.size);
 		for ((i, f), at) in struct_fields.iter().enumerate().zip(layout.fields) {
 			let init = if given.get(i) == Some(&true) {
-				self.b.ins().iconst(self.int, 0)
+				continue;
 			} else if let Some(default_expr) = &f.default {
 				let types = self.types;
 				self.types = self.types_at(default_expr.1);
@@ -1902,7 +1902,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			} else {
 				self.zero_slot(&f.typ)
 			};
-			self.st(ptr, at.off, init);
+			self.st_field(ptr, &at, init);
 		}
 		Ok(ptr)
 	}
@@ -1952,14 +1952,20 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Copy slots between aggregates.
 	pub(super) fn assign_slots(&mut self, src: Value, dst: Value, typ: &Typ, release_old: bool) {
-		for Field { off, typ: t } in &typ.layout().unwrap_or_default().fields {
-			let old = (release_old && self.slot_owns(t)).then(|| self.ld_typ(dst, *off, t));
-			let fv = self.ld_typ(src, *off, t);
-			let fv = self.copy_in(fv, t);
-			self.st(dst, *off, fv);
-			if let Some(old) = old {
-				self.release_field(old, t);
+		for field in &self.types.layout(typ).unwrap_or_default().fields {
+			let fv = self.ld_field(src, field);
+			if field.words > 1 && !release_old {
+				let at = self.ld_field(dst, field);
+				self.fixed_move(at, fv, &Typ::Int(64), 2, true);
+				self.rc_field(dst, field, true);
+				continue;
 			}
+
+			let fv = self.copy_in(fv, &field.typ);
+			if release_old {
+				self.rc_field(dst, field, false);
+			}
+			self.st_field(dst, field, fv);
 		}
 	}
 

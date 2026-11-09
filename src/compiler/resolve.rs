@@ -202,6 +202,48 @@ impl<'a> TypeCtx<'a> {
 		(0..).find(|tag| variants.iter().all(|v| v.disc != *tag))
 	}
 
+	// Each field's offset, one word apiece.
+	pub fn layout(&self, typ: &Typ) -> Option<Layout> {
+		let (mut fields, mut off) = (Vec::new(), 0);
+		for t in typ.slots()? {
+			let words = 1 + self.inline_opt(typ, &t) as i32;
+			fields.push(Field { off, words, typ: t });
+			off += words * 8;
+		}
+		Some(Layout {
+			fields,
+			size: off as u32,
+		})
+	}
+
+	// Whether a field of `owner` holds a boxed Option inline.
+	pub fn inline_opt(&self, owner: &Typ, field: &Typ) -> bool {
+		matches!(owner, Typ::Struct(..)) && self.option_inner(field).is_some() && self.enum_box(field)
+	}
+
+	// Whether an enum is a heap-boxed tagged union.
+	pub fn enum_box(&self, typ: &Typ) -> bool {
+		let Typ::Enum(name) = typ else { return false };
+		self.enums.borrow().get(name).is_some_and(|vs| enum_boxed(vs))
+			&& self.opt_niche(typ).is_none()
+			&& !self.reaches(typ, name, &mut vec![])
+	}
+
+	// Whether a type's parts reach back to an enum of the given name.
+	fn reaches(&self, typ: &Typ, name: &str, seen: &mut Vec<String>) -> bool {
+		let parts = match typ {
+			Typ::Enum(n) if n == name && !seen.is_empty() => return true,
+			Typ::Enum(n) if !seen.contains(n) => {
+				seen.push(n.clone());
+				let variants = self.enums.borrow().get(n).cloned().unwrap_or_default();
+				variants.into_iter().flat_map(|v| v.payload).collect()
+			}
+			Typ::Array(t) | Typ::FixedArray(t, _) | Typ::Map(_, t) => vec![(**t).clone()],
+			t => t.slots().unwrap_or_default(),
+		};
+		parts.iter().any(|t| self.reaches(t, name, seen))
+	}
+
 	// A generic instance's substitution.
 	pub fn with_type_params(self, type_params: &'a HashMap<String, Typ>) -> Self {
 		TypeCtx { type_params, ..self }

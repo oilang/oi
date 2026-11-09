@@ -133,7 +133,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		sink: runtime::Sink,
 	) {
 		self.write_lit(delims[0], sink);
-		let layout = Typ::Tuple(fields.to_vec()).layout().unwrap_or_default();
+		let tuple = Typ::Tuple(fields.to_vec());
+		let layout = self.types.layout(typ).or(self.types.layout(&tuple)).unwrap_or_default();
 		for (i, (name, ft)) in fields.iter().enumerate() {
 			if i > 0 {
 				self.write_lit(", ", sink);
@@ -141,7 +142,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			if let Some(name) = name {
 				self.write_lit(&format!("{name} = "), sink);
 			}
-			let fv = self.opt_payload(val, typ, ft, base + layout.fields[i].off);
+			let at = &layout.fields[i];
+			let fv = match at.words {
+				1 => self.opt_payload(val, typ, ft, base + at.off),
+				_ => self.ld_field(val, at),
+			};
 			self.emit_print(fv, ft, true, sink);
 		}
 		self.write_lit(delims[1], sink);

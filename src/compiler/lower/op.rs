@@ -65,7 +65,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let hit = self.b.ins().band(tags_eq, same);
 			let (body, next) = self.fork(hit);
 			self.b.switch_to_block(body);
-			let all = self.slots_eq(lhs, rhs, 8, &v.payload, &owner, span)?;
+			let payload = Typ::Tuple(v.payload.iter().map(|t| (None, t.clone())).collect());
+			let all = self.slots_eq(lhs, rhs, 8, &payload, &owner, span)?;
 			self.b.def_var(eq, all);
 			self.b.ins().jump(merge, &[]);
 			self.b.switch_to_block(next);
@@ -89,7 +90,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		match typ {
 			Typ::Any => Ok(self.extern_call(&oi_symbol("eq_any"), &[lhs, rhs], Some(types::I8)).unwrap()),
-			typ if let Some(slots) = eq_slots(typ) => self.slots_eq(lhs, rhs, 0, &slots, &typ.to_string(), span),
+			typ if eq_slots(typ).is_some() => self.slots_eq(lhs, rhs, 0, typ, &typ.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(lhs, rhs, typ, span),
 			Typ::Map(..) => self.emit_map_eq(lhs, rhs, typ, span),
 			typ if typ.is_enumish() && enum_boxed(&self.variants_of(typ)) && self.types.opt_niche(typ).is_none() => {
@@ -188,22 +189,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			|| (tn == role::ORDINAL && self.plain_enum(typ))
 	}
 
-	// Compare two heap blocks slot by slot, from byte `base`.
+	// Compare two heap blocks field by field, from byte `base`.
 	fn slots_eq(
 		&mut self,
 		lhs: Value,
 		rhs: Value,
 		base: i32,
-		slots: &[Typ],
+		typ: &Typ,
 		owner: &str,
 		span: Span,
 	) -> Result<Value, Diagnostic> {
 		let mut acc = self.b.ins().iconst(types::I8, 1);
-		let tuple = Typ::Tuple(slots.iter().map(|t| (None, t.clone())).collect());
-		for Field { off, typ: st } in tuple.layout().unwrap_or_default().fields {
-			let fa = self.ld_typ(lhs, base + off, &st);
-			let fb = self.ld_typ(rhs, base + off, &st);
-			let eq = self.emit_val_eq(fa, fb, &st, owner, span)?;
+		for mut field in self.types.layout(typ).unwrap_or_default().fields {
+			field.off += base;
+			let (fa, fb) = (self.ld_field(lhs, &field), self.ld_field(rhs, &field));
+			let eq = self.emit_val_eq(fa, fb, &field.typ, owner, span)?;
 			let eq = self.b.ins().icmp_imm(IntCC::NotEqual, eq, 0);
 			acc = self.b.ins().band(acc, eq);
 		}

@@ -170,10 +170,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Look through a chain of embed slots to the innermost struct pointer and its layout.
 	pub(super) fn follow(&mut self, mut ptr: Value, typ: &Typ, path: &[usize]) -> (Value, Layout) {
-		let mut layout = typ.layout().unwrap_or_default();
+		let mut layout = self.types.layout(typ).unwrap_or_default();
 		for &i in path {
 			ptr = self.ld_word(ptr, layout.fields[i].off);
-			layout = layout.fields[i].typ.layout().unwrap_or_default();
+			layout = self.types.layout(&layout.fields[i].typ).unwrap_or_default();
 		}
 		(ptr, layout)
 	}
