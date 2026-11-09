@@ -239,9 +239,10 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// tuple literals
 	let tuple = paren(loose_list(struct_field_entry)).map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
 
+	let head = (p.dotted_name.clone().then(just(Token::LParen)).not()).ignore_then(p.type_expr.clone());
+
 	// dot array literals
-	let dot_array = p
-		.type_expr
+	let dot_array = head
 		.clone()
 		.or_not()
 		.then_ignore(dot())
@@ -249,7 +250,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| (t, ex.span())), elems), ex.span()));
 
 	// casting
-	let cast = spanned(p.type_expr.clone())
+	let cast = spanned(head.clone())
 		.then_ignore(just(Token::Dot))
 		.then(
 			paren(loose_list(p.expr.clone()))
@@ -273,7 +274,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let map = bracket(loose_list1(map_entry)).map_with(|entries, ex| (Expr::Map(entries), ex.span()));
 
 	// dot map literals
-	let typed_map = spanned(p.type_expr.clone())
+	let typed_map = spanned(head.clone())
 		.then_ignore(dot())
 		.then(map.clone().map(|lit| vec![lit]))
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
