@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, File, include_dir};
@@ -67,6 +68,7 @@ impl Module {
 pub struct Scope {
 	header: Option<String>,
 	pub env: HashMap<String, String>,
+	pub module_env: Arc<HashMap<String, String>>,
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
 	pub files: Vec<(Range<usize>, Scope)>,
@@ -92,6 +94,11 @@ impl Scope {
 			.map_or(self, |(_, s)| s)
 	}
 
+	// Look up a bare name in this file's imports, then its module's names.
+	pub(crate) fn lookup(&self, name: &str) -> Option<&String> {
+		self.env.get(name).or_else(|| self.module_env.get(name))
+	}
+
 	// Resolve a bare name through this module's env, qualifying a miss into its own module.
 	pub(crate) fn qualify_name(&self, name: &str) -> String {
 		if let Some((m, t)) = name.split_once('.') {
@@ -103,7 +110,7 @@ impl Scope {
 				None => name.to_string(),
 			};
 		}
-		match self.env.get(name) {
+		match self.lookup(name) {
 			Some(q) => q.clone(),
 			None if self.module.is_empty() => name.to_string(),
 			None => format!("{}::{name}", self.module),
@@ -990,13 +997,9 @@ impl Loader {
 
 		// files see their module's names under their own imports
 		for m in &mut self.program.modules {
+			let module_env = Arc::new(m.scope.env.clone());
 			for (_, f) in &mut m.scope.files {
-				for (k, v) in &m.scope.env {
-					f.env.entry(k.clone()).or_insert_with(|| v.clone());
-				}
-				for (k, v) in &m.scope.visible {
-					f.visible.entry(k.clone()).or_insert_with(|| v.clone());
-				}
+				f.module_env = module_env.clone();
 			}
 		}
 	}
@@ -1008,7 +1011,7 @@ impl Loader {
 				let (name, _, (Expr::Ident(to), _)) = const_fill(item)? else {
 					return None;
 				};
-				Some((name.clone(), scope.env.get(to).unwrap_or(to).clone()))
+				Some((name.clone(), scope.lookup(to).unwrap_or(to).clone()))
 			})
 			.collect();
 		for m in &mut self.program.modules {

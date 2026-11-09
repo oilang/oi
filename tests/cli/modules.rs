@@ -80,6 +80,19 @@ fn imports_are_per_file() {
 }
 
 #[test]
+fn imports_shadow_module_names() {
+	let p = Project::new()
+		.main(["use foo", "print(foo.hi())"])
+		.file(
+			"foo/a.oi",
+			["module foo", "use bar.two", "pub hi :: fn() int { two() }"],
+		)
+		.file("foo/b.oi", ["module foo", "two :: fn() int { 1 }"])
+		.lib("bar", ["pub two :: fn() int { 2 }"]);
+	p.check("2");
+}
+
+#[test]
 fn import_alias() {
 	let p = Project::new()
 		.main(["f :: use foo", "print(f.hi())"])

@@ -373,7 +373,7 @@ impl TypeCtx<'_> {
 				{
 					return self.resolve(&TypeExpr::Generic(format!("{}::{t}", vis.module), args.clone()), span);
 				}
-				let name = self.scope.env.get(name).unwrap_or(name);
+				let name = self.scope.lookup(name).unwrap_or(name);
 				if let Some(def) = self.generics.structs.get(name) {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate(name, def, &subst, span);
@@ -843,7 +843,7 @@ impl TypeCtx<'_> {
 
 		let slot = (self.aliases.get("Self"))
 			.is_some_and(|t| matches!(t, TypeExpr::Name(t) if self.aliases.contains_key(&format!("{t}::{name}"))));
-		let name = match self.scope.env.get(name) {
+		let name = match self.scope.lookup(name) {
 			Some(q) => q.as_str(),
 			None if !self.scope.module.is_empty() && name != "Self" && !slot && !name.contains("::") => {
 				return fail(format!("unknown type `{name}`"), span, "not a known type");

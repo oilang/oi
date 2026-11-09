@@ -1202,7 +1202,7 @@ impl<M: Module> Compiler<M> {
 					typ.walk_mut(&mut |t| {
 						if let TypeExpr::Name(n) = t
 							&& !TypeCtx::builtin_type(n)
-							&& let Some(q) = scope.env.get(n.as_str())
+							&& let Some(q) = scope.lookup(n)
 						{
 							n.clone_from(q);
 						}

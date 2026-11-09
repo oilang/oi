@@ -185,7 +185,7 @@ fn name_slot(e: &mut Expr) -> Option<&mut String> {
 
 fn resolve_bare(name: &str, scope: &Scope) -> String {
 	let key = format!("{name}!");
-	scope.env.get(&key).cloned().unwrap_or(key)
+	scope.lookup(&key).cloned().unwrap_or(key)
 }
 
 // Get a fn's defining module, encoded in its qualified name.

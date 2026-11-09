@@ -157,7 +157,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Is { subject, typ, negated } => {
 				let tn = match typ {
-					TypeExpr::Name(n) => self.types.scope.env.get(n).unwrap_or(n).clone(),
+					TypeExpr::Name(n) => self.types.scope.lookup(n).unwrap_or(n).clone(),
 					_ => String::new(),
 				};
 				if let Expr::Call { name, args, .. } = &subject.0

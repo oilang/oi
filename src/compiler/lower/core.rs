@@ -17,7 +17,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Qualify a bare top-level name against the module's own items.
 	pub(super) fn qualify<'n>(&'n self, name: &'n str) -> Cow<'n, str> {
-		match self.types.scope.env.get(name) {
+		match self.types.scope.lookup(name) {
 			Some(q) => Cow::Borrowed(q.as_str()),
 			None if self.types.scope.module.is_empty() || name.contains("::") => Cow::Borrowed(name),
 			None => Cow::Owned(format!("{}::{name}", self.types.scope.module)),
@@ -369,7 +369,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				boxed: true,
 				stat: true,
 			};
-			let bare = self.types.scope.env.iter().find(|(_, q)| **q == key).map(|(b, _)| b.clone());
+			let scope = self.types.scope;
+			let bare = (scope.env.keys().chain(scope.module_env.keys()))
+				.find(|b| scope.lookup(b) == Some(&key))
+				.cloned();
 			if let Some(bare) = bare {
 				self.vars.insert(bare, local.clone());
 			}
