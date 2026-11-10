@@ -454,6 +454,7 @@ fn a_cast_out_of_any_moves_the_payload() {
 		print(f.fd)
 	"};
 	check([FILE, src], ["1", "drop 1"]);
+	assert_clean([FILE, src]);
 }
 
 #[test]

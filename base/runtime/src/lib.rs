@@ -1266,15 +1266,20 @@ pub unsafe extern "C" fn map_slot(map: *mut OiMap, at: i64) -> *mut i64 {
 }
 
 /// Run a boxed fn on a new, detached thread, with that thread's root context.
+/// Releases it, then sends its packet on `done` and closes `done`.
 /// # Safety
-/// `job` must be an owned `any` holding a fn.
+/// `job` must be an owned `any` holding a fn returning a `^Packet`, `done` from `oi_chan_new`.
 #[unsafe(export_name = "oi_thread_spawn")]
-pub unsafe extern "C" fn thread_spawn(job: usize) {
+pub unsafe extern "C" fn thread_spawn(job: usize, done: &'static Chan) {
+	unsafe { chan_retain(done) };
 	std::thread::spawn(move || unsafe {
 		let f = *((job + 8) as *const *mut u8);
-		let call: unsafe extern "C" fn(*mut i64, *mut u8) = std::mem::transmute(*(f as *const usize));
-		call(ctx_root(), f);
+		let call: unsafe extern "C" fn(*mut i64, *mut u8) -> usize = std::mem::transmute(*(f as *const usize));
+		let packet = call(ctx_root(), f);
 		ref_release(job as *mut u8);
+		chan_send(done, 0, packet, -1);
+		chan_close(done);
+		chan_release(done);
 	});
 }
 

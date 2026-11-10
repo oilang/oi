@@ -4,7 +4,7 @@ use time.{ Duration, Instant }
 
 ## Threads and channels.
 
-oi_thread_spawn : fn(move job: any) : foreign
+oi_thread_spawn : fn(move job: any, done: ptr) : foreign
 oi_signal_new : fn() ptr : foreign
 oi_signal_release : fn(s: ptr) : foreign
 oi_signal_within : fn(s: ptr, ns: int) : foreign
@@ -85,12 +85,8 @@ Thread[T] : Pollable[T] < {
 ## Run `f` on a new thread.
 pub start[T] :: fn(move f: @isolated fn() T) Thread[T] {
 	done := Chan[T].{}
-	d := done
-	job: any = fn [move f, move d] () () {
-		d <- f() or ()
-		d.close()
-	}
-	unsafe oi_thread_spawn(move job)
+	job: any = fn [move f] () ^Packet do &Packet.{ value = __unshare(f()) }
+	unsafe oi_thread_spawn(move job, done.handle)
 	.{ done }
 }
 
