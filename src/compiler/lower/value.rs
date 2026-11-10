@@ -722,7 +722,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				let unset = self.b.ins().icmp_imm(IntCC::Equal, payload, 0);
 				self.when(unset, |s| {
 					let zero = s.zero_or_err(&fields[0].1, span)?;
-					let zero = s.heap_move(zero, &fields[0].1);
 					s.st(val, 0, zero);
 					Ok::<_, Diagnostic>(())
 				})?;
@@ -1365,7 +1364,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					} else {
 						payload
 					};
-					let copy = s.copy_in(payload, &ok);
+					let copy = s.copy_bind(payload, &ok);
 					s.b.def_var(out, copy);
 				});
 				vec![self.b.use_var(out)]

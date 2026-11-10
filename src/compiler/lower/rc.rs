@@ -303,7 +303,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			match pack && field.typ.by_pointer() {
 				true => {
 					let slot = self.ld_word(val, field.off);
-					self.when(slot, |s| s.rc_field(val, field, retain));
+					self.when(slot, |s| match retain {
+						true => {
+							let copy = s.copy_bind(slot, &field.typ);
+							s.st(val, field.off, copy)
+						}
+						false => s.release_value(slot, &field.typ),
+					});
 				}
 				false => self.rc_field(val, field, retain),
 			}
@@ -335,9 +341,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.move_resource(subject, typ)?;
 		self.untemp(val);
+		let pack = self.types.pack_ret(typ).is_some();
 		for field in &layout.fields {
 			match moved.contains(&field.off) {
-				true if field.words > 1 => {}
+				true if field.words > 1 || pack => {}
 				true => {
 					let fv = self.ld_typ(val, field.off, &field.typ);
 					let fv = self.unbox_ret(fv, &field.typ);

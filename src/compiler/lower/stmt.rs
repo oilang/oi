@@ -623,6 +623,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					rets.push(if moved { slot } else { self.copy_in(slot, field) });
 				}
 				let frame = self.frame_slots(&rets);
+				if let (Some(words), &[payload, flag]) = (self.types.spread_words(&typ), &rets[..]) {
+					let scratch = self.stack_slot(words as u32 * 8);
+					let src = self.b.ins().select(payload, payload, scratch);
+					rets = (0..words).map(|i| self.ld_word(src, i as i32 * 8)).chain([flag]).collect();
+				}
 				(rets, frame)
 			}
 			_ if let Some(rets) = self.c_rets(val, &typ) => (rets, val),

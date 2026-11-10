@@ -725,6 +725,7 @@ fn isa(pic: bool) -> Arc<dyn TargetIsa> {
 	flag_builder.set("use_colocated_libcalls", "false").unwrap();
 	flag_builder.set("is_pic", if pic { "true" } else { "false" }).unwrap();
 	flag_builder.set("enable_llvm_abi_extensions", "true").unwrap();
+	flag_builder.set("enable_multi_ret_implicit_sret", "true").unwrap();
 	cranelift_native::builder()
 		.unwrap_or_else(|e| panic!("unsupported host: {e}"))
 		.finish(settings::Flags::new(flag_builder))
@@ -1951,10 +1952,14 @@ impl<M: Module> Compiler<M> {
 				}
 
 				let cell = base.named(&typ, Span::default())?.slots().is_none();
-				for (i, sig) in methods.iter().enumerate().filter_map(|(i, sig)| sig.map(|s| (i, s))) {
+				for (i, (sig, (_, _, ret))) in methods.iter().zip(trait_fns(tmethods)).enumerate() {
+					let Some(sig) = sig else { continue };
 					self.out.wanted.push(sig.id);
+					let name = format!("{typ}_{tn}#{i}");
+					let spread = base.ret_pack(&sig.ret).is_some_and(|p| base.spread_words(&p).is_some());
 					let id = match cell && sig.access[0] != Access::Mut {
-						true => self.cell_thunk(sig.id, &format!("{typ}_{tn}#{i}")),
+						true => self.cell_thunk(sig.id, &name),
+						false if spread && self_option(ret) => self.rebox_thunk(sig, &name, &funcs, base),
 						false => sig.id,
 					};
 					let fref = self.module.declare_func_in_data(id, &mut desc);
@@ -2239,6 +2244,22 @@ impl<M: Module> Compiler<M> {
 		b.ins().return_(&rets);
 		b.finalize();
 		self.finish_fn(&oi_symbol(&format!("{name}#cell")))
+	}
+
+	// Call a `?Self` method, moving its struct to the heap as the object's data.
+	fn rebox_thunk(&mut self, sig: &FnSig, name: &str, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {
+		self.ctx.func.signature = self.module.declarations().get_function_decl(sig.id).signature.clone();
+		let (mut trans, block) = self.translator(&FnDef::default(), funcs, types);
+		let args = trans.b.block_params(block).to_vec();
+		let callee = trans.module.declare_func_in_func(sig.id, trans.b.func);
+		let call = trans.b.ins().call(callee, &args);
+		let rets = trans.gather(call, &sig.ret);
+		let ok = trans.types.option_inner(&sig.ret).expect("a `?Self`");
+		let rets = [trans.unframe(rets[0], &ok), rets[1]];
+		trans.b.func.signature.returns = rets.map(|v| AbiParam::new(trans.b.func.dfg.value_type(v))).to_vec();
+		trans.b.ins().return_(&rets);
+		trans.b.finalize();
+		self.finish_fn(&oi_symbol(&format!("{name}#rebox")))
 	}
 
 	fn finish_fn(&mut self, name: &str) -> FuncId {

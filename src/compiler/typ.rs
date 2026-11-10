@@ -571,7 +571,12 @@ pub(crate) fn abi_params<'t>(
 // A fn's ABI returns, one per tuple or `!T` pack slot.
 pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<AbiParam> {
 	match types.ret_pack(ret).as_ref().unwrap_or(ret) {
-		Typ::Tuple(fields) => fields.iter().map(|(_, t)| AbiParam::new(cl_type(t, int))).collect(),
+		pack @ Typ::Tuple(fields) => {
+			let words = types.spread_words(pack).unwrap_or(1);
+			(std::iter::repeat_n(fields.first(), words).flatten().chain(fields.iter().skip(1)))
+				.map(|(_, t)| AbiParam::new(cl_type(t, int)))
+				.collect()
+		}
 		ret => vec![AbiParam::new(cl_type(ret, int))],
 	}
 }

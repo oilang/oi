@@ -922,7 +922,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Gathers a call's results.
 	fn returned(&mut self, call: codegen::ir::Inst, typ: &Typ, c_abi: bool, span: Option<Span>) -> TypedVal {
-		let rets = self.b.inst_results(call).to_vec();
+		let rets = self.gather(call, typ);
 		let keep = span.is_some() && span == self.pack_call;
 		let val = match typ {
 			_ if typ.is_unit() => self.unit_value().0,
@@ -936,6 +936,31 @@ impl<'a, M: Module> Translator<'a, M> {
 		(val, typ.clone())
 	}
 
+	// Gathers a call's results, a pack's struct words into a frame slot.
+	pub(crate) fn gather(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Vec<Value> {
+		let rets = self.b.inst_results(call).to_vec();
+		let Some(pack) = self.types.ret_pack(typ) else { return rets };
+		let Some(words) = self.types.spread_words(&pack) else { return rets };
+		let (payload, flag, none) = (self.frame_slots(&rets[..words]), rets[words], self.pack_none(&pack));
+		let happy = match self.trailing(&pack) {
+			Some((_, Typ::Bool)) => flag,
+			_ => self.b.ins().icmp_imm(IntCC::Equal, flag, none),
+		};
+		let null = self.b.ins().iconst(self.int, 0);
+		vec![self.b.ins().select(happy, payload, null), flag]
+	}
+
+	// Moves a gathered struct to the heap.
+	pub(crate) fn unframe(&mut self, ptr: Value, typ: &Typ) -> Value {
+		let out = self.b.declare_var(self.int);
+		self.b.def_var(out, ptr);
+		self.when(ptr, |s| {
+			let heap = s.heap_move(ptr, typ);
+			s.b.def_var(out, heap);
+		});
+		self.b.use_var(out)
+	}
+
 	// Boxes a returned `?T` or `!T` pack.
 	pub(super) fn pack_box(&mut self, slots: &[Value], typ: &Typ) -> Value {
 		let (ok, err) = self.fallible_split(typ).expect("a return pack");
@@ -943,6 +968,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let none = self.pack_none(&self.types.ret_pack(typ).expect("a return pack"));
 		let (&flag, lead) = slots.split_last().expect("a return pack");
 		let payload = match lead {
+			&[one] if ok.by_pointer() => self.unframe(one, &ok),
 			[one] => *one,
 			many => self.heap_slots(many),
 		};
@@ -1076,8 +1102,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		// Self/?Self
 		let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
 		let bare = matches!(ret, Some((te, _)) if is_self(te));
-		let opt =
-			matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [te] if is_self(te)));
+		let opt = self_option(ret);
 		if !object_safe((method, params, ret)) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return fail(msg, span, "uses `Self` beyond the receiver");

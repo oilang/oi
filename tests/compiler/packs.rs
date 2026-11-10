@@ -244,14 +244,15 @@ fn tuple_enum_and_struct_payloads_ride_packs() {
 			lo, hi := call(2) or (0, 0)
 			dir := wheel.turn(1) or .down
 			at := find(0) or Point.{ x = 4 }
-			print(lo + hi, dir, at.x, count)
+			hit := find(5) or Point.{}
+			print(lo + hi, dir, at.x, hit.x, count)
 			pair, ok := span(3)
 			print(pair.1, ok, wheel.turn(0), parse(0), shape(6), shape(0) or .square.(1))
 		}
 	"#};
 	check(
 		src,
-		["0 up 4 0", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
+		["0 up 4 5 0", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
 	);
 }
 

@@ -932,7 +932,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			let null = self.b.ins().iconst(self.int, 0);
 			self.b.def_var(owner, null);
 			self.flagged.push(owner);
-			return self.unbox_ret(payload, inner);
 		}
 		payload
 	}

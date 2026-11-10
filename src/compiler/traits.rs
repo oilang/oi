@@ -131,6 +131,11 @@ pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = Trait
 	})
 }
 
+// Whether a trait fn returns `?Self`, reboxed through an object.
+pub(crate) fn self_option(ret: &Option<Spanned<TypeExpr>>) -> bool {
+	matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [TypeExpr::Name(n)] if n == "Self"))
+}
+
 // Whether an object can call it.
 pub(crate) fn object_safe((_, params, ret): TraitFn) -> bool {
 	let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
