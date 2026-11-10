@@ -2358,6 +2358,11 @@ impl<M: Module> Compiler<M> {
 			param_vals = trans.c_params(def.params, &param_vals);
 		}
 		for (i, ((name, typ, access), &val)) in def.params.iter().zip(param_vals.iter()).enumerate() {
+			// a C fn pointer param is the bare address C passed
+			let typ = &match typ {
+				Typ::Fn(..) if def.foreign => Typ::Annotated(vec![role::C.into()], typ.clone().into()),
+				typ => typ.clone(),
+			};
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);

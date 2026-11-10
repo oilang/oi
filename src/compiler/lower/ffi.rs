@@ -130,10 +130,7 @@ impl<M: Module> Translator<'_, M> {
 		let mut vals = &vals[sret as usize..];
 		let mut out = vec![];
 		for ((_, typ, _), regs) in params.iter().zip(spread) {
-			let (val, used) = match typ {
-				Typ::Fn(..) => (self.fn_cell(vals[0]), 1),
-				_ => self.c_gather(typ, regs, vals).unwrap_or_else(|| (self.c_norm(vals[0], typ), 1)),
-			};
+			let (val, used) = self.c_gather(typ, regs, vals).unwrap_or_else(|| (self.c_norm(vals[0], typ), 1));
 			out.push(val);
 			vals = &vals[used..];
 		}

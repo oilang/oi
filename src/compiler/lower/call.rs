@@ -263,8 +263,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			args
 		};
 		let mut params = sig.value_params();
-		for p in params.iter_mut().filter(|p| sig.foreign && matches!(p.typ, Typ::Fn(..))) {
-			p.typ = Typ::Annotated(vec![role::C.into()], Box::new(p.typ.clone()));
+		if sig.foreign {
+			c_fn_params(&mut params);
 		}
 		let (vals, lent) = self.call_args(name, &params, recv, recv_expr, args, span)?;
 		let out = self.emit_call_at(&sig, &vals, Some(span));
@@ -884,6 +884,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		if !pure {
 			self.require_pure(name, span)?;
 		}
+		let mut params = params.clone();
+		if c_abi {
+			c_fn_params(&mut params);
+		}
+		let params = &params;
 		let (mut vals, lent) = self.call_args(name, params, recv, None, args, span)?;
 		let mut sig = self.module.make_signature();
 		if c_abi {
@@ -1171,5 +1176,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		let addr = self.rt_call("trait_field", &[data, off]).unwrap();
 		let v = self.ld_typ(addr, 0, &ftyp);
 		Ok((v, ftyp))
+	}
+}
+
+// Mark a C call's fn-typed params `@c`, so their args pass a C address.
+fn c_fn_params(params: &mut [FnParam]) {
+	for p in params.iter_mut().filter(|p| matches!(p.typ, Typ::Fn(..))) {
+		p.typ = Typ::Annotated(vec![role::C.into()], Box::new(p.typ.clone()));
 	}
 }

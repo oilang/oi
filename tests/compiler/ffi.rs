@@ -50,6 +50,21 @@ fn oi_fn_crosses_into_c_through_a_shim() {
 }
 
 #[test]
+fn c_fn_ptr_takes_a_fn_arg() {
+	let src = indoc! {"
+		@export
+		run :: fn(cb: fn(get: fn() i32) i32) i32 {
+			cb(fn() i32 do 7)
+		}
+		six :: fn() i32 { 6 }
+		G :: @c fn(get: fn() i32) i32
+		g := unsafe G.(ptr.(fn(get: fn() i32) i32 do get() * 7))
+		print(run(fn(get: fn() i32) i32 do get()), g(six))
+	"};
+	check(src, "7 42");
+}
+
+#[test]
 fn struct_place_behind_ptr() {
 	let src = indoc! {"
 		S :: struct { n: int }
