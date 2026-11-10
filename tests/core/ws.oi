@@ -17,6 +17,9 @@ test! "echo, ping and close" {
 	echo :: string.([u8.(1) 126 0 150]) + text[..150] + string.([u8.(0x89) 0 0x80 50]) + text[150..]
 	server.write("HTTP/1.1 101 OK\r\nSec-Websocket-Accept: {accept}\r\nSec-WebSocket-Protocol: rex.v1\r\n\r\n{echo}") or panic!("write failed")
 	socket := ws.connect(client, "localhost", "/", ["rex.v1"]) or panic!("upgrade failed")
+	ping :: socket.recv() or panic!("recv failed")
+	assert! ping.ping && ping.data == ""
+	socket.pong(ping.data) or panic!("pong failed")
 	message :: socket.recv() or panic!("recv failed")
 	assert! message.data == text && !message.binary
 	socket.send(text, false) or panic!("send failed")

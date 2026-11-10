@@ -12,12 +12,16 @@ max_message :: 16 * 1024 * 1024 # 16 MiB
 pub Ws :: struct {
 	conn: net.Conn
 	pending: string
+	partial: string
+	partial_binary: bool
 }
 
 ## A received message, text unless `binary`.
+## A `ping` carries its payload for the caller to `pong`.
 pub Message :: struct {
 	pub data: string
 	pub binary: bool
+	pub ping: bool
 }
 
 ## `n` random bytes.
@@ -62,10 +66,13 @@ Ws :< {
 		self.frame(if binary do 2 else do 1, data)
 	}
 
+	## Send a pong echoing a received ping's `data`.
+	pub pong :: fn(self; data: string) ! {
+		self.frame(10, data)
+	}
+
 	## Next message, reassembled from fragments, answering pings on the way.
 	pub recv :: fn(mut self) !Message {
-		data := ""
-		binary := false
 		loop {
 			head :: self.take(2)?
 			if int.(head[1]) & 128 != 0 {
@@ -79,18 +86,24 @@ Ws :< {
 					len = (len << 8) | int.(extended[i])
 				}
 			}
-			if len < 0 || data.len() + len > max_message {
+			if len < 0 || self.partial.len() + len > max_message {
 				return error("ws: message too large")
 			}
 			payload :: self.take(len)?
 
 			opcode :: int.(head[0]) & 15
 			if opcode == 8 do return error("ws: closed by peer")
-			if opcode == 9 do self.frame(10, payload)?
+			if opcode == 9 do return Message.{ data = payload, ping = true }
+
 			if opcode <= 2 {
-				if opcode != 0 do binary = opcode == 2
-				data += payload
-				if int.(head[0]) & 128 != 0 do return Message.{ data, binary }
+				if opcode != 0 do self.partial_binary = opcode == 2
+				self.partial += payload
+
+				if int.(head[0]) & 128 != 0 {
+					message :: Message.{ data = self.partial, binary = self.partial_binary }
+					self.partial = ""
+					return message
+				}
 			}
 		}
 	}
