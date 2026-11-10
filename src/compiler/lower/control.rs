@@ -1804,6 +1804,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				if owns {
 					self.rt_call("map_forget", &[val]);
 					val = vals;
+				} else if self.is_affine(&v) {
+					self.temp(vals, &Typ::Array(Box::new(Typ::Int(64))));
 				} else {
 					self.owning(vals, &v);
 					self.temp(vals, &Typ::Array(v.clone()));

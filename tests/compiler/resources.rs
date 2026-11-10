@@ -430,9 +430,10 @@ fn a_move_loop_owns_each_element() {
 		FILE,
 		close,
 		"m := [1 = File.{fd = 1}, 2 = File.{fd = 2}]",
+		"loop f, k in m do print(f.fd + k)",
 		"print(loop move f, k in m do f.close() + k)",
 	];
-	check(map, ["drop 1", "drop 2", "[2, 4]"]);
+	check(map, ["2", "4", "drop 1", "drop 2", "[2, 4]"]);
 	assert_clean(map);
 	let fixed = "fs: [3]File = .[File.{fd = 0}, File.{fd = 1}, File.{fd = 2}]";
 	check(

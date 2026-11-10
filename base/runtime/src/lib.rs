@@ -1148,6 +1148,7 @@ pub unsafe extern "C" fn map_release(map: *mut OiMap) {
 #[unsafe(export_name = "oi_map_forget")]
 pub unsafe extern "C" fn map_forget(map: *mut OiMap) {
 	unsafe {
+		debug_assert_eq!((*map).rc, 1, "a moved map is unshared");
 		(*map).entries.clear();
 		map_release(map);
 	}
