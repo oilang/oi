@@ -1300,14 +1300,22 @@ extern "C" fn signal_forward(sig: libc::c_int) {
 	}
 }
 
+/// Read ends of the pipes `oi_signal_pipe` made, by signal number.
+static SIGNAL_READS: Mutex<[i32; 65]> = Mutex::new([-1; 65]);
+
 /// The read end of a pipe that gets a byte per signal, or -1.
-/// A later call for the same signal takes over.
+/// Calls for the same signal share the pipe.
 #[unsafe(export_name = "oi_signal_pipe")]
 pub extern "C" fn signal_pipe(sig: i32) -> i32 {
-	let mut ends = [0; 2];
-	if !(1..65).contains(&sig) || unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+	if !(1..65).contains(&sig) {
 		return -1;
 	}
+	let read = &mut SIGNAL_READS.lock().unwrap()[sig as usize];
+	let mut ends = [0; 2];
+	if *read != -1 || unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+		return *read;
+	}
+	*read = ends[0];
 	SIGNAL_PIPES[sig as usize].store(ends[1], Ordering::Relaxed);
 	unsafe {
 		libc::fcntl(ends[1], libc::F_SETFL, libc::O_NONBLOCK);
