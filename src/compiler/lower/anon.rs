@@ -36,7 +36,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(Some(Typ::Fn(params, Box::new(ret))))
 	}
 
-	// Declare an anon fn literal.
+	// Declare an anon fn literal, with the FuncId of its code.
 	pub(super) fn declare_anon_fn(
 		&mut self,
 		captures: &Option<Vec<Capture>>,
@@ -45,7 +45,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		sig: AnonSig,
 		body: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
+	) -> Result<(TypedVal, FuncId), Diagnostic> {
 		if let Some(p) = params.iter().find(|p| p.default.is_some()) {
 			let msg = "default params are only supported on named fns";
 			return fail(msg, p.span, "remove the default");
@@ -189,7 +189,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				true => Typ::Annotated(vec![role::PURE.into()], typ.into()),
 				false => sig.ctx_marked(typ),
 			};
-			return Ok((self.fn_object(sig.id), typ));
+			return Ok(((self.fn_object(sig.id), typ), sig.id));
 		}
 
 		self.out.wanted.push(sig.id);
@@ -218,7 +218,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			typ = Typ::Annotated(vec![role::ISOLATED.into()], typ.into());
 		}
 		self.temp(env, &typ);
-		Ok((env, typ))
+		Ok(((env, typ), sig.id))
 	}
 
 	// Run `f` with its fn literals marked as ones C calls.

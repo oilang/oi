@@ -1397,7 +1397,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Annotated(_, inner) => inner,
 			from => from,
 		};
-		self.forwarder("$f", &None, arity, sig, span)
+		Ok(self.forwarder("$f", &None, arity, sig, span)?.0)
 	}
 
 	// A fn literal of shape `sig` passing its params on to `callee`.
@@ -1408,7 +1408,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		arity: usize,
 		sig: &Typ,
 		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
+	) -> Result<(TypedVal, FuncId), Diagnostic> {
 		let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
 		let call = Expr::Call {
 			name: callee.into(),
@@ -1447,8 +1447,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let key = self.qualify(name).into_owned();
 		if !self.out.c_shims.contains_key(&key) {
-			self.for_c(true, |s| s.forwarder(name, &Some(vec![]), arity, sig, *span))?;
-			let id = self.out.mono[self.out.roots.last().expect("a rooted shim")].id;
+			let (_, id) = self.for_c(true, |s| s.forwarder(name, &Some(vec![]), arity, sig, *span))?;
 			self.out.c_shims.insert(key.clone(), id);
 		}
 		let shim = self.module.declare_func_in_func(self.out.c_shims[&key], self.b.func);

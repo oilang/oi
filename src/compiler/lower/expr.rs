@@ -312,7 +312,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						};
 						let body = [(Expr::Not(Box::new((call, expr.1))), expr.1)];
 						let sig = AnonSig::Inferred(t.clone());
-						return self.declare_anon_fn(&None, &[], false, sig, &body, expr.1);
+						return Ok(self.declare_anon_fn(&None, &[], false, sig, &body, expr.1)?.0);
 					}
 					_ => {
 						return fail(
@@ -816,7 +816,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						span,
 					)];
 					let fsig = AnonSig::Inferred(Typ::Fn(rest, Box::new(sig.ret)));
-					return self.declare_anon_fn(&None, &[], false, fsig, &body, span);
+					return Ok(self.declare_anon_fn(&None, &[], false, fsig, &body, span)?.0);
 				}
 				if self
 					.world
@@ -1061,7 +1061,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Block(body) => match hint {
 				// bare blocks are treated as fn literals when they match an expected/inferred fn type
 				Some(t @ Typ::Fn(..)) => {
-					self.declare_anon_fn(&None, &[], true, AnonSig::Inferred(t.clone()), body, expr.1)
+					let sig = AnonSig::Inferred(t.clone());
+					Ok(self.declare_anon_fn(&None, &[], true, sig, body, expr.1)?.0)
 				}
 				Some(Typ::Annotated(anns, t)) if is_isolated(anns) && matches!(**t, Typ::Fn(..)) => {
 					self.isolated = true;
@@ -1183,7 +1184,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						);
 					}
 				};
-				self.declare_anon_fn(captures, params, *params_tuple, sig, body, expr.1)
+				Ok(self.declare_anon_fn(captures, params, *params_tuple, sig, body, expr.1)?.0)
 			}
 
 			Expr::Annotated(anns, inner) => {
