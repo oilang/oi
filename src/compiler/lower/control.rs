@@ -1715,6 +1715,14 @@ impl<'a, M: Module> Translator<'a, M> {
 		if access == Access::Mut {
 			self.mut_place(Self::place_root(iter), "only a mutable binding can be looped `mut`")?;
 		}
+		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
+		if access == Access::Move && !direct && self.claims(&typ, role::KEYED) {
+			return fail(
+				"`loop move` needs an array, map or fixed array",
+				pat.1,
+				"`Keyed` hands out borrows",
+			);
+		}
 
 		// resources are owned. a full-width array or map slot is viewed in place, the rest is written back
 		let given = match (access, typ.unkeyed()) {

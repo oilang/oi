@@ -201,6 +201,10 @@ fn keyed_protocol() {
 	"#};
 	check(src, ["k0 2", "k1 3", "k2 1", "[2, 3, 1]"]);
 	assert_clean(src);
+	fail(
+		[src, "loop move x in ring {}"],
+		"`loop move` needs an array, map or fixed array",
+	);
 }
 
 // breaks with values
