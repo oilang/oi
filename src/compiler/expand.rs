@@ -36,6 +36,7 @@ pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanne
 		annotations: program.annotations.clone(),
 		roots: program.roots.clone(),
 		core_origin: program.core_origin.clone(),
+		held: program.held.clone(),
 		..Program::default()
 	}
 }

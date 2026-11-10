@@ -5,8 +5,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, File, include_dir};
@@ -352,7 +352,10 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 fn par_map<T: Sync, R: Send>(jobs: &[T], size: impl Fn(&T) -> usize, run: impl Fn(&T) -> R + Sync) -> Vec<R> {
 	let mut order: Vec<usize> = (0..jobs.len()).collect();
 	order.sort_by_key(|&i| std::cmp::Reverse(size(&jobs[i])));
-	let (next, done) = (AtomicUsize::new(0), Mutex::new(Vec::from_iter(jobs.iter().map(|_| None))));
+	let (next, done) = (
+		AtomicUsize::new(0),
+		Mutex::new(Vec::from_iter(jobs.iter().map(|_| None))),
+	);
 	std::thread::scope(|s| {
 		for _ in 0..std::thread::available_parallelism().map_or(1, |n| n.get()).min(jobs.len()) {
 			s.spawn(|| {
@@ -389,10 +392,11 @@ pub fn parse_file(
 }
 
 // A library file's top-level names and every name it mentions, read off its tokens.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct Scan {
 	module: String,
 	base: Option<usize>,
+	header: Option<String>,
 	decls: Vec<String>,
 	claims: Vec<Vec<String>>,
 	idents: HashSet<String>,
@@ -409,14 +413,24 @@ fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 		eager,
 		..Scan::default()
 	};
-	let (mut depth, mut head, mut middle) = (0, 0, None);
+
+	let (mut depth, mut head, mut middle, mut owner) = (0, 0, None, None::<String>);
 	for (i, (tok, _)) in toks.iter().enumerate() {
 		match tok {
 			Token::Ident(n) => {
 				out.idents.insert(n.clone());
-				out.eager |= matches!(toks.get(i + 1), Some((Token::Not, _)));
+				out.eager |= matches!(toks.get(i + 1), Some((Token::Not, _)))
+					|| n == "core" && matches!(toks.get(i + 1..i + 4), Some([(Token::Dot, _), _, (Token::Dot, _)]));
 				head = if depth == 0 { i } else { head };
+
+				if depth == 1
+					&& let Some(typ) = &owner
+					&& matches!(toks.get(i + 1), Some((Token::DoubleColon, _)))
+				{
+					out.claims.push(vec![typ.clone(), n.clone()]);
+				}
 			}
+			Token::Module if i == 0 => out.header = name(1),
 			Token::Use | Token::Comp => out.eager = true,
 			Token::At => out.eager |= matches!(name(i + 1).as_deref(), Some("test" | "export")),
 			Token::LParen | Token::LBracket | Token::LBrace => depth += 1,
@@ -425,10 +439,14 @@ fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 			Token::DoubleColon | Token::Bind => out.decls.extend(name(head)),
 			Token::Colon | Token::Assign if let Some(start) = middle.take() => out.decls.extend(name(start)),
 			Token::Colon => middle = Some(head),
-			Token::Lt if let Some(start) = middle.take() => out.claims.push((start..i).filter_map(name).collect()),
+			Token::Lt if let Some(start) = middle.take() => {
+				owner = name(start);
+				out.claims.push((start..i).filter_map(name).collect());
+			}
 			_ => {}
 		}
 	}
+
 	out
 }
 
@@ -1012,6 +1030,7 @@ impl Loader {
 		if !self.prescanned.insert(name.to_string()) {
 			return;
 		}
+
 		let from_core = self.program.core_origin.contains(name);
 		let mut imports = vec![];
 		let scanned = par_map(
@@ -1022,11 +1041,16 @@ impl Loader {
 				(prescan(&toks), scan(name, name == "main" || from_core, &toks))
 			},
 		);
-		for ((path, _), ((raw, used), held)) in files.iter().zip(scanned) {
+
+		let mut headers = scanned.iter().filter_map(|(_, held)| held.header.as_deref());
+		let disagree = headers.next().is_some_and(|first| headers.any(|h| h != first));
+		for ((path, _), ((raw, used), mut held)) in files.iter().zip(scanned) {
+			held.eager |= disagree;
 			self.raw_macros.extend(raw);
 			imports.extend(used);
 			self.program.held.insert(path.clone(), held);
 		}
+
 		for m in imports {
 			if !self.prescanned.contains(&m) {
 				let inner = self.module_files(&m, from_core).unwrap_or_default();
@@ -1051,6 +1075,7 @@ impl Loader {
 			if fired.is_empty() {
 				return Ok(filled);
 			}
+
 			for f in fired {
 				self.program.needed.extend(f.idents);
 

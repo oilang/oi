@@ -419,11 +419,11 @@ fn comp_selects_a_module() {
 		.main([
 			"use posix",
 			"use win32",
-			"os :: comp if BUILD_OS == :windows { win32 } else { posix }",
-			"main :: fn() { print(os.name()); with os { print(name()) } }",
+			"os :: comp if BUILD_OS == :windows do win32 else do posix",
+			"main :: fn() { print(os.name()); with os do print(name()) }",
 		])
-		.lib("posix", [r#"pub name :: fn() string { "posix" }"#])
-		.lib("win32", [r#"pub name :: fn() string { "win32" }"#])
+		.lib("posix", [r#"pub name :: fn() string do "posix""#])
+		.lib("win32", [r#"pub name :: fn() string do "win32""#])
 		.check(["posix", "posix"]);
 }
 
@@ -433,7 +433,7 @@ fn orphan_claims() {
 		.main([
 			"use shapes",
 			"use show",
-			"shapes.P : show.Show < { show :: fn(self) int { 1 } }",
+			"shapes.P : show.Show < { show :: fn(self) int do 1 }",
 		])
 		.lib("shapes", ["pub P :: struct { x: int }"])
 		.lib("show", ["pub Show :: trait { show: fn(self) int }"])
@@ -463,7 +463,7 @@ fn lib_files_parse_once_named() {
 		.lib(
 			"util",
 			[
-				r#"get! :: fn(n: Ast) Ast { `%{ident("val_" + n.str())}()` }"#,
+				r#"get! :: fn(n: Ast) Ast do `%{ident("val_" + n.str())}()`"#,
 				"pub seven :: fn() int do get!(seven)",
 			],
 		)
@@ -479,5 +479,54 @@ fn lib_files_parse_once_named() {
 			"util/stale.oi",
 			["module util", "pub Stale :: struct { m: Missing }", "Stale : Eq < {}"],
 		)
+		.check("7");
+}
+
+#[test]
+fn held_file_reaches_core_submodules() {
+	Project::new()
+		.main(["use util", "print(util.seven())"])
+		.lib(
+			"util",
+			[
+				r#"get! :: fn(n: Ast) Ast do `%{ident("val_" + n.str())}()`"#,
+				"pub seven :: fn() int do get!(seven)",
+			],
+		)
+		.file(
+			"util/val.oi",
+			["module util", "val_seven :: fn() int do int.(core.math.floor(7.5))"],
+		)
+		.check("7");
+}
+
+#[test]
+fn held_claim_reached_through_its_methods() {
+	Project::new()
+		.main(["use util", "print(util.seven())"])
+		.lib("util", ["pub seven :: fn() int do 5.bump() + 2"])
+		.file(
+			"util/bumpy.oi",
+			[
+				"module util",
+				"pub Bumpy :: trait { bump: fn(self) int }",
+				"int : Bumpy < { bump :: fn(self) int do self }",
+			],
+		)
+		.check("7");
+}
+
+#[test]
+fn comp_fills_held_files() {
+	Project::new()
+		.main(["use util", "print(util.seven())"])
+		.lib(
+			"util",
+			[
+				r#"get! :: fn(n: Ast) Ast do `%{ident("val_" + n.str())}()`"#,
+				"pub seven :: fn() int do comp get!(seven)",
+			],
+		)
+		.file("util/val.oi", ["module util", "val_seven :: fn() int do 7"])
 		.check("7");
 }
