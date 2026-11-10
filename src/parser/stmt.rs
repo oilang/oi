@@ -225,11 +225,12 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 
 	// destructuring
 	let names = spanned(ident().map(Expr::Ident))
+		.or(p.pat.clone())
 		.separated_by(just(Token::Comma))
 		.at_least(2)
 		.collect::<Vec<_>>()
 		.map_with(|names, ex| (Expr::Tuple(names.into_iter().map(|n| (None, n)).collect()), ex.span()));
-	let pat = p.pat.clone().or(names).boxed();
+	let pat = names.or(p.pat.clone()).boxed();
 	let (list_bind, destructure) = binds(p, p.bind.clone().or(values.clone()).boxed(), pat);
 
 	let return_list = just(Token::Return)

@@ -207,6 +207,27 @@ fn keyed_protocol() {
 	);
 }
 
+#[test]
+fn keyed_hand_walk() {
+	let src = indoc! {r#"
+		xs := ["a" "b" "c"]
+		(v, k), ok := xs.pairs(1)
+		print(v, k, ok)
+
+		(v, k), ok = xs.pairs(none)
+		print(v, k, ok)
+
+		if (v, k) := xs.pairs(0) do print(v, k)
+		after : ?int = none
+		loop (v, k) := xs.pairs(after) {
+			after = k
+			print(v, k)
+		}
+	"#};
+	check(src, ["c 2 true", "a 0 true", "b 1", "a 0", "b 1", "c 2"]);
+	assert_clean(src);
+}
+
 // breaks with values
 
 #[test]

@@ -1741,6 +1741,7 @@ main :: fn() {
 		}
 	}
 	loop x, i in Ring.{ [1 2 3], 1 } do print(i, x) # 0 2, 1 3, 2 1
+	(x, i), ok := Ring.{ [1 2 3], 1 }.pairs(none)
 
 	## everything is an expression
 

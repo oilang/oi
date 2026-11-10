@@ -174,6 +174,16 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Chains a header block's binds and tests as clauses, and its other statements just run.
 	fn clauses(&mut self, h: &Spanned<Expr>) -> Result<Spanned<Expr>, Diagnostic> {
+		let mut pat = h.clone();
+		if let Expr::PatBind { value, .. } = &mut pat.0
+			&& infallible(&h.0)
+			&& !matches!(&value.0, Expr::Ident(name) if name == "$pat")
+		{
+			// pattern unwrapping and then destructuring
+			let value = std::mem::replace(value, Box::new((Expr::Ident("$pat".into()), h.1)));
+			let unwrap = Box::new(crate::ast::bind("$pat", *value));
+			return Ok((Expr::Binary(BinOp::And, unwrap, Box::new(pat)), h.1));
+		}
 		let Expr::Block(body) = &h.0 else { return Ok(h.clone()) };
 		let (stmt, rest) = match &body[..] {
 			[] => return Ok(h.clone()),
@@ -1945,6 +1955,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Ident(name) => vec![(name.clone(), typ.clone(), 0)],
 			_ => self.pat_binds(pat, typ)?,
 		};
+		let (hidden, binds): (Vec<_>, _) = binds.into_iter().partition(|(name, ..)| name.starts_with("$sub"));
+		for ((_, ftyp, off), sub) in hidden.iter().zip(&split_subs(pat).1) {
+			let field = self.load_bind(val, typ, ftyp, *off, sub.1);
+			self.bind_pat(sub, field, ftyp, mutable)?;
+		}
 		for (name, ftyp, off) in binds {
 			let v = if parts {
 				self.load_bind(val, typ, &ftyp, off, pat.1)
@@ -1971,6 +1986,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The names a pattern binds, with their offsets into the subject.
 	// Tuple and struct offsets are in bytes, array offsets are element indices. I couldn't think of a nicer way to do it.
 	pub(super) fn pat_binds(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<Vec<Bind>, Diagnostic> {
+		let pat = &split_subs(pat).0;
 		match (&pat.0, typ) {
 			(Expr::Tuple(elems), Typ::Tuple(fields)) => {
 				if elems.len() != fields.len() {
