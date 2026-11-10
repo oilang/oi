@@ -45,3 +45,11 @@ test! "decode" {
 	decode[int]("3.5") or { msg = $.message(); 0 }
 	assert! msg == "expected int, got 3.5"
 }
+
+P[T] :: struct { item: T }
+Held :: struct { p: P[Inner] }
+
+test! "decode a generic named like a json type" {
+	out :: decode[Held](r"""{"p": {"item": {"name": "a", "ok": true}}}""") or panic!($.message())
+	assert! out.p.item.name == "a"
+}

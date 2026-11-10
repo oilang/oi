@@ -688,6 +688,7 @@ pub enum TypeExpr {
 	Value(Box<Spanned<Expr>>),
 	Infer(Box<Spanned<Expr>>),
 	Resolved(String),
+	ResolvedGeneric(String, Vec<TypeExpr>),
 }
 
 impl TypeExpr {
@@ -714,7 +715,9 @@ impl TypeExpr {
 			TypeExpr::Tuple(fields) | TypeExpr::TupleStruct(_, fields) => {
 				fields.iter_mut().for_each(|(_, t)| t.walk_mut(f));
 			}
-			TypeExpr::Sum(types) | TypeExpr::Generic(_, types) => types.iter_mut().for_each(|t| t.walk_mut(f)),
+			TypeExpr::Sum(types) | TypeExpr::Generic(_, types) | TypeExpr::ResolvedGeneric(_, types) => {
+				types.iter_mut().for_each(|t| t.walk_mut(f))
+			}
 			TypeExpr::AnonStruct(fields) => fields.iter_mut().for_each(|p| p.typ.walk_mut(f)),
 			TypeExpr::Name(_)
 			| TypeExpr::AtomSum(_)

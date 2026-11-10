@@ -327,6 +327,9 @@ impl TypeCtx<'_> {
 		match te {
 			TypeExpr::Name(name) => self.named(name, span),
 			TypeExpr::Resolved(key) => self.with_scope(&NO_SCOPE).named(key, span),
+			TypeExpr::ResolvedGeneric(key, args) => self
+				.with_scope(&NO_SCOPE)
+				.resolve(&TypeExpr::Generic(key.clone(), args.clone()), span),
 			TypeExpr::Tuple(elems) => {
 				let fields = elems
 					.iter()

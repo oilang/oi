@@ -94,7 +94,11 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Dia
 			}
 			for t in e.types() {
 				t.walk_mut(&mut |t| {
-					if let TypeExpr::Name(n) | TypeExpr::Generic(n, _) | TypeExpr::Resolved(n) = t {
+					if let TypeExpr::Name(n)
+					| TypeExpr::Generic(n, _)
+					| TypeExpr::Resolved(n)
+					| TypeExpr::ResolvedGeneric(n, _) = t
+					{
 						mention(n);
 					}
 				});
@@ -551,7 +555,9 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 						TypeExpr::Name(n) if let Some(key) = keys.get(&scope.qualify_name(n)) => {
 							*t = TypeExpr::Resolved(key.clone())
 						}
-						TypeExpr::Generic(n, _) if let Some(key) = keys.get(&scope.qualify_name(n)) => *n = key.clone(),
+						TypeExpr::Generic(n, args) if let Some(key) = keys.get(&scope.qualify_name(n)) => {
+							*t = TypeExpr::ResolvedGeneric(key.clone(), std::mem::take(args))
+						}
 						_ => {}
 					});
 				}
@@ -1113,7 +1119,7 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 	let def = DEFS.with_borrow(|(scope, _, defs, _)| {
 		let (name, args) = match unsafe { &(*a).0 } {
 			Expr::Resolved(q, _) => (q.clone(), &[][..]),
-			Expr::TypePat(TypeExpr::Generic(q, args)) => (q.clone(), &args[..]),
+			Expr::TypePat(TypeExpr::Generic(q, args) | TypeExpr::ResolvedGeneric(q, args)) => (q.clone(), &args[..]),
 			e => (scope.qualify_name(&written(e)), &[][..]),
 		};
 		let mut def = defs.iter().find(|d| d.0 == name)?.1.clone();

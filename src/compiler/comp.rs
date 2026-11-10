@@ -259,7 +259,7 @@ pub(crate) fn instantiate(
 			{
 				*e = (**lit).clone();
 			} else if let Expr::Ident(n) = e
-				&& let Some(t @ (TypeExpr::Resolved(_) | TypeExpr::Generic(..))) = types
+				&& let Some(t @ (TypeExpr::Resolved(_) | TypeExpr::ResolvedGeneric(..))) = types
 					.type_params
 					.get(n)
 					.map(|t| spell(t, &types.generics.instance_args.borrow()))
@@ -390,7 +390,9 @@ pub(crate) fn scalar(tag: i64, v: i64) -> Expr {
 // Spell a yielded type.
 fn spell(typ: &Typ, instances: &HashMap<String, Vec<Typ>>) -> TypeExpr {
 	match typ.nominal().and_then(|n| Some((n.split_once('[')?.0, instances.get(n)?))) {
-		Some((base, args)) => TypeExpr::Generic(base.into(), args.iter().map(|a| spell(a, instances)).collect()),
+		Some((base, args)) => {
+			TypeExpr::ResolvedGeneric(base.into(), args.iter().map(|a| spell(a, instances)).collect())
+		}
 		None if let Typ::Tuple(fs) = typ => {
 			TypeExpr::Tuple(fs.iter().map(|(n, t)| (n.clone(), spell(t, instances))).collect())
 		}
