@@ -54,11 +54,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn flow_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		match &value.0 {
 			Expr::Index { .. } | Expr::Cast { .. } | Expr::Bind { .. } => {
-				let (val, typ) = self.lower(value, Some(&Typ::Enum(role::OPTION.into())))?;
+				let (mut val, mut typ) = self.lower(value, Some(&Typ::Enum(role::OPTION.into())))?;
 				// rebind what the tail moved out by a read
 				if let Expr::Bind { name, mutable, .. } = &value.0
 					&& self.is_affine(&typ)
 				{
+					if let Some(res) = self.types.pack_ret(&typ) {
+						let slots = [self.ld_word(val, 0), self.ld_word(val, 8)];
+						(val, typ) = (self.pack_box(&slots, &res), res);
+					}
 					self.bind_local(name, val, typ.clone(), *mutable);
 				}
 				Ok((val, typ))
@@ -81,6 +85,12 @@ impl<'a, M: Module> Translator<'a, M> {
 		let out = self.flow_operand(value);
 		self.pack_call = outer;
 		out
+	}
+
+	// Whether a fallible operator keeps its Option for a hint.
+	fn keeps_option(&self, hint: Option<&Typ>) -> bool {
+		let hint = hint.map(|hint| self.types.pack_ret(hint).unwrap_or_else(|| hint.clone()));
+		matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION))
 	}
 
 	// `val` when `hit`, else zero.
@@ -370,7 +380,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.construct_variant(&name, &variant, args, expr.1);
 				}
-				let keep = matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION));
+				let keep = self.keeps_option(hint);
 				let typ = self.types.resolve(&target.0, target.1)?;
 				let (val, out) = self.cast_to(&typ, args, expr.1)?;
 				let Some(inner) = self.types.option_inner(&out).filter(|_| out != typ && !keep) else {
@@ -946,7 +956,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			Expr::Index { collection, index } => {
-				let keep = matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION));
+				let keep = self.keeps_option(hint);
 				let (ptr, typ) = self.expr(collection)?;
 				let (ptr, typ) = self.deref(ptr, &typ);
 				match &typ {

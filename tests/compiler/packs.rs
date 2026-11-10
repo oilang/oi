@@ -206,7 +206,7 @@ fn error_slots() {
 }
 
 #[test]
-fn tuple_and_enum_payloads_ride_packs() {
+fn tuple_enum_and_struct_payloads_ride_packs() {
 	// a tuple of words spreads into the pack slots, nothing is boxed
 	let src = indoc! {r#"
 		count := 0
@@ -233,20 +233,25 @@ fn tuple_and_enum_payloads_ride_packs() {
 		shape :: fn(k: int) ?Shape {
 			if k > 0 do .circle.(k) else do none
 		}
+		Point :: struct { x, y: int }
+		find :: fn(k: int) ?Point {
+			if k > 0 do Point.{ x = k } else do none
+		}
 		main :: fn() {
 			wheel : Turn : Wheel.{}
 			call := span
 			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			lo, hi := call(2) or (0, 0)
 			dir := wheel.turn(1) or .down
-			print(lo + hi, dir, count)
+			at := find(0) or Point.{ x = 4 }
+			print(lo + hi, dir, at.x, count)
 			pair, ok := span(3)
 			print(pair.1, ok, wheel.turn(0), parse(0), shape(6), shape(0) or .square.(1))
 		}
 	"#};
 	check(
 		src,
-		["0 up 0", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
+		["0 up 4 0", r#"-3 true none err.("bad") some.(circle.(6)) square.(1)"#],
 	);
 }
 

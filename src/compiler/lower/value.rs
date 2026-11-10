@@ -223,8 +223,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Struct(..) | Typ::TupleStruct(..) | Typ::Tuple(_) => {
 				let layout = self.types.layout(typ).unwrap_or_default();
 				let ptr = self.stack_slot(layout.size);
+				let pack = self.types.pack_ret(typ).is_some();
 				for field in layout.fields {
-					let zero = self.zero_slot(&field.typ);
+					let zero = match pack && field.typ.by_pointer() {
+						true => self.b.ins().iconst(self.int, 0),
+						false => self.zero_slot(&field.typ),
+					};
 					self.st_field(ptr, &field, zero);
 				}
 				ptr
@@ -706,15 +710,26 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A spread pack as the (payload, flag) pair two names bind.
-	pub(super) fn regroup(&mut self, val: Value, typ: Typ) -> TypedVal {
-		match (&typ, self.trailing(&typ)) {
+	pub(super) fn regroup(&mut self, val: Value, typ: Typ, span: Span) -> Result<TypedVal, Diagnostic> {
+		Ok(match (&typ, self.trailing(&typ)) {
 			(Typ::Tuple(fields), Some((lead @ 2.., _))) if self.types.pack_ret(&typ).is_some() => {
 				let flag = self.ld_typ(val, lead as i32 * 8, &fields[lead].1);
 				let pair = vec![(None, lead_typ(&fields[..lead])), fields[lead].clone()];
 				(self.frame_slots(&[val, flag]), Typ::Tuple(pair))
 			}
+			(Typ::Tuple(fields), Some((1, _))) if fields[0].1.by_pointer() && self.types.pack_ret(&typ).is_some() => {
+				let payload = self.ld_word(val, 0);
+				let unset = self.b.ins().icmp_imm(IntCC::Equal, payload, 0);
+				self.when(unset, |s| {
+					let zero = s.zero_or_err(&fields[0].1, span)?;
+					let zero = s.heap_move(zero, &fields[0].1);
+					s.st(val, 0, zero);
+					Ok::<_, Diagnostic>(())
+				})?;
+				(val, typ)
+			}
 			_ => (val, typ),
-		}
+		})
 	}
 
 	// The happy payload, a pack's leading slots viewed in place.
@@ -1304,6 +1319,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (ok, err) = self.fallible_split(res).expect("a return pack");
 		let niche = self.pack_none(pack);
 		let (yes, none) = (self.b.ins().iconst(types::I8, 1), self.b.ins().iconst(self.int, niche));
+		let null = self.b.ins().iconst(self.int, 0);
+
 		let (happy, payload, failure) = if from == res {
 			let tag = self.enum_tag(res, val);
 			let happy = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_none() as i64);
@@ -1311,7 +1328,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			if self.is_affine(&ok) && !self.temps.contains_key(&val) {
 				self.temp(val, res);
 			}
-			let payload = self.payload_or_zero(val, res, span)?;
+			let payload = if ok.by_pointer() {
+				null
+			} else {
+				self.payload_or_zero(val, res, span)?
+			};
 			(happy, payload, self.ld_word(val, 8))
 		} else {
 			match self.coerce(val, from, &ok, span)? {
@@ -1321,23 +1342,41 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& let (e, coerced) = self.coerce(v, &t, err, span)?
 						&& coerced == *err =>
 				{
-					(self.b.ins().iconst(types::I8, 0), self.owned_zero(&ok), e)
+					let zero = if ok.by_pointer() { null } else { self.owned_zero(&ok) };
+					(self.b.ins().iconst(types::I8, 0), zero, e)
 				}
 				_ => return Ok((val, from.clone())),
 			}
 		};
+
 		let flag = match err {
 			Some(_) => self.b.ins().select(happy, none, failure),
 			None => self.b.ins().uextend(self.int, happy),
 		};
+
 		// spread words own nothing, so no copy
 		let mut slots: Vec<_> = match self.trailing(pack) {
+			Some((1, _)) if ok.by_pointer() => {
+				let out = self.b.declare_var(self.int);
+				self.b.def_var(out, null);
+				self.when(happy, |s| {
+					let payload = if from == res {
+						s.take_payload(val, res, &ok)
+					} else {
+						payload
+					};
+					let copy = s.copy_in(payload, &ok);
+					s.b.def_var(out, copy);
+				});
+				vec![self.b.use_var(out)]
+			}
 			Some((1, _)) => vec![self.copy_in(payload, &ok)],
 			_ => (ok.slots().unwrap_or_default().iter().enumerate())
 				.map(|(i, field)| self.ld_typ(payload, i as i32 * 8, field))
 				.collect(),
 		};
 		slots.push(flag);
+
 		let frame = self.frame_slots(&slots);
 		self.temp(frame, pack);
 		Ok((frame, pack.clone()))

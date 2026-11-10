@@ -937,7 +937,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Boxes a returned `?T` or `!T` pack.
-	fn pack_box(&mut self, slots: &[Value], typ: &Typ) -> Value {
+	pub(super) fn pack_box(&mut self, slots: &[Value], typ: &Typ) -> Value {
 		let (ok, err) = self.fallible_split(typ).expect("a return pack");
 		let out = self.call_alloc(2);
 		let none = self.pack_none(&self.types.ret_pack(typ).expect("a return pack"));
@@ -956,7 +956,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => self.b.ins().icmp_imm(IntCC::Equal, flag, 0),
 		};
 		self.when(failed, |s| {
-			s.release_field(payload, &ok);
+			// an unset struct payload is null
+			if !ok.by_pointer() {
+				s.release_field(payload, &ok);
+			}
 			if err.is_some() {
 				s.st(out, 8, flag);
 			}
@@ -1095,7 +1098,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (vtable, data) = self.unbox(boxv);
 		let fnptr = self.ld_word(vtable, (idx * 8) as i32);
 		let typ = Typ::Fn(typs, Box::new(ret));
+		let kept = self.pack_call.take_if(|_| opt);
 		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
+		self.pack_call = self.pack_call.or(kept);
 		if opt {
 			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 			self.on_variant(tag, 1, done, |s| {

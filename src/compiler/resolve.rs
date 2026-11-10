@@ -765,7 +765,7 @@ impl TypeCtx<'_> {
 		Some((ok, err))
 	}
 
-	// The pack a `?T` or `!T` returns as.
+	// The pack an Option or Result returns as.
 	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
 		let (ok, flag, slot) = match self.result_parts(ret) {
 			Some((ok, err)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[err])),
@@ -779,7 +779,8 @@ impl TypeCtx<'_> {
 			ok => vec![(None, ok.clone())],
 		};
 
-		(self.inert(&ok, &mut vec![]) && (slot == Typ::Bool || self.opt_niche(&slot).is_some()))
+		// a struct rides as its pointer, null when unset
+		((ok.by_pointer() || self.inert(&ok, &mut vec![])) && (slot == Typ::Bool || self.opt_niche(&slot).is_some()))
 			.then(|| Typ::Tuple([lead, vec![(Some(flag.into()), slot)]].concat()))
 	}
 

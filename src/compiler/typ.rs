@@ -236,6 +236,11 @@ impl Typ {
 		}
 	}
 
+	// A struct or trait object, held by a pointer.
+	pub fn by_pointer(&self) -> bool {
+		matches!(self, Typ::Trait(_)) || (!matches!(self, Typ::Tuple(_)) && self.slots().is_some())
+	}
+
 	pub fn bool_bytes(&self) -> Option<u16> {
 		match self {
 			Typ::Bool => Some(1),

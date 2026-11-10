@@ -316,9 +316,24 @@ fn unwrapped_drop_payloads_drop_once() {
 		f := fwd(2) or Res.{ fd = 9 }
 		xs := opens(3) or .[]
 		ys, some := pass(4)
-		print("end")
+		b, no := open(0)
+		open(0)
+		if c := open(5) do print("if", c.fd)
+		print("end", b.fd, no)
 	"#};
-	check(src, ["end", "drop 4", "drop 3", "drop 2", "drop 1"]);
+	check(
+		src,
+		[
+			"if 5",
+			"drop 5",
+			"end 0 false",
+			"drop 0",
+			"drop 4",
+			"drop 3",
+			"drop 2",
+			"drop 1",
+		],
+	);
 	assert_clean(src);
 }
 

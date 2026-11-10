@@ -298,8 +298,15 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Retain (copy in place) or release the owned slots of an aggregate.
 	fn rc_slots(&mut self, val: Value, typ: &Typ, retain: bool) {
+		let pack = self.types.pack_ret(typ).is_some();
 		for field in &self.types.layout(typ).unwrap_or_default().fields {
-			self.rc_field(val, field, retain);
+			match pack && field.typ.by_pointer() {
+				true => {
+					let slot = self.ld_word(val, field.off);
+					self.when(slot, |s| s.rc_field(val, field, retain));
+				}
+				false => self.rc_field(val, field, retain),
+			}
 		}
 	}
 

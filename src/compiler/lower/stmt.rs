@@ -152,7 +152,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (ptr, typ) = match &pat.0 {
 						Expr::Tuple(names) if names.len() == 2 => {
 							let (val, typ) = self.take_operand(value)?;
-							self.regroup(val, typ)
+							self.regroup(val, typ, value.1)?
 						}
 						_ => self.expr(value)?,
 					};

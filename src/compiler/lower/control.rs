@@ -918,7 +918,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A some payload, moved out of an owned box or pack if affine.
-	fn take_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
+	pub(super) fn take_payload(&mut self, val: Value, typ: &Typ, inner: &Typ) -> Value {
 		let payload = self.flow_payload(val, typ, inner);
 		let Some(&owner) = self.temps.get(&val).filter(|_| self.is_affine(inner)) else {
 			return payload;
@@ -928,11 +928,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.take_boxed(val, payload, inner);
 		}
 
-		// a happy pack holds nothing but its payload
 		if self.trailing(typ).is_some() {
 			let null = self.b.ins().iconst(self.int, 0);
 			self.b.def_var(owner, null);
 			self.flagged.push(owner);
+			return self.unbox_ret(payload, inner);
 		}
 		payload
 	}
@@ -1046,7 +1046,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => self.coerce(e, &err, &target_err, span)?.0,
 		};
 		if let Some((lead, opt)) = self.trailing(target) {
-			let (pack, some) = (self.zero(target), self.make_option(opt, Some(e)));
+			// owned, so returning it moves instead of copying a null struct slot
+			let (pack, some) = (self.owned_zero(target), self.make_option(opt, Some(e)));
 			self.untemp(some);
 			self.st(pack, lead as i32 * 8, some);
 			return Ok(pack);

@@ -566,6 +566,15 @@ fn option_self_return_reboxes_through_object() {
 		}
 	"#};
 	check(src, "max end");
+
+	let src = indoc! {r#"
+		Pet :: trait { next : fn(self, k: int) ?Self }
+		Wheel :: struct {}
+		Wheel : Pet < { next :: fn(self, k: int) ?Self { if k > 0 do Wheel.{} else do none } }
+		p : Pet : Wheel.{}
+		if q := p.next(1) do print("some", q.next(0))
+	"#};
+	check(src, "some none");
 }
 
 #[test]
