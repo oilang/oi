@@ -319,12 +319,15 @@ fn unwrapped_drop_payloads_drop_once() {
 		b, no := open(0)
 		open(0)
 		if c := open(5) do print("if", c.fd)
+		match opens(5) { .some.(rs) => print(rs.len()), .none => print(0) }
 		print("end", b.fd, no)
 	"#};
 	check(
 		src,
 		[
 			"if 5",
+			"drop 5",
+			"1",
 			"drop 5",
 			"end 0 false",
 			"drop 0",
@@ -374,4 +377,22 @@ fn ranges_allocate_nothing_for_their_end() {
 		}
 	"#};
 	check(src, "6 0");
+}
+
+#[test]
+fn nullable_pointers() {
+	let src = indoc! {r#"
+		S :: struct { s: ?string, xs: ?[]string, m: ?[string]int }
+		i := 1
+		m: [string]int
+		m["k{i}"] = i
+		s := S.{ s = "a{i}", xs = ["x{i}"], m = m }
+		t := s
+		t.xs = none
+		print(s == t, s.s == t.s, t.m == s.m, S.{} == S.{})
+		match t.s { .some.(v) => print(v), .none => {} }
+		print(t)
+	"#};
+	check(src, ["false true true true", "a1", r#"S.{s = some.("a1"), xs = none, m = some.(["k1" = 1])}"#]);
+	assert_clean(src);
 }

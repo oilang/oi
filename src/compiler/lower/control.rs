@@ -528,7 +528,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.enum_pattern(&split_subs(pat).0, &st)
 				.is_ok_and(|(_, binds)| binds.iter().any(|b| self.is_affine(&b.1)))
 		};
-		if self.enum_box(&st)
+		if (self.enum_box(&st) || self.types.nullable(&st).is_some())
 			&& let Expr::Ident(name) = &subject.0
 			&& let Some(local) = self.vars.get(name)
 			&& self.scopes.iter().flatten().any(|(var, _)| *var == local.var)
@@ -908,7 +908,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn take_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.pack_operand(value)?;
 		if let Expr::Ident(_) = value.0
-			&& self.enum_box(&typ)
+			&& (self.enum_box(&typ) || self.types.nullable(&typ).is_some())
 			&& self.fallible_split(&typ).is_some_and(|(t, _)| self.is_affine(&t))
 		{
 			self.move_out(value, &typ)?;
@@ -928,7 +928,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.take_boxed(val, payload, inner);
 		}
 
-		if self.trailing(typ).is_some() {
+		if self.types.nullable(typ).is_some() {
+			self.untemp(val);
+		} else if self.trailing(typ).is_some() {
 			let null = self.b.ins().iconst(self.int, 0);
 			self.b.def_var(owner, null);
 			self.flagged.push(owner);

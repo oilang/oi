@@ -194,12 +194,18 @@ impl<'a> TypeCtx<'a> {
 		let Typ::Enum(n) = typ else { return None };
 		let arg = n.strip_prefix(role::OPTION)?.strip_prefix('[')?;
 		let bare = arg.split(' ').find(|w| !w.starts_with('@'))?;
-		if arg.starts_with('^') || bare.starts_with("fn(") || bare == "Error]" {
+		if arg.starts_with('^') || bare.starts_with("fn(") || bare == "Error]" || self.nullable(typ).is_some() {
 			return Some(0);
 		}
 		let enums = self.enums.borrow();
 		let variants = enums.get(bare.strip_suffix(']')?).filter(|vs| !enum_boxed(vs))?;
 		(0..).find(|tag| variants.iter().all(|v| v.disc != *tag))
+	}
+
+	// The owning pointer held by a nullable pointer.
+	pub fn nullable(&self, typ: &Typ) -> Option<Typ> {
+		self.option_inner(typ)
+			.filter(|inner| matches!(inner, Typ::Str | Typ::Array(_) | Typ::Map(..)))
 	}
 
 	// Each field's offset, one word apiece.

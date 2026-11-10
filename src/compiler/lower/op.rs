@@ -93,10 +93,21 @@ impl<'a, M: Module> Translator<'a, M> {
 			typ if eq_slots(typ).is_some() => self.slots_eq(lhs, rhs, 0, typ, &typ.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(lhs, rhs, typ, span),
 			Typ::Map(..) => self.emit_map_eq(lhs, rhs, typ, span),
+
+			typ if let Some(inner) = self.types.nullable(typ) => {
+				let set = self.b.ins().umin(lhs, rhs);
+				let set = self.b.ins().icmp_imm(IntCC::NotEqual, set, 0);
+				let same = self.b.ins().icmp(IntCC::Equal, lhs, rhs);
+				let (seed, n) = (self.b.ins().bor(same, set), self.b.ins().uextend(self.int, set));
+				self.emit_scan(n, true, seed, |s, _| s.emit_val_eq(lhs, rhs, &inner, owner, span))
+			}
+
 			typ if typ.is_enumish() && enum_boxed(&self.variants_of(typ)) && self.types.opt_niche(typ).is_none() => {
 				self.emit_enum_eq(lhs, rhs, typ, &self.variants_of(typ), span)
 			}
+
 			typ if comparable(typ) => Ok(self.emit_eq(lhs, rhs, typ)),
+
 			typ => fail(
 				format!("cannot compare {owner}: contains {typ}"),
 				span,
@@ -273,12 +284,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		);
 		let seed = self.b.ins().icmp(IntCC::Equal, la, lb);
 		let keys = self.map_entries(lhs, true, k);
-		self.temp(keys, &kt);
 
 		let (data, n) = self.array_parts(keys, &kt);
 		let slot = self.stack_slot(8);
 
-		self.emit_scan(n, true, seed, |s, i| {
+		let eq = self.emit_scan(n, true, seed, |s, i| {
 			let key = s.load_nth(data, i, k);
 			let bits = s.map_bits(key);
 			let ga = s.map_rt("get", lhs, tag, bits, &[]);
@@ -292,7 +302,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			let same = s.b.ins().icmp_imm(IntCC::NotEqual, same, 0);
 			let hit = s.b.ins().icmp_imm(IntCC::NotEqual, hit, 0);
 			Ok(s.b.ins().band(same, hit))
-		})
+		})?;
+		self.release_value(keys, &kt);
+		Ok(eq)
 	}
 
 	// Cast int-like to int-like.

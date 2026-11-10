@@ -656,16 +656,13 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Build an Option value.
 	pub(super) fn make_option(&mut self, typ: &Typ, some: Option<Value>) -> Value {
-		if let Some(none) = self.types.opt_niche(typ) {
+		if let Some(none) = self.types.opt_niche(typ)
+			&& self.types.nullable(typ).is_none()
+		{
 			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, none));
 		}
 		let variants = self.variants_of(typ);
-		let val = match some {
-			Some(v) => self.make_enum(&variants, 1, &[v]),
-			None => self.make_enum(&variants, 0, &[]),
-		};
-		self.temp(val, typ);
-		val
+		self.make_variant(typ, &variants, some.is_some() as i64, some.as_slice())
 	}
 
 	// Build a named enum's variant, with a niche Option as its bare word.
@@ -1349,7 +1346,11 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 
 		let flag = match err {
-			Some(_) => self.b.ins().select(happy, none, failure),
+			Some(_) => {
+				let slot = self.trailing(pack).expect("a return pack").1.clone();
+				let flag = self.b.ins().select(happy, none, failure);
+				self.copy_in(flag, &slot)
+			}
 			None => self.b.ins().uextend(self.int, happy),
 		};
 

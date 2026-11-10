@@ -562,9 +562,12 @@ unsafe fn new_header(a: *const Allocator, h: Header) -> *const Header {
 
 /// Clone a header, sharing its buffer with a refcount bump.
 /// # Safety
-/// `header` must point to a valid array header.
+/// `header` must be null or point to a valid array header.
 #[unsafe(export_name = "oi_array_share")]
 pub unsafe extern "C" fn array_share(header: *const Header) -> *const Header {
+	if header.is_null() {
+		return header;
+	}
 	let h = unsafe { *header };
 	// a kept lent vararg clones its boxes
 	if h.data != 0 && unsafe { *rc(h.data as *const u8) } == IMMORTAL {
@@ -1142,10 +1145,12 @@ pub unsafe extern "C" fn map_release(map: *mut OiMap) {
 /// Share a map handle.
 /// RC bump.
 /// # Safety
-/// `map` must be a valid, live `OiMap` pointer.
+/// `map` must be null or a valid, live `OiMap` pointer.
 #[unsafe(export_name = "oi_map_share")]
 pub unsafe extern "C" fn map_share(map: *mut OiMap) -> *mut OiMap {
-	unsafe { (*map).rc += 1 };
+	if !map.is_null() {
+		unsafe { (*map).rc += 1 };
+	}
 	map
 }
 

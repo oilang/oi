@@ -393,7 +393,7 @@ fn iterator_next_allocates_nothing() {
 
 #[test]
 fn custom_error_returns_allocate_nothing() {
-	let src = indoc! {"
+	let src = indoc! {r#"
 		MyErr :: enum { bad, worse }
 		count := 0
 		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
@@ -407,16 +407,21 @@ fn custom_error_returns_allocate_nothing() {
 		twice :: fn(k: int) MyErr!int {
 			v := parse(k)?; v * 2
 		}
+		named :: fn(k: int) string!int {
+			if k > 0 do k else do "bad"
+		}
 		main :: fn() {
 			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
 			a := parse(1) or 0
 			b, err := parse(0)
 			c := twice(2) or 0
+			d, msg := named(0)
+			e := named(3) or 0
 			allocs := count
-			print(a + b + c, err, twice(-1), allocs)
+			print(a + b + c + d + e, err, msg, twice(-1), allocs)
 		}
-	"};
-	check(src, "5 some.(worse) err.(bad) 0");
+	"#};
+	check(src, r#"8 some.(worse) some.("bad") err.(bad) 0"#);
 }
 
 #[test]

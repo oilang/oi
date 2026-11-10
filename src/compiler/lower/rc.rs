@@ -57,7 +57,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::FixedArray(elem, _) => self.slot_owns(elem),
 			t => t.slots().is_some_and(|ts| ts.iter().any(|t| self.slot_owns(t))),
 		};
-		parts || handle_fns(typ).is_some() || self.is_resource(typ) || self.enum_box(typ)
+		let nullable = self.types.nullable(typ).is_some();
+		parts || nullable || handle_fns(typ).is_some() || self.is_resource(typ) || self.enum_box(typ)
 	}
 
 	// Whether a value is a heap-boxed enum, freed and copied inline.
@@ -97,6 +98,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				map
 			}
 			Typ::Str => self.rt_call("str_unshare", &[val]).unwrap(),
+			t if let Some(inner) = self.types.nullable(t) => {
+				let out = self.b.declare_var(self.int);
+				self.b.def_var(out, val);
+				self.when(val, |s| {
+					let val = s.unshare(val, &inner);
+					s.b.def_var(out, val);
+				});
+				self.b.use_var(out)
+			}
 			t if self.enum_box(t) => {
 				self.owned_payloads(val, t, |s, payload| {
 					let pv = s.ld_field(val, payload);
@@ -202,7 +212,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Emit one release for an owned value.
 	pub(super) fn release_value(&mut self, val: Value, typ: &Typ) {
 		let typ = typ.unkeyed();
-		if let Some((_, release)) = handle_fns(typ) {
+		if let Some(inner) = self.types.nullable(typ) {
+			self.when(val, |s| s.release_value(val, &inner));
+		} else if let Some((_, release)) = handle_fns(typ) {
 			if let Typ::Array(elem) = typ
 				&& self.slot_owns(elem)
 			{

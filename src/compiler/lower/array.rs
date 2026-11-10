@@ -241,18 +241,21 @@ impl<'a, M: Module> Translator<'a, M> {
 		if self.is_affine(typ) {
 			return val;
 		}
+		// a fresh value moves
+		if self.temps.contains_key(&val) {
+			self.untemp(val);
+			return val;
+		}
 		if self.enum_box(typ) {
-			// a fresh box moves
-			if self.temps.contains_key(&val) {
-				self.untemp(val);
-				return val;
-			}
 			let words: Vec<_> = (0..enum_slots(&self.variants_of(typ)) as i32)
 				.map(|i| self.ld_word(val, i * 8))
 				.collect();
 			let dst = self.heap_slots(&words);
 			self.owned_payloads(dst, typ, |s, payload| s.rc_field(dst, payload, true));
 			return dst;
+		}
+		if let Some(inner) = self.types.nullable(typ) {
+			return self.copy_in(val, &inner);
 		}
 		let Some((share, _)) = rc::handle_fns(typ) else {
 			return val;
