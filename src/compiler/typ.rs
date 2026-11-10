@@ -573,9 +573,11 @@ pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<A
 	match types.ret_pack(ret).as_ref().unwrap_or(ret) {
 		pack @ Typ::Tuple(fields) => {
 			let words = types.spread_words(pack).unwrap_or(1);
-			(std::iter::repeat_n(fields.first(), words).flatten().chain(fields.iter().skip(1)))
-				.map(|(_, t)| AbiParam::new(cl_type(t, int)))
-				.collect()
+			(std::iter::repeat_n(fields.first(), words)
+				.flatten()
+				.chain(fields.iter().skip(1)))
+			.map(|(_, t)| AbiParam::new(cl_type(t, int)))
+			.collect()
 		}
 		ret => vec![AbiParam::new(cl_type(ret, int)); types.spread_words(ret).unwrap_or(1)],
 	}

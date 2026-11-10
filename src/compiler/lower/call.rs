@@ -940,8 +940,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Gathers a call's results, a pack's struct words into a frame slot.
 	pub(crate) fn gather(&mut self, call: codegen::ir::Inst, typ: &Typ) -> Vec<Value> {
 		let rets = self.b.inst_results(call).to_vec();
-		let Some(pack) = self.types.ret_pack(typ) else { return rets };
-		let Some(words) = self.types.spread_words(&pack) else { return rets };
+		let Some(pack) = self.types.ret_pack(typ) else {
+			return rets;
+		};
+		let Some(words) = self.types.spread_words(&pack) else {
+			return rets;
+		};
 		let (payload, flag, none) = (self.frame_slots(&rets[..words]), rets[words], self.pack_none(&pack));
 		let happy = match self.trailing(&pack) {
 			Some((_, Typ::Bool)) => flag,

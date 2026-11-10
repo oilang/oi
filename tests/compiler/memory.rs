@@ -393,6 +393,13 @@ fn nullable_pointers() {
 		match t.s { .some.(v) => print(v), .none => {} }
 		print(t)
 	"#};
-	check(src, ["false true true true", "a1", r#"S.{s = some.("a1"), xs = none, m = some.(["k1" = 1])}"#]);
+	check(
+		src,
+		[
+			"false true true true",
+			"a1",
+			r#"S.{s = some.("a1"), xs = none, m = some.(["k1" = 1])}"#,
+		],
+	);
 	assert_clean(src);
 }

@@ -1960,7 +1960,9 @@ impl<M: Module> Compiler<M> {
 					let bare = matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self");
 					let id = match cell && sig.access[0] != Access::Mut {
 						true => self.cell_thunk(sig.id, &name),
-						false if spread.is_some() && (bare || self_option(ret)) => self.rebox_thunk(sig, &name, &funcs, base),
+						false if spread.is_some() && (bare || self_option(ret)) => {
+							self.rebox_thunk(sig, &name, &funcs, base)
+						}
 						false => sig.id,
 					};
 					let fref = self.module.declare_func_in_data(id, &mut desc);

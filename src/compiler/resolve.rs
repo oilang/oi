@@ -793,7 +793,12 @@ impl TypeCtx<'_> {
 	// How many words a returned struct is spread across.
 	pub fn spread_words(&self, typ: &Typ) -> Option<usize> {
 		let typ = match typ {
-			Typ::Tuple(fields) if let [(None, ok), _] = &fields[..] && self.pack_ret(typ).is_some() => ok,
+			Typ::Tuple(fields)
+				if let [(None, ok), _] = &fields[..]
+					&& self.pack_ret(typ).is_some() =>
+			{
+				ok
+			}
 			typ => typ,
 		};
 		Some(self.layout(typ.by_pointer().then_some(typ)?)?.size as usize / 8)
