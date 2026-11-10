@@ -188,10 +188,9 @@ pub(crate) fn instantiate(
 			inner.0 = Expr::Match {
 				subject: value.clone(),
 				arms: vec![MatchArm {
-					with: false,
 					patterns: vec![(**pat).clone()],
-					guard: None,
 					body: then.clone(),
+					..Default::default()
 				}],
 				else_body: Some(match els.as_deref() {
 					Some([elif @ (Expr::If { .. }, span)]) => vec![(Expr::Comp(Box::new(elif.clone())), *span)],

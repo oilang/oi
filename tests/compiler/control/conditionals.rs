@@ -173,8 +173,10 @@ fn header_bind_is_mutable() {
 		if i := x { i += 1; print(i) }
 		f :: fn() ?string do "a"
 		loop s := f() { s += "b"; print(s); break }
+		if .some.(n) := x { n += 2; print(n) }
+		loop .some.(s) := f() { s += "c"; print(s); break }
 	"#};
-	check(src, ["4", "ab"]);
+	check(src, ["4", "ab", "5", "ac"]);
 	assert_clean(src);
 }
 

@@ -474,6 +474,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			patterns,
 			guard,
 			body,
+			..Default::default()
 		})
 		.boxed();
 	let arm_spread = p.unquote.clone().map(|e| MatchArm {

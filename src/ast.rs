@@ -766,6 +766,7 @@ impl TypeExpr {
 // One arm of a `match` expression.
 pub struct MatchArm {
 	pub with: bool,
+	pub mutable: bool,
 	pub patterns: Vec<Spanned<Expr>>,
 	pub guard: Option<Box<Spanned<Expr>>>,
 	pub body: Vec<Spanned<Expr>>,

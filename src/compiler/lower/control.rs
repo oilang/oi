@@ -246,6 +246,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		if let Expr::PatBind { pat, value, .. } = &cond.0 {
 			let arm = MatchArm {
+				mutable: true,
 				patterns: vec![(**pat).clone()],
 				body: then.to_vec(),
 				..Default::default()
@@ -647,7 +648,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							true => s.take_boxed(*base, field, typ),
 							false => s.copy_bind(field, typ),
 						};
-						s.bind_local(name, field, typ.clone(), false);
+						s.bind_local(name, field, typ.clone(), arm.mutable);
 					}
 				}
 				if let Some(guard) = &arm.guard {
@@ -1368,6 +1369,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				(Some((Expr::PatBind { pat, value, .. }, sp)), _) => {
 					let arm = MatchArm {
+						mutable: true,
 						patterns: vec![(**pat).clone()],
 						body: body.to_vec(),
 						..Default::default()
