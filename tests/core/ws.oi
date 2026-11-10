@@ -15,8 +15,8 @@ test! "echo, ping and close" {
 	# a ping between the two fragments of a 200 byte echo
 	text :: (loop _ in 0..100 do "oi").join("")
 	echo :: string.([u8.(1) 126 0 150]) + text[..150] + string.([u8.(0x89) 0 0x80 50]) + text[150..]
-	server.write("HTTP/1.1 101 OK\r\nSec-Websocket-Accept: {accept}\r\n\r\n{echo}") or panic!("write failed")
-	socket := ws.connect(client, "localhost", "/") or panic!("upgrade failed")
+	server.write("HTTP/1.1 101 OK\r\nSec-Websocket-Accept: {accept}\r\nSec-WebSocket-Protocol: rex.v1\r\n\r\n{echo}") or panic!("write failed")
+	socket := ws.connect(client, "localhost", "/", ["rex.v1"]) or panic!("upgrade failed")
 	message :: socket.recv() or panic!("recv failed")
 	assert! message.data == text && !message.binary
 	socket.send(text, false) or panic!("send failed")
@@ -27,6 +27,6 @@ test! "echo, ping and close" {
 	sent :: string.([u8.(0x81) 0xfe 0 200]) + "ZZZZ" + (loop _ in 0..100 do "53").join("")
 	closing :: string.([u8.(0x88) 0x82]) + "ZZZZY" + string.([u8.(0xb2)])
 	got :: server.read() or panic!("read failed")
-	assert! got.contains("Sec-WebSocket-Key: {key}\r\n") && got.ends_with(pong + sent + closing)
+	assert! got.contains("Sec-WebSocket-Key: {key}\r\n") && got.contains("Sec-WebSocket-Protocol: rex.v1\r\n") && got.ends_with(pong + sent + closing)
 	listener.close()
 }
