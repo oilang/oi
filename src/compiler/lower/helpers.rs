@@ -211,7 +211,7 @@ impl<M: Module> Translator<'_, M> {
 	}
 
 	// A fresh heap block holding the given values.
-	pub(super) fn heap_slots(&mut self, vals: &[Value]) -> Value {
+	pub(crate) fn heap_slots(&mut self, vals: &[Value]) -> Value {
 		let ptr = self.call_alloc(vals.len());
 		self.store_slots(ptr, vals);
 		ptr

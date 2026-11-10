@@ -765,7 +765,7 @@ impl TypeCtx<'_> {
 		Some((ok, err))
 	}
 
-	// The pack an Option or Result returns as.
+	// The tuple an Option or Result is returned as.
 	pub fn ret_pack(&self, ret: &Typ) -> Option<Typ> {
 		let (ok, flag, slot) = match self.result_parts(ret) {
 			Some((ok, err)) => (ok, role::PACK_ERR, self.core_enum(role::OPTION, &[err])),
@@ -784,12 +784,13 @@ impl TypeCtx<'_> {
 			.then(|| Typ::Tuple([lead, vec![(Some(flag.into()), slot)]].concat()))
 	}
 
-	// The words a pack's struct returns as.
-	pub fn spread_words(&self, pack: &Typ) -> Option<usize> {
-		let Typ::Tuple(fields) = pack else { return None };
-		let [(None, ok), _] = &fields[..] else { return None };
-		let layout = (ok.by_pointer() && self.pack_ret(pack).is_some()).then(|| self.layout(ok))??;
-		Some(layout.size as usize / 8)
+	// How many words a returned struct is spread across.
+	pub fn spread_words(&self, typ: &Typ) -> Option<usize> {
+		let typ = match typ {
+			Typ::Tuple(fields) if let [(None, ok), _] = &fields[..] && self.pack_ret(typ).is_some() => ok,
+			typ => typ,
+		};
+		Some(self.layout(typ.by_pointer().then_some(typ)?)?.size as usize / 8)
 	}
 
 	// Whether a payload rides a pack, with no `Drop` to run on its zero and no `?Self` to rebox behind a vtable.

@@ -1956,10 +1956,11 @@ impl<M: Module> Compiler<M> {
 					let Some(sig) = sig else { continue };
 					self.out.wanted.push(sig.id);
 					let name = format!("{typ}_{tn}#{i}");
-					let spread = base.ret_pack(&sig.ret).is_some_and(|p| base.spread_words(&p).is_some());
+					let spread = base.spread_words(base.ret_pack(&sig.ret).as_ref().unwrap_or(&sig.ret));
+					let bare = matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self");
 					let id = match cell && sig.access[0] != Access::Mut {
 						true => self.cell_thunk(sig.id, &name),
-						false if spread && self_option(ret) => self.rebox_thunk(sig, &name, &funcs, base),
+						false if spread.is_some() && (bare || self_option(ret)) => self.rebox_thunk(sig, &name, &funcs, base),
 						false => sig.id,
 					};
 					let fref = self.module.declare_func_in_data(id, &mut desc);
@@ -2246,7 +2247,7 @@ impl<M: Module> Compiler<M> {
 		self.finish_fn(&oi_symbol(&format!("{name}#cell")))
 	}
 
-	// Call a `?Self` method, moving its struct to the heap as the object's data.
+	// Call a `Self` or `?Self` method, moving its struct to the heap as the object's data.
 	fn rebox_thunk(&mut self, sig: &FnSig, name: &str, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {
 		self.ctx.func.signature = self.module.declarations().get_function_decl(sig.id).signature.clone();
 		let (mut trans, block) = self.translator(&FnDef::default(), funcs, types);
@@ -2254,9 +2255,11 @@ impl<M: Module> Compiler<M> {
 		let callee = trans.module.declare_func_in_func(sig.id, trans.b.func);
 		let call = trans.b.ins().call(callee, &args);
 		let rets = trans.gather(call, &sig.ret);
-		let ok = trans.types.option_inner(&sig.ret).expect("a `?Self`");
-		let rets = [trans.unframe(rets[0], &ok), rets[1]];
-		trans.b.func.signature.returns = rets.map(|v| AbiParam::new(trans.b.func.dfg.value_type(v))).to_vec();
+		let rets = match trans.types.option_inner(&sig.ret) {
+			Some(ok) => vec![trans.unframe(rets[0], &ok), rets[1]],
+			None => vec![trans.heap_slots(&rets)],
+		};
+		trans.b.func.signature.returns = rets.iter().map(|&v| AbiParam::new(trans.b.func.dfg.value_type(v))).collect();
 		trans.b.ins().return_(&rets);
 		trans.b.finalize();
 		self.finish_fn(&oi_symbol(&format!("{name}#rebox")))

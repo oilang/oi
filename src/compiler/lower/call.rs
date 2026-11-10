@@ -929,6 +929,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ if c_abi && let Some(val) = self.c_ret(call, typ) => val,
 			_ if c_abi => self.c_norm(rets[0], typ),
 			Typ::Tuple(_) => self.frame_slots(&rets),
+			_ if self.types.spread_words(typ).is_some() => self.frame_slots(&rets),
 			_ if keep && let Some(pack) = self.types.ret_pack(typ) => return (self.frame_slots(&rets), pack),
 			_ if rets.len() > 1 => self.pack_box(&rets, typ),
 			_ => self.unbox_ret(rets[0], typ),

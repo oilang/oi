@@ -577,7 +577,7 @@ pub(crate) fn abi_returns(ret: &Typ, types: &TypeCtx, int: types::Type) -> Vec<A
 				.map(|(_, t)| AbiParam::new(cl_type(t, int)))
 				.collect()
 		}
-		ret => vec![AbiParam::new(cl_type(ret, int))],
+		ret => vec![AbiParam::new(cl_type(ret, int)); types.spread_words(ret).unwrap_or(1)],
 	}
 }
 

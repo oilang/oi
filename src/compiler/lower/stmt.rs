@@ -631,6 +631,12 @@ impl<'a, M: Module> Translator<'a, M> {
 				(rets, frame)
 			}
 			_ if let Some(rets) = self.c_rets(val, &typ) => (rets, val),
+			_ if !self.c_abi
+				&& let Some(words) = self.types.spread_words(&typ) =>
+			{
+				let val = self.copy_bind(val, &typ);
+				((0..words).map(|i| self.ld_word(val, i as i32 * 8)).collect(), val)
+			}
 			_ => {
 				let val = self.copy_in(val, &typ);
 				(vec![val], val)
