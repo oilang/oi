@@ -49,6 +49,7 @@ pub struct Module {
 	pub name: String,
 	pub items: Vec<Spanned<Expr>>,
 	pub scope: Scope,
+	pub(crate) comptime: Vec<Spanned<Expr>>,
 }
 
 impl Module {
@@ -56,6 +57,7 @@ impl Module {
 		Module {
 			name: name.into(),
 			items: vec![],
+			comptime: vec![],
 			scope: Scope {
 				module: if name == "main" { String::new() } else { name.into() },
 				..Scope::default()

@@ -60,6 +60,16 @@ fn ast_fns_stay_out_of_the_binary() {
 }
 
 #[test]
+fn generic_comp_reaches_ast_fns() {
+	let src = indoc! {r#"
+		use json
+		Point :: struct { x: int }
+		print(json.decode[Point](r"""{"x": 3}""")?.x)
+	"#};
+	assert_eq!(build_and_run(src, &["main.oi", "-o", "hi"], "hi"), "3");
+}
+
+#[test]
 fn unreachable_fns_stay_out_of_the_binary() {
 	let src = indoc! {r#"
 		Point :: struct { x: int }

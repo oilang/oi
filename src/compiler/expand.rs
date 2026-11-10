@@ -25,7 +25,10 @@ pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
 // A copy of `program` with each module's items filtered by `keep`.
 pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanned<Expr>>)) -> Program {
 	let mut modules = program.modules.clone();
-	modules.iter_mut().for_each(|m| keep(&m.name, &mut m.items));
+	modules.iter_mut().for_each(|m| {
+		m.items.append(&mut m.comptime);
+		keep(&m.name, &mut m.items);
+	});
 	Program {
 		map: program.map.clone(),
 		modules,

@@ -1067,7 +1067,7 @@ impl<M: Module> Compiler<M> {
 		}
 		self.timings.push(("comp", t.elapsed()));
 		if self.aot {
-			(program.modules.iter_mut()).for_each(|m| m.items.retain(|(e, _)| !comptime_only(e)));
+			(program.modules.iter_mut()).for_each(|m| m.comptime = m.items.extract_if(.., |(e, _)| comptime_only(e)).collect());
 		}
 		let filled = expand::prune(&mut program, &self.out.roots)?;
 		self.world.publics = program.publics.clone();
