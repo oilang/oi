@@ -1288,8 +1288,10 @@ static SIGNAL_PIPES: [AtomicI32; 65] = [const { AtomicI32::new(-1) }; 65];
 
 #[cfg(target_os = "android")]
 use libc::__errno as errno_location;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "macos")))]
 use libc::__errno_location as errno_location;
+#[cfg(target_os = "macos")]
+use libc::__error as errno_location;
 
 extern "C" fn signal_forward(sig: libc::c_int) {
 	let pipe = SIGNAL_PIPES[sig as usize].load(Ordering::Relaxed);
@@ -1310,14 +1312,21 @@ pub extern "C" fn signal_pipe(sig: i32) -> i32 {
 	if !(1..65).contains(&sig) {
 		return -1;
 	}
+
 	let read = &mut SIGNAL_READS.lock().unwrap()[sig as usize];
 	let mut ends = [0; 2];
-	if *read != -1 || unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+	if *read != -1 || unsafe { libc::pipe(ends.as_mut_ptr()) } != 0 {
 		return *read;
 	}
+
 	*read = ends[0];
 	SIGNAL_PIPES[sig as usize].store(ends[1], Ordering::Relaxed);
+
 	unsafe {
+		// macOS
+		libc::fcntl(ends[0], libc::F_SETFD, libc::FD_CLOEXEC);
+		libc::fcntl(ends[1], libc::F_SETFD, libc::FD_CLOEXEC);
+
 		libc::fcntl(ends[1], libc::F_SETFL, libc::O_NONBLOCK);
 		// signal() is SA_RESTART on glibc and musl
 		libc::signal(sig, signal_forward as *const () as libc::sighandler_t);
