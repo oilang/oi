@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chumsky::{input::Stream, prelude::*};
 use include_dir::{Dir, File, include_dir};
@@ -345,6 +346,24 @@ fn walk_oi(dir: &Path) -> Vec<PathBuf> {
 		}
 	}
 	files
+}
+
+// Map `jobs` on one worker per core, biggest first.
+fn par_map<T: Sync, R: Send>(jobs: &[T], size: impl Fn(&T) -> usize, run: impl Fn(&T) -> R + Sync) -> Vec<R> {
+	let mut order: Vec<usize> = (0..jobs.len()).collect();
+	order.sort_by_key(|&i| std::cmp::Reverse(size(&jobs[i])));
+	let (next, done) = (AtomicUsize::new(0), Mutex::new(Vec::from_iter(jobs.iter().map(|_| None))));
+	std::thread::scope(|s| {
+		for _ in 0..std::thread::available_parallelism().map_or(1, |n| n.get()).min(jobs.len()) {
+			s.spawn(|| {
+				while let Some(&i) = order.get(next.fetch_add(1, Ordering::Relaxed)) {
+					let out = run(&jobs[i]);
+					done.lock().unwrap()[i] = Some(out);
+				}
+			});
+		}
+	});
+	done.into_inner().unwrap().into_iter().map(Option::unwrap).collect()
 }
 
 // Lex and parse one file's source at its base offset.
@@ -857,13 +876,11 @@ impl Loader {
 			.collect();
 
 		let (map, raw) = (&self.program.map, &self.raw_macros);
-		let parsed: Vec<_> = std::thread::scope(|s| {
-			let jobs: Vec<_> = bases
-				.iter()
-				.map(|&b| s.spawn(move || parse_file(map.locate_span(b..b).0, map.src(b), b, raw)))
-				.collect();
-			jobs.into_iter().map(|j| j.join().unwrap()).collect()
-		});
+		let parsed = par_map(
+			&bases,
+			|&b| map.src(b).len(),
+			|&b| parse_file(map.locate_span(b..b).0, map.src(b), b, raw),
+		);
 
 		// scripts lower groups as statements
 		let script = name == "main" && !parsed.iter().flatten().flatten().any(|i| i.0.def_name() == Some("main"));
@@ -997,14 +1014,18 @@ impl Loader {
 		}
 		let from_core = self.program.core_origin.contains(name);
 		let mut imports = vec![];
-		for (path, src) in files {
-			let toks = lex_at(src, 0);
-			let (raw, used) = prescan(&toks);
+		let scanned = par_map(
+			files,
+			|(_, src)| src.len(),
+			|(_, src)| {
+				let toks = lex_at(src, 0);
+				(prescan(&toks), scan(name, name == "main" || from_core, &toks))
+			},
+		);
+		for ((path, _), ((raw, used), held)) in files.iter().zip(scanned) {
 			self.raw_macros.extend(raw);
 			imports.extend(used);
-			self.program
-				.held
-				.insert(path.clone(), scan(name, name == "main" || from_core, &toks));
+			self.program.held.insert(path.clone(), held);
 		}
 		for m in imports {
 			if !self.prescanned.contains(&m) {
