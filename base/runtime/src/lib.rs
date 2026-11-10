@@ -1276,12 +1276,17 @@ pub unsafe extern "C" fn thread_spawn(job: usize) {
 /// Write ends of the pipes `oi_signal_pipe` feeds, by signal number.
 static SIGNAL_PIPES: [AtomicI32; 65] = [const { AtomicI32::new(-1) }; 65];
 
+#[cfg(target_os = "android")]
+use libc::__errno as errno_location;
+#[cfg(not(target_os = "android"))]
+use libc::__errno_location as errno_location;
+
 extern "C" fn signal_forward(sig: libc::c_int) {
 	let pipe = SIGNAL_PIPES[sig as usize].load(Ordering::Relaxed);
 	unsafe {
-		let errno = *libc::__errno_location();
+		let errno = *errno_location();
 		libc::write(pipe, [0u8].as_ptr().cast(), 1);
-		*libc::__errno_location() = errno;
+		*errno_location() = errno;
 	}
 }
 
