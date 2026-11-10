@@ -205,7 +205,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::Map(..) => self.write_lit("<map>", sink),
 			Typ::Ast => {
 				let s = self.ast_method(val, "str", None);
-				self.emit_print(s, &Typ::Str, quote, sink)
+				self.emit_print(s, &Typ::Str, quote, sink);
+				self.release_value(s, &Typ::Str);
 			}
 			Typ::Any | Typ::TypeId => self.call_variant(typ, val, quote, sink),
 

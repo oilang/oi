@@ -295,6 +295,16 @@ fn ranges_newtype_prints_and_ast_items_are_freed() {
 }
 
 #[test]
+fn soa_expansion_and_keyed_loop_are_freed() {
+	assert_clean(indoc! {"
+		P :: struct { a: int }
+		rows: @soa []P
+		rows << P.{1}
+		loop row, i in rows do print(row.a + i)
+	"});
+}
+
+#[test]
 fn unwrapped_drop_payloads_drop_once() {
 	let src = indoc! {r#"
 		Res :: struct { fd: int }
