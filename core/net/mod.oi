@@ -38,6 +38,7 @@ pub connect :: fn(host: string, port: int) !Conn {
 }
 
 ## Listen for TCP connections on `port`, on every interface.
+## `0` picks a free port.
 pub listen :: fn(port: int) !Listener {
 	Listener.{ sock("0.0.0.0", port, true)? }
 }
@@ -68,6 +69,19 @@ sock :: fn(host: string, port: int, serve: bool) !i32 {
 }
 
 Listener :< {
+	## The bound port.
+	pub port :: fn(self) int {
+		# the sockaddr_in then its u32 length
+		buf :: unsafe libc.malloc(20)
+		defer unsafe libc.free(buf)
+
+		unsafe buf.offset(16).write(u32.(16))
+		discard unsafe libc.getsockname(self.fd, buf, buf.offset(16))
+
+		swapped :: int.(unsafe buf.read[Addr]().port)
+		(swapped >> 8) | ((swapped & 255) << 8)
+	}
+
 	## Block until a client connects.
 	pub accept :: fn(self) !Conn {
 		fd :: unsafe libc.accept(self.fd, ptr.(0), ptr.(0))

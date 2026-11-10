@@ -8,8 +8,8 @@ test! "echo, ping and close" {
 	ctx :: .{ ..ctx, rand = Rng.{ proc = @c fn(data: ptr) u64 { 90 }, data = ptr.(0) } }
 	key :: base64.encode("ZZZZZZZZZZZZZZZZ")
 	accept :: base64.encode(hash.sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-	listener :: net.listen(40918) or { return }
-	client :: net.connect("localhost", 40918) or { return }
+	listener :: net.listen(0) or panic!("listen failed")
+	client :: net.connect("localhost", listener.port()) or panic!("connect failed")
 	server :: listener.accept() or panic!("accept failed")
 
 	# a ping between the two fragments of a 200 byte echo
