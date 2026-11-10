@@ -639,7 +639,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				for ((base, base_typ), list) in &binds {
 					for (name, typ, off) in list {
 						let field = s.load_bind(*base, base_typ, typ, *off, span);
-						let field = match owner && s.is_affine(typ) && s.enum_box(base_typ) {
+						if !owner && s.is_affine(typ) {
+							s.hidden_local(name.clone(), field, typ.clone());
+							continue;
+						}
+						let field = match s.is_affine(typ) && s.enum_box(base_typ) {
 							true => s.take_boxed(*base, field, typ),
 							false => s.copy_bind(field, typ),
 						};
@@ -1714,7 +1718,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// resources are owned. a full-width array or map slot is viewed in place, the rest is written back
 		let given = match (access, typ.unkeyed()) {
-			(Access::Move, Typ::Array(e)) if self.is_affine(e) => access,
+			(Access::Move, Typ::Array(e) | Typ::FixedArray(e, _) | Typ::Map(_, e)) if self.is_affine(e) => access,
 			(Access::Mut, Typ::FixedArray(e, _)) if self.elem_stride(e) == elem_size(e) => access,
 			(Access::Mut, Typ::Array(e)) if self.elem_stride(e) == elem_size(e) => {
 				self.cow_array(val, e);
@@ -1764,7 +1768,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn for_value<'e>(
 		&mut self,
 		(pat, key): Pats<'e>,
-		(val, typ): TypedVal,
+		(mut val, typ): TypedVal,
 		access: Access,
 		span: Span,
 	) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
@@ -1777,6 +1781,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let zero = self.b.ins().iconst(self.int, 0);
 		let (enum_key, typ) = (typ.keyed().map(|(k, _)| k), typ.unkeyed().clone());
 		let hint = key.is_none() && (enum_key.is_some() || matches!(&typ, Typ::Map(_, v) if !v.is_unit()));
+		let fixed = matches!(typ, Typ::FixedArray(..));
 		let (limit, src, keys): (_, TypedVal, Option<TypedVal>) = match typ {
 			// arrays
 			Typ::Array(_) | Typ::FixedArray(..) | Typ::Str => {
@@ -1795,9 +1800,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			// maps
 			Typ::Map(k, v) => {
 				let (keys, vals) = (self.map_entries(val, true, &k), self.map_entries(val, false, &v));
-				let vals = self.owning(vals, &v);
 				self.temp(keys, &Typ::Array(k.clone()));
-				self.temp(vals, &Typ::Array(v.clone()));
+				if owns {
+					self.rt_call("map_forget", &[val]);
+					val = vals;
+				} else {
+					self.owning(vals, &v);
+					self.temp(vals, &Typ::Array(v.clone()));
+				}
 				let (kdata, len) = self.array_parts(keys, &Typ::Array(k.clone()));
 				let vdata = self.array_data(vals);
 				(len, (vdata, *v), Some((kdata, *k)))
@@ -1812,12 +1822,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.def_var(counter, zero);
 
 		// release vars skipped by `break`
-		let elem = src.1.clone();
+		let (data, elem) = src.clone();
 		let drop = move |s: &mut Self| {
 			let lo = s.b.use_var(counter);
-			let n = s.b.ins().isub(limit, lo);
-			s.elems_rc(val, lo, n, &elem, false);
-			s.rt_call("array_release", &[val]);
+			let (n, rest) = (s.b.ins().isub(limit, lo), s.nth_addr(data, lo, &elem));
+			s.repeat(n, |s, i| {
+				let item = s.load_nth(rest, i, &elem);
+				s.release_field(item, &elem);
+			});
+			if !fixed {
+				s.rt_call("array_release", &[val]);
+			}
 			Ok(())
 		};
 

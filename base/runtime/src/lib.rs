@@ -1142,6 +1142,17 @@ pub unsafe extern "C" fn map_release(map: *mut OiMap) {
 	}
 }
 
+/// Release a map whose values moved out.
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer.
+#[unsafe(export_name = "oi_map_forget")]
+pub unsafe extern "C" fn map_forget(map: *mut OiMap) {
+	unsafe {
+		(*map).entries.clear();
+		map_release(map);
+	}
+}
+
 /// Share a map handle.
 /// RC bump.
 /// # Safety

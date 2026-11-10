@@ -426,6 +426,19 @@ fn a_move_loop_owns_each_element() {
 		[FILE, close, mk, "loop f in move fs { f.close() }"],
 		"`loop move x` bind owns",
 	);
+	let map = [
+		FILE,
+		close,
+		"m := [1 = File.{fd = 1}, 2 = File.{fd = 2}]",
+		"print(loop move f, k in m do f.close() + k)",
+	];
+	check(map, ["drop 1", "drop 2", "[2, 4]"]);
+	assert_clean(map);
+	let fixed = "fs: [3]File = .[File.{fd = 0}, File.{fd = 1}, File.{fd = 2}]";
+	check(
+		[FILE, fixed, "loop move f in fs { if f.fd == 0 do break }"],
+		["drop 0", "drop 1", "drop 2"],
+	);
 	let wide = "Pair :: struct { fd: int, tag: int }; Pair : Drop < { drop :: fn(mut self) {} }";
 	assert_clean([wide, "ps := loop i in 0..3 do Pair.{i, i}", "loop move p in ps do p.fd"]);
 }
@@ -483,6 +496,19 @@ fn unwrapping_a_drop_payload_drops_it_once() {
 	"#};
 	check([FILE, src], ["1", "drop 1", "2", "drop 2", "3", "drop 3"]);
 	assert_clean([FILE, src]);
+}
+
+#[test]
+fn a_guarded_or_borrowed_payload_drops_once() {
+	let src = indoc! {r#"
+		open :: fn(fd: int) ?File { if fd > 0 do File.{ fd } else do none }
+		Box :: struct { o: ?File }
+		match open(1) { .some.(f) if f.fd > 5 => print("big"), .some.(f) => print(f.fd), .none => {} }
+		b := Box.{ o = open(2) }
+		match b.o { .some.(f) => print(f.fd), .none => {} }
+		print("end")
+	"#};
+	check([FILE, src], ["1", "drop 1", "2", "end", "drop 2"]);
 }
 
 #[test]
