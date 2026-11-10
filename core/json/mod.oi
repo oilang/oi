@@ -196,6 +196,7 @@ pub from_json[T] :: fn(j: Json) !T {
 			int.(n)
 		},
 		float, bool, string => want[T](j)?,
+		Json => j,
 		else => {
 			obj :: want[Obj](j)?
 			T.{ comp loop f in def(T).items { %{f.name} = field[%{f.typ}](obj, %{f.name.str()})? } }

@@ -53,3 +53,10 @@ test! "decode a generic named like a json type" {
 	out :: decode[Held](r"""{"p": {"item": {"name": "a", "ok": true}}}""") or panic!($.message())
 	assert! out.p.item.name == "a"
 }
+
+Raw :: struct { n: int, rest: Json }
+
+test! "decode keeps a Json field raw" {
+	out :: decode[Raw](r"""{"n": 1, "rest": [1, {"a": null}]}""") or panic!($.message())
+	assert! out.rest.str() == r"""[1,{"a":null}]"""
+}
