@@ -178,3 +178,24 @@ fn fieldless_enum_options_allocate_nothing() {
 	"};
 	check(src, "some.(down) none 2 0");
 }
+
+#[test]
+fn assigning_a_payload_reuses_the_box() {
+	let src = indoc! {"
+		count := 0
+		counting :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
+			if mode == .alloc do count += 1
+			sys :: system_allocator()
+			sys.proc(sys.data, mode, size, align, old, old_size)
+		}
+		main :: fn() {
+			ctx :: Context.{ ..ctx, alloc = Alloc.{ proc = counting, data = ptr.(0) } }
+			a: ?int = none
+			b := a
+			before := count
+			loop i in 0..10 do a = i
+			print(a, b, count - before)
+		}
+	"};
+	check(src, "some.(9) none 0");
+}

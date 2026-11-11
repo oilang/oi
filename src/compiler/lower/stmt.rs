@@ -178,7 +178,19 @@ impl<'a, M: Module> Translator<'a, M> {
 							..Local::plain(var, typ, true)
 						};
 					}
-					let (val, typ) = self.check_expr(value, &local.typ)?;
+					let (val, typ) = match self.types.option_inner(&local.typ) {
+						// a payload owning nothing overwrites the box in place
+						Some(inner) if self.enum_box(&local.typ) && !self.slot_owns(&inner) => {
+							let (val, typ) = self.lower(value, Some(&local.typ))?;
+							if typ == inner {
+								let (some, dst) = (self.b.ins().iconst(self.int, 1), self.read_local(&local));
+								self.store_slots(dst, &[some, val]);
+								continue;
+							}
+							self.coerce(val, &typ, &local.typ, value.1)?
+						}
+						_ => self.check_expr(value, &local.typ)?,
+					};
 					if typ != local.typ {
 						return fail(
 							format!("cannot assign {typ} to `{name}`, which is {}", local.typ),
