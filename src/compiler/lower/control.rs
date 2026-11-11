@@ -217,6 +217,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			unreachable!()
 		};
 		let (els, span) = (els.as_deref(), *span);
+		let unit = Typ::unit();
+		let target = if want { target } else { Some(&unit) };
 		let cond = &self.clauses(cond)?;
 		if let Expr::Binary(BinOp::And, lhs, rhs) = &cond.0
 			&& chained(&cond.0)

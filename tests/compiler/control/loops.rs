@@ -294,10 +294,13 @@ fn nested_tail_loop_collects_nothing() {
 			loop x in xs {
 				loop y in xs do sum += x * y
 			}
+			loop x in xs {
+				if x > 1 { loop y in xs do sum += y }
+			}
 			print(sum, count)
 		}
 	"};
-	check(src, "36 0");
+	check(src, "48 0");
 }
 
 #[test]
