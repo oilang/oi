@@ -2339,6 +2339,7 @@ impl<M: Module> Compiler<M> {
 			linear: vec![],
 			withs: types.scope.withs.iter().map(|name| (name.clone(), None)).collect(),
 			pack_call: None,
+			appending: None,
 		};
 
 		(trans, block)

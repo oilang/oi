@@ -2,6 +2,7 @@ module rt
 
 # strings
 pub oi_str_concat : fn(alloc: Alloc, a: string, b: string) string : foreign
+pub oi_str_append : fn(alloc: Alloc, a: string, b: string) string : foreign
 pub oi_str_eq : fn(a: string, b: string) isize : foreign
 pub oi_str_slice : fn(alloc: Alloc, s: string, start: isize, end: isize) string : foreign
 pub oi_str_from_bytes : fn(alloc: Alloc, bytes: ptr) string : foreign

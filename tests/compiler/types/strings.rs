@@ -137,3 +137,19 @@ fn slices() {
 fn immutable() {
 	fail([r#"a := "abc""#, "a[0] = 1"], "strings are immutable");
 }
+
+#[test]
+fn append_grows_in_place() {
+	let src = indoc! {r#"
+		Buf :: struct { text: string }
+		b := Buf.{}
+		s := ""
+		loop i in 0..100 { s += "ab"; b.text += "c" }
+		view := s[..4]
+		alias := s
+		s += "!"
+		print(s.len(), view, alias.len(), b.text.len(), s[198..])
+	"#};
+	check(src, "201 abab 200 100 ab!");
+	assert_clean(src);
+}

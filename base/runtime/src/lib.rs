@@ -327,6 +327,36 @@ pub unsafe extern "C" fn str_concat(
 	str_new(alloc, &out)
 }
 
+/// Append `b` to `a` for `a += b`.
+/// In place when only `a` has room, and otherwise into a copy.
+/// # Safety
+/// `a` and `b` must be valid string handles.
+#[unsafe(export_name = "oi_str_append")]
+pub unsafe extern "C" fn str_append(
+	alloc: *const Allocator,
+	a: *mut StrHeader,
+	b: *const StrHeader,
+) -> *const StrHeader {
+	let (head, tail) = unsafe { (str_bytes(a), str_bytes(b)) };
+	let len = (head.len() + tail.len()) as i64;
+	unsafe {
+		// bounded by alloc prefix of owner
+		let owned = (*a).rc == 1 && (*a).owner.is_null();
+		let out = if owned && len < *(a as *const i64).byte_sub(PREFIX) - (PREFIX + size_of::<StrHeader>()) as i64 {
+			(*a).rc = 2;
+			a
+		} else {
+			let out = str_header(alloc, len * 2 + 1, 0, 0, std::ptr::null_mut());
+			(*out).data = out.add(1) as i64;
+			std::ptr::copy_nonoverlapping(head.as_ptr(), (*out).data as *mut u8, head.len());
+			out
+		};
+		std::ptr::copy_nonoverlapping(tail.as_ptr(), ((*out).data as *mut u8).add(head.len()), tail.len());
+		(*out).len = len;
+		out
+	}
+}
+
 /// NUL-terminated pointer to the string's bytes.
 /// For owned strings (already NUL-terminated) this is the buffer as-is, and for views it's a fresh leaked copy.
 /// # Safety

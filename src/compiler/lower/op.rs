@@ -472,6 +472,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			BinOp::Send => (role::SEND, "send"),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
+
+		let appending = self.appending.take() == Some(span);
 		let (r, moved) = match &r.0 {
 			Expr::ArgMod(Access::Move, x) if op == BinOp::Send => (&**x, true),
 			_ => (r, false),
@@ -483,10 +485,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			if int && let Some(t) = s.int_operand(lt, method) {
 				return t;
 			}
+
 			let sig = (lt.nominal())
 				.and_then(|n| s.fill(lt, tn, method, 2).or_else(|| s.sole_fill(&format!("{n}.{method}"))));
 			sig.map_or(lt.clone(), |sig| sig.params[1].typ.clone())
 		})?;
+
 		if op == BinOp::Send {
 			if !moved && Self::is_place(r) && self.is_affine(&rt) {
 				let msg = "this parameter is `move`, missing `move` at the callsite";
@@ -495,6 +499,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.move_out(r, &rt)?;
 			self.untemp(rv);
 		}
+
 		let own = [&lt, &rt].into_iter().find(|t| self.own_field(t, tn) != *t).cloned();
 		let (lt, rt) = (self.own_field(&lt, tn).clone(), self.own_field(&rt, tn).clone());
 
@@ -543,7 +548,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// string concatenation
 		if let (BinOp::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
-			return Ok((self.rt_call("str_concat", &[lv, rv]).unwrap(), own.unwrap_or(Typ::Str)));
+			let concat = if appending { "str_append" } else { "str_concat" };
+			return Ok((self.rt_call(concat, &[lv, rv]).unwrap(), own.unwrap_or(Typ::Str)));
 		}
 		self.arith(op, (lv, lt), (rv, rt), r, span).map(|(v, t)| (v, own.unwrap_or(t)))
 	}

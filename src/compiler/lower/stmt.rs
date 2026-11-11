@@ -178,6 +178,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							..Local::plain(var, typ, true)
 						};
 					}
+					self.appending = Some(stmt.1);
 					let (val, typ) = match self.types.option_inner(&local.typ) {
 						// a payload owning nothing overwrites the box in place
 						Some(inner) if self.enum_box(&local.typ) && !self.slot_owns(&inner) => {
@@ -415,6 +416,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 					};
 
+					self.appending = Some(stmt.1);
 					let val = self.stored(value, &ftyp, &format!("field `{field}` of type {ftyp}"), "a field")?;
 					let val = self.copy_in(val, &ftyp);
 
