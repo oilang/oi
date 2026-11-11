@@ -1720,15 +1720,25 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some((Expr::ArgMod(..), span)) = key {
 			return fail("the key is not a place", *span, "`mut` goes on the item");
 		}
+
 		let (iter, consume) = match &iter.0 {
 			Expr::ArgMod(Access::Move, x) => (&**x, true),
 			_ => (iter, access == Access::Move),
 		};
 		let iter = self.header(iter)?;
 		let (mut val, typ) = self.expr(iter)?;
+		let mut freeze = None;
 		if access == Access::Mut {
-			self.mut_place(Self::place_root(iter), "only a mutable binding can be looped `mut`")?;
+			let root = self
+				.mut_place(Self::place_root(iter), "only a mutable binding can be looped `mut`")?
+				.clone();
+			let walk: Emit<'e, 'a, M> = Box::new(move |s: &mut Self| {
+				s.vars.insert(format!("$walk_{root}"), s.vars[&root].clone());
+				Ok(())
+			});
+			freeze = Some((walk, None));
 		}
+
 		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
 		if access == Access::Move && !direct && self.claims(&typ, role::KEYED) {
 			return fail(
@@ -1767,6 +1777,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		gens.push(self.for_value((pat, key), (val, typ), given, iter.1)?);
 		let (Access::Mut, Access::Read, Expr::Ident(name), Some(key)) = (access, given, &pat.0, key) else {
+			gens.extend(freeze);
 			return Ok(());
 		};
 
@@ -1783,6 +1794,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Ok(())
 		};
 		gens.push((Box::new(step), None));
+		gens.extend(freeze);
 
 		Ok(())
 	}

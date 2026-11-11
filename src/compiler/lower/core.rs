@@ -201,6 +201,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if local.stat {
 			self.require_pure(name, span.clone())?;
 		}
+		self.walked(&local, name, span.clone().into())?;
 		if !local.mutable {
 			return Err(
 				Diagnostic::new(format!("cannot {immutable_verb} immutable `{name}`"), span)
@@ -210,6 +211,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		self.vars.forget(name);
 		Ok(local)
+	}
+
+	// Refuse a write to a `loop mut` binding.
+	pub(super) fn walked(&self, local: &Local, name: &str, span: Span) -> Result<(), Diagnostic> {
+		if self.vars.get(&format!("$walk_{name}")).map(|walk| walk.var) == Some(local.var) {
+			let msg = format!("cannot write `{name}` while `loop mut` walks it");
+			return fail(msg, span, "written mid-walk");
+		}
+		Ok(())
 	}
 
 	// A loop body may never run, so nothing it assigns settles a slot.

@@ -183,6 +183,20 @@ fn mut_binds_write_back() {
 }
 
 #[test]
+fn mut_walk_is_exclusive() {
+	let walks = "while `loop mut` walks it";
+	fail(["xs := [1]", "loop mut x in xs do xs << x"], walks);
+	let src = indoc! {"
+		P :: struct { items: []int }
+		P :< {
+			add :: fn(mut self; n: int) { self.items << n }
+		}
+		p := P.{ [1] }
+	"};
+	fail([src, "loop mut x in p.items do p.add(x)"], walks);
+}
+
+#[test]
 fn keyed_protocol() {
 	let src = indoc! {r#"
 		Ring :: struct { items: []int, start: int }

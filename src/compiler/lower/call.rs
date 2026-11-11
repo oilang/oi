@@ -754,7 +754,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		let Expr::Ident(name) = &e.0 else {
 			return fail(msg, e.1, "not a binding");
 		};
-		if !self.local(name, e.1.into_range())?.mutable {
+		let local = self.local(name, e.1.into_range())?;
+		self.walked(&local, name, e.1)?;
+		if !local.mutable {
 			return fail(msg, e.1, "immutably bound");
 		}
 		self.vars.forget(name);
