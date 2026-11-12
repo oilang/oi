@@ -738,6 +738,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize) => icc.unsigned(),
 			_ => icc,
 		};
+
 		let raw = match (&lt, &rt) {
 			(Typ::Int(_), Typ::Int(_))
 			| (Typ::UInt(_), Typ::UInt(_))
@@ -751,6 +752,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			(Typ::Ref(_), _) if lt == rt && matches!(icc, IntCC::Equal | IntCC::NotEqual) => {
 				self.b.ins().icmp(icc, lv, rv)
 			}
+
+			// compare with none
+			(opt, _)
+				if matches!(icc, IntCC::Equal | IntCC::NotEqual)
+					&& matches!(&r.0, Expr::Ident(n) if n == "none")
+					&& self.types.option_inner(opt).is_some() =>
+			{
+				let tag = self.enum_tag(opt, lv);
+				self.b.ins().icmp_imm(icc, tag, 0)
+			}
+
 			// compare structurally
 			(l, _)
 				if lt == rt
@@ -790,6 +802,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return fail(format!("cannot compare {lt} and {rt}"), span, label);
 				}
 			}
+
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str)
 			| (Typ::Error, Typ::Error)

@@ -20,3 +20,17 @@ fn compares() {
 fn mismatched_types() {
 	fail(r#"1 < "x""#, "cannot compare");
 }
+
+#[test]
+fn option_against_none_skips_payload_eq() {
+	check(
+		indoc! {"
+			J :: :null | int | []J
+			B :: struct { j: J }
+			o: ?B = none
+			p: ?B = B.{j = 1}
+			print(o == none, o != none, p == none, p != none)
+		"},
+		["true false false true"],
+	);
+}

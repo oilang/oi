@@ -165,7 +165,15 @@ fn c_structs_cross_by_value() {
 	"#};
 	let dir = Project::new().file("dep.c", dep).file("main.oi", main);
 	cc_shared(&dir, &format!("{DLL_PREFIX}dep{DLL_SUFFIX}"));
-	dir.check(["3.5", "15.0", "4.5 4 1.0", "1 3 true 1.5", "4321.0", "3.5 4.5", "1 true true"]);
+	dir.check([
+		"3.5",
+		"15.0",
+		"4.5 4 1.0",
+		"1 3 true 1.5",
+		"4321.0",
+		"3.5 4.5",
+		"1 true true",
+	]);
 }
 
 #[test]
