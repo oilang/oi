@@ -94,12 +94,26 @@ pub(crate) fn claim_assoc(
 
 // Bind `Self`, plus this type's associated types under their bare slot names.
 pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
-	aliases.insert("Self".into(), TypeExpr::Name(typ.into()));
+	aliases.insert("Self".into(), TypeExpr::Resolved(typ.into()));
 	let prefix = format!("{typ}::");
 	let slots: Vec<_> = (aliases.iter())
 		.filter_map(|(k, v)| Some((k.strip_prefix(&prefix)?.to_string(), v.clone())))
 		.collect();
 	aliases.extend(slots);
+}
+
+// Pin a claim's type args to their keys so trait defaults can lower in the trait's scope.
+pub(crate) fn pin_args<'a>(args: &[Spanned<TypeExpr>], scope: &Scope) -> &'a [Spanned<TypeExpr>] {
+	let mut args = args.to_vec();
+	for (te, _) in &mut args {
+		te.walk_mut(&mut |t| match t {
+			TypeExpr::Name(n) if n.contains('.') || scope.lookup(n).is_some() => {
+				*t = TypeExpr::Resolved(scope.qualify_name(n))
+			}
+			_ => {}
+		});
+	}
+	Box::leak(args.into_boxed_slice())
 }
 
 // A trait's params bound to a claim's args, defaults filling the rest.
@@ -470,6 +484,7 @@ pub(super) fn check_impls<'p>(
 				}
 				(params.clone(), ret.clone(), &body[..], true)
 			};
+			let scope = if default { home } else { scope };
 			others.push(FnItem {
 				default,
 				..FnItem::new(fn_key, scope, (params, *params_tuple, ret), body)

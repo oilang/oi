@@ -509,6 +509,26 @@ fn generic_claims_box_into_objects() {
 }
 
 #[test]
+fn trait_defaults_lower_in_their_own_scope() {
+	let src = indoc! {r#"
+		Point :: struct { x: int }
+		Points :: struct { n: int }
+		Points : Iterator[Point] < {
+			next :: fn(mut self) ?Point {
+				if self.n == 0 do return none
+				self.n -= 1
+				Point.{ self.n }
+			}
+		}
+		print(
+			Points.{ 4 }.map { $.x * 2 }.collect(),
+			Points.{ 4 }.filter { $.x > 1 }.collect().len(),
+		)
+	"#};
+	check(src, "[6, 4, 2, 0] 2");
+}
+
+#[test]
 fn scalar_trait_objects() {
 	let src = indoc! {r#"
 		Sink :: trait { write: fn(mut self; s: string) }

@@ -955,6 +955,7 @@ impl<M: Module> Compiler<M> {
 				_ if type_params.iter().all(|p| p.name != typ) && !type_params.is_empty() => {
 					TypeExpr::Generic(typ.to_string(), type_params.iter().map(named).collect())
 				}
+				_ if type_params.is_empty() => TypeExpr::Resolved(typ.to_string()),
 				_ => TypeExpr::Name(typ.to_string()),
 			};
 			let mut all_params = [type_params, mtp].concat();
@@ -1252,7 +1253,7 @@ impl<M: Module> Compiler<M> {
 					..
 				} => {
 					let mut claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
-						.map(|(tn, args)| (scope.qualify_trait(tn), args.as_slice()))
+						.map(|(tn, args)| (scope.qualify_trait(tn), pin_args(args, scope)))
 						.collect();
 
 					let in_core = self.world.core_origin.contains(&scope.module);
@@ -1291,6 +1292,8 @@ impl<M: Module> Compiler<M> {
 						.flat_map(|(t, args)| trait_args(t.1, args))
 						.chain(claimed_traits().flat_map(|(t, args)| claim_assoc(fills, t.2, &trait_args(t.1, args))))
 						.collect();
+					let mut bounds = type_params.clone();
+					qualify_bounds(scope, &mut bounds);
 					for (tn, args) in &claimed {
 						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
 						let assoc = traits
@@ -1306,19 +1309,18 @@ impl<M: Module> Compiler<M> {
 							for (slot, te) in assoc.into_iter().filter(|_| !blanket) {
 								generics.aliases.insert(format!("{typ}::{slot}"), (type_params.clone(), te));
 							}
-							let mut bounds = type_params.clone();
-							qualify_bounds(scope, &mut bounds);
 							if let Some(p) = bounds.iter().find(|p| p.name == *typ)
 								&& self.world.blankets.insert(tn.clone(), p.clone()).is_some()
 							{
 								return fail(format!("`{tn}` has two blanket claims"), item.1, "one per trait");
 							}
-							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds);
+							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds.clone());
 						}
 						// generic fills
 						if !is_hook_trait(tn) {
 							// unfilled defaults
-							let (tps, ms) = traits.get(tn.as_str()).map_or((&[][..], &[][..]), |t| (t.1, t.3));
+							let (tps, ms, home) =
+								traits.get(tn.as_str()).map_or((&[][..], &[][..], scope), |t| (t.1, t.3, t.4));
 							let decls: Vec<TraitFn> = trait_fns(ms).collect();
 							let filled = |n: &str| {
 								(fills.iter())
@@ -1334,7 +1336,7 @@ impl<M: Module> Compiler<M> {
 										..Fills::default()
 									};
 									let d = std::slice::from_ref(bind_trait_args(d, tps, args));
-									self.register_fills(typ, type_params, d, scope, &mut others, claim)?;
+									self.register_fills(typ, &bounds, d, home, &mut others, claim)?;
 								}
 							}
 							if !type_params.is_empty() {

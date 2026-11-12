@@ -922,7 +922,7 @@ impl TypeCtx<'_> {
 		}
 
 		let slot = (self.aliases.get("Self"))
-			.is_some_and(|t| matches!(t, TypeExpr::Name(t) if self.aliases.contains_key(&format!("{t}::{name}"))));
+			.is_some_and(|t| matches!(t, TypeExpr::Resolved(t) if self.aliases.contains_key(&format!("{t}::{name}"))));
 		let name = match self.scope.lookup(name) {
 			Some(q) => q.as_str(),
 			None if !self.scope.module.is_empty() && name != "Self" && !slot && !name.contains("::") => {
