@@ -757,6 +757,19 @@ fn def() {
 		"#},
 		["true", "A", "C"],
 	);
+
+	// kinds
+	check(
+		indoc! {r"
+			P :: struct { x: int }
+			E :: enum { a, b }
+			T :: trait {}
+			A :: int | string
+			f :: fn() {}
+			comp print(def(P).kind, def(E).kind, def(T).kind, def(A).kind, def(f).kind)
+		"},
+		"struct enum trait alias fn",
+	);
 }
 
 #[test]
@@ -771,6 +784,28 @@ fn attribute_macros_run_first() {
 		"#},
 		"PMark",
 	);
+
+	// across files, and module paths name defs
+	Project::new()
+		.main([
+			"use geo",
+			"geo.count!()",
+			"@geo.tag! C :: struct {}",
+			"comp print(def(geo.A).notes.contains(geo.mark))",
+		])
+		.lib(
+			"geo",
+			[
+				"pub mark :: ()",
+				"pub tag! :: fn(input: Ast) Ast { `@mark %input` }",
+				"pub count! :: fn() Ast { n := defs(mark).len(); `print(%n)` }",
+			],
+		)
+		.file(
+			"geo/b.oi",
+			["module geo", "@tag! pub A :: struct {}", "@tag! B :: struct {}"],
+		)
+		.check(["true", "3"]);
 }
 
 #[test]

@@ -286,6 +286,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => None,
 			}
 			&& (self.types.named(n, value.1).is_ok()
+				|| self.types.named(&q, value.1).is_ok()
 				|| self.funcs.contains_key(&q)
 				|| self.types.consts.map.contains_key(&q))
 		{

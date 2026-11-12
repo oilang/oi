@@ -1229,9 +1229,12 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		(b"typ", Expr::Fn { ret: None, .. }) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
 		(b"typ", _) => flag("this Ast has no type", leak(empty()) as i64),
 		(b"len", Expr::TypePat(TypeExpr::FixedArray(_, n))) => ast(n.0.clone()),
-		// the variant name, lowercased
 		(b"kind", e) => {
 			let name = match e {
+				Expr::StructDef { .. } => "struct".into(),
+				Expr::EnumDef { .. } => "enum".into(),
+				Expr::TraitDef { .. } => "trait".into(),
+				Expr::TypeAlias { .. } => "alias".into(),
 				Expr::TypePat(t) => format!("{t:?}"),
 				e => format!("{e:?}"),
 			};
