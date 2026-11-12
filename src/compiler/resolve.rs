@@ -865,10 +865,12 @@ impl TypeCtx<'_> {
 		if let Some(typ) = self.type_params.get(name) {
 			return Ok(typ.clone());
 		}
+
 		if name == "$?" {
 			// an omitted param type that no expected fn type filled in
 			return fail("parameter needs a type", span, "nothing here supplies one");
 		}
+
 		// payload variants refine their enum
 		if let Some((head, variant)) = name.rsplit_once('.')
 			&& let Ok(Typ::Enum(e)) = self.named(head, span)
@@ -883,11 +885,13 @@ impl TypeCtx<'_> {
 				false => Ok(Typ::Enum(e).refined(variant)),
 			};
 		}
+
 		if let Some((head, slot)) = name.rsplit_once('.')
 			&& let Some(typ) = self.assoc_type(head, slot, span)
 		{
 			return Ok(typ);
 		}
+
 		if let Some((m, t)) = name.split_once('.').filter(|_| !name.contains("::")) {
 			let Some(vis) = self.scope.visible.get(m) else {
 				return fail(format!("unknown module `{m}`"), span, "not imported");
@@ -897,6 +901,16 @@ impl TypeCtx<'_> {
 			};
 			return self.named(&format!("{}::{t}", vis.module), span);
 		}
+
+		// named by an instance's key
+		if let Some((base, _)) = name.split_once('[')
+			&& let Some(def) = self.generics.structs.get(base)
+			&& let Some(args) = self.generics.instance_args(name)
+		{
+			let subst = def.type_params.iter().map(|p| p.name.clone()).zip(args).collect();
+			return self.instantiate(base, def, &subst, span);
+		}
+
 		if let Some(typ) = builtin(name) {
 			return Ok(typ);
 		}

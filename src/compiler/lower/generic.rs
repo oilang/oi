@@ -269,6 +269,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.declare_instance(key, &def, infer.subst).ok()
 	}
 
+	// Resolve the trait args of a type's trait claim.
+	pub(super) fn claimed_args(&self, typ: &Typ, tn: &str) -> Option<Result<Vec<Spanned<Typ>>, Diagnostic>> {
+		let key = (rc::base_name(&typ.key()).to_string(), tn.to_string());
+		let names = self
+			.world
+			.generic_claims
+			.get(&key)
+			.into_iter()
+			.flatten()
+			.map(|p| p.name.clone());
+		let own = names.zip(self.types.claim_args(typ)).collect();
+		let resolve = |(arg, span): &Spanned<TypeExpr>| {
+			Ok((self.types_at(*span).with_type_params(&own).resolve(arg, *span)?, *span))
+		};
+		Some(self.world.claim_args.get(&key)?.iter().map(resolve).collect())
+	}
+
 	// Fill any params inference didn't pin from their declared defaults.
 	fn type_defaults(&self, def: &GenericFnDef, infer: &mut Infer) -> Result<(), Diagnostic> {
 		for p in &def.type_params {
@@ -276,21 +293,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				continue;
 			};
 
-			let key = (rc::base_name(&w.key()).to_string(), bound.clone());
-			let Some(args) = self.world.claim_args.get(&key) else {
+			let Some(args) = self.claimed_args(w, bound) else {
 				continue;
 			};
-			let names = self
-				.world
-				.generic_claims
-				.get(&key)
-				.into_iter()
-				.flatten()
-				.map(|p| p.name.clone());
-			let own = names.zip(self.types.claim_args(w)).collect();
-			for ((te, _), (arg, span)) in p.bound_args.iter().zip(args) {
-				let typ = self.types_at(*span).with_type_params(&own).resolve(arg, *span)?;
-				infer.bind(te, &typ, *span)?;
+			for ((te, _), (typ, span)) in p.bound_args.iter().zip(args?) {
+				infer.bind(te, &typ, span)?;
 			}
 		}
 

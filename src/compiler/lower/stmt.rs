@@ -342,6 +342,10 @@ impl<'a, M: Module> Translator<'a, M> {
 						None => {
 							let typ = self.ret.as_ref().map_or(Typ::unit(), |(t, _)| t.clone());
 							let typ = self.types.pack_ret(&typ).unwrap_or(typ);
+
+							let ok = self.types.result_parts(&typ).filter(|(ok, _)| ok.is_unit());
+							let typ = ok.map_or(typ, |(ok, _)| ok);
+
 							(self.zero_or_err(&typ, stmt.1)?, typ)
 						}
 					};

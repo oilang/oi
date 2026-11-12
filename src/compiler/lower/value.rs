@@ -1473,11 +1473,31 @@ impl<'a, M: Module> Translator<'a, M> {
 		if matches!(vt, Typ::Trait(n) if n == tn) {
 			return Ok((val, vt.clone()));
 		}
-		if !self.world.trait_impls.contains(&(vt.key(), tn.to_string())) {
+		if !self.world.trait_impls.contains(&(vt.key(), tn.to_string())) && !self.claim_instance(vt, tn) {
 			return fail(format!("`{vt}` doesn't implement `{tn}`"), span, "no matching impl");
 		}
 		self.check_cell_object(vt, tn, span)?;
 		Ok((self.box_trait_object(val, vt, tn), Typ::Trait(tn.to_string())))
+	}
+
+	// Instantiate the vtable slots of a type's generic claim of a given trait, if it has one.
+	fn claim_instance(&mut self, typ: &Typ, tn: &str) -> bool {
+		let Some((trait_name, _)) = tn.split_once('[') else {
+			return false;
+		};
+		let args = self.claimed_args(typ, trait_name).and_then(Result::ok);
+		let args = args.map(|args| args.into_iter().map(|(t, _)| t).collect());
+		if args.is_none() || args != self.types.generics.instance_args(tn) || !self.claims(typ, trait_name) {
+			return false;
+		}
+		let ((_, _, _, tmethods, _), _) = self.types.trait_instance(tn);
+		for (name, ..) in trait_fns(tmethods).filter(|(name, ..)| has_slot(tmethods, name)) {
+			let Some(sig) = self.resolve_method(typ, name) else {
+				return false;
+			};
+			self.out.claim_slots.insert(format!("{}.{name}", typ.key()), sig);
+		}
+		true
 	}
 
 	// Reject a cell-backed object whose trait returns `Self`.

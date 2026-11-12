@@ -496,6 +496,19 @@ fn generic_trait_objects() {
 }
 
 #[test]
+fn generic_claims_box_into_objects() {
+	let src = indoc! {r#"
+		it: Iterator[int] = [1, 2, 3, 4].iter()
+		print(it.next(), it.map { $ * 2 }.collect())
+	"#};
+	check(src, "some.(1) [4, 6, 8]");
+	fail(
+		"it: Iterator[string] = [1].iter()",
+		"doesn't implement `core::Iterator[string]`",
+	);
+}
+
+#[test]
 fn scalar_trait_objects() {
 	let src = indoc! {r#"
 		Sink :: trait { write: fn(mut self; s: string) }

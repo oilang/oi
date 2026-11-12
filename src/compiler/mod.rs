@@ -613,6 +613,7 @@ struct Artifacts {
 	lowering: String,
 	wanted: Vec<FuncId>,
 	vtables: Vec<(String, String)>,
+	claim_slots: HashMap<String, FnSig>,
 	unreached: Vec<FuncId>,
 	roots: Vec<String>,
 	c_shims: HashMap<String, FuncId>,
@@ -1864,6 +1865,7 @@ impl<M: Module> Compiler<M> {
 		loop {
 			// define the vtables code references, and their `str` wrappers
 			let claims = std::mem::take(&mut self.out.vtables);
+			funcs.extend(self.out.claim_slots.drain());
 			for (name, _) in claims.clone() {
 				if render.contains_key(&name) {
 					continue;

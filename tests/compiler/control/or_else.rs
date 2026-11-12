@@ -59,6 +59,19 @@ fn diverging_fallback_ends_at_semicolon() {
 }
 
 #[test]
+fn bare_return_in_result_fn_is_ok() {
+	let src = indoc! {"
+		f :: fn(o: ?int) !() {
+			v :: o or return
+			print(v)
+		}
+		f(?int.(1)) or {}
+		f(?int.(none)) or { print(0) }
+	"};
+	check(src, "1");
+}
+
+#[test]
 fn fallback_can_panic() {
 	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
 	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");
