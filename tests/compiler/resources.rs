@@ -507,9 +507,10 @@ fn a_guarded_or_borrowed_payload_drops_once() {
 		match open(1) { .some.(f) if f.fd > 5 => print("big"), .some.(f) => print(f.fd), .none => {} }
 		b := Box.{ o = open(2) }
 		match b.o { .some.(f) => print(f.fd), .none => {} }
+		if f := b.o { print(f.fd) }
 		print("end")
 	"#};
-	check([FILE, src], ["1", "drop 1", "2", "end", "drop 2"]);
+	check([FILE, src], ["1", "drop 1", "2", "2", "end", "drop 2"]);
 }
 
 #[test]

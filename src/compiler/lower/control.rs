@@ -1464,9 +1464,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		Some(((id, cond.1), arm))
 	}
 
-	// `v := local` on a Option owning nothing matches the local in place, uncopied.
+	// `v := local` on an Option owning nothing matches the local in place, uncopied, and a place lends its resource.
 	fn in_place_arm<'e>(
-		&self,
+		&mut self,
 		cond: &'e Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Option<(&'e Spanned<Expr>, MatchArm)> {
@@ -1479,16 +1479,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		else {
 			return None;
 		};
-		let Expr::Ident(local) = &src.0 else { return None };
-		let (inner, None) = self.fallible_split(&self.vars.get(local)?.typ)? else {
+
+		let (typ, place) = match &src.0 {
+			Expr::Ident(local) => (self.vars.get(local)?.typ.clone(), false),
+			Expr::Field { .. } | Expr::Index { .. } => (self.type_of(src).ok()?, true),
+			_ => return None,
+		};
+
+		let (inner, None) = self.fallible_split(&typ)? else {
 			return None;
 		};
+
 		let arm = MatchArm {
 			patterns: vec![(Expr::Ident(name.clone()), cond.1)],
-			body: mutable_copy(cond, body),
+			body: if place { body.to_vec() } else { mutable_copy(cond, body) },
 			..Default::default()
 		};
-		(!self.needs_release(&inner)).then_some((src, arm))
+
+		let fits = if place {
+			self.is_affine(&inner)
+		} else {
+			!self.needs_release(&inner)
+		};
+
+		fits.then_some((src, arm))
 	}
 
 	// A labeled block.
