@@ -328,6 +328,9 @@ fn as_type(e: &Expr, var: &str) -> bool {
 		Expr::MethodCall { recv, method, .. } => {
 			matches!(&recv.0, Expr::Ident(n) if n == var) && !matches!(method.as_str(), "str" | "repr" | "int")
 		}
+		Expr::Field { tuple, field } => {
+			matches!(&tuple.0, Expr::Ident(n) if n == var) && !super::AST_FIELDS.contains(&field.as_str())
+		}
 		_ => false,
 	}
 }
@@ -352,6 +355,7 @@ fn unquote(e: &mut Spanned<Expr>, var: &str, ast: bool) -> bool {
 	let mut named = typed || e.0.types().iter().any(|t| super::mentions(t, var));
 	match &mut e.0 {
 		Expr::UnquoteExpr(_) | Expr::UnquoteSplat(_) | Expr::UnquoteBind(..) => {}
+		Expr::Field { .. } if typed => {}
 		Expr::MethodCall { args, .. } if typed => args.iter_mut().for_each(|a| named |= unquote(a, var, ast)),
 		_ => e.0.for_children(|c| match c {
 			Child::List(list) => list.iter_mut().for_each(|e| named |= unquote(e, var, ast)),
@@ -654,6 +658,9 @@ pub(crate) fn fold(
 			_ if at.is_some_and(|s| names_in_flight(s.at(item.1), item)) => false,
 			Expr::Fn { name, .. } => name != "main",
 			Expr::Bind { mutable: true, .. } => has_main || module != "main",
+			Expr::Bind {
+				name, value: Some(v), ..
+			} if !has_main && module == "main" && !consts.contains_key(name) && TypeExpr::from_expr(&v.0).is_none() => false,
 			e => is_def(e) && first_comp(std::slice::from_mut(item)).is_none(),
 		});
 		if module == target {

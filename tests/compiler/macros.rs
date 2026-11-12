@@ -879,9 +879,9 @@ fn comp_loop_splices_defs_as_types() {
 		.main([
 			"use geo",
 			"@geo.mark A :: struct { x: int }",
-			r#"A :< { hi :: fn() { print("A") } }"#,
+			r#"A :< { hi :: fn() do print("A") }"#,
 			"@geo.mark pub B :: struct {}",
-			r#"B :< { pub hi :: fn() { print("B") } }"#,
+			r#"B :< { pub hi :: fn() do print("B") }"#,
 			"geo.each()",
 		])
 		.lib(
@@ -900,4 +900,13 @@ fn comp_loop_splices_defs_as_types() {
 			],
 		)
 		.check(["A", "A A.{x = 0}", "B", "B B.{}"]);
+
+	check(
+		indoc! {"
+			mark :: ()
+			@mark E :: enum { a, b, c }
+			comp loop T in defs(mark) { print(T.name.str(), T.count, T.b) }
+		"},
+		"E 3 b",
+	);
 }

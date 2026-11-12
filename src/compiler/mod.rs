@@ -39,6 +39,9 @@ pub(crate) use typ::*;
 pub(crate) const CTX: &str = "ctx";
 const CONTEXT: &str = "core::Context";
 
+// The fields every `Ast` has.
+pub(crate) const AST_FIELDS: &[&str] = &["name", "typ", "kind", "len", "items", "notes", "fills"];
+
 struct FnItem<'a> {
 	key: String,
 	scope: &'a Scope,
@@ -1651,7 +1654,7 @@ impl<M: Module> Compiler<M> {
 			let builtin: &[&str] = match t {
 				"string" | "array" => &["len", "ptr"],
 				"map" => &["len", "keys", "values"],
-				"Ast" => &["name", "typ", "kind", "len", "items", "notes", "fills"],
+				"Ast" => AST_FIELDS,
 				_ => &[],
 			};
 			if builtin.contains(&n)
@@ -1800,6 +1803,7 @@ impl<M: Module> Compiler<M> {
 				.iter()
 				.map(|(key, ..)| key)
 				.chain(self.exports.keys())
+				.filter(|_| !self.stage0)
 				.chain(self.out.roots.iter())
 				.filter_map(|key| funcs.get(key).map(|sig| sig.id)),
 		);
