@@ -619,6 +619,7 @@ struct Artifacts {
 	c_shims: HashMap<String, FuncId>,
 	printers: Vec<(String, Typ, bool, runtime::Sink)>,
 	env_drops: Vec<(String, Typ)>,
+	eqs: Vec<(String, Typ)>,
 	any_types: Vec<Typ>,
 	instances: HashMap<String, Vec<Typ>>,
 	descs: HashMap<String, DataId>,
@@ -2142,7 +2143,10 @@ impl<M: Module> Compiler<M> {
 		if let Some(FuncOrDataId::Func(id)) = self.module.declarations().get_name(&sym)
 			&& !self.defined.contains(&id)
 		{
-			let params = vec![(String::new(), Typ::Any, Access::Read); 2];
+			self.out.eqs.push((sym, Typ::Any));
+		}
+		while let Some((sym, typ)) = self.out.eqs.pop() {
+			let params = vec![(String::new(), typ.clone(), Access::Read); 2];
 			let def = FnDef {
 				params: &params,
 				..FnDef::default()
@@ -2150,7 +2154,7 @@ impl<M: Module> Compiler<M> {
 			let (mut trans, block) = self.translator(&def, funcs, types);
 			trans.b.func.signature.returns.push(AbiParam::new(types::I8));
 			let [a, b]: [Value; 2] = trans.b.block_params(block).try_into().unwrap();
-			let eq = trans.emit_any_eq(a, b);
+			let eq = trans.emit_eq_body(a, b, &typ);
 			trans.b.ins().return_(&[eq]);
 			trans.b.finalize();
 			self.finish_fn(&sym);
@@ -2351,6 +2355,7 @@ impl<M: Module> Compiler<M> {
 			withs: types.scope.withs.iter().map(|name| (name.clone(), None)).collect(),
 			pack_call: None,
 			appending: None,
+			eq_path: vec![],
 		};
 
 		(trans, block)

@@ -84,11 +84,18 @@ impl<'a, M: Module> Translator<'a, M> {
 		{
 			return Ok(self.emit_call(&sig, &[lhs, rhs]).0);
 		}
-		if let Some(inner) = typ.newtype().cloned() {
-			// newtypes
-			return self.emit_val_eq(lhs, rhs, &inner, owner, span);
+
+		if self.eq_path.contains(typ) {
+			let sym = oi_symbol(&format!("{}#eq", typ.key()));
+			if self.module.declarations().get_name(&sym).is_none() {
+				self.out.eqs.push((sym.clone(), typ.clone()));
+			}
+			return Ok(self.extern_call(&sym, &[lhs, rhs], Some(types::I8)).unwrap());
 		}
-		match typ {
+		self.eq_path.push(typ.clone());
+
+		let eq = match typ {
+			typ if let Some(inner) = typ.newtype() => self.emit_val_eq(lhs, rhs, inner, owner, span),
 			Typ::Any => Ok(self.extern_call(&oi_symbol("eq_any"), &[lhs, rhs], Some(types::I8)).unwrap()),
 			typ if eq_slots(typ).is_some() => self.slots_eq(lhs, rhs, 0, typ, &typ.to_string(), span),
 			Typ::Array(_) | Typ::FixedArray(..) => self.emit_array_eq(lhs, rhs, typ, span),
@@ -113,11 +120,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				span,
 				format!("claim `Eq` for `{owner}` to define equality"),
 			),
-		}
+		};
+		self.eq_path.pop();
+		eq
 	}
 
-	// Payloads without equality compare by identity.
-	pub(crate) fn emit_any_eq(&mut self, lhs: Value, rhs: Value) -> Value {
+	// Body of an out-of-line `#eq`.
+	pub(crate) fn emit_eq_body(&mut self, lhs: Value, rhs: Value, typ: &Typ) -> Value {
+		if *typ != Typ::Any {
+			return self.emit_val_eq(lhs, rhs, typ, "", Span::default()).ok().expect("inlined");
+		}
+
 		let variants: Vec<_> = (self.out.any_types.clone().into_iter())
 			.map(|typ| {
 				VariantInfo::new(
@@ -127,6 +140,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				)
 			})
 			.collect();
+
 		self.emit_enum_eq(lhs, rhs, &Typ::Any, &variants, Span::default())
 			.ok()
 			.expect("has_eq")

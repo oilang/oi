@@ -34,3 +34,17 @@ fn option_against_none_skips_payload_eq() {
 		["true false false true"],
 	);
 }
+
+#[test]
+fn recursive_types_compare() {
+	check(
+		indoc! {"
+			J :: :null | int | []J
+			a: J = [1 [2 :null], [[3]]]
+			b: J = [1 [2 :null], [[3]]]
+			c: J = [1 [2 :null], [[4]]]
+			print(a == b, a == c, a != c)
+		"},
+		["true false true"],
+	);
+}
