@@ -41,7 +41,7 @@ fn open_gens(cond: &Spanned<Expr>, body: &mut Vec<Spanned<Expr>>) -> bool {
 
 fn pipe_step((e, span): Spanned<Expr>) -> Spanned<Expr> {
 	match e {
-		Expr::Ident(name) => (
+		Expr::Ident(name) if name != "none" => (
 			Expr::Call {
 				name,
 				type_args: vec![],

@@ -72,6 +72,17 @@ fn bare_return_in_result_fn_is_ok() {
 }
 
 #[test]
+fn or_none_flattens_to_option() {
+	let src = indoc! {r#"
+		half :: fn(n: int) !int { if n % 2 == 0 { return n / 2 }; error("odd") }
+		print(half(4) or none, half(3) or none)
+		o: ?int = 3
+		print(o or none, none == o)
+	"#};
+	check(src, ["some.(2) none", "some.(3) false"]);
+}
+
+#[test]
 fn fallback_can_panic() {
 	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
 	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");

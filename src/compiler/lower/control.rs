@@ -894,7 +894,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(catch.block);
 		self.b.seal_block(catch.block);
 		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
-		let flow = self.branch(body, want.then_some(&inner))?;
+		let hint = match body.last() {
+			Some((Expr::Ident(name), _)) if name == "none" => {
+				self.types.core_enum(role::OPTION, std::slice::from_ref(&inner))
+			}
+			_ => inner.clone(),
+		};
+		let flow = self.branch(body, want.then_some(&hint))?;
 		self.dollar = saved_dollar;
 		let target = match &flow {
 			Some((_, t)) if !want || *t == inner => inner.clone(),

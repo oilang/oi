@@ -600,6 +600,7 @@ impl Expr {
 			| Expr::Record(_)
 			| Expr::AnonFn { ret: None, .. } => true,
 			Expr::StructLit { name, .. } => name.is_empty(),
+			Expr::Ident(name) => name == "none",
 			Expr::Negative(e) => e.0.anon(),
 			_ => false,
 		}
