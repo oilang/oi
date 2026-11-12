@@ -103,3 +103,20 @@ fn param_patterns() {
 	"};
 	check(src, "30");
 }
+
+#[test]
+fn multi_assign_places() {
+	let src = indoc! {"
+		P :: struct { x: int, y: int }
+		p := P.{1, 2}
+		xs := [0 0]
+		p.x, p.y = p.y, p.x
+		n := 0
+		n, xs[1] = 5, 6
+		print(p.x, p.y, n, xs)
+		pair :: fn() (int, int) { (7, 8) }
+		p.x, xs[0] = pair()
+		print(p.x, xs)
+	"};
+	check(src, ["2 1 5 [0, 6]", "7 [8, 6]"]);
+}

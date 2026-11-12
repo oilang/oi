@@ -200,7 +200,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.map(|f| Some(Ok(f)))
 		.or(bracket(p.expr.clone()).map(|i| Some(Err(i))))
 		.or(just(Token::Caret).to(None));
-	let place_assign = spanned(ident().map(Expr::Ident))
+	let target = spanned(ident().map(Expr::Ident))
 		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
 			let e = match seg {
 				None => Expr::Deref(Box::new(lhs)),
@@ -218,8 +218,32 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 			};
 			(e, ex.span())
 		})
+		.boxed();
+	let place_assign = target
+		.clone()
 		.then(rhs)
 		.map_with(|(place, (op, value)), ex| ast::assign(place, op, value, ex.span()));
+
+	// multiple assignment
+	let multi_assign = target
+		.or(spanned(ident().map(Expr::Ident)))
+		.separated_by(just(Token::Comma))
+		.at_least(2)
+		.collect::<Vec<_>>()
+		.then_ignore(just(Token::Assign))
+		.then(values.clone())
+		.map_with(|(places, value), ex| {
+			let span = ex.span();
+			let temp = |i| (Expr::Ident(format!("$m{i}")), span);
+			let pat = (Expr::Tuple((0..places.len()).map(|i| (None, temp(i))).collect()), span);
+			let (pat, value, mutable) = (Box::new(pat), Box::new(value), Some(false));
+			let sets = places
+				.into_iter()
+				.enumerate()
+				.map(|(i, place)| ast::assign(place, None, temp(i), span));
+			let unpack = (Expr::PatBind { pat, mutable, value }, span);
+			(Expr::Block(std::iter::once(unpack).chain(sets).collect()), span)
+		});
 
 	bind.define(binds(p, p.bind.clone().or(p.juxt_expr.clone()).boxed(), p.pat.clone()).0);
 
@@ -245,7 +269,14 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::DocBreak).or_not());
 
 	// statements
-	place.define(destructure.or(list_bind).or(place_assign).or(assign.clone()).or(map_delete));
+	place.define(
+		destructure
+			.or(list_bind)
+			.or(place_assign)
+			.or(multi_assign)
+			.or(assign.clone())
+			.or(map_delete),
+	);
 	stmt.define(doc.or(place.clone()).or(p.macro_def.clone()).or(return_list.clone()).or(values));
 	do_stmt.define(place.clone().or(return_list).or(p.juxt_expr.clone()));
 }

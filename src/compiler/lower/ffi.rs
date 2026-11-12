@@ -200,7 +200,10 @@ impl<M: Module> Translator<'_, M> {
 	// bools are a byte in C but a word in Oi.
 	fn c_load(&mut self, typ: &Typ, c: Value, off: i32) -> Value {
 		match typ.newtype().unwrap_or(typ) {
-			t if let Some(n) = t.bool_bytes() => self.load_elem(c, off, &Typ::UInt(n * 8)),
+			t if let Some(n) = t.bool_bytes() => {
+				let raw = self.load_elem(c, off, &Typ::UInt(n * 8));
+				self.intcast(raw, self.int, false)
+			}
 			t => self.load_elem(c, off, t),
 		}
 	}

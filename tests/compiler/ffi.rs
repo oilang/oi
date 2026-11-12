@@ -4,14 +4,16 @@ use crate::helpers::{check, fail};
 
 #[test]
 fn scalars_cross_ptr() {
-	let src = indoc! {"
+	let src = indoc! {r#"
 		buf: []u8 = .[0, 0, 0, 0, 0, 0, 0, 0]
 		unsafe buf.ptr.write(42)
 		print(unsafe buf.ptr.read[i32]())
 		unsafe buf.ptr.write(buf.ptr)
 		print(unsafe buf.ptr.read[ptr]().is_null())
-	"};
-	check(src, ["42", "false"]);
+		unsafe buf.ptr.write(true)
+		print("{unsafe buf.ptr.read[bool]()}")
+	"#};
+	check(src, ["42", "false", "true"]);
 }
 
 #[test]
