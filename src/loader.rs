@@ -416,20 +416,21 @@ fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 		..Scan::default()
 	};
 
-	let (mut depth, mut head, mut middle, mut owner) = (0, 0, None, None::<String>);
+	let (mut depth, mut head, mut middle, mut owner, mut args) = (0, 0, None, vec![], vec![]);
 	for (i, (tok, _)) in toks.iter().enumerate() {
 		match tok {
 			Token::Ident(n) => {
 				out.idents.insert(n.clone());
 				out.eager |= matches!(toks.get(i + 1), Some((Token::Not, _)))
 					|| n == "core" && matches!(toks.get(i + 1..i + 4), Some([(Token::Dot, _), _, (Token::Dot, _)]));
-				head = if depth == 0 { i } else { head };
 
-				if depth == 1
-					&& let Some(typ) = &owner
-					&& matches!(toks.get(i + 1), Some((Token::DoubleColon, _)))
-				{
-					out.claims.push(vec![typ.clone(), n.clone()]);
+				head = if depth == 0 { i } else { head };
+				if depth > 0 && middle.is_some() {
+					args.push(n.clone());
+				}
+
+				if depth == 1 && !owner.is_empty() && matches!(toks.get(i + 1), Some((Token::DoubleColon, _))) {
+					out.claims.push([owner.as_slice(), std::slice::from_ref(n)].concat());
 				}
 			}
 			Token::Module if i == 0 => out.header = name(1),
@@ -440,9 +441,9 @@ fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 			_ if depth > 0 => {}
 			Token::DoubleColon | Token::Bind => out.decls.extend(name(head)),
 			Token::Colon | Token::Assign if let Some(start) = middle.take() => out.decls.extend(name(start)),
-			Token::Colon => middle = Some(head),
+			Token::Colon => (middle, args) = (Some(head), vec![]),
 			Token::Lt if let Some(start) = middle.take() => {
-				owner = name(start);
+				owner = name(start).into_iter().chain(args.drain(..)).collect();
 				out.claims.push((start..i).filter_map(name).collect());
 			}
 			_ => {}

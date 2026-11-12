@@ -477,7 +477,12 @@ fn lib_files_parse_once_named() {
 		)
 		.file(
 			"util/stale.oi",
-			["module util", "pub Stale :: struct { m: Missing }", "Stale : Eq < {}"],
+			[
+				"module util",
+				"pub Stale :: struct { m: Missing }",
+				"Stale : Eq < {}",
+				"int : From[Stale] < { from :: fn(s: Stale) int do 0 }",
+			],
 		)
 		.check("7");
 }

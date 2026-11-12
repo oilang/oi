@@ -902,7 +902,7 @@ impl<M: Module> Compiler<M> {
 			};
 			// key claims by type+name to handle generics
 			let key = match claim.generic && type_params.is_empty() {
-				true => format!("{typ}.{name}#{}", others.len()),
+				true => format!("{typ}.{name}#{}", m.1.start),
 				// blanket claims
 				false if type_params.iter().any(|p| p.name == typ) => format!("[{typ}].{name}"),
 				false if claim.ext => {
@@ -1316,6 +1316,7 @@ impl<M: Module> Compiler<M> {
 							}
 							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds.clone());
 						}
+
 						// generic fills
 						if !is_hook_trait(tn) {
 							// unfilled defaults
@@ -1343,6 +1344,7 @@ impl<M: Module> Compiler<M> {
 								continue;
 							}
 						}
+
 						trait_bodies.push(TraitBody {
 							span: item.1,
 							typ,
@@ -1353,6 +1355,7 @@ impl<M: Module> Compiler<M> {
 							scope,
 						});
 					}
+
 					let decls: Vec<TraitFn> = claimed_traits().flat_map(|(t, _)| trait_fns(t.3)).collect();
 					let claim = Fills {
 						decls: &decls,

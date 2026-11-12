@@ -245,7 +245,18 @@ fn a_type_argument_picks_the_operator_claim() {
 }
 
 #[test]
-fn an_int_literal_takes_the_operator_claims_int_type() {
+fn operator_claims() {
+	// operator claims keep their symbols across comp programs
+	let src = indoc! {r#"
+		use json
+		use time
+		P :: struct { x: int }
+		p := json.decode[P](r"""{"x": 3}""")?
+		print(p.x, (time.Duration.{2} * 3).ns, (time.Duration.{2} * 1.5).ns)
+	"#};
+	check(src, "3 6 3");
+
+	// an int literal takes the operator claims int type
 	let src = indoc! {"
 		S :: struct { v: i33 }
 		S : Mul < { mul :: fn(self; o: S) S { S.{ self.v * o.v } } }
@@ -253,10 +264,8 @@ fn an_int_literal_takes_the_operator_claims_int_type() {
 		print((S.{3} * 2).v, (S.{3} * -2).v, (2 * S.{3}).v)
 	"};
 	check(src, "6 -6 6");
-}
 
-#[test]
-fn an_operator_claim_must_cover_the_right_operand() {
+	// an operator claim must cover the right operand
 	let src = indoc! {"
 		V :: struct { x: int }
 		V : Mul[int] < { mul :: fn(self; other: int) V { V.{ self.x * other } } }
