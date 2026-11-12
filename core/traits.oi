@@ -115,12 +115,12 @@ pub Iterator[Item] :: trait {
 	next: fn(mut self) ?Item
 
 	## Lazily applies `f` to each item.
-	map[U] :: fn(self; f: fn(Item) U) MapIter[Self, Item, U] {
+	map[U] :: fn(move self; f: fn(Item) U) MapIter[Self, Item, U] {
 		.{ self, f }
 	}
 
 	## Lazily keeps the items `predicate` holds for.
-	filter :: fn(self; predicate: fn(Item) bool) FilterIter[Self, Item] {
+	filter :: fn(move self; predicate: fn(Item) bool) FilterIter[Self, Item] {
 		.{ self, predicate }
 	}
 

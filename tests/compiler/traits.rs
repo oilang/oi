@@ -529,6 +529,16 @@ fn trait_defaults_lower_in_their_own_scope() {
 }
 
 #[test]
+fn iterator_adapters_consume_their_receiver() {
+	let src = indoc! {r#"
+		it: Iterator[int] = [1, 2, 3].iter()
+		doubled := it.map { $ * 2 }
+		print(it.next())
+	"#};
+	fail(src, "undefined variable `it`");
+}
+
+#[test]
 fn scalar_trait_objects() {
 	let src = indoc! {r#"
 		Sink :: trait { write: fn(mut self; s: string) }
