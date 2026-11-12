@@ -106,3 +106,13 @@ fn failing_test_is_isolated() {
 	assert!(stdout.contains("1 passed; 1 failed"));
 	assert!(stderr(&out).contains("assertion failed"));
 }
+
+#[test]
+fn test_dir_with_main_treats_siblings_as_modules() {
+	let dir = project(indoc! {r#"
+		use rex
+		@test uses_sibling :: fn() { assert! rex.one() == 1 }
+	"#})
+	.file("rex.oi", "pub one :: fn() int { 1 }");
+	assert!(dir.ok(&["test", "."]).contains("1 passed"));
+}

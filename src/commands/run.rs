@@ -17,7 +17,7 @@ pub fn entry(file: Option<PathBuf>) -> PathBuf {
 	}
 }
 
-/// Run a source file, or a directory's `.oi` files.
+/// Run a source file, or a directory's Oi files.
 pub fn run(file: &Path, mut args: Vec<String>, opts: DebugOpts) -> Result<(), Reported> {
 	args.insert(0, file.display().to_string());
 	run_source(files(file)?, root(file), &args, opts)
@@ -53,6 +53,12 @@ pub fn files(file: &Path) -> Result<Entry, Reported> {
 		.filter(|p| p.extension().is_some_and(|x| x == "oi"))
 		.collect();
 	paths.sort();
+
+	// if a dir has main.oi, treat it as a program rather than a module
+	if let Some(main) = paths.iter().find(|p| p.file_name().is_some_and(|n| n == "main.oi")) {
+		return Ok(vec![read_src(main)?]);
+	}
+
 	paths.iter().map(|p| read_src(p)).collect()
 }
 
