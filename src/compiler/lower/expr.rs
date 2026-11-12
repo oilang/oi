@@ -524,6 +524,9 @@ impl<'a, M: Module> Translator<'a, M> {
 							let recv = Some(((recv_val, recv_typ.clone()), recv));
 							return self.call_generic(&key, &def, type_args, args, recv, expr.1);
 						}
+						if let Some(sig) = self.funcs.get(&key).cloned() {
+							return self.call_sig(&key, sig, Some(recv_val), Some(recv), args, expr.1);
+						}
 						return self.dyn_call(recv_val, tn, method, args, expr.1);
 					}
 

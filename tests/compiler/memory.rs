@@ -413,3 +413,19 @@ fn nullable_pointers() {
 	);
 	assert_clean(src);
 }
+
+#[test]
+fn element_append_respects_shared_buffer() {
+	let src = indoc! {r#"
+		xs := ["a" "b"]
+		ys := xs
+		e := xs[1]
+		loop i in 0..3 {
+			xs[0] += "z"
+			xs[1] += "y"
+		}
+		print(xs, ys, e)
+	"#};
+	check(src, r#"["azzz", "byyy"] ["a", "b"] b"#);
+	assert_clean(src);
+}

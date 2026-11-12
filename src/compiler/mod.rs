@@ -1152,8 +1152,11 @@ impl<M: Module> Compiler<M> {
 			}
 
 			// generic trait defaults
-			let has_body = |m: &&Spanned<Expr>| matches!(&m.0, Expr::Fn { body, .. } if !body.is_empty());
-			for m in methods.iter().filter(has_body).filter(|_| !type_params.is_empty()) {
+			let runs = |m: &&Spanned<Expr>| {
+				matches!(&m.0, Expr::Fn { name, body, .. }
+					if !body.is_empty() && (!type_params.is_empty() || !has_slot(methods, name)))
+			};
+			for m in methods.iter().filter(runs) {
 				let m = std::slice::from_ref(m);
 				self.register_fills(name, type_params, m, scope, &mut others, Fills::default())?;
 			}

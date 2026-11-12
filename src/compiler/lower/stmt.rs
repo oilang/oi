@@ -275,6 +275,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						None => self.int_value(index, "array index")?,
 					};
 					let idx = self.intcast(idx, self.int, true);
+					self.appending = Some(stmt.1);
 					let val = self.stored(value, &elem, &format!("element of {elem} array"), "an array")?;
 					let val = self.copy_in(val, &elem);
 					self.store_index((ptr, &typ), idx, val, stmt.1);
