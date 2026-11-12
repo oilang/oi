@@ -60,3 +60,12 @@ test! "decode keeps a Json field raw" {
 	out :: decode[Raw](r"""{"n": 1, "rest": [1, {"a": null}]}""") or panic!($.message())
 	assert! out.rest.str() == r"""[1,{"a":null}]"""
 }
+
+Defaulted :: struct { n: int = 7, tag: ?string = "t", name: string }
+
+test! "decode fills a missing field from its default" {
+	out :: decode[Defaulted](r"""{"name": "a"}""") or panic!($.message())
+	assert! out.n == 7 && out.tag == "t" && out.name == "a"
+	kept :: decode[Defaulted](r"""{"n": 1, "tag": null, "name": "b"}""") or panic!($.message())
+	assert! kept.n == 1 && kept.tag == none
+}

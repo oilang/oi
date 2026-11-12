@@ -151,10 +151,13 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			}
 			// comptime field inits
 			if let Expr::StructLit { fields, .. } = e {
+				let skipped = |i: &Spanned<Expr>| matches!(&i.0, Expr::Block(b) if b.is_empty());
 				*fields = (std::mem::take(fields).into_iter())
 					.flat_map(|field| match field {
-						(None, (Expr::Block(inits), _)) if inits.iter().all(|i| matches!(i.0, Expr::Assign { .. })) => {
-							inits.into_iter().map(|init| (None, init)).collect()
+						(None, (Expr::Block(inits), _))
+							if inits.iter().all(|i| matches!(i.0, Expr::Assign { .. }) || skipped(i)) =>
+						{
+							inits.into_iter().filter(|i| !skipped(i)).map(|init| (None, init)).collect()
 						}
 						field => vec![field],
 					})

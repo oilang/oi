@@ -1275,7 +1275,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}
 		(b"items", Expr::StructLit { fields, .. }) => asts(&mut fields.iter().map(|(_, v)| v)),
-		(b"items", Expr::Bind { value: Some(v), .. }) => asts(&mut std::iter::once(&**v)),
+		(b"items", Expr::Bind { value, .. }) => asts(&mut value.iter().map(|v| &**v)),
 		(b"items", Expr::Arm(arm)) => list(vec![
 			leak(arm.patterns[0].clone()) as i64,
 			leak((Expr::Block(arm.body.clone()), *span)) as i64,
