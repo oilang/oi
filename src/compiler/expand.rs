@@ -602,8 +602,14 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 
 		// find type name defs, across modules
 		let keys: HashSet<_> = defs.iter().map(|d| d.0.clone()).collect();
-		for (_, def, scope) in &mut defs {
+		for (name, def, scope) in &mut defs {
 			def.0.walk(&mut |e| {
+				if let Expr::StructDef { fields, .. } = e {
+					for default in fields.iter_mut().filter_map(|f| f.default.as_mut()) {
+						*default = (Expr::Resolved(name.clone(), Box::new(default.clone())), default.1);
+					}
+				}
+
 				for t in e.types() {
 					t.walk_mut(&mut |t| match t {
 						TypeExpr::Name(n) if let Some(key) = keys.get(&scope.qualify_name(n)) => {

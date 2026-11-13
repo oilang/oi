@@ -368,6 +368,21 @@ fn comp_loops() {
 }
 
 #[test]
+fn json_decode_runs_a_default_only_for_a_missing_key() {
+	let src = indoc! {r#"
+		use json
+		ids := 0
+		Counted :: struct { id: int = { ids += 1; ids } }
+		main :: fn() {
+			seen :: json.decode[Counted](r"""{"id": 9}""") or panic!($.message())
+			missing :: json.decode[Counted]("{{}}") or panic!($.message())
+			print(seen.id, missing.id, ids)
+		}
+	"#};
+	check(src, "9 1 1");
+}
+
+#[test]
 fn comp_folds_per_generic_instance() {
 	let src = indoc! {r#"
 		debug_print[T] :: fn(value: T) {

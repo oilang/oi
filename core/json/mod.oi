@@ -199,19 +199,17 @@ pub from_json[T] :: fn(j: Json) !T {
 		Json => j,
 		else => {
 			obj :: want[Obj](j)?
-			out := T.{
+			T.{
 				comp loop f in def(T).items {
 					comp if f.items.len() == 0 {
 						%{f.name} = field[%{f.typ}](obj, %{f.name.str()})?
+					} else {
+						%{f.name} = if v := obj[%{f.name.str()}] {
+							from_json[%{f.typ}](v)?
+						} else do %{..f.items}
 					}
 				}
 			}
-			comp loop f in def(T).items {
-				comp if f.items.len() > 0 {
-					if v := obj[%{f.name.str()}] do out.%{f.name} = from_json[%{f.typ}](v)?
-				}
-			}
-			out
 		},
 	}
 }
