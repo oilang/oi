@@ -27,7 +27,7 @@ tags: []
 	- `Self` `rust`
 	- context `jai`
 - opt-in mutable `rust v`
-- pipes `Nushell revo`
+- pipes `nu revo`
 	- error-specific pipes (revo uses `|>~` though I won't) `revo`
 - `:atoms`/keywords `clojure janet elixir revo`
 - optional types (`?`) `v zig`
@@ -80,6 +80,7 @@ tags: []
 # TODO
 - immediate
 	- `matches!` macro (use in `Json.from_json` in the nested matches `rust`
+	- namespaced methods, like nushell's `" foo " | str trim` `nu`
 - [ ] let `:h <topic>` look at text files too, like vim does (offline wiki kind of thing? or maybe that's too much) `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
@@ -113,7 +114,7 @@ tags: []
 - int/float suffixes `let y: i32 = 13i32; let f: f64 = 1.3f64;` `rust`
 - maybe named tuple args aren't a good thing
 	- just making structs more lightweight to use might be better, idk
-- CLI help docs, like Nushell and Cargo
+- CLI help docs, like nushell and cargo
 - [directives](https://odin-lang.org/docs/overview/#directives) (would have to use diff sigil like `@` unless I changed comments) `odin`
 - treat all args as optional since they have zero values?
 - sandwich ops like `a == b == c`, `a < b <= c`, `x == y < z`, etc. `python`

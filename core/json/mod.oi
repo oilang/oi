@@ -228,3 +228,37 @@ field[F] :: fn(obj: Obj, name: string) !F {
 	comp if Option[E] := F do return none
 	error("missing field {name}")
 }
+
+## A value as `Json`, a struct field by field.
+pub ToJson :: trait {
+	to_json :: fn(self) Json {
+		o: Obj = []
+		comp loop f in def(Self).items {
+			o[f.name.str()] = self.(f.name).to_json()
+		}
+		o
+	}
+}
+
+int : ToJson < { to_json :: fn(self) Json do float.(self) }
+float : ToJson < { to_json :: fn(self) Json do self }
+bool : ToJson < { to_json :: fn(self) Json do self }
+string : ToJson < { to_json :: fn(self) Json do self }
+Json : ToJson < { to_json :: fn(self) Json do self }
+[]T : ToJson < { to_json :: fn(self) Json do Arr.(loop v in self do v.to_json()) }
+
+[K]V : ToJson < {
+	to_json :: fn(self) Json {
+		o: Obj
+		loop v, k in self {
+			o["{k}"] = v.to_json()
+		}
+		o
+	}
+}
+
+Option[T] : ToJson < {
+	to_json :: fn(self) Json {
+		if v := self do v.to_json() else do :null
+	}
+}
