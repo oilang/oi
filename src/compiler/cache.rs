@@ -4,13 +4,13 @@ use std::time::{Duration, SystemTime};
 
 use cranelift::codegen::incremental_cache::CacheKvStore;
 
-// Cranelift's codegen cache, one file per fn under `<root>/.oi/cache`.
+// Cranelift's codegen cache, one file per fn under `.oi/`.
 pub struct Store(PathBuf);
 
 impl Store {
-	pub fn open(root: &Path) -> Option<Self> {
+	pub fn open(root: &Path, sub: &str) -> Option<Self> {
 		let off = std::env::var_os("OI_CACHE").is_some_and(|v| v == "0");
-		(!off).then(|| Store(root.join(".oi/cache")))
+		(!off).then(|| Store(root.join(".oi").join(sub)))
 	}
 
 	// Deletes files no `get` or `insert` has touched in a while.

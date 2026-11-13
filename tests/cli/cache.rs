@@ -54,3 +54,19 @@ fn run_sweeps_stale_entries() {
 	assert_eq!(ok(dir.run()), "3");
 	assert!(!stale.exists());
 }
+
+#[test]
+fn library_interface_is_reused_until_edited() {
+	let dir = Project::new()
+		.file("lib/greet/greet.oi", "pub hi :: fn() int do 1")
+		.file("main.oi", ["use greet", "print(greet.hi())"]);
+	let root: &Path = dir.as_ref();
+	let run = || ok(oi(&["run", "main.oi"]).current_dir(root).env("OI_HOME", root).run(None));
+	let interfaces = || std::fs::read_dir(root.join(".oi/pkg")).unwrap().count();
+	assert_eq!(run(), "1");
+	assert_eq!(run(), "1");
+	assert_eq!(interfaces(), 1);
+	std::fs::write(root.join("lib/greet/greet.oi"), "pub hi :: fn() int do 2").unwrap();
+	assert_eq!(run(), "2");
+	assert_eq!(interfaces(), 2);
+}

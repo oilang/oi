@@ -967,8 +967,10 @@ dependencies = [
  "libc",
  "logos",
  "oi-runtime",
+ "postcard",
  "pretty_assertions",
  "reedline",
+ "serde",
  "target-lexicon",
 ]
 

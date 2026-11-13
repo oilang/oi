@@ -3,17 +3,19 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chumsky::{input::Stream, prelude::*};
+use cranelift::codegen::incremental_cache::CacheKvStore;
 use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
-use crate::compiler::{builtin, sized};
+use crate::compiler::{builtin, cache, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{Token, lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -394,7 +396,7 @@ pub fn parse_file(
 }
 
 // A library file's top-level names and every name it mentions, read off its tokens.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scan {
 	module: String,
 	base: Option<usize>,
@@ -414,16 +416,12 @@ impl Scan {
 	}
 }
 
-fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
+fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
 	let name = |i: usize| match toks.get(i) {
 		Some((Token::Ident(n), _)) => Some(n.clone()),
 		_ => None,
 	};
-	let mut out = Scan {
-		module: module.into(),
-		eager,
-		..Scan::default()
-	};
+	let mut out = Scan::default();
 
 	let (mut depth, mut head, mut middle, mut owner, mut args) = (0, 0, None, vec![], vec![]);
 	for (i, (tok, _)) in toks.iter().enumerate() {
@@ -462,6 +460,39 @@ fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 	out
 }
 
+// A file's raw macros and imports, and its scan.
+type Scanned = ((Vec<String>, Vec<String>), Scan);
+
+fn scan_src(src: &str) -> Scanned {
+	let toks = lex_at(src, 0);
+	(prescan(&toks), scan(&toks))
+}
+
+// Every Oi file under `dir`.
+fn walk_tree(dir: &Path) -> Vec<PathBuf> {
+	let subs = fs::read_dir(dir).into_iter().flatten().flatten().map(|entry| entry.path());
+	let subs = subs.filter(|path| path.is_dir()).flat_map(|sub| walk_tree(&sub));
+	walk_oi(dir).into_iter().chain(subs).collect()
+}
+
+// Read the scans of every file under a given library package from its interface, writing it on a miss.
+fn read_interface(store: &mut cache::Store, pkg: &Path) -> HashMap<String, Scanned> {
+	let files = walk_tree(pkg).into_iter();
+	let files = files.filter_map(|path| Some((path.display().to_string(), fs::read_to_string(path).ok()?)));
+	let mut files: Vec<_> = files.collect();
+	files.sort();
+	let mut key = DefaultHasher::new();
+	(env!("CARGO_PKG_VERSION"), env!("OI_GIT_SHA"), env!("OI_TARGET"), &files).hash(&mut key);
+	let key = key.finish().to_be_bytes();
+	if let Some(scans) = store.get(&key).and_then(|bytes| postcard::from_bytes(&bytes).ok()) {
+		return scans;
+	}
+	let scans = par_map(&files, |(_, src)| src.len(), |(_, src)| scan_src(src));
+	let scans = files.into_iter().map(|(path, _)| path).zip(scans).collect();
+	store.insert(&key, postcard::to_allocvec(&scans).unwrap_or_default());
+	scans
+}
+
 #[derive(Default)]
 struct Loader {
 	program: Program,
@@ -470,6 +501,8 @@ struct Loader {
 	loading: Vec<String>,
 	raw_macros: HashSet<String>,
 	prescanned: HashSet<String>,
+	pkg_store: Option<cache::Store>,
+	interfaces: HashMap<PathBuf, HashMap<String, Scanned>>,
 }
 
 impl Loader {
@@ -1045,19 +1078,23 @@ impl Loader {
 
 		let from_core = self.program.core_origin.contains(name);
 		let mut imports = vec![];
+		let interface = self.interface(name);
 		let scanned = par_map(
 			files,
 			|(_, src)| src.len(),
-			|(_, src)| {
-				let toks = lex_at(src, 0);
-				(prescan(&toks), scan(name, name == "main" || from_core, &toks))
+			|(path, src)| {
+				interface
+					.and_then(|scans| scans.get(path))
+					.cloned()
+					.unwrap_or_else(|| scan_src(src))
 			},
 		);
 
 		let mut headers = scanned.iter().filter_map(|(_, held)| held.header.as_deref());
 		let disagree = headers.next().is_some_and(|first| headers.any(|h| h != first));
 		for ((path, _), ((raw, used), mut held)) in files.iter().zip(scanned) {
-			held.eager |= disagree;
+			held.module = name.into();
+			held.eager |= disagree || name == "main" || from_core;
 			self.raw_macros.extend(raw);
 			imports.extend(used);
 			self.program.held.insert(path.clone(), held);
@@ -1069,6 +1106,14 @@ impl Loader {
 				self.prescan_module(&m, &inner);
 			}
 		}
+	}
+
+	// Scans of the library package holding `name`.
+	fn interface(&mut self, name: &str) -> Option<&HashMap<String, Scanned>> {
+		let store = self.pkg_store.as_mut()?;
+		let (roots, packages) = (&self.program.roots, &self.program.publics.packages);
+		let pkg = packages.get(name).filter(|pkg| **pkg != roots[0])?;
+		Some(self.interfaces.entry(pkg.clone()).or_insert_with(|| read_interface(store, pkg)))
 	}
 
 	// Parse held files that declare a needed name, closing over what they mention.
@@ -1260,6 +1305,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 			.iter()
 			.map(|(n, _)| root.join(Path::new(n).file_name().unwrap_or_default()))
 			.collect(),
+		pkg_store: cache::Store::open(root, "pkg").inspect(cache::Store::sweep),
 		..Loader::default()
 	};
 	// import core implicitly

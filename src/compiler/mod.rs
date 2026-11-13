@@ -19,7 +19,7 @@ use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member}
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
 
-mod cache;
+pub(crate) mod cache;
 mod comp;
 mod expand;
 mod lower;
@@ -1025,7 +1025,7 @@ impl<M: Module> Compiler<M> {
 		self.module.clear_context(&mut self.ctx);
 		self.builder_ctx = FunctionBuilderContext::new();
 
-		self.cache = cache::Store::open(&program.roots[0]);
+		self.cache = cache::Store::open(&program.roots[0], "cache");
 		if let Some(store) = self.cache.as_ref().filter(|_| !self.stage0) {
 			store.sweep();
 		}
