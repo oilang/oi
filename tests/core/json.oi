@@ -42,6 +42,8 @@ test! "decode" {
 	msg := ""
 	decode[Inner](r"""{"ok": true}""") or { msg = $.message(); Inner.{} }
 	assert! msg == "missing field name"
+	sparse :: decode[Outer](r"""{"n": 3, "x": 1.5, "inner": {"name": "a"}}""") or panic!($.message())
+	assert! !sparse.inner.ok && sparse.xs.len() == 0
 	decode[int]("3.5") or { msg = $.message(); 0 }
 	assert! msg == "expected int, got 3.5"
 }

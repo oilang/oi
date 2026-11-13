@@ -225,8 +225,10 @@ want[W] :: fn(j: Json) !W {
 ## Decode `obj[name]` into an `F`.
 field[F] :: fn(obj: Obj, name: string) !F {
 	if v := obj[name] do return from_json[F](v)
-	comp if Option[E] := F do return none
-	error("missing field {name}")
+	comp match F {
+		Option[E], []E, bool => zero[F](),
+		else => error("missing field {name}"),
+	}
 }
 
 ## A value as `Json`, a struct field by field.
