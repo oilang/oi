@@ -606,27 +606,36 @@ pub(crate) fn c_abi_sig<'t>(
 
 pub(crate) type CRegs = Vec<(Option<i32>, AbiParam)>;
 
-// Each param's `@c` struct ABI params, whole on the stack once SysV runs out of int or SSE regs for it.
+// Each param's `@c` struct ABI params, whole on the stack once its int or float regs run out.
 pub(crate) fn c_spread<'t>(
 	params: impl Iterator<Item = &'t Typ>,
 	ret: &Typ,
 	types: &TypeCtx,
 	arch: Architecture,
 ) -> Vec<Option<CRegs>> {
+	let x86 = arch == Architecture::X86_64;
 	let sret = matches!(ret.c_by_val(types, arch).as_deref(), Some([(None, _)]));
-	let mut free = [6 - sret as usize, 8];
+	let mut free = [if x86 { 6 - sret as usize } else { 8 }, 8];
 	let spread = |t: &Typ| {
 		let regs = t.c_by_val(types, arch);
 		let mut need = [0, 0];
-		for (_, p) in regs.iter().flatten().filter(|r| r.0.is_some()) {
+		for (_, p) in regs.iter().flatten().filter(|r| r.1.purpose == ArgumentPurpose::Normal) {
 			need[p.value_type.is_float() as usize] += 1;
 		}
 		if regs.is_none() {
 			need[matches!(t.newtype().unwrap_or(t), Typ::Float(_)) as usize] = 1;
 		}
-		if regs.is_some() && arch == Architecture::X86_64 && (need[0] > free[0] || need[1] > free[1]) {
-			let sarg = ArgumentPurpose::StructArgument(t.c_size_align(types)?.0.next_multiple_of(8));
-			return Some(vec![(None, AbiParam::special(types::I64, sarg))]);
+		let in_regs = matches!(regs.as_deref(), Some([(Some(_), _), ..]));
+		if in_regs && (need[0] > free[0] || need[1] > free[1]) {
+			let size = t.c_size_align(types)?.0.next_multiple_of(8);
+			if x86 {
+				let sarg = ArgumentPurpose::StructArgument(size);
+				return Some(vec![(None, AbiParam::special(types::I64, sarg))]);
+			}
+			let class = (need[1] > 0) as usize;
+			let word = AbiParam::new([types::I64, types::F64][class]);
+			let fill = std::iter::repeat_n((Some(0), word), std::mem::take(&mut free[class]));
+			return Some(fill.chain((0..size as i32).step_by(8).map(|at| (Some(at), word))).collect());
 		}
 		free = [free[0].saturating_sub(need[0]), free[1].saturating_sub(need[1])];
 		regs

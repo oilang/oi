@@ -18,15 +18,18 @@ fn warm_run_reuses_cache() {
 fn edited_comp_input_is_not_stale() {
 	let src = indoc::indoc! {r#"
 		use fs
+		use os
 		name := comp fs.read("build.toml") or { "none" }
-		print(name)
+		flag := comp os.sh("test -f flag")
+		print(name, flag)
 	"#};
 	let dir = Project::new().file("main.oi", src).file("build.toml", "one");
-	assert_eq!(ok(dir.run()), "one");
+	assert_eq!(ok(dir.run()), "one 1");
 	let root: &Path = dir.as_ref();
 	assert!(root.join(".oi/cache").is_dir());
 	std::fs::write(root.join("build.toml"), "two").unwrap();
-	assert_eq!(ok(dir.run()), "two");
+	std::fs::write(root.join("flag"), "").unwrap();
+	assert_eq!(ok(dir.run()), "two 0");
 }
 
 #[test]
