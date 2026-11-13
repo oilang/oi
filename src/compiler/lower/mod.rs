@@ -66,6 +66,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub deferring: Option<usize>,
 	pub temps: HashMap<Value, Variable>,
 	pub self_type: Option<String>,
+	pub default: bool,
 	pub is_main: bool,
 	pub script: bool,
 	pub self_name: Option<String>,

@@ -157,6 +157,37 @@ fn comp_rejects_unreifiable_type() {
 }
 
 #[test]
+fn comp_const_folds_once_for_macros() {
+	Project::new()
+		.main([
+			"use index",
+			"print(index.size!(Node))",
+			"print(index.size!(Sprite))",
+			"print(index.kinds)",
+		])
+		.lib(
+			"index",
+			[
+				"Api :: struct { sizes: [string]int }",
+				r#"load :: fn() Api { print("load"); Api.{ sizes = ["Node" = 1, "Sprite" = 3] } }"#,
+				"api :: comp load()",
+				r#"pub kinds :: comp ["Node", "Sprite"]"#,
+				"find :: fn(class: string) int { api.sizes[class] or kinds.len() }",
+				"pub size! :: fn(class: Ast) Ast { n := find(class.str()); `%n` }",
+			],
+		)
+		.check(["load", "1", "3", r#"["Node", "Sprite"]"#]);
+}
+
+#[test]
+fn comp_const_cannot_query() {
+	fail(
+		["m :: ()", "n :: comp defs(m).len()", "print(n)"],
+		"a `comp` const can't query the program",
+	);
+}
+
+#[test]
 fn comp_assert_is_a_compile_error() {
 	fail(["N :: 3", "comp assert! N > 5"], "assertion failed: N > 5");
 }
@@ -189,7 +220,7 @@ fn comp_folds_in_an_imported_module() {
 }
 
 #[test]
-fn comp_seeds_module_statics_before_use() {
+fn comp_cannot_write_module_statics() {
 	Project::new()
 		.file(
 			"main.oi",
@@ -207,7 +238,7 @@ fn comp_seeds_module_statics_before_use() {
 				"pub bump :: fn(k: string) { seen = seen + k }",
 			],
 		)
-		.check("k");
+		.fail_with("stage 0 cannot write static `seen`");
 }
 
 #[test]

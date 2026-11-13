@@ -113,6 +113,7 @@ fn sites(items: &mut [Spanned<Expr>], f: &mut impl FnMut(&mut Expr)) {
 		match e {
 			Expr::Fn { type_params, .. } | Expr::StructDef { type_params, .. } | Expr::Claim { type_params, .. }
 				if !type_params.is_empty() => {}
+			Expr::TraitDef { .. } => {}
 			Expr::Comp(_) => f(e),
 			e => e.for_children(|c| match c {
 				Child::List(list) => sites(list, f),
@@ -670,10 +671,7 @@ pub(crate) fn fold(
 		items.extend(copies);
 	});
 	(synthetic.annotations.values_mut()).for_each(|v| v.retain(|a| !matches!(a.0, Expr::Call { .. })));
-	synthetic.consts = (consts.iter())
-		.filter(|(_, v)| !matches!(v.0, Expr::Comp(_)))
-		.map(|(k, v)| (k.clone(), v.clone()))
-		.collect();
+	synthetic.consts = consts.clone();
 
 	let mut compiler = stage0.take().unwrap_or_default();
 	let ran = match DEPTH.fetch_add(1, Ordering::Relaxed) {
@@ -737,6 +735,7 @@ pub(crate) fn eval(
 		}
 	}
 
+	let memos = stage0.as_ref().map(|jit| jit.out.memos.clone()).unwrap_or_default();
 	// push order is importer-first, so folding in reverse handles dependencies first
 	for i in (0..program.modules.len()).rev() {
 		let module = program.modules[i].name.clone();
@@ -752,7 +751,13 @@ pub(crate) fn eval(
 				let (Expr::Comp(inner), span) = consts[k].clone() else {
 					unreachable!()
 				};
-				match fold(*inner, &module, consts, program, stage0) {
+
+				let site = match inner.0 {
+					Expr::If { .. } | Expr::Match { .. } | Expr::Loop { .. } => *inner,
+					_ if memos.contains(&span.start) => return false,
+					_ => consts[k].clone(),
+				};
+				match fold(site, &module, consts, program, stage0) {
 					Ok(lit) => {
 						consts.insert(k.clone(), (lit, span));
 						false
@@ -780,6 +785,9 @@ pub(crate) fn eval(
 			let (Expr::Comp(_), Some(lit)) = (&v.0, consts.get(name.as_str())) else {
 				return true;
 			};
+			if let Expr::Comp(_) = lit.0 {
+				return false;
+			}
 			if let Expr::Ident(target) = &lit.0
 				&& let Some(vis) = m.scope.at(*span).visible.get(target).cloned()
 			{

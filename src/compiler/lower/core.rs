@@ -65,9 +65,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = rc::base_name(typ);
 		let owner = module_of(def).unwrap_or_default();
-		if owner == self.types.scope.module || !self.world.privates.get(def).is_some_and(|ms| ms.contains(member)) {
+		let granted = self.default && self.self_type.as_deref() == Some(def);
+		if owner == self.types.scope.module
+			|| granted
+			|| !self.world.privates.get(def).is_some_and(|ms| ms.contains(member))
+		{
 			return Ok(());
 		}
+
 		let msg = format!("`{member}` is private to module `{owner}`");
 		fail(msg, span, "not public")
 	}
@@ -198,6 +203,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				d
 			}
 		})?;
+		if local.stat && self.comptime {
+			let msg = format!("stage 0 cannot write static `{name}`");
+			return fail(msg, span.into(), "written at comptime");
+		}
 		if local.stat {
 			self.require_pure(name, span.clone())?;
 		}
@@ -403,6 +412,41 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.write_local(&local, val);
 		}
 		Ok(())
+	}
+
+	// Fold a `comp` const on first read in stage 0, into a cell shared by later reads.
+	pub(super) fn comp_const(&mut self, inner: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
+		let mut names = HashSet::new();
+		inner.0.idents(&mut names);
+		if names.contains("def") || names.contains("defs") {
+			return fail("a `comp` const can't query the program", span, "calls `def` or `defs`");
+		}
+
+		let sym = oi_symbol(&format!("comp_const_{}", span.start));
+		(self.module.declare_data(&sym, Linkage::Local, true, false)).expect("declare comp const");
+		value::define_data(self.module, &sym, vec![0; 16]);
+
+		let cell = self.data_addr(&sym);
+		let ready = self.ld_word(cell, 0);
+		let unset = self.b.ins().icmp_imm(IntCC::Equal, ready, 0);
+		let reader = self.types;
+		self.types = self.types_at(span);
+
+		let typ = self.when(unset, |s| {
+			let (val, typ) = s.block_expr(std::slice::from_ref(inner), span)?;
+			let val = s.copy_in(val, &typ);
+			s.st(cell, 8, val);
+			let one = s.b.ins().iconst(s.int, 1);
+			s.st(cell, 0, one);
+			Ok(typ)
+		})?;
+		self.types = reader;
+
+		if matches!(typ, Typ::Map(..) | Typ::Array(_)) || typ.slots().is_some() {
+			self.out.memos.insert(span.start);
+		}
+
+		Ok((self.ld_typ(cell, 8, &typ), typ))
 	}
 
 	// Promote a local to a heap-boxed cell.

@@ -154,7 +154,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => {
 						let key = self.qualify(name);
 						let visible = key.contains("::") || !self.script;
-						match visible.then(|| self.types.consts.map.get(key.as_ref()).cloned()).flatten() {
+						let found = |c: &&Spanned<Expr>| visible || matches!(c.0, Expr::Comp(_));
+						match self.types.consts.map.get(key.as_ref()).filter(found).cloned() {
 							Some(c) => self.expr(&c),
 							None => match self.types.type_params.get(name) {
 								Some(Typ::Const(lit)) => self.lower(&((**lit).clone(), expr.1), hint),
@@ -1284,7 +1285,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				fail("unquotes only make sense inside a quote", expr.1, "stray unquote")
 			}
 
-			Expr::Comp(_) => fail("`comp` isn't supported here", expr.1, "can't run at compile time"),
+			Expr::Comp(inner) if self.comptime => self.comp_const(inner, expr.1),
+			Expr::Comp(_) => {
+				let lit = self.types_at(expr.1).fold(expr)?;
+				self.lower(&(lit, expr.1), hint)
+			}
 			Expr::Resolved(_, written) => {
 				let types = self.types;
 				self.types = self.types_at(written.1);

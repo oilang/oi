@@ -384,6 +384,30 @@ fn reflected_defs_resolve_in_the_callers_module() {
 }
 
 #[test]
+fn trait_defaults_reflect_their_claimant() {
+	Project::new()
+		.main(["use foo", "foo.make().show()", "foo.Box.{ 2.5 }.show()"])
+		.lib(
+			"show",
+			[r#"pub Show :: trait {
+				show :: fn(self) { comp loop f in def(Self).items { print("{f.name.str()} = {self.(f.name)}") } }
+			}"#],
+		)
+		.lib(
+			"foo",
+			[
+				"use show",
+				"pub P :: struct { x: int, pub y: int }",
+				"P :< show.Show",
+				"pub Box[T] :: struct { pub v: T }",
+				"Box[T] :< show.Show",
+				"pub make :: fn() P { P.{ x = 1, y = 2 } }",
+			],
+		)
+		.check(["x = 1", "y = 2", "v = 2.5"]);
+}
+
+#[test]
 fn trait_fields_resolve_in_their_defining_module() {
 	Project::new()
 		.file(

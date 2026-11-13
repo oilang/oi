@@ -225,6 +225,7 @@ struct FnDef<'a> {
 	ret: Option<(Typ, Span)>,
 	body: &'a [Spanned<Expr>],
 	self_type: Option<&'a str>,
+	default: bool,
 	is_main: bool,
 	script: bool,
 	is_test: bool,
@@ -628,6 +629,7 @@ struct Artifacts {
 	descs: HashMap<String, DataId>,
 	string_idx: usize,
 	atoms: HashSet<String>,
+	memos: HashSet<usize>,
 }
 
 pub struct Compiler<M: Module = JITModule> {
@@ -2003,12 +2005,21 @@ impl<M: Module> Compiler<M> {
 				if let Some(t) = self_type {
 					bind_self(&mut aliases, t);
 				}
+
 				let types = base.with_aliases(&aliases).with_scope(item.scope);
 				let sig = &funcs[&item.key];
+				let mut body = std::borrow::Cow::Borrowed(item.body);
+				if let Some(typ) = self_type.filter(|_| item.default) {
+					let me = HashMap::from([("Self".to_string(), base.named(typ, Span::default())?)]);
+					let module = Some(item.scope.module.as_str()).filter(|m| !m.is_empty()).unwrap_or("main");
+					comp::instantiate(body.to_mut(), &types.with_type_params(&me), module, &self.consts)?;
+				}
+
 				let def = FnDef {
 					params_tuple: item.params_tuple,
-					body: item.body,
+					body: &body,
 					self_type,
+					default: item.default,
 					foreign: sig.foreign,
 					ctxless: (self.annotations.get(&item.key).into_iter().flatten())
 						.find(|a| ctx_ann(item.scope, a) == Some(None))
@@ -2029,13 +2040,16 @@ impl<M: Module> Compiler<M> {
 				}
 				continue;
 			};
+
 			let module = if def.module.is_empty() { "main" } else { &def.module };
 			let home = scopes[module].at(def.span);
 			let types = base.with_type_params(&subst).with_scope(home);
-			let bound = comp::instantiate(&mut def.body, &types, module, &self.consts)?;
 			let me = (def.self_typ.as_ref()).map(|te| types.resolve(te, def.span)).transpose()?;
 			let self_key = me.as_ref().map(Typ::key);
-			subst.extend(bound.into_iter().chain(me.map(|t| ("Self".to_string(), t))));
+			subst.extend(me.map(|t| ("Self".to_string(), t)));
+			let types = base.with_type_params(&subst).with_scope(home);
+			let bound = comp::instantiate(&mut def.body, &types, module, &self.consts)?;
+			subst.extend(bound);
 			let types = base.with_type_params(&subst).with_scope(home);
 			let sig = self.out.mono[&sym].clone();
 			self.out.lowering.clone_from(&sym);
@@ -2344,6 +2358,7 @@ impl<M: Module> Compiler<M> {
 			deferring: None,
 			temps: HashMap::new(),
 			self_type: def.self_type.map(str::to_owned),
+			default: def.default,
 			is_main: def.is_main,
 			script: def.script,
 			pure: def.pure,
