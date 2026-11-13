@@ -651,7 +651,7 @@ pub(crate) fn fold(
 	);
 
 	// imports
-	let mut synthetic = super::expand::lend(program, |module, items| {
+	let mut synthetic = super::expand::lend(program, &Default::default(), |module, items| {
 		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
 		let at = program.modules.iter().find(|m| m.name == module).map(|m| &m.scope);
 		items.retain_mut(|item| match &item.0 {

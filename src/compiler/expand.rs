@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr, int_word};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
-use crate::loader::{Program, Publics, Scope, module_of, wrapped_def};
+use crate::loader::{Module, Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
 
 use super::{Compiler, display_name};
@@ -22,13 +22,48 @@ pub(crate) const RT_AST_LIT: &str = "oi_rt_ast_lit";
 pub(crate) const RT_AST_METHOD: &str = "oi_rt_ast_method";
 pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
 
-// A copy of `program` with each module's items filtered by `keep`.
-pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanned<Expr>>)) -> Program {
-	let mut modules = program.modules.clone();
-	modules.iter_mut().for_each(|m| {
-		m.items.append(&mut m.comptime);
-		keep(&m.name, &mut m.items);
-	});
+// A copy of `program` minus dead fns, with each module's items filtered by `keep`.
+pub(super) fn lend(
+	program: &Program,
+	dead: &HashSet<String>,
+	mut keep: impl FnMut(&str, &mut Vec<Spanned<Expr>>),
+) -> Program {
+	let live = |e: &Spanned<Expr>| fn_name(e).is_none_or(|n| !dead.contains(&simple(n)));
+	let modules = (program.modules.iter())
+		.map(|m| {
+			// rebuilt so dead fills are never cloned
+			let mut items: Vec<_> = (m.items.iter().chain(&m.comptime).filter(|e| live(e)))
+				.map(|(e, span)| match e {
+					Expr::Claim {
+						typ,
+						type_params,
+						traits,
+						via,
+						fills,
+						fields,
+					} => (
+						Expr::Claim {
+							typ: typ.clone(),
+							type_params: type_params.clone(),
+							traits: traits.clone(),
+							via: via.clone(),
+							fills: fills.iter().filter(|e| live(e)).cloned().collect(),
+							fields: fields.clone(),
+						},
+						*span,
+					),
+					_ => (e.clone(), *span),
+				})
+				.collect();
+			keep(&m.name, &mut items);
+			Module {
+				name: m.name.clone(),
+				items,
+				scope: m.scope.clone(),
+				comptime: vec![],
+			}
+		})
+		.collect();
 	Program {
 		map: program.map.clone(),
 		modules,
@@ -44,17 +79,20 @@ pub(super) fn lend(program: &Program, mut keep: impl FnMut(&str, &mut Vec<Spanne
 	}
 }
 
-// Drops library fns no kept code names, matched by last path segment, first parsing in the held files it names.
-pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Diagnostic> {
-	fn fn_name(e: &Spanned<Expr>) -> Option<&String> {
-		match Expr::peel_meta(e) {
-			([], _, (Expr::Fn { name, .. }, _)) => Some(name),
-			_ => None,
-		}
+fn fn_name(e: &Spanned<Expr>) -> Option<&String> {
+	match Expr::peel_meta(e) {
+		([], _, (Expr::Fn { name, .. }, _)) => Some(name),
+		_ => None,
 	}
+}
 
-	let simple = |name: &str| name.rsplit([':', '.']).next().unwrap_or_default().to_string();
-	let (mut queue, mut fns) = (vec![], HashMap::<_, Vec<_>>::new());
+fn simple(name: &str) -> String {
+	name.rsplit([':', '.']).next().unwrap_or_default().to_string()
+}
+
+// Collects the dead library functions.
+fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]) -> [HashSet<String>; 2] {
+	let (mut queue, mut fns, mut named) = (vec![], HashMap::<_, Vec<_>>::new(), HashSet::new());
 	for m in &mut program.modules {
 		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
 		for item in &mut m.items {
@@ -77,12 +115,13 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Dia
 
 	let seeds = program.consts.values_mut().chain(program.annotations.values_mut().flatten());
 	queue.extend(seeds.map(|(e, _)| e));
+	queue.extend(extra.iter_mut().map(|(e, _)| e));
 
 	// queued fns name themselves, so whatever stays in `fns` is dead
 	while let Some(item) = queue.pop() {
 		let mut mention = |n: &str| {
 			queue.extend(fns.remove(&simple(n)).into_iter().flatten());
-			program.needed.insert(simple(n));
+			named.insert(simple(n));
 		};
 		item.walk(&mut |e| {
 			if let Expr::Ident(n)
@@ -110,7 +149,13 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Dia
 		});
 	}
 
-	let dead: HashSet<_> = fns.into_keys().collect();
+	[fns.into_keys().collect(), named]
+}
+
+// Drops library fns not named by any kept code.
+pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Diagnostic> {
+	let [dead, named] = dead_fns(program, roots, &mut []);
+	program.needed.extend(named);
 	if program.fill()? {
 		return prune(program, roots).map(|_| true);
 	}
@@ -311,14 +356,19 @@ impl Expander {
 	}
 
 	// Compile every macro body as a real fn, in one synthetic program, and grab their pointers.
-	fn compile_stage0(&mut self, program: &Program) -> Result<(), Diagnostic> {
+	fn compile_stage0(&mut self, program: &mut Program) -> Result<(), Diagnostic> {
+		let roots: Vec<_> = self.macros.keys().cloned().collect();
+		let [mut dead, named] = dead_fns(program, &roots, &mut self.defs);
+		if program.held.values().any(|f| f.fires(&named)) {
+			dead.clear();
+		}
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		for e in &mut self.defs {
 			let scope = scopes[owner(e)].at(e.1);
 			direct_calls(&mut e.0, &self.macros, scope, false);
 		}
 		let defs = std::mem::take(&mut self.defs);
-		let mut synthetic = lend(program, |module, items| {
+		let mut synthetic = lend(program, &dead, |module, items| {
 			let scope = &scopes[module];
 			items.retain_mut(|(e, span)| {
 				let lent = match e {
@@ -333,7 +383,7 @@ impl Expander {
 		});
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
-		compiler.run_stage0(synthetic, self.macros.keys().cloned().collect())?;
+		compiler.run_stage0(synthetic, roots)?;
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.finalized(name);
 		}
@@ -521,7 +571,7 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 	let called =
 		(out.modules.iter_mut()).any(|m| m.items.iter_mut().any(|it| ex.calls_macro(&mut it.0, m.scope.at(it.1))));
 	if called {
-		ex.compile_stage0(&out)?;
+		ex.compile_stage0(&mut out)?;
 	}
 
 	// attribute macros

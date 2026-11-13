@@ -405,6 +405,15 @@ pub(crate) struct Scan {
 	eager: bool,
 }
 
+impl Scan {
+	// Checks whether a fill over `needed` parses this file.
+	pub(crate) fn fires(&self, needed: &HashSet<String>) -> bool {
+		self.eager
+			|| self.decls.iter().any(|d| needed.contains(d))
+			|| self.claims.iter().any(|head| head.iter().all(|n| needed.contains(n)))
+	}
+}
+
 fn scan(module: &str, eager: bool, toks: &[(Token, SimpleSpan)]) -> Scan {
 	let name = |i: usize| match toks.get(i) {
 		Some((Token::Ident(n), _)) => Some(n.clone()),
@@ -1067,14 +1076,7 @@ impl Loader {
 		let mut filled = false;
 		loop {
 			let needed = &self.program.needed;
-			let fired: Vec<_> = (self.program.held)
-				.extract_if(|_, f| {
-					f.eager
-						|| f.decls.iter().any(|d| needed.contains(d))
-						|| f.claims.iter().any(|head| head.iter().all(|n| needed.contains(n)))
-				})
-				.map(|(_, f)| f)
-				.collect();
+			let fired: Vec<_> = (self.program.held).extract_if(|_, f| f.fires(needed)).map(|(_, f)| f).collect();
 			if fired.is_empty() {
 				return Ok(filled);
 			}
