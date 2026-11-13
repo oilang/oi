@@ -83,6 +83,18 @@ fn or_none_flattens_to_option() {
 }
 
 #[test]
+fn or_custom_error_body_flattens() {
+	let src = indoc! {r#"
+		Bad :: struct { line: int }
+		Bad : Error < { message :: fn(self) string do "bad at {self.line}" }
+		half :: fn(n: int) !int { if n % 2 == 0 do return n / 2; error("odd") }
+		r := half(3) or Bad.{ line = 1 }
+		print(r)
+	"#};
+	check(src, r#"err.("bad at 1")"#);
+}
+
+#[test]
 fn fallback_can_panic() {
 	check(r#"!string.("hi") or { panic!("boom") }"#, "hi");
 	fail_rt(r#"!string.(error("boom")) or { panic!("boom") }"#, "panic: boom");

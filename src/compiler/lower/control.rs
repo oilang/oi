@@ -904,7 +904,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.dollar = saved_dollar;
 		let target = match &flow {
 			Some((_, t)) if !want || *t == inner => inner.clone(),
-			Some((_, t)) if *t == Typ::Error => self.types.core_enum(role::RESULT, &[inner.clone(), Typ::Error]),
+			Some((_, t)) if *t == Typ::Error || (*t != Typ::Str && self.open_error(t)) => {
+				self.types.core_enum(role::RESULT, &[inner.clone(), Typ::Error])
+			}
 			Some((_, t)) if self.fallible_split(t).is_some_and(|(i, _)| i == inner) => t.clone(),
 			_ => inner.clone(),
 		};
