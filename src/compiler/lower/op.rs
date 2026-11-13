@@ -826,8 +826,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				if matches!(icc, IntCC::Equal | IntCC::NotEqual) =>
 			{
 				let eq = match (&lt, &rt) {
-					(Typ::Ast, _) => self.ast_method(lv, "==", Some(rv)),
-					(_, Typ::Ast) => self.ast_method(rv, "==", Some(lv)),
+					(Typ::Ast, Typ::Str) => self.ast_method(lv, "==", Some(rv)),
+					(Typ::Str, Typ::Ast) => self.ast_method(rv, "==", Some(lv)),
 					_ => self.emit_eq(lv, rv, &lt),
 				};
 				self.b.ins().icmp_imm(icc.complement(), eq, 0)

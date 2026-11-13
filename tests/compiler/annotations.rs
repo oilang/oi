@@ -244,7 +244,7 @@ fn qualified_field_annotation() {
 				"	`%input`",
 				"}",
 				"@read_export!",
-				"Thing :: struct { x: int @godot.export.{ lo = 0, hi = 10 } }",
+				"Thing :: struct { x: int @godot.export.{ 0, 10 } }",
 			],
 		)
 		.file(

@@ -1,7 +1,7 @@
 use super::generic::{Infer, mangle};
 use super::*;
 use crate::ast::{Param, record_args};
-use crate::compiler::{CONTEXT, comp, role};
+use crate::compiler::{CONTEXT, comp, expand::type_ast, role};
 
 // Give a symbol its bytes.
 pub(crate) fn define_once<M: Module>(m: &mut M, id: DataId, desc: &DataDescription) {
@@ -290,9 +290,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				|| self.funcs.contains_key(&q)
 				|| self.types.consts.map.contains_key(&q))
 		{
-			let reference = match self.types.type_params.contains_key(n) {
-				true => value.clone(),
-				false => (Expr::Resolved(q, Box::new(value.clone())), value.1),
+			let reference = match self.types.type_params.get(n) {
+				Some(typ) => type_expr(typ).map_or(value.clone(), |typ| (type_ast(&typ), value.1)),
+				None => (Expr::Resolved(q, Box::new(value.clone())), value.1),
 			};
 			return Ok(Some(self.quote(&[reference], value.1)?.0));
 		}

@@ -584,12 +584,8 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 			};
 			let (notes, _, def) = Expr::peel_meta(item);
 			let name = def.0.def_name()?.to_string();
-			let notes = [notes, out.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
-			let resolve = |n: Spanned<Expr>| match super::ann_names(scope, std::slice::from_ref(&n)).pop() {
-				Some(q) => (Expr::Resolved(q, Box::new(n.clone())), n.1),
-				None => n,
-			};
-			let notes: Vec<_> = notes.into_iter().map(resolve).collect();
+			let mut notes = [notes, out.annotations.get(&name).map_or(&[], Vec::as_slice)].concat();
+			notes.iter_mut().for_each(|note| resolve(note, scope));
 			let def = if notes.is_empty() {
 				def.clone()
 			} else {
@@ -605,6 +601,8 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 		for (name, def, scope) in &mut defs {
 			def.0.walk(&mut |e| {
 				if let Expr::StructDef { fields, .. } = e {
+					let notes = fields.iter_mut().flat_map(|f| &mut f.annotations);
+					notes.for_each(|note| resolve(note, scope));
 					for default in fields.iter_mut().filter_map(|f| f.default.as_mut()) {
 						*default = (Expr::Resolved(name.clone(), Box::new(default.clone())), default.1);
 					}
@@ -656,6 +654,13 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 	out.publics = ex.publics;
 	out.check_selected(&selected, |q| ex.macros.contains_key(q))?;
 	Ok((out, ex.stage0))
+}
+
+// Resolve a note's name through the scope that wrote it.
+fn resolve(note: &mut Spanned<Expr>, scope: &Scope) {
+	if let Some(key) = super::ann_names(scope, std::slice::from_ref(note)).pop() {
+		*note = (Expr::Resolved(key, Box::new(note.clone())), note.1);
+	}
 }
 
 // A quote template.
@@ -1333,7 +1338,13 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		(b"items", Expr::StructDef { fields, .. } | Expr::Fn { params: fields, .. }) => {
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}
-		(b"items", Expr::StructLit { fields, .. }) => asts(&mut fields.iter().map(|(_, v)| v)),
+		(b"items", Expr::StructLit { fields, .. }) => {
+			let entries = (fields.iter().cloned()).map(|(name, value)| match (name, Box::new(value)) {
+				(Some(name), value) => ast(Expr::Assign { name, value }),
+				(None, value) => Box::into_raw(value) as i64,
+			});
+			list(entries.collect())
+		}
 		(b"items", Expr::Bind { value, .. }) => asts(&mut value.iter().map(|v| &**v)),
 		(b"items", Expr::Arm(arm)) => list(vec![
 			leak(arm.patterns[0].clone()) as i64,

@@ -32,4 +32,45 @@ Ast :< {
 	int :: fn(self) int {
 		unsafe rt.oi_ast_int(self)
 	}
+
+	## The note naming `T`, read back as a `T`.
+	note[T] :: fn(self) ?T {
+		loop a in self.notes {
+			if a == T do return a.value[T]()
+		}
+		none
+	}
+
+	## The literal this Ast holds, read back as a `T`.
+	value[T] :: fn(self) T {
+		comp match T {
+			int => self.int(),
+			bool => self.str() == "true",
+			string => self.str(),
+			else => {
+				out := T.{}
+				# a bare `@note` is its zero value
+				if self.kind == "ident" do return out
+
+				loop entry, at in self.items {
+					# a loop per arm
+					# TODO: revisit after nested quotes. a quote pattern can't be in a `comp loop` yet
+					match entry {
+						`%key = %given` => comp loop f in def(T).items {
+							if key == %{f.name.str()} {
+								out.%{f.name} = given.value[%{f.typ}]()
+							}
+						},
+						else => comp loop f, i in def(T).items {
+							if at == %i {
+								out.%{f.name} = entry.value[%{f.typ}]()
+							}
+						},
+					}
+				}
+
+				out
+			},
+		}
+	}
 }

@@ -874,6 +874,44 @@ fn notes() {
 }
 
 #[test]
+fn typed_notes() {
+	Project::new()
+		.main([
+			"use geo",
+			indoc! {r#"
+				P :: struct {
+					a: int @geo.prop.{"x", 2}
+					b: int @geo.prop.{step = 3}
+					c: int @geo.prop
+					d: int
+				}
+			"#},
+			"geo.show!(P)",
+		])
+		.lib(
+			"geo",
+			[
+				r#"pub prop :: struct {
+					pub range: string = "r",
+					pub step: int = 1,
+					pub on: bool,
+				}"#,
+				indoc! {r#"
+					pub show! :: fn(t: Ast) Ast {
+						out := loop f in def(t).items {
+							s := "none"
+							if p := f.note[prop]() do s = "{p.range} {p.step} {p.on}"
+							`print(%s)`
+						}
+						`%{..out}`
+					}
+				"#},
+			],
+		)
+		.check(["x 2 false", "r 3 false", "r 1 false", "none"]);
+}
+
+#[test]
 fn comp_loop_splices_defs_as_types() {
 	Project::new()
 		.main([
