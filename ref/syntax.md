@@ -2647,7 +2647,7 @@ main :: fn() {
 	parses_big :: fn() { assert! parse(big_input).ok }
 
 	# TODO: the comp and reflection stuff not fleshed out yet
-	comp loop note in type_info(yell).notes { ... }
+	comp loop note in def(yell).notes { ... }
 
 	## macros
 
@@ -2731,7 +2731,7 @@ main :: fn() {
 	# `comp` on a control form runs the header at comptime and leaves the body to runtime
 	# that is, `comp loop` is not the same as `comp { loop .. }`, which is is fully comptime
 	debug_print[T] :: fn(value: T) {
-		comp loop field in type_info(T).items {
+		comp loop field in def(T).items {
 			println("{field.name} = {value.(field.name)}")
 		}
 	}

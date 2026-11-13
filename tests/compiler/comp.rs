@@ -292,15 +292,15 @@ fn fns_claims_and_notes_are_typed_asts() {
 }
 
 #[test]
-fn type_info_reflects_a_definition() {
+fn def_reflects_a_definition() {
 	check(
 		indoc! {r#"
 			Point :: struct { x: int, y: []float @required }
 			Color :: enum { red, green, blue }
 			comp {
-				t := type_info(Point)
+				t := def(Point)
 				print(t.name.str(), t.items[0].name.str(), t.items[0].typ.str(), t.items[1].notes.len())
-				print(type_info(Color).items[2].str())
+				print(def(Color).items[2].str())
 			}
 		"#},
 		["Point x int 1", "blue"],
@@ -324,7 +324,7 @@ fn comp_loops() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, y: string }
 		show :: fn(p: Point) {
-			comp loop field in type_info(Point).items { print("{field.name} = {p.(field.name)}") }
+			comp loop field in def(Point).items { print("{field.name} = {p.(field.name)}") }
 		}
 		show(Point.{ 3, "hi" })
 	"#};
@@ -332,7 +332,7 @@ fn comp_loops() {
 
 	let src = indoc! {"
 		Point :: struct { x: int }
-		comp loop f in type_info(Point).items { print(f.name) }
+		comp loop f in def(Point).items { print(f.name) }
 	"};
 	fail(src, "use `f.name.str()`");
 
@@ -417,7 +417,7 @@ fn json_decode_runs_a_default_only_for_a_missing_key() {
 fn comp_folds_per_generic_instance() {
 	let src = indoc! {r#"
 		debug_print[T] :: fn(value: T) {
-			comp loop field in type_info(T).items {
+			comp loop field in def(T).items {
 				print("{field.name} = {value.(field.name)}")
 			}
 		}
@@ -455,8 +455,8 @@ fn comp_loop_with_destructuring_bind() {
 fn comp_folds_generic_instances_called_from_comptime() {
 	let src = indoc! {r#"
 		Pt :: struct { x: int, y: int }
-		Pt :< { show[T] :: fn(self; v: T) { comp loop f in type_info(T).items { print("{f.name} = {v.(f.name)}") } } }
-		g[T] :: fn(v: T) { comp loop f in type_info(T).items { print("{f.name}") } }
+		Pt :< { show[T] :: fn(self; v: T) { comp loop f in def(T).items { print("{f.name} = {v.(f.name)}") } } }
+		g[T] :: fn(v: T) { comp loop f in def(T).items { print("{f.name}") } }
 		h :: fn() int { comp { g(Pt.{ 1, 2 }); Pt.{ 1, 2 }.show(Pt.{ 3, 4 }); 5 } }
 		print(h())
 	"#};

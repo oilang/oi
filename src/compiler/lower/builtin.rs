@@ -1,4 +1,3 @@
-use crate::ast::{EnumVariant, Param};
 use crate::compiler::{comp, role};
 
 use super::*;
@@ -64,14 +63,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				Ok(Some((self.typeid_of(&t), Typ::TypeId)))
 			}
 
-			"type_info" => {
-				let [(name @ (Expr::Ident(_) | Expr::Resolved(..)), at)] = args else {
-					return fail("`type_info` takes one type name", span, "expected a struct or enum");
-				};
-				let def = self.type_def(name, *at)?;
-				Ok(Some(self.quote(&[(def, *at)], *at)?))
-			}
-
 			// an owned copy with no shared buffers
 			"__unshare" => {
 				let (val, typ) = self.expr(&args[0])?;
@@ -134,48 +125,6 @@ impl<'a, M: Module> Translator<'a, M> {
 		];
 		self.struct_lit(role::SRC, &[], &fields, span, None)
 			.inspect(|out| self.untemp(out.0))
-	}
-
-	// Rebuild a named type's definition as an Ast.
-	fn type_def(&self, name: &Expr, span: Span) -> Result<Expr, Diagnostic> {
-		let field = |f: &FieldDef| Param {
-			default: f.default.clone(),
-			annotations: f.annotations.clone(),
-			..Param::new(
-				f.name.clone(),
-				type_expr(&f.typ).unwrap_or_else(|| TypeExpr::Name(f.typ.to_string())),
-				span,
-			)
-		};
-		let named = TypeExpr::from_expr(name).expect("a type name");
-		Ok(match self.peeled(&self.types.resolve(&named, span)?) {
-			Typ::Struct(n, fields) => Expr::StructDef {
-				name: display_name(&n).into(),
-				type_params: vec![],
-				fields: fields.iter().map(field).collect(),
-				fills: vec![],
-			},
-			// variants reflect without payloads for now
-			Typ::Enum(n) => Expr::EnumDef {
-				name: display_name(&n).into(),
-				backing: None,
-				type_params: vec![],
-				variants: (self.enum_variants(&n).iter())
-					.map(|v| EnumVariant {
-						name: v.name.clone(),
-						..Default::default()
-					})
-					.collect(),
-				fills: vec![],
-			},
-			t => {
-				return fail(
-					format!("`{t}` has no definition to reflect"),
-					span,
-					"not a struct or enum",
-				);
-			}
-		})
 	}
 
 	// Yield a value to the `comp` host (recursive).
