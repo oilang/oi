@@ -418,6 +418,20 @@ fn nest_clauses() {
 }
 
 #[test]
+fn refutable_items() {
+	let src = indoc! {r#"
+		xs : []?int = [1 none 3]
+		loop .some.(n) in xs do print(n)
+		print(loop .some.(n) in xs, n < 3 do n)
+		ss : []?string = ["a" none "b"]
+		print(loop .some.(s) in ss, i in 0..9 do "{s}{i}")
+		print(loop y in 0..2; .some.(n) in xs do n + y)
+	"#};
+	check(src, ["1", "3", "[1]", r#"["a0", "b2"]"#, "[1, 3, 2, 4]"]);
+	assert_clean(src);
+}
+
+#[test]
 fn do_bodies() {
 	let src = indoc! {"
 		i := 0

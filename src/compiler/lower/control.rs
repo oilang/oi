@@ -112,6 +112,29 @@ fn has_gen(group: &Expr) -> bool {
 	}
 }
 
+// Swaps each refutable generator pattern for a hidden item, collecting the pattern's bind to it.
+fn refute(cond: &mut Spanned<Expr>, binds: &mut Vec<Spanned<Expr>>) {
+	match &mut cond.0 {
+		Expr::Gen { pat, .. } if matches!(pat.0, Expr::EnumShorthand { .. } | Expr::Quote(_)) => {
+			let item = (Expr::Ident(format!("$item{}", binds.len())), pat.1);
+			let (pat, value) = (Box::new(std::mem::replace(&mut **pat, item.clone())), Box::new(item));
+			binds.push((
+				Expr::PatBind {
+					pat,
+					value,
+					mutable: Some(false),
+				},
+				cond.1,
+			));
+		}
+		Expr::Binary(BinOp::And, lhs, rhs) => {
+			refute(lhs, binds);
+			refute(rhs, binds);
+		}
+		_ => {}
+	}
+}
+
 type Pats<'e> = (&'e Spanned<Expr>, Option<&'e Spanned<Expr>>);
 
 type Emit<'e, 'a, M> = Box<dyn FnOnce(&mut Translator<'a, M>) -> Result<(), Diagnostic> + 'e>;
@@ -1298,13 +1321,19 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.loop_expr(label, outer.as_ref(), &body);
 		}
 		self.rewrap_writes(body);
+
+		let (mut cond, mut binds) = (cond.cloned(), vec![]);
+		cond.iter_mut().for_each(|c| refute(c, &mut binds));
+
 		let mut gens = vec![];
-		let rest = cond.map(|c| self.generators(c, &mut gens)).transpose()?.flatten();
+		let mut rest = cond.as_ref().map(|c| self.generators(c, &mut gens)).transpose()?.flatten();
+		let held = rest.take_if(|_| !binds.is_empty());
 		let (steps, drops): (Vec<_>, Vec<_>) = gens.into_iter().unzip();
 		let zipped = !steps.is_empty();
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
+
 		let cond = rest.as_ref().map(|c| self.clauses(c)).transpose()?;
 		let cond = cond.as_ref();
 
@@ -1357,9 +1386,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			{
 				body.push((Expr::Tuple(vec![]), *sp));
 			}
+			let end = |span| [(Expr::Break(None, None), span)];
+			if let Some(c) = held {
+				body = vec![(clause_if(c.clone(), &body, Some(&end(c.1))), c.1)];
+			}
+			for bind in binds.into_iter().rev() {
+				let skip = [(Expr::Continue(None), bind.1)];
+				body = vec![(clause_if(bind.clone(), &body, Some(&skip)), bind.1)];
+			}
 			let body = &body[..];
 
-			let end = |span| [(Expr::Break(None, None), span)];
 			match (cond, body) {
 				// binds run in turn until one can miss
 				(Some(c), _) if infallible(&c.0) => {

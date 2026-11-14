@@ -342,6 +342,12 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				.map(Box::new),
 		)
 		.map_with(|((pat, key), iter), ex| (Expr::Gen { pat, key, iter }, ex.span()))
+		.or(header_expr.clone().try_map(|(e, span), at| match e {
+			Expr::Binary(BinOp::In, pat, iter) if matches!(pat.0, Expr::EnumShorthand { .. } | Expr::Quote(_)) => {
+				Ok((Expr::Gen { pat, key: None, iter }, span))
+			}
+			_ => Err(Rich::custom(at, "not a generator")),
+		}))
 		.boxed();
 
 	// `,` chains clauses with `&&`, and `;` groups them into a header block
