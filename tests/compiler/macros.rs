@@ -922,6 +922,23 @@ fn typed_notes() {
 }
 
 #[test]
+fn relations() {
+	check(
+		indoc! {"
+			Component :: trait {}
+			Base :: struct { x: int }
+			P :: struct { Base }
+			Q :: struct { Base }
+			P :< Component
+			Q :< Component
+			comp loop T in def(Component).claimants { print(T.name.str()) }
+			comp print(def(Base).embedders.len(), def(P).embeds.contains(Base), def(Q).claims.contains(Component))
+		"},
+		["2 true true", "P", "Q"],
+	);
+}
+
+#[test]
 fn comp_loop_splices_defs_as_types() {
 	Project::new()
 		.main([

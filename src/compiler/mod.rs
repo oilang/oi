@@ -40,7 +40,19 @@ pub(crate) const CTX: &str = "ctx";
 const CONTEXT: &str = "core::Context";
 
 // The fields every `Ast` has.
-pub(crate) const AST_FIELDS: &[&str] = &["name", "typ", "kind", "len", "items", "notes", "fills"];
+pub(crate) const AST_FIELDS: &[&str] = &[
+	"name",
+	"typ",
+	"kind",
+	"len",
+	"items",
+	"notes",
+	"fills",
+	"claims",
+	"embeds",
+	"claimants",
+	"embedders",
+];
 
 struct FnItem<'a> {
 	key: String,

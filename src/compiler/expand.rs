@@ -623,6 +623,13 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 			});
 		}
 		let defs = defs.into_iter().map(|(name, def, _)| (name, def));
+		let claims = out.items().flat_map(|(scope, item)| match &Expr::peel_meta(item).2.0 {
+			Expr::Claim { typ, traits, .. } => (traits.iter())
+				.map(|t| (scope.qualify_name(typ), scope.qualify_name(&t.0)))
+				.collect(),
+			_ => vec![],
+		});
+		CLAIMS.set(claims.collect());
 
 		DEFS.set((Scope::default(), String::new(), defs.collect(), ex.publics.clone()));
 
@@ -676,6 +683,7 @@ static HYGIENE: AtomicUsize = AtomicUsize::new(0);
 thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
 	pub(crate) static DEFS: RefCell<(Scope, String, Vec<Def>, Publics)> = RefCell::default();
+	static CLAIMS: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 // name, def
@@ -1359,15 +1367,35 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			asts(&mut fills.iter())
 		}
 		(b"fills", _) => flag("this Ast has no fills", list(vec![])),
+		(b"claims" | b"embeds" | b"claimants" | b"embedders", e) => DEFS.with_borrow(|(_, _, defs, _)| {
+			let key = e.def_name().unwrap_or_default();
+			let embeds = |def: &Expr, key: &str| {
+				let field =
+					|f: &Param| f.name == display_name(key) && matches!(&f.typ, TypeExpr::Resolved(k) if k == key);
+				matches!(def, Expr::StructDef { fields, .. } if fields.iter().any(field))
+			};
+			CLAIMS.with_borrow(|claims| {
+				let related = |(name, def): &&Def| match m {
+					b"claims" => claims.contains(&(key.into(), name.clone())),
+					b"embeds" => embeds(e, name),
+					b"claimants" => claims.contains(&(name.clone(), key.into())),
+					_ => embeds(&Expr::peel_meta(def).2.0, key),
+				};
+				asts(&mut defs.iter().filter(related).map(|d| &d.1))
+			})
+		}),
 		(b"==", Expr::Ident(n)) => {
 			let bytes = unsafe { runtime::str_bytes(arg as *const runtime::StrHeader) };
 			(n.as_bytes() == bytes) as i64
 		}
 		(b"==", _) => 0,
-		(b"eq", _) => match unsafe { (&(*a).0, &(*(arg as *mut Spanned<Expr>)).0) } {
-			(Expr::Resolved(q, _), Expr::Resolved(p, _)) => (q == p) as i64,
-			_ => 0,
-		},
+		(b"eq", _) => {
+			let key = |a: *mut Spanned<Expr>| match &Expr::peel_meta(unsafe { &*a }).2.0 {
+				Expr::Resolved(q, _) => Some(q.as_str()),
+				e => e.def_name(),
+			};
+			key(a).is_some_and(|k| key(arg as _) == Some(k)) as i64
+		}
 		_ => flag("unknown Ast method", leak(empty()) as i64),
 	}
 }
