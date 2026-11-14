@@ -85,11 +85,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			other => {
-				return fail(
-					format!("can't unquote a `{other}` yet"),
-					span,
-					"unsupported unquote type",
-				);
+				self.comp_yield(val, other, span)?;
+				return Ok(self.extern_call(comp::RT_COMP_LIFT, &[], Some(self.int)).unwrap());
 			}
 		};
 

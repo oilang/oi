@@ -128,7 +128,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Yield a value to the `comp` host (recursive).
-	fn comp_yield(&mut self, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
+	pub(super) fn comp_yield(&mut self, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
 		let (tag, bits) = match typ {
 			Typ::Struct(name, fields) => {
 				for field in self.types.layout(typ).unwrap_or_default().fields {

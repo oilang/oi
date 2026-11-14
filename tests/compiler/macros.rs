@@ -909,6 +909,16 @@ fn typed_notes() {
 			],
 		)
 		.check(["x 2 false", "r 3 false", "r 1 false", "none"]);
+
+	// splices as a literal
+	check(
+		indoc! {r#"
+			prop :: struct { range: string = "r" }
+			P :: struct { a: int @prop.{"x"}, b: int }
+			comp loop f in def(P).items { print(f.note[prop]()) }
+		"#},
+		[r#"some.(prop.{range = "x"})"#, "none"],
+	);
 }
 
 #[test]

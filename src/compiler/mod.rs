@@ -750,6 +750,7 @@ impl Default for Compiler<JITModule> {
 		builder.symbol(comp::RT_COMP_STRUCT, comp::rt_comp_struct as *const u8);
 		builder.symbol(comp::RT_COMP_PANIC, comp::rt_comp_panic as *const u8);
 		builder.symbol(comp::RT_COMP_ARRAY, comp::rt_comp_array as *const u8);
+		builder.symbol(comp::RT_COMP_LIFT, comp::rt_comp_lift as *const u8);
 
 		Self::new(JITModule::new(builder))
 	}

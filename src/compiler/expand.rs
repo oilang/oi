@@ -384,6 +384,7 @@ impl Expander {
 		synthetic.annotations.retain(|k, _| k.contains("::"));
 		let compiler = self.stage0.get_or_insert_with(Compiler::default);
 		compiler.run_stage0(synthetic, roots)?;
+		super::comp::seen(compiler);
 		for (name, (_, ptr)) in &mut self.macros {
 			*ptr = compiler.finalized(name);
 		}

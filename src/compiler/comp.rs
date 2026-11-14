@@ -16,6 +16,7 @@ pub(crate) const RT_COMP_YIELD: &str = "oi_rt_comp_yield";
 pub(crate) const RT_COMP_STRUCT: &str = "oi_rt_comp_struct";
 pub(crate) const RT_COMP_PANIC: &str = "oi_rt_comp_panic";
 pub(crate) const RT_COMP_ARRAY: &str = "oi_rt_comp_array";
+pub(crate) const RT_COMP_LIFT: &str = "oi_rt_comp_lift";
 pub(crate) const UNREIFIABLE: &str = "can't use this type in `comp` yet";
 
 pub(crate) const TAG_INT: i64 = 0;
@@ -42,6 +43,7 @@ thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
 	static MAP: RefCell<SourceMap> = RefCell::default();
 	static TYPES: RefCell<Vec<Typ>> = const { RefCell::new(Vec::new()) };
+	static INSTANCES: RefCell<HashMap<String, Vec<Typ>>> = RefCell::default();
 	static CALLS: RefCell<HashMap<String, Option<Expr>>> = RefCell::default();
 }
 
@@ -96,6 +98,18 @@ pub(crate) extern "C" fn rt_comp_array(len: i64, elem: i64) -> i64 {
 		types.push(typ);
 		id
 	})
+}
+
+// Reify the value just yielded as an Ast.
+pub(crate) extern "C" fn rt_comp_lift() -> *mut Spanned<Expr> {
+	let lit = INSTANCES.with_borrow(|instances| reify(Span::default(), instances));
+	Box::into_raw(Box::new((lit, Span::default())))
+}
+
+// Record the types a stage-0 run can yield.
+pub(crate) fn seen<M: cranelift_module::Module>(compiler: &Compiler<M>) {
+	TYPES.set(compiler.out.any_types.clone());
+	INSTANCES.set(compiler.out.instances.clone());
 }
 
 // Stage 0 report and exit.
@@ -327,7 +341,8 @@ fn as_type(e: &Expr, var: &str) -> bool {
 	match e {
 		Expr::StructLit { name, .. } => name == var,
 		Expr::MethodCall { recv, method, .. } => {
-			matches!(&recv.0, Expr::Ident(n) if n == var) && !matches!(method.as_str(), "str" | "repr" | "int")
+			matches!(&recv.0, Expr::Ident(n) if n == var)
+				&& !matches!(method.as_str(), "str" | "repr" | "int" | "note" | "value")
 		}
 		Expr::Field { tuple, field } => {
 			matches!(&tuple.0, Expr::Ident(n) if n == var) && !super::AST_FIELDS.contains(&field.as_str())
@@ -682,7 +697,7 @@ pub(crate) fn fold(
 	DEPTH.fetch_sub(1, Ordering::Relaxed);
 	key.iter().for_each(|k| _ = CALLS.with_borrow_mut(|calls| calls.remove(k)));
 	ran?;
-	TYPES.set(compiler.out.any_types.clone());
+	seen(&compiler);
 	if let Some(scope) = scope {
 		super::expand::DEFS.with_borrow_mut(|d| (d.0, d.1) = (scope.clone(), scope.module.clone()));
 	}
