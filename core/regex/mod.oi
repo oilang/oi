@@ -1,0 +1,283 @@
+module regex
+
+## A compiled regular expression over bytes, without captures, matched in linear time by a lazily built DFA.
+## ref: https://swtch.com/~rsc/regexp/
+pub Regex :: struct { forward: []Inst, reverse: []Inst }
+
+Set :: [256]bool
+
+Inst :: enum {
+	byte(Set)
+	split(int, int)
+	jmp(int)
+	bol
+	eol
+	done
+}
+
+## Compile a pattern.
+pub compile :: fn(pattern: string) !Regex {
+	# a lazy `.*?` unanchors the forward program
+	unanchored: []Inst = [ .split.(3, 1), .byte.(invert(of(""))), .jmp.(-2) ]
+	Regex.{
+		forward = unanchored << program(pattern, false)?,
+		reverse = program(pattern, true)?,
+	}
+}
+
+## The program for a whole pattern, its concatenations reversed when asked.
+program :: fn(pattern: string, reversed: bool) ![]Inst {
+	parser := Parser.{ pattern = pattern, reversed = reversed }
+	prog := parser.alt()?
+	if parser.at < pattern.len() do return error("regex: unexpected ) at {parser.at}")
+
+	prog << .done
+}
+
+## A set of the given bytes.
+of :: fn(bytes: string) set: Set {
+	loop i in ..bytes.len() do set[int.(bytes[i])] = true
+	set
+}
+
+## The bytes not in a set.
+invert :: fn(set: Set) out: Set {
+	loop i in ..256 do out[i] = !set[i]
+	out
+}
+
+digits :: "0123456789"
+word :: digits + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+
+Parser :: struct { pattern: string, reversed: bool, at: int }
+
+Parser :< {
+	## The byte under the cursor, "" at the end.
+	peek :: fn(self) string {
+		if self.at < self.pattern.len()
+			do self.pattern[self.at..self.at + 1]
+		else do ""
+	}
+
+	alt :: fn(mut self) ![]Inst {
+		left := self.concat()?
+		loop self.peek() == "|" {
+			self.at += 1
+			right :: self.concat()?
+			out: []Inst = [ .split.(1, left.len() + 2) ]
+			left = out << left << .jmp.(right.len() + 1) << right
+		}
+		left
+	}
+
+	concat :: fn(mut self) ![]Inst {
+		out: []Inst = []
+		loop self.peek() != "" && self.peek() != "|" && self.peek() != ")" {
+			atom := self.atom()?
+			loop {
+				size :: atom.len()
+				wrapped: []Inst = []
+				atom = match self.peek() {
+					"*" => wrapped << .split.(1, size + 2) << atom << .jmp.(-size - 1),
+					"+" => atom << .split.(-size, 1),
+					"?" => wrapped << .split.(1, size + 1) << atom,
+					else => break,
+				}
+				self.at += 1
+			}
+			if self.reversed do out = atom << out else do out << atom
+		}
+		out
+	}
+
+	atom :: fn(mut self) ![]Inst {
+		out: []Inst = []
+		if set := self.perl() do return out << .byte.(set)
+
+		self.at += 1
+		match self.pattern[self.at - 1..self.at] {
+			"(" => {
+				if self.peek() == "?" {
+					if !self.pattern[self.at..].starts_with("?:") do return error("regex: unsupported group at {self.at}")
+					self.at += 2
+				}
+				out = self.alt()?
+				if self.peek() != ")" do return error("regex: missing ) at {self.at}")
+
+				self.at += 1
+				out
+			},
+			"[" => out << .byte.(self.class()?),
+			"." => out << .byte.(invert(of("\n"))),
+			"^" => out << .bol,
+			"$" => out << .eol,
+			"*", "+", "?" => return error("regex: missing argument to repetition at {self.at - 1}"),
+			else => {
+				self.at -= 1
+				set: Set
+				set[self.literal()?] = true
+				out << .byte.(set)
+			},
+		}
+	}
+
+	## The set a `\d \w \s` escape or its negation names, consumed.
+	perl :: fn(mut self) ?Set {
+		if self.peek() != "\\" || self.at + 2 > self.pattern.len() do return none
+
+		letter :: self.pattern[self.at + 1..self.at + 2]
+		set :: match letter.lower() {
+			"d" => of(digits),
+			"w" => of(word),
+			"s" => of(" \t\n\f\r"),
+			else => return none,
+		}
+		self.at += 2
+		if letter != letter.lower() do invert(set) else do set
+	}
+
+	## The next byte, decoding a `\x..` hex or escaped punctuation.
+	literal :: fn(mut self) !int {
+		if self.peek() == "" do return error("regex: trailing \\")
+
+		self.at += 1
+		if self.pattern[self.at - 1] != '\\' do return int.(self.pattern[self.at - 1])
+		if self.peek() == "" do return error("regex: trailing \\")
+
+		escaped :: self.peek()
+		self.at += 1
+		if escaped == "x" {
+			if self.at + 2 > self.pattern.len() do return error("regex: short \\x escape at {self.at}")
+
+			hex :: []u8.("0123456789abcdef")
+			value := 0
+			loop digit in []u8.(self.pattern[self.at..self.at + 2].lower()) {
+				value = value * 16 + (hex.index(digit) or return error("regex: bad hex at {self.at}"))
+			}
+			self.at += 2
+			return value
+		}
+		if word.contains(escaped) do return error("regex: unknown escape \\{escaped}")
+
+		int.(escaped[0])
+	}
+
+	## The bytes of a `[...]` class, cursor past the `[`.
+	class :: fn(mut self) !Set {
+		negate :: self.peek() == "^"
+		if negate do self.at += 1
+		set: Set
+		loop self.peek() != "]" {
+			if self.peek() == "" do return error("regex: missing ]")
+			if perl := self.perl() {
+				loop i in ..256 do set[i] = set[i] || perl[i]
+				continue
+			}
+
+			low :: self.literal()?
+			high := low
+			if self.peek() == "-" && !self.pattern[self.at + 1..].starts_with("]") {
+				self.at += 1
+				high = self.literal()?
+				if high < low do return error("regex: bad range at {self.at}")
+			}
+			loop i in low..=high do set[i] = true
+		}
+		self.at += 1
+		if negate do invert(set) else do set
+	}
+}
+
+Regex :< {
+	## Start and end of the leftmost match in `s`.
+	pub find :: fn(self; s: string) ?(int, int) {
+		end :: scan(self.forward, false, s, 0, 1)?
+		(scan(self.reverse, true, s, end, -1)?, end)
+	}
+
+	## Whether `s` contains a match.
+	pub matches :: fn(self; s: string) bool {
+		scan(self.forward, false, s, 0, 1) != none
+	}
+}
+
+## The last match end walking `s` from `from` by `dir`, preferring earlier threads unless longest.
+scan :: fn(prog: []Inst, longest: bool, s: string; from, dir: int) ?int {
+	dfa := Dfa.{ prog = prog }
+	edge :: if dir > 0 do s.len() else do 0
+	found: ?int = none
+	at := from
+	state := dfa.state([0], at, s.len())
+
+	loop {
+		if dfa.matched[state] do found = at
+		if at == edge || dfa.states[state].len() == 0 do break
+
+		# a full cache starts over, as RE2's does
+		if dfa.states.len() >= 1024 {
+			threads :: dfa.states[state]
+			dfa = Dfa.{ prog = prog }
+			state = dfa.state(threads, at, s.len())
+		}
+
+		byte :: int.(s[if dir > 0 do at else do at - 1])
+		at += dir
+		slot :: state * 256 + byte
+
+		# only the last step sees `^ $`, so it skips the cache
+		if at == edge || dfa.next[slot] < 0 {
+			pcs: []int = []
+			loop pc in dfa.states[state] {
+				if .byte.(set) := prog[pc], set[byte] do pcs << pc + 1
+				if prog[pc] is .done && !longest do break
+			}
+			next :: dfa.state(pcs, at, s.len())
+			dfa.next[slot] = next
+		}
+		state = dfa.next[slot]
+	}
+
+	found
+}
+
+## Cached DFA states, each the ordered NFA threads alive at a position.
+Dfa :: struct {
+	prog: []Inst,
+	states: [][]int,
+	matched: []bool,
+	ids: [string]int,
+	next: []int,
+}
+
+Dfa :< {
+	## The id of the state pcs reach at text position at, added if new.
+	state :: fn(mut self; pcs: []int, at, end: int) int {
+		threads: []int = []
+		loop pc in pcs do self.add(mut threads, pc, at, end)
+		if id := self.ids["{threads}"] do return id
+
+		self.ids["{threads}"] = self.states.len()
+		self.states << threads
+		self.matched << threads.contains(self.prog.len() - 1)
+
+		loop ..256 do self.next << -1
+		self.states.len() - 1
+	}
+
+	## Queue pc and every pc it reaches without consuming a byte.
+	add :: fn(self; mut threads: []int, pc, at, end: int) {
+		if threads.contains(pc) do return
+
+		threads << pc
+		match self.prog[pc] {
+			.jmp.(by) => self.add(mut threads, pc + by, at, end),
+			.split.(first, second) => {
+				self.add(mut threads, pc + first, at, end)
+				self.add(mut threads, pc + second, at, end)
+			},
+			.bol => if at == 0 do self.add(mut threads, pc + 1, at, end),
+			.eol => if at == end do self.add(mut threads, pc + 1, at, end),
+			else => {},
+		}
+	}
+}

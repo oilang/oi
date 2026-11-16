@@ -1,0 +1,28 @@
+use regex
+
+test! "rext replies" {
+	replies :: regex.compile(
+		r"\x1b\[\??\d+;\d+R|\x1b\[[?>=][\d;]*c|\x1b\[\?[\d;]*\$y|\x1b\[\?\d*u|" +
+		r"\x1b\][\d;]*rgb:[\da-fA-F/]*(\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\",
+	) or panic!($.message())
+	assert! replies.find("k\x1b[12;40R") == (1, 9)
+	assert! replies.find("\x1b[?62;c") == (0, 7)
+	assert! replies.find("\x1b]11;rgb:ffff/0000/abcd\x1b\\") == (0, 25)
+	assert! !replies.matches("\x1b[A")
+}
+
+test! "basics" {
+	r :: regex.compile("^(?:ab|a)+c?$") or panic!($.message())
+	assert! r.find("abac") == (0, 4)
+	assert! !r.matches("abx")
+	assert! (regex.compile("[^a-c]+") or panic!("")).find("abxyc") == (2, 4)
+	assert! (regex.compile("b|ab") or panic!("")).find("ab") == (0, 2)
+	assert! (regex.compile(r"\x00") or panic!("")).find("a\x00") == (1, 2)
+	assert! (regex.compile("x*$") or panic!("")).find("aaa") == (3, 3)
+
+	regex.compile("a(") or {
+		assert! $.message() == "regex: missing ) at 2"
+		return
+	}
+	panic!("a( compiled")
+}
