@@ -64,6 +64,11 @@ pub enum Command {
 		#[arg(long)]
 		lib: bool,
 
+		/// Cross-compile for a target triple.
+		/// ex: `aarch64-linux-gnu`
+		#[arg(long)]
+		target: Option<String>,
+
 		/// Print phase timings to stderr.
 		#[arg(long)]
 		timings: bool,

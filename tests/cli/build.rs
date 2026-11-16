@@ -254,6 +254,46 @@ fn c_calls_oi_with_structs_by_value() {
 }
 
 #[test]
+fn aarch64_structs_past_the_last_reg_go_on_the_stack() {
+	// NOTE: needs qemu, the cross gcc, and `cargo build -p oi-runtime --target aarch64-unknown-linux-gnu`
+	let runtime =
+		Path::new(env!("CARGO_BIN_EXE_oi")).with_file_name("../aarch64-unknown-linux-gnu/debug/liboi_runtime.a");
+	if !runtime.exists() {
+		return;
+	}
+
+	let dep = indoc! {"
+		typedef struct { long a, b; } Pair;
+		typedef struct { double x, y, z; } Hfa;
+		long pair(long a, long b, long c, long d, long e, long f, long g, Pair p, long tail) { return g + p.a * 10 + p.b * 100 + tail * 1000; }
+		double hfa(double a, double b, double c, double d, double e, double f, Hfa h, double tail) { return f + h.x * 10 + h.y * 100 + h.z * 1000 + tail * 10000; }
+		Hfa flip(Hfa h) { return (Hfa){ h.z, h.y, h.x }; }
+	"};
+	let main = indoc! {r#"
+		@c Pair :: struct { a: int, b: int }
+		@c Hfa :: struct { x: f64, y: f64, z: f64 }
+		@link.{"dep"}
+		pair : fn(a: int, b: int, c: int, d: int, e: int, f: int, g: int, p: Pair, tail: int) int : foreign
+		hfa : fn(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64, h: Hfa, tail: f64) f64 : foreign
+		flip : fn(h: Hfa) Hfa : foreign
+		print(unsafe pair(0, 0, 0, 0, 0, 0, 1, Pair.{ a = 2, b = 3 }, 4))
+		print(unsafe hfa(0.0, 0.0, 0.0, 0.0, 0.0, 1.0, Hfa.{ x = 2.0, y = 3.0, z = 4.0 }, 5.0))
+		h := unsafe flip(Hfa.{ x = 2.0, y = 3.0, z = 4.0 })
+		print(h.x, h.z)
+	"#};
+
+	let dir = Project::new().file("dep.c", dep).file("main.oi", main);
+	let mut gcc = Command::new("aarch64-linux-gnu-gcc");
+	gcc.args(["-shared", "-fPIC", "dep.c", "-o", "libdep.so"]).current_dir(&dir);
+	assert!(gcc.output().unwrap().status.success());
+
+	dir.ok(&["build", "--target", "aarch64-linux-gnu"]);
+	let mut qemu = Command::new("qemu-aarch64");
+	qemu.args(["-L", "/usr/aarch64-linux-gnu"]).arg(dir.as_ref().join("main"));
+	assert_eq!(trim(&qemu.output().unwrap().stdout), "4321\n54321.0\n4.0 2.0");
+}
+
+#[test]
 fn structs_traits_and_generics_reach_the_linker() {
 	let src = indoc! {r#"
 		Animal :: trait { speak : fn(self) string }

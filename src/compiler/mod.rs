@@ -12,7 +12,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, Module, ModuleReloc};
 use cranelift_object::{ObjectBuilder, ObjectModule, object::SymbolScope};
-use target_lexicon::BinaryFormat;
+use target_lexicon::{BinaryFormat, Triple};
 
 use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam, int_word};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
@@ -738,22 +738,24 @@ fn load_library(name: &str) -> bool {
 	!unsafe { libc::dlopen(cname.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) }.is_null()
 }
 
-// Enable position-independent code for AOT/JIT compilation.
-fn isa(pic: bool) -> Arc<dyn TargetIsa> {
+// Enable position-independent code for AOT/JIT compilation, on the host or `target`.
+fn isa(pic: bool, target: Option<Triple>) -> Result<Arc<dyn TargetIsa>, String> {
 	let mut flag_builder = settings::builder();
 	flag_builder.set("use_colocated_libcalls", "false").unwrap();
 	flag_builder.set("is_pic", if pic { "true" } else { "false" }).unwrap();
 	flag_builder.set("enable_llvm_abi_extensions", "true").unwrap();
 	flag_builder.set("enable_multi_ret_implicit_sret", "true").unwrap();
-	cranelift_native::builder()
-		.unwrap_or_else(|e| panic!("unsupported host: {e}"))
-		.finish(settings::Flags::new(flag_builder))
-		.unwrap()
+	let builder = match target {
+		Some(triple) => codegen::isa::lookup(triple).map_err(|e| e.to_string())?,
+		None => cranelift_native::builder()?,
+	};
+	builder.finish(settings::Flags::new(flag_builder)).map_err(|e| e.to_string())
 }
 
 impl Default for Compiler<JITModule> {
 	fn default() -> Self {
-		let mut builder = JITBuilder::with_isa(isa(false), cranelift_module::default_libcall_names());
+		let isa = isa(false, None).unwrap_or_else(|e| panic!("unsupported host: {e}"));
+		let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 		builder.symbol(expand::RT_QUOTE, expand::rt_quote as *const u8);
 		builder.symbol(expand::RT_AST_LIT, expand::rt_ast_lit as *const u8);
 		builder.symbol(expand::RT_AST_METHOD, expand::rt_ast_method as *const u8);
@@ -769,12 +771,12 @@ impl Default for Compiler<JITModule> {
 }
 
 impl Compiler<ObjectModule> {
-	pub fn object(name: &str, lib: bool) -> Self {
-		let builder = ObjectBuilder::new(isa(true), name, cranelift_module::default_libcall_names()).unwrap();
+	pub fn object(name: &str, lib: bool, target: Option<Triple>) -> Result<Self, String> {
+		let builder = ObjectBuilder::new(isa(true, target)?, name, cranelift_module::default_libcall_names()).unwrap();
 		let mut compiler = Self::new(ObjectModule::new(builder));
 		compiler.lib = lib;
 		compiler.aot = true;
-		compiler
+		Ok(compiler)
 	}
 
 	pub fn compile_object(mut self, program: Program, timings: bool) -> Result<(Vec<u8>, Vec<String>), Diagnostic> {
@@ -1754,12 +1756,17 @@ impl<M: Module> Compiler<M> {
 					})
 				})
 				.collect::<Result<_, Diagnostic>>()?;
+
 			let access: Vec<Access> = param_types.iter().map(|(_, a, _)| *a).collect();
 			let ret = types.resolve(ret, span)?;
 			let mut bare = display_name(name).to_string();
+			// filter out cross-platform libs
+			let cross = *self.module.isa().triple() != Triple::host();
+
 			// `@link`
 			for a in self.annotations.get(name).into_iter().flatten() {
 				let Some(fields) = ann(a, role::LINK) else { continue };
+
 				let mut lib = None;
 				for (label, (v, _)) in fields {
 					match (label.as_deref(), v) {
@@ -1769,6 +1776,7 @@ impl<M: Module> Compiler<M> {
 					}
 				}
 				let Some(lib) = lib else { continue };
+
 				// search module dir, then each root
 				let explicit = lib.contains(MAIN_SEPARATOR) || lib.contains(DLL_SUFFIX);
 				let file = if explicit {
@@ -1786,14 +1794,14 @@ impl<M: Module> Compiler<M> {
 					None => lib.clone(),
 				};
 				if !self.link_libs.contains(&lib) {
-					if !load_library(&lib) {
+					if !cross && !load_library(&lib) {
 						return fail(format!("unknown library `{lib}`"), a.1, "dlopen failed");
 					}
 					self.link_libs.push(lib);
 				}
 			}
 			let bare = bare.as_str();
-			if !process_symbol_exists(bare) {
+			if !cross && !process_symbol_exists(bare) {
 				let msg = format!("unknown foreign symbol `{bare}`");
 				return fail(msg, span, "no such symbol");
 			}

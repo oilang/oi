@@ -24,7 +24,7 @@ pub fn run(file: &Path, mut args: Vec<String>, opts: DebugOpts) -> Result<(), Re
 }
 
 /// Compile a source file to a native executable or shared library.
-pub fn build(file: &Path, out: Option<&Path>, lib: bool, timings: bool) -> Result<(), Reported> {
+pub fn build(file: &Path, out: Option<&Path>, lib: bool, target: Option<&str>, timings: bool) -> Result<(), Reported> {
 	let stem = stem(file);
 	let default = match lib {
 		true => format!("{}{stem}{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX).into(),
@@ -34,7 +34,8 @@ pub fn build(file: &Path, out: Option<&Path>, lib: bool, timings: bool) -> Resul
 		timings,
 		..Default::default()
 	};
-	build_source(files(file)?, root(file), &stem, out.unwrap_or(&default), lib, opts)
+	let out = out.unwrap_or(&default);
+	build_source(files(file)?, root(file), &stem, out, lib, target, opts)
 }
 
 /// Compile a source file and call its `@test` fns.

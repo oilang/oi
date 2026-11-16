@@ -3,6 +3,8 @@ use std::io::Write as _;
 use std::path::Path;
 use std::time::Instant;
 
+use target_lexicon::Triple;
+
 use crate::Reported;
 use crate::compiler::Compiler;
 use crate::lexer::lex_at;
@@ -120,9 +122,11 @@ pub fn build_source(
 	stem: &str,
 	out: &Path,
 	lib: bool,
+	target: Option<&str>,
 	opts: DebugOpts,
 ) -> Result<(), Reported> {
-	let mut compiler = Compiler::object(stem, lib);
+	let triple = target.map(str::parse::<Triple>).transpose().map_err(fail)?;
+	let mut compiler = Compiler::object(stem, lib, triple.clone()).map_err(fail)?;
 	let program = load(&mut compiler, entry, root)?;
 	let map = program.map.clone();
 	let (obj, link_libs) = compiler
@@ -142,8 +146,20 @@ pub fn build_source(
 		],
 		false => vec![format!("-l{l}")],
 	});
-	let cc = std::process::Command::new("cc")
-		.args([write("o", &obj)?, write("a", RUNTIME)?])
+
+	let runtime = match triple {
+		None => write("a", RUNTIME)?,
+		Some(triple) => {
+			let exe = std::env::current_exe().map_err(fail)?;
+			let profile = exe.parent().unwrap();
+			let cross = profile.with_file_name(triple.to_string());
+			cross.join(profile.file_name().unwrap()).join("liboi_runtime.a")
+		}
+	};
+
+	let linker = target.map_or("cc".into(), |t| std::env::var("CC").unwrap_or(format!("{t}-gcc")));
+	let cc = std::process::Command::new(&linker)
+		.args([write("o", &obj)?, runtime])
 		.args(if lib { &["-shared"][..] } else { &[] })
 		.args(LIBS)
 		.args(libs)
@@ -153,11 +169,13 @@ pub fn build_source(
 	for ext in ["o", "a"] {
 		std::fs::remove_file(tmp.with_extension(ext)).ok();
 	}
-	let cc = cc.map_err(|e| fail(format!("cc: {e}")))?;
+
+	let cc = cc.map_err(|e| fail(format!("{linker}: {e}")))?;
 	if !cc.status.success() {
 		std::io::stderr().write_all(&cc.stderr).ok();
 		return Err(Reported);
 	}
+
 	Ok(())
 }
 
