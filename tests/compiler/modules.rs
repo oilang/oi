@@ -197,6 +197,15 @@ fn link_renames_the_symbol() {
 }
 
 #[test]
+fn foreign_bool_reads_only_its_byte() {
+	Project::foreign(
+		["print(unsafe cext.nonzero(-257))"],
+		[r#"@link.{name = "abs"}"#, "pub nonzero : fn(x: i32) bool : foreign"],
+	)
+	.check("true");
+}
+
+#[test]
 fn c_struct_writes_at_c_offsets() {
 	let src = indoc! {"
 		@c

@@ -208,9 +208,11 @@ impl<M: Module> Translator<'_, M> {
 		}
 	}
 
-	// Extend an enum from C, whose upper bits are undefined.
+	// Extend an enum or bool from C, whose upper bits are undefined.
 	pub(crate) fn c_norm(&mut self, v: Value, typ: &Typ) -> Value {
-		let Some(b) = typ.c_enum(&self.types) else { return v };
+		let typ = typ.newtype().unwrap_or(typ);
+		let bool = typ.bool_bytes().map(|n| Typ::UInt(n * 8));
+		let Some(b) = typ.c_enum(&self.types).or(bool) else { return v };
 		let w = cl_type(&b, self.int);
 		let v = if self.b.func.dfg.value_type(v) == w {
 			v
