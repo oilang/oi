@@ -20,6 +20,21 @@ fn set_get() {
 }
 
 #[test]
+fn set_through_field() {
+	let src = indoc! {r#"
+		S :: struct { m: [string]int }
+		S :< { put :: fn(mut self; k: string) { self.m[k] = 1 } }
+		s := S.{ m = [] }
+		s.m["a"] = 2
+		t := s
+		s.put("b")
+		print(s.m, t.m)
+	"#};
+	check(src, r#"["a" = 2, "b" = 1] ["a" = 2]"#);
+	assert_clean(src);
+}
+
+#[test]
 fn generic_fn_type_param_as_map_key() {
 	check(
 		indoc! {r#"

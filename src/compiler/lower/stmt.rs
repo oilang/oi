@@ -226,15 +226,28 @@ impl<'a, M: Module> Translator<'a, M> {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
 					let collection = place(name, field.as_ref(), stmt.1);
 					let (ptr, typ) = self.expr(&collection)?;
-					// TODO: map fields need the cow'd ptr written back
-					if let (Typ::Map(k, v), None) = (typ.clone(), field) {
+					let peeled = self.peeled(&local.typ);
+					if let Typ::Map(k, v) = typ.clone()
+						&& (field.is_none() || matches!(peeled, Typ::Struct(..)))
+					{
 						let (k, v) = (*k, *v);
 						let (tag, key_bits) = self.map_key(index, &k)?;
 						let val = self.stored(value, &v, &format!("{v} value of map"), "a map")?;
 						let val = self.copy_in(val, &v);
 						let val_bits = self.map_bits(val);
 						let ptr = self.map_rt("set", ptr, tag, key_bits, &[val_bits]);
-						self.write_local(&local, ptr);
+
+						// the cow'd map goes back where it was read from
+						match (field, &peeled) {
+							(Some(field), Typ::Struct(sname, fields)) => {
+								let (path, idx, _) = self.struct_field(sname, fields, field, stmt.1)?;
+								let base = self.read_local(&local);
+								let (owner, layout) = self.follow(base, &peeled, &path);
+								self.st_field(owner, &layout.fields[idx], ptr);
+							}
+							_ => self.write_local(&local, ptr),
+						}
+
 						continue;
 					}
 					let (ptr, typ) = self.deref(ptr, &typ);

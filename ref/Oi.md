@@ -79,8 +79,9 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- `matches!` macro (use in `Json.from_json` in the nested matches `rust`
-	- namespaced methods, like nushell's `" foo " | str trim` `nu`
+	- [ ] `matches!` macro (use in `Json.from_json` in the nested matches `rust`
+	- [ ] namespaced methods, like nushell's `" foo " | str trim` `nu`
+	- [ ] named returns with propagators: `out: string![]int`, `out: ?Point`, etc.
 - [ ] let `:h <topic>` look at text files too, like vim does (offline wiki kind of thing? or maybe that's too much) `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
