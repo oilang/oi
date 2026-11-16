@@ -490,8 +490,19 @@ fn read_interface(store: &mut cache::Store, pkg: &Path) -> HashMap<String, Scann
 	let files = files.filter_map(|path| Some((path.display().to_string(), fs::read_to_string(path).ok()?)));
 	let mut files: Vec<_> = files.collect();
 	files.sort();
+	let exe = std::env::current_exe()
+		.and_then(fs::metadata)
+		.map(|m| (m.len(), m.modified().ok()))
+		.ok();
 	let mut key = DefaultHasher::new();
-	(env!("CARGO_PKG_VERSION"), env!("OI_GIT_SHA"), env!("OI_TARGET"), &files).hash(&mut key);
+	(
+		env!("CARGO_PKG_VERSION"),
+		env!("OI_GIT_SHA"),
+		env!("OI_TARGET"),
+		exe,
+		&files,
+	)
+		.hash(&mut key);
 	let key = key.finish().to_be_bytes();
 	if let Some(scans) = store.get(&key).and_then(|bytes| postcard::from_bytes(&bytes).ok()) {
 		return scans;
