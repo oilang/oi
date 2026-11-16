@@ -892,9 +892,9 @@ fn typed_notes() {
 			"geo",
 			[
 				r#"pub prop :: struct {
-					pub range: string = "r",
-					pub step: int = 1,
-					pub on: bool,
+					range: string = "r",
+					step: int = 1,
+					on: bool,
 				}"#,
 				indoc! {r#"
 					pub show! :: fn(t: Ast) Ast {
@@ -936,6 +936,33 @@ fn relations() {
 		"},
 		["2 true true", "P", "Q"],
 	);
+
+	// a lib sees only the claimants it can name
+	Project::new()
+		.main([
+			"use ecs",
+			"pub P :: struct {}",
+			"Q :: struct {}",
+			"P :< ecs.Component",
+			"Q :< ecs.Component",
+			"ecs.names!()",
+		])
+		.lib(
+			"ecs",
+			[
+				"pub Component :: trait {}",
+				indoc! {r#"
+					pub names! :: fn() Ast {
+						s := "claimants:"
+						loop T in def(Component).claimants {
+							s = "{s} {T.name.str()}"
+						}
+						`print(%s)`
+					}
+				"#},
+			],
+		)
+		.check(["claimants: P"]);
 }
 
 #[test]

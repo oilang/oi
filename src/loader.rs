@@ -122,6 +122,22 @@ impl Scope {
 		}
 	}
 
+	// Key a claim on a bare or own-module type to the module owning the type.
+	pub(crate) fn key_claim<'a>(&self, (item, span): &'a mut Spanned<Expr>) -> Option<&'a mut String> {
+		let own = format!("{}::", self.module);
+		match item {
+			Expr::Claim { typ, type_params, .. }
+				if !crate::compiler::TypeCtx::builtin_type(typ)
+					&& type_params.iter().all(|p| p.name != *typ)
+					&& (typ.starts_with(&own) || !typ.contains("::")) =>
+			{
+				*typ = self.at(*span).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
+				Some(typ)
+			}
+			_ => None,
+		}
+	}
+
 	// Resolve a bare trait name, leaving qualified names and the built-in hooks alone.
 	pub(crate) fn qualify_trait(&self, name: &str) -> String {
 		if name.contains("::") || is_hook_trait(name) {
@@ -1226,14 +1242,8 @@ impl Loader {
 			})
 			.collect();
 		for m in &mut self.program.modules {
-			let own = format!("{}::", m.scope.module);
 			for item in &mut m.items {
-				if let Expr::Claim { typ, type_params, .. } = &mut item.0
-					&& !crate::compiler::TypeCtx::builtin_type(typ)
-					&& type_params.iter().all(|p| p.name != *typ)
-					&& (typ.starts_with(&own) || !typ.contains("::"))
-				{
-					*typ = m.scope.at(item.1).qualify_name(typ.strip_prefix(&own).unwrap_or(typ));
+				if let Some(typ) = m.scope.key_claim(item) {
 					for _ in 0..aliases.len() {
 						let Some(to) = aliases.get(typ.as_str()) else { break };
 						typ.clone_from(to);

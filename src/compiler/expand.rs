@@ -653,6 +653,12 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 						ex.publics.vis.insert(name.clone(), vis);
 					}
 				}
+
+				// the loader keyed claims before expansion
+				for it in expanded.iter_mut().filter(|_| call) {
+					m.scope.key_claim(it);
+				}
+
 				m.items.append(&mut expanded);
 			}
 			m.items.append(&mut ex.hoisted);
@@ -1242,20 +1248,25 @@ pub(crate) extern "C" fn rt_ast_defs(note: *mut Spanned<Expr>) -> *const runtime
 				.filter(|n| !n.is_empty())
 				.map(|n| super::ann_names(scope, &[(Expr::Ident(n), Span::default())]).concat()),
 		};
-		let owned = |q: &&String| module_of(q).unwrap_or_default() == module;
-		let noted = defs.iter().filter(|(key, def)| {
-			let notes: Vec<_> = (Expr::peel_meta(def).0.iter())
-				.filter_map(|n| match &n.0 {
-					Expr::Resolved(q, _) => Some(q),
-					_ => None,
-				})
-				.collect();
-			(publics.is_visible(key, module) || notes.iter().chain([&key]).any(owned))
-				&& note.as_ref().is_none_or(|n| notes.contains(&n))
-		});
+		let noted = (defs.iter().filter(|d| sees(module, publics, d)))
+			.filter(|(_, def)| note.as_ref().is_none_or(|n| note_keys(def).any(|q| q == n)));
 		noted.map(|d| leak(d.1.clone()) as i64).collect::<Vec<_>>()
 	});
 	runtime::array_of(&defs, 8)
+}
+
+// Whether `module` can name a def or defines it or one of its notes.
+fn sees(module: &str, publics: &Publics, (key, def): &Def) -> bool {
+	let owned = |q: &String| module_of(q).unwrap_or_default() == module;
+	publics.is_visible(key, module) || note_keys(def).chain([key]).any(owned)
+}
+
+// Return the keys of a def's resolved notes.
+fn note_keys(def: &Spanned<Expr>) -> impl Iterator<Item = &String> {
+	Expr::peel_meta(def).0.iter().filter_map(|n| match &n.0 {
+		Expr::Resolved(q, _) => Some(q),
+		_ => None,
+	})
 }
 
 // The name an Ast holding a plain or module-dotted name spells.
@@ -1390,7 +1401,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			asts(&mut fills.iter())
 		}
 		(b"fills", _) => flag("this Ast has no fills", list(vec![])),
-		(b"claims" | b"embeds" | b"claimants" | b"embedders", e) => DEFS.with_borrow(|(_, _, defs, _)| {
+		(b"claims" | b"embeds" | b"claimants" | b"embedders", e) => DEFS.with_borrow(|(_, module, defs, publics)| {
 			let key = e.def_name().unwrap_or_default();
 			let embeds = |def: &Expr, key: &str| {
 				let field =
@@ -1404,7 +1415,8 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 					b"claimants" => claims.contains(&(name.clone(), key.into())),
 					_ => embeds(&Expr::peel_meta(def).2.0, key),
 				};
-				asts(&mut defs.iter().filter(related).map(|d| &d.1))
+				let seen = defs.iter().filter(|d| sees(module, publics, d)).filter(related);
+				list(seen.map(|d| ast(type_ast(&TypeExpr::Resolved(d.0.clone())))).collect())
 			})
 		}),
 		(b"==", Expr::Ident(n)) => {

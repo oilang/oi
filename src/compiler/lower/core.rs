@@ -65,7 +65,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_member(&self, typ: &str, member: &str, span: Span) -> Result<(), Diagnostic> {
 		let def = rc::base_name(typ);
 		let owner = module_of(def).unwrap_or_default();
-		let granted = self.default && self.self_type.as_deref() == Some(def);
+		let granted = self.default && self.self_type.as_deref() == Some(def) || self.types.scope.module == "core";
 		if owner == self.types.scope.module
 			|| granted
 			|| !self.world.privates.get(def).is_some_and(|ms| ms.contains(member))
