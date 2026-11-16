@@ -385,7 +385,10 @@ pub fn parse_file(
 		.map_err(|span| vec![err("unterminated raw macro body", span, "this `{` never closes")])?
 		.into_iter()
 		.map(|(tok, span)| match tok {
-			Token::PathString(p) => (Token::String(file.with_file_name(p).display().to_string()), span),
+			Token::PathString(p) => (
+				Token::String(file.with_file_name(&*p).display().to_string().as_str().into()),
+				span,
+			),
 			tok => (tok, span),
 		});
 	let eoi = (base + src.len()..base + src.len()).into();
@@ -418,7 +421,7 @@ impl Scan {
 
 fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
 	let name = |i: usize| match toks.get(i) {
-		Some((Token::Ident(n), _)) => Some(n.clone()),
+		Some((Token::Ident(n), _)) => Some(n.to_string()),
 		_ => None,
 	};
 	let mut out = Scan::default();
@@ -427,17 +430,17 @@ fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
 	for (i, (tok, _)) in toks.iter().enumerate() {
 		match tok {
 			Token::Ident(n) => {
-				out.idents.insert(n.clone());
+				out.idents.insert(n.to_string());
 				out.eager |= matches!(toks.get(i + 1), Some((Token::Not, _)))
 					|| n == "core" && matches!(toks.get(i + 1..i + 4), Some([(Token::Dot, _), _, (Token::Dot, _)]));
 
 				head = if depth == 0 { i } else { head };
 				if depth > 0 && middle.is_some() {
-					args.push(n.clone());
+					args.push(n.to_string());
 				}
 
 				if depth == 1 && !owner.is_empty() && matches!(toks.get(i + 1), Some((Token::DoubleColon, _))) {
-					out.claims.push([owner.as_slice(), std::slice::from_ref(n)].concat());
+					out.claims.push([owner.as_slice(), &[n.to_string()]].concat());
 				}
 			}
 			Token::Module if i == 0 => out.header = name(1),

@@ -30,7 +30,7 @@ pub(super) trait Rule<'t, I: Tokens<'t>, O>: Parser<'t, I, O, Err<'t>> + Clone {
 impl<'t, I: Tokens<'t>, O, T: Parser<'t, I, O, Err<'t>> + Clone> Rule<'t, I, O> for T {}
 
 fn ident<'token, I: Tokens<'token>>() -> impl Rule<'token, I, String> + Copy {
-	select! { Token::Ident(name) => name }
+	select! { Token::Ident(name) => name.to_string() }
 }
 
 fn paren<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'token, I, O> {
@@ -329,12 +329,12 @@ where
 		.boxed();
 
 	// annotations
-	let annotation = annotation::annotation(expr.clone().boxed(), dotted_name.clone().boxed(), adjacent.boxed());
+	let annotation = annotation::annotation(expr.clone().boxed(), dotted_name.boxed(), adjacent.boxed());
 	let annotations = annotation.clone().repeated().at_least(1).collect::<Vec<_>>().boxed();
 
 	// type annotations
 	let type_expr = types::type_expr(
-		dotted_name.clone().boxed(),
+		dotted_name.boxed(),
 		access.clone(),
 		(same_line.boxed(), adjacent.boxed()),
 		annotation.clone(),
@@ -445,7 +445,7 @@ where
 		.boxed();
 
 	// generics
-	let bound = (dotted_name.clone().then(bracket(list(spanned(type_expr.clone()))).or_not()))
+	let bound = (dotted_name.then(bracket(list(spanned(type_expr.clone()))).or_not()))
 		.map(|(bound, args)| (Some(bound), args.unwrap_or_default(), None))
 		.or(type_expr.clone().map(|typ| (None, vec![], Some(typ))));
 	let type_param = ident()

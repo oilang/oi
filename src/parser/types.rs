@@ -86,7 +86,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			// shared refs
 			let ref_type = just(Token::Caret).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
 			// atom(s)
-			let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
+			let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a.to_string()]) };
 
 			// anonymous structs
 			let anon_struct = just(Token::Struct)

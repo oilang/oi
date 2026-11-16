@@ -11,8 +11,7 @@ use chumsky::prelude::*;
 fn doc_body<'token, I: Tokens<'token>, O>(member: impl Rule<'token, I, O>) -> impl Rule<'token, I, Vec<O>> {
 	let docs = select! { Token::Doc(_) => () }.or(just(Token::DocBreak).ignored()).repeated();
 	brace(
-		docs.clone()
-			.ignore_then(member)
+		docs.ignore_then(member)
 			.separated_by(one_of([Token::Comma, Token::Semicolon]).or_not())
 			.allow_trailing()
 			.collect()
@@ -360,7 +359,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.clone()
 		.then_ignore(just(Token::Colon))
 		.then(list(trait_ref.clone()))
-		.then(via.clone())
+		.then(via)
 		.then_ignore(just(Token::Lt))
 		.then(fill_block)
 		.or(head

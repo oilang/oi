@@ -16,7 +16,7 @@ pub(super) fn annotation<'token, I: Tokens<'token>>(
 	adjacent: P<'token, I, ()>,
 ) -> P<'token, I, Spanned<Expr>> {
 	let ann_entry = ident().then_ignore(just(Token::Assign)).or_not().then(expr.clone());
-	let ann_tag = spanned(select! { Token::Atom(name) => Expr::Atom(name) });
+	let ann_tag = spanned(select! { Token::Atom(name) => Expr::Atom(name.to_string()) });
 
 	let ann_tail = just(Token::Dot)
 		.ignore_then(brace(loose_list(ann_entry)))

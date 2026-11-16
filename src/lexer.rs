@@ -1,8 +1,57 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::{LazyLock, Mutex};
 
 use chumsky::span::SimpleSpan;
 use logos::{Lexer, Logos};
+
+// An interned string, so tokens copy and compare by pointer.
+#[derive(Clone, Copy, Eq)]
+pub struct Sym(&'static str);
+
+impl From<&str> for Sym {
+	fn from(text: &str) -> Self {
+		// NOTE: leaks each lexeme for the process, though that's prolly fine for a compiler run
+		static TABLE: LazyLock<Mutex<HashSet<&'static str>>> = LazyLock::new(Mutex::default);
+		let mut table = TABLE.lock().unwrap();
+		Sym(table.get(text).copied().unwrap_or_else(|| {
+			let leaked = Box::leak(text.into());
+			table.insert(leaked);
+			leaked
+		}))
+	}
+}
+
+impl std::ops::Deref for Sym {
+	type Target = str;
+	fn deref(&self) -> &str {
+		self.0
+	}
+}
+
+impl PartialEq for Sym {
+	fn eq(&self, other: &Sym) -> bool {
+		std::ptr::eq(self.0, other.0)
+	}
+}
+
+impl PartialEq<str> for Sym {
+	fn eq(&self, other: &str) -> bool {
+		self.0 == other
+	}
+}
+
+impl fmt::Display for Sym {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		self.0.fmt(f)
+	}
+}
+
+impl fmt::Debug for Sym {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		self.0.fmt(f)
+	}
+}
 
 fn lex_block_comment(lex: &mut Lexer<Token>) {
 	let src = lex.remainder().as_bytes();
@@ -41,14 +90,14 @@ fn dedent(s: &str) -> String {
 }
 
 // Body of an N-quote literal, closed by the first run of N.
-fn lex_long(lex: &mut Lexer<Token>, escaped: bool) -> Option<String> {
+fn lex_long(lex: &mut Lexer<Token>, escaped: bool) -> Option<Sym> {
 	let n = lex.slice().bytes().filter(|&b| b == b'"').count();
 	let rest = lex.remainder();
 	let (b, mut i) = (rest.as_bytes(), 0);
 	while let Some(w) = b.get(i..i + n) {
 		if w.iter().all(|&c| c == b'"') {
 			lex.bump(i + n);
-			return Some(dedent(&rest[..i]));
+			return Some(dedent(&rest[..i]).as_str().into());
 		}
 		i += 1 + usize::from(escaped && w[0] == b'\\');
 	}
@@ -101,11 +150,11 @@ fn lex_rune(lex: &mut Lexer<Token>) -> Option<i64> {
 	it.next().is_none().then_some(c as i64)
 }
 
-#[derive(Logos, Clone, PartialEq, Debug)]
+#[derive(Logos, Clone, Copy, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 pub enum Token {
 	// an unrecognized lexeme, kept as a token so lexing never fails and the parser reports it
-	Error(String),
+	Error(Sym),
 
 	// literals
 	#[regex(r"(true|false)", |lex| lex.slice().parse().ok())]
@@ -117,19 +166,19 @@ pub enum Token {
 	Int(i128),
 	#[regex(r"'([^'\\]|\\.)*'", lex_rune)]
 	Rune(i64),
-	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
-	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]
-	Float(String),
+	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(Sym::from(lex.slice().replace('_', "").as_str())))]
+	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(Sym::from(lex.slice().replace('_', "").as_str())))]
+	Float(Sym),
 	#[regex(r#""{3,}"#, |lex| lex_long(lex, true))]
-	#[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len() - 1].to_string())]
-	String(String),
+	#[regex(r#""([^"\\]|\\.)*""#, |lex| Sym::from(&lex.slice()[1..lex.slice().len() - 1]))]
+	String(Sym),
 	#[regex(r#"r"{3,}"#, |lex| lex_long(lex, false))]
-	#[regex(r#"r"[^"]*""#, |lex| lex.slice()[2..lex.slice().len() - 1].to_string())]
-	RawString(String),
-	#[regex(r#"p"[^"]*""#, |lex| lex.slice()[2..lex.slice().len() - 1].to_string())]
-	PathString(String),
-	#[regex(r":\p{XID_Continue}+", |lex| lex.slice()[1..].to_string())]
-	Atom(String),
+	#[regex(r#"r"[^"]*""#, |lex| Sym::from(&lex.slice()[2..lex.slice().len() - 1]))]
+	RawString(Sym),
+	#[regex(r#"p"[^"]*""#, |lex| Sym::from(&lex.slice()[2..lex.slice().len() - 1]))]
+	PathString(Sym),
+	#[regex(r":\p{XID_Continue}+", |lex| Sym::from(&lex.slice()[1..]))]
+	Atom(Sym),
 
 	// keywords
 	#[token("fn")]
@@ -195,8 +244,8 @@ pub enum Token {
 	Or,
 	#[token("and")]
 	And,
-	#[regex(r"[\p{XID_Start}_]\p{XID_Continue}*", |lex| lex.slice().to_string())]
-	Ident(String),
+	#[regex(r"[\p{XID_Start}_]\p{XID_Continue}*", |lex| Sym::from(lex.slice()))]
+	Ident(Sym),
 	#[token(":=")]
 	Bind,
 	#[token("::")]
@@ -335,9 +384,9 @@ pub enum Token {
 	Comment,
 	#[regex(r"##( [^\r\n]+)?", |lex| {
 		let s = lex.slice();
-		s.get(3..).unwrap_or("").to_owned()
+		Sym::from(s.get(3..).unwrap_or(""))
 	}, allow_greedy = true)]
-	Doc(String),
+	Doc(Sym),
 	DocBreak,
 }
 
@@ -455,7 +504,7 @@ fn raw_lex(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 			match tok {
 				Ok(Token::BlockComment) => None,
 				Ok(tok) => Some((tok, span)),
-				Err(()) => Some((Token::Error(src[sp].to_string()), span)),
+				Err(()) => Some((Token::Error(src[sp].into()), span)),
 			}
 		})
 		.collect()
@@ -463,7 +512,7 @@ fn raw_lex(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 
 // Expands vars in strings.
 fn expand_string(s: &str, span: SimpleSpan, text: &str) -> Vec<(Token, SimpleSpan)> {
-	let bad = || vec![(Token::Error(text.to_string()), span)];
+	let bad = || vec![(Token::Error(text.into()), span)];
 	let part = |toks: &mut Vec<(Token, SimpleSpan)>, t: Token| {
 		if toks.len() > 1 {
 			toks.push((Token::Plus, span));
@@ -495,7 +544,7 @@ fn expand_string(s: &str, span: SimpleSpan, text: &str) -> Vec<(Token, SimpleSpa
 					return bad();
 				};
 				if !lit.is_empty() {
-					part(&mut toks, Token::String(std::mem::take(&mut lit)));
+					part(&mut toks, Token::String(std::mem::take(&mut lit).as_str().into()));
 				}
 				part(&mut toks, Token::LParen);
 				toks.extend(raw_lex(&s[i + 1..end], span.start + open + i + 1));
@@ -512,10 +561,10 @@ fn expand_string(s: &str, span: SimpleSpan, text: &str) -> Vec<(Token, SimpleSpa
 		}
 	}
 	if toks.len() == 1 {
-		return vec![(Token::String(lit), span)];
+		return vec![(Token::String(lit.as_str().into()), span)];
 	}
 	if !lit.is_empty() {
-		part(&mut toks, Token::String(lit));
+		part(&mut toks, Token::String(lit.as_str().into()));
 	}
 	toks.push((Token::RParen, span));
 	toks
@@ -527,7 +576,7 @@ pub fn prescan(toks: &[(Token, SimpleSpan)]) -> (Vec<String>, Vec<String>) {
 	let at = |i: usize| toks.get(i).map(|(t, _)| t);
 	for (i, (tok, _)) in toks.iter().enumerate() {
 		match (tok, at(i + 1)) {
-			(Token::Use, Some(Token::Ident(m))) => imports.push(m.clone()),
+			(Token::Use, Some(Token::Ident(m))) => imports.push(m.to_string()),
 			(Token::Ident(n), Some(Token::Not))
 				if at(i + 2) == Some(&Token::DoubleColon)
 					&& at(i + 3) == Some(&Token::Fn)
@@ -536,7 +585,7 @@ pub fn prescan(toks: &[(Token, SimpleSpan)]) -> (Vec<String>, Vec<String>) {
 						.take_while(|(t, _)| *t != Token::RParen)
 						.any(|(t, _)| matches!(t, Token::Ident(p) if p == "Tokens")) =>
 			{
-				raw.push(n.clone())
+				raw.push(n.to_string())
 			}
 			_ => {}
 		}
@@ -555,14 +604,14 @@ pub fn splice_raw(
 	let mut i = 0;
 	while i < toks.len() {
 		let open = match (&toks[i].0, toks.get(i + 1), toks.get(i + 2)) {
-			(Token::Ident(n), Some((Token::Not, bang)), Some((Token::LBrace, open))) if raw.contains(n) => {
+			(Token::Ident(n), Some((Token::Not, bang)), Some((Token::LBrace, open))) if raw.contains(&**n) => {
 				out.extend_from_slice(&toks[i..i + 2]);
 				out.push((Token::LParen, (bang.end..bang.end).into()));
 				out.push((Token::LBracket, *open));
 				*open
 			}
 			_ => {
-				out.push(toks[i].clone());
+				out.push(toks[i]);
 				i += 1;
 				continue;
 			}
@@ -658,11 +707,11 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 					out.push((fused_tok, (span.start..next.end).into()));
 					fused = true;
 				}
-				_ => out.push((tok.clone(), *span)),
+				_ => out.push((*tok, *span)),
 			},
 			Token::String(s) => out.extend(expand_string(s, *span, text(span.start, span.end))),
-			Token::RawString(s) => out.push((Token::String(s.clone()), *span)),
-			_ => out.push((tok.clone(), *span)),
+			Token::RawString(s) => out.push((Token::String(*s), *span)),
+			_ => out.push((*tok, *span)),
 		}
 	}
 	out

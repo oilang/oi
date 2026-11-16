@@ -144,7 +144,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		just(Token::GtGtEq).to(Some(BinOp::Shr)),
 		just(Token::Assign).to(None),
 	));
-	let rhs = assign_op.clone().then(values.clone());
+	let rhs = assign_op.then(values.clone());
 	let fold = |op, lhs, value: Spanned<Expr>, span| match op {
 		None => value,
 		Some(op) => (Expr::Binary(op, Box::new((lhs, span)), Box::new(value)), span),
@@ -160,7 +160,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	let mut assign = Recursive::declare();
 	assign.define(
 		(p.def_name.clone().map(|n| (n, None)).or(hole.clone()))
-			.then(assign_op.clone())
+			.then(assign_op)
 			.then(assign.clone().or(values.clone()))
 			.map_with(move |(((name, binder), op), value), ex| {
 				let lhs = binder.clone().map_or(Expr::Ident(name.clone()), Expr::UnquoteExpr);
@@ -176,7 +176,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	// map deletion
 	let map_delete = ident()
 		.then_ignore(just(Token::Dot))
-		.then_ignore(just(Token::Ident("delete".to_string())))
+		.then_ignore(just(Token::Ident("delete".into())))
 		.then(bracket(p.expr.clone()))
 		.map_with(|(name, key), ex| {
 			(
@@ -261,7 +261,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.ignore_then(values.clone())
 		.map_with(|value, ex| (Expr::Return(Some(Box::new(value))), ex.span()));
 
-	let doc = select! { Token::Doc(text) => text }
+	let doc = select! { Token::Doc(text) => text.to_string() }
 		.repeated()
 		.at_least(1)
 		.collect::<Vec<_>>()

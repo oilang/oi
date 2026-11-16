@@ -88,8 +88,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		Token::Int(n) => Expr::Int(n),
 		Token::Rune(n) => Expr::Rune(n),
 		Token::Float(s) => Expr::Float(s.parse().unwrap()),
-		Token::String(s) => Expr::String(s),
-		Token::Atom(name) => Expr::Atom(name),
+		Token::String(s) => Expr::String(s.to_string()),
+		Token::Atom(name) => Expr::Atom(name.to_string()),
 		Token::Dollar => Expr::Dollar,
 	};
 
@@ -206,17 +206,17 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	// record entries
 	let key = select! {
-		Token::Ident(name) => Expr::Ident(name),
+		Token::Ident(name) => Expr::Ident(name.to_string()),
 		Token::Int(n) => Expr::Int(n),
-		Token::String(s) => Expr::String(s),
-		Token::Atom(a) => Expr::Atom(a),
+		Token::String(s) => Expr::String(s.to_string()),
+		Token::Atom(a) => Expr::Atom(a.to_string()),
 	};
 	let keyed = spanned(key).then(just(Token::Assign).ignore_then(p.expr.clone()));
 	// enum shorthand
 	let brace_payload = struct_body.clone().map_with(|fs, ex| record_args(fs, ex.span()));
 	let payload = dot().ignore_then(args.clone().or(brace_payload)).boxed();
 	let enum_shorthand = dot()
-		.ignore_then(select! { Token::Ident(v) => v })
+		.ignore_then(select! { Token::Ident(v) => v.to_string() })
 		.then(payload.clone().or_not())
 		.map_with(|(variant, args), ex| {
 			let args = args.unwrap_or_default();
@@ -254,7 +254,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::Dot))
 		.then(
 			paren(loose_list(p.expr.clone()))
-				.or(select! { Token::String(s) => Expr::String(s) }.map_with(|s, ex| vec![(s, ex.span())])),
+				.or(select! { Token::String(s) => Expr::String(s.to_string()) }.map_with(|s, ex| vec![(s, ex.span())])),
 		)
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
 
@@ -285,7 +285,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	// match patterns
 	let bind = ident().map_with(|n, ex| ((Expr::Ident(n.clone()), ex.span()), (Expr::Ident(n), ex.span())));
 	let struct_pat = dot()
-		.ignore_then(select! { Token::Ident(v) => v })
+		.ignore_then(select! { Token::Ident(v) => v.to_string() })
 		.then_ignore(dot())
 		.then(brace(loose_list(keyed.clone().or(bind))))
 		.map_with(|(variant, es), ex| {
@@ -394,7 +394,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	.boxed();
 
 	// loops
-	let label = select! { Token::Atom(a) => a };
+	let label = select! { Token::Atom(a) => a.to_string() };
 	let loop_expr = just(Token::Loop)
 		.ignore_then(label.or_not())
 		.then(just(Token::With).or_not())
