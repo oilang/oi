@@ -13,7 +13,7 @@ pub(super) fn patterns<'token, I: Tokens<'token>>() -> P<'token, I, Spanned<Expr
 	let tuple_pat =
 		spanned(paren(loose_list(pat_name.clone().map(|e| (None::<String>, e))))).try_map(|(elems, espan), span| {
 			if elems.len() < 2 {
-				return Err(Rich::custom(span, "tuple destructuring needs at least 2 names"));
+				return Err(I::fault(span, "tuple destructuring needs at least 2 names"));
 			}
 			Ok((Expr::Tuple(elems), espan))
 		});
@@ -42,7 +42,7 @@ pub(super) fn patterns<'token, I: Tokens<'token>>() -> P<'token, I, Spanned<Expr
 	// array patterns
 	let array_pat = spanned(bracket(loose_list(pat_name.clone()))).try_map(|(elems, espan), span| {
 		if elems.is_empty() {
-			return Err(Rich::custom(span, "array destructuring needs at least 1 name"));
+			return Err(I::fault(span, "array destructuring needs at least 1 name"));
 		}
 		Ok((Expr::Array(elems), espan))
 	});
@@ -67,7 +67,7 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 
 	let annot = p.annot.clone().validate(|t, _, emitter| {
 		if let (TypeExpr::AnonStruct(_), s) = &t {
-			emitter.emit(Rich::custom(*s, "an anonymous struct type can't be a binding's middle"));
+			emitter.emit(I::fault(*s, "an anonymous struct type can't be a binding's middle"));
 		}
 		t
 	});
@@ -153,7 +153,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	// unquote holes
 	let hole = p.unquote.clone().try_map(|(e, span), _| match e {
 		Expr::UnquoteExpr(inner) => Ok(("%".into(), Some(inner))),
-		_ => Err(Rich::custom(span, "expected a name")),
+		_ => Err(I::fault(span, "expected a name")),
 	});
 
 	// assignment

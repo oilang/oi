@@ -1,7 +1,13 @@
 use crate::ast::{Access, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::lexer::Token;
 
-use chumsky::{Boxed, input::ValueInput, prelude::*, recursive::Indirect};
+use chumsky::{
+	Boxed,
+	error::Error,
+	input::{MappedInput, Stream, ValueInput},
+	prelude::*,
+	recursive::Indirect,
+};
 
 mod annotation;
 mod definition;
@@ -17,17 +23,40 @@ pub enum Trails {
 	Methods,
 	All,
 }
-type Err<'t> = extra::Full<Rich<'t, Token>, (), Trails>;
+type Err<'t, I> = extra::Full<<I as Tokens<'t>>::Fault, (), Trails>;
 // Every parser passed across a fn boundary in here wears this shape.
-pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, Err<'t>>;
+pub(super) type P<'t, I, O> = Boxed<'t, 't, I, O, Err<'t, I>>;
 // A Recursive handle passed across a fn boundary so it can be defined there.
-pub(super) type Rec<'t, I, O> = Recursive<Indirect<'t, 't, I, O, Err<'t>>>;
+pub(super) type Rec<'t, I, O> = Recursive<Indirect<'t, 't, I, O, Err<'t, I>>>;
 
-// trait aliases, so the token and error bounds are spelled once
-pub(super) trait Tokens<'t>: ValueInput<'t, Token = Token, Span = SimpleSpan> {}
-impl<'t, I: ValueInput<'t, Token = Token, Span = SimpleSpan>> Tokens<'t> for I {}
-pub(super) trait Rule<'t, I: Tokens<'t>, O>: Parser<'t, I, O, Err<'t>> + Clone {}
-impl<'t, I: Tokens<'t>, O, T: Parser<'t, I, O, Err<'t>> + Clone> Rule<'t, I, O> for T {}
+// A token input and the error it parses with.
+pub trait Tokens<'t>: ValueInput<'t, Token = Token, Span = SimpleSpan> + Sized {
+	type Fault: Error<'t, Self>;
+	fn fault(span: Span, msg: impl Into<String>) -> Self::Fault;
+}
+
+// A slice parses fast with empty errors, a stream reparses failures with `Rich` ones.
+impl<'t> Tokens<'t> for MappedInput<'t, Token, SimpleSpan, &'t [(Token, SimpleSpan)]> {
+	type Fault = EmptyErr;
+	fn fault(_: Span, _: impl Into<String>) -> EmptyErr {
+		EmptyErr::default()
+	}
+}
+
+impl<'t, It: Iterator<Item = (Token, SimpleSpan)> + 't, F> Tokens<'t>
+	for MappedInput<'t, Token, SimpleSpan, Stream<It>, F>
+where
+	Self: ValueInput<'t, Token = Token, Span = SimpleSpan>,
+{
+	type Fault = Rich<'t, Token>;
+	fn fault(span: Span, msg: impl Into<String>) -> Self::Fault {
+		Rich::custom(span, msg)
+	}
+}
+
+// Trait alias for much DRY.
+pub(super) trait Rule<'t, I: Tokens<'t>, O>: Parser<'t, I, O, Err<'t, I>> + Clone {}
+impl<'t, I: Tokens<'t>, O, T: Parser<'t, I, O, Err<'t, I>> + Clone> Rule<'t, I, O> for T {}
 
 fn ident<'token, I: Tokens<'token>>() -> impl Rule<'token, I, String> + Copy {
 	select! { Token::Ident(name) => name.to_string() }
@@ -272,10 +301,13 @@ fn fn_def(
 	)
 }
 
-pub fn parser<'src, 'token, I>(src: &'src str, origin: usize) -> impl Parser<'token, I, Vec<Spanned<Expr>>, Err<'token>>
+pub fn parser<'src, 'token, I>(
+	src: &'src str,
+	origin: usize,
+) -> impl Parser<'token, I, Vec<Spanned<Expr>>, Err<'token, I>>
 where
 	'src: 'token,
-	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+	I: Tokens<'token>,
 {
 	let mut expr = Recursive::declare();
 	let juxt_expr = Recursive::declare();
@@ -306,7 +338,7 @@ where
 			let gap = Span::from(sp.end..sp.start);
 			match ok(src.get(gap.start - origin..gap.end - origin)) {
 				true => Ok(()),
-				false => Err(Rich::custom(gap, msg)),
+				false => Err(I::fault(gap, msg)),
 			}
 		})
 	};
@@ -525,7 +557,7 @@ where
 				for pair in stmts.windows(2) {
 					let gap = src.get(pair[0].1.end - origin..pair[1].1.start - origin);
 					if !gap.is_none_or(|gap| gap.contains(['\n', ';'])) {
-						emitter.emit(Rich::custom(
+						emitter.emit(I::fault(
 							pair[1].1,
 							"consecutive statements on a line must be separated by `;`",
 						));

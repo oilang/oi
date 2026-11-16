@@ -43,7 +43,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::Pipeline).not())
 		.validate(|((((head, comp), params), (bound, ret)), body), ex, emitter| {
 			if let Some(slot) = bound.iter().find(|s| params.0.iter().any(|p| p.name == s.name)) {
-				emitter.emit(Rich::custom(slot.span, format!("duplicate argument `{}`", slot.name)));
+				emitter.emit(I::fault(slot.span, format!("duplicate argument `{}`", slot.name)));
 			}
 			let f = fn_def(head, Some(params), ret, named_ret(bound, body, ex.span()), ex.span());
 			match comp {
@@ -192,7 +192,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.validate(|(((name, type_params), backing), members), ex, emitter| {
 			let (_, fills, variants) = split_members(members);
 			if backing.is_none() && variants.iter().any(|v| v.raw.is_some()) {
-				emitter.emit(Rich::custom(ex.span(), "a raw value needs a string backing"));
+				emitter.emit(I::fault(ex.span(), "a raw value needs a string backing"));
 			}
 			(
 				Expr::EnumDef {

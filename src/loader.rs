@@ -390,8 +390,14 @@ pub fn parse_file(
 				span,
 			),
 			tok => (tok, span),
-		});
+		})
+		.collect::<Vec<_>>();
+
 	let eoi = (base + src.len()..base + src.len()).into();
+	if let Ok(items) = parser(src, base).parse(toks.as_slice().split_token_span(eoi)).into_result() {
+		return Ok(items);
+	}
+
 	parser(src, base)
 		.parse(Stream::from_iter(toks).map(eoi, |t| t))
 		.into_result()

@@ -116,7 +116,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			match key {
 				Some(key) => named.push((key, value)),
 				None if named.is_empty() => args.push(value),
-				None => emitter.emit(Rich::custom(ex.span(), "positional args go before named args")),
+				None => emitter.emit(I::fault(ex.span(), "positional args go before named args")),
 			}
 		}
 		if !named.is_empty() {
@@ -230,7 +230,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		if text.starts_with('"') && text.contains(['{', '}']) {
 			hint = ", write `{{` or `}}` for a literal brace";
 		}
-		Err(Rich::custom(span, format!("unexpected character `{text}`{hint}")))
+		Err(I::fault(span, format!("unexpected character `{text}`{hint}")))
 	});
 
 	// grouping before tuple rule to avoid making 1ples
@@ -346,7 +346,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			Expr::Binary(BinOp::In, pat, iter) if matches!(pat.0, Expr::EnumShorthand { .. } | Expr::Quote(_)) => {
 				Ok((Expr::Gen { pat, key: None, iter }, span))
 			}
-			_ => Err(Rich::custom(at, "not a generator")),
+			_ => Err(I::fault(at, "not a generator")),
 		}))
 		.boxed();
 
@@ -378,7 +378,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			)
 			.validate(|(((with, cond), mut then), els), ex, emitter| {
 				if with.is_some() && !open_bound(&cond, &mut then) {
-					emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
+					emitter.emit(I::fault(ex.span(), "`with` needs a name"));
 				}
 				(
 					Expr::If {
@@ -411,7 +411,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		)
 		.validate(|((label, with), (cond, mut body)), ex, emitter| {
 			if with.is_some() && !cond.as_ref().is_some_and(|cond| open_gens(cond, &mut body)) {
-				emitter.emit(Rich::custom(ex.span(), "`with` needs a name"));
+				emitter.emit(I::fault(ex.span(), "`with` needs a name"));
 			}
 			(
 				Expr::Loop {
@@ -735,7 +735,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		// `%{expr}` as a field name
 		p.unquote.clone().try_map(|(e, span), _| match e {
 			Expr::UnquoteExpr(inner) => Ok(Dot::Hole(inner)),
-			_ => Err(Rich::custom(span, "expected a field name")),
+			_ => Err(I::fault(span, "expected a field name")),
 		}),
 	))
 	.boxed();
@@ -1008,7 +1008,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 								args,
 							}
 						}
-						_ => return Err(Rich::custom(span, "trailing arg needs a call or method callee")),
+						_ => return Err(I::fault(span, "trailing arg needs a call or method callee")),
 					};
 					Ok((e, span))
 				})
