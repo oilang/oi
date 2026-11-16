@@ -704,6 +704,17 @@ pub(crate) enum Slot {
 	Splat(Spanned<Expr>),
 }
 
+impl Slot {
+	// Names a pattern capture, and whether it holds one Ast as opposed to an array of them.
+	pub(crate) fn capture(&self) -> Option<(&str, bool)> {
+		match self {
+			Slot::Name(name) => Some((name, true)),
+			Slot::Splat((Expr::Ident(name), _)) => Some((name, false)),
+			_ => None,
+		}
+	}
+}
+
 // An instantiation argument.
 // One Ast, or a splat's `[]Ast` elements.
 enum Arg<'a> {
@@ -1098,6 +1109,12 @@ pub(crate) fn one(mut stmts: Vec<Spanned<Expr>>, span: Span) -> Spanned<Expr> {
 pub(crate) extern "C" fn rt_quote_match(tpl: usize, subject: *mut Spanned<Expr>, outs: *mut *mut Spanned<Expr>) -> i64 {
 	// SAFETY: `tpl` was leaked by `register`, `subject` by the caller's Ast value.
 	let (tpl, subj) = unsafe { (&*(tpl as *const Template), &*subject) };
+
+	let subj = match tpl.stmts[0].0 {
+		Expr::Annotated(..) | Expr::Pub(..) => subj,
+		_ => Expr::peel_meta(subj).2,
+	};
+
 	let mut binds = Vec::new();
 	if !unify(&tpl.stmts[0], subj, &mut binds) {
 		return 0;
@@ -1158,6 +1175,12 @@ fn unify(pat: &Spanned<Expr>, subj: &Spanned<Expr>, binds: &mut Vec<Spanned<Expr
 	{
 		binds.push((Expr::Ident(std::mem::take(name)), subj.1));
 		hole.clear();
+	}
+	if let (Expr::Bind { typ: Some(hole), .. }, Expr::Bind { typ: Some(typ), .. }) = (&mut pat_expr, &subj_expr)
+		&& hole_key(&hole.0).is_some()
+	{
+		binds.push((Expr::TypePat(typ.0.clone()), typ.1));
+		*hole = typ.clone();
 	}
 	let ((ph, pk), (sh, sk)) = (split(pat_expr), split(subj_expr));
 	ph == sh && pk.iter().zip(&sk).all(|(p, s)| unify_seq(p, s, binds))

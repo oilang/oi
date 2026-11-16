@@ -4,11 +4,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam, bind};
+use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, Scope, module_of};
 use crate::runtime;
 
+use super::expand::Slot;
 use super::lower::generic::Infer;
 use super::{Compiler, Typ, TypeCtx, role, type_expr, typeid};
 
@@ -571,10 +572,8 @@ pub(crate) fn fold(
 		let probe_arm = |arm: &MatchArm, i| match arm.patterns.first() {
 			Some((Expr::Quote(q), _)) if let Ok((_, slots)) = super::expand::register(q, span) => {
 				let mut body = (Expr::Block(arm.body.clone()), span);
-				for slot in slots {
-					if let super::expand::Slot::Name(var) | super::expand::Slot::Splat((Expr::Ident(var), _)) = &slot {
-						unquote(&mut body, var, matches!(slot, super::expand::Slot::Name(_)));
-					}
+				for (var, ast) in slots.iter().filter_map(Slot::capture) {
+					unquote(&mut body, var, ast);
 				}
 				vec![(Expr::Quote(vec![body]), span)]
 			}
@@ -624,16 +623,33 @@ pub(crate) fn fold(
 	} = &mut inner.0
 		&& let Expr::Gen { pat, key, .. } = &mut cond.0
 	{
+		let captures = match &pat.0 {
+			Expr::Quote(q) => super::expand::register(q, span)?.1,
+			_ => vec![],
+		};
 		let vars: Vec<_> = std::iter::once(pat)
 			.chain(key)
 			.flat_map(|pat| super::expand::pat_names(pat))
+			.map(|name| (name.as_str(), true))
+			.chain(captures.iter().filter_map(Slot::capture))
 			.collect();
 		if !vars.is_empty() {
-			// var used as a type
+			// var used as a type, bound immutably
 			let splice = |var: &str| (Expr::UnquoteExpr(Box::new((Expr::Ident(var.into()), span))), span);
-			let named: Vec<_> = (vars.iter())
-				.filter(|var| body.iter_mut().fold(false, |named, e| unquote(e, var, true) | named))
-				.map(|var| bind(var, splice(var)))
+			let named: Vec<_> = (vars.into_iter())
+				.filter(|&(var, ast)| body.iter_mut().fold(false, |named, e| unquote(e, var, ast) | named))
+				.map(|(var, _)| {
+					let (name, value) = (var.into(), Some(Box::new(splice(var))));
+					(
+						Expr::Bind {
+							mutable: false,
+							name,
+							typ: None,
+							value,
+						},
+						span,
+					)
+				})
 				.collect();
 			*body = vec![(Expr::Quote([named, std::mem::take(body)].concat()), span)];
 		}

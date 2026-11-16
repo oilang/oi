@@ -975,3 +975,23 @@ fn comp_loop_splices_defs_as_types() {
 		"E 3 b",
 	);
 }
+
+#[test]
+fn comp_loop_selects_by_shape() {
+	check(
+		indoc! {r"
+			mark :: ()
+			@mark A :: struct { x: int, y: int }
+			@mark E :: enum { a, b }
+			@mark pub B :: struct { x: string }
+			comp loop `%T :: struct { %{..fs} }` in defs(mark) {
+				print(T.str(), fs.len(), T.{})
+			}
+			comp loop `%T :: struct { x: %t, %{..rest} }` in defs(mark) {
+				v: t = .{}
+				print(T.str(), v, rest.len())
+			}
+		"},
+		["A 2 A.{x = 0, y = 0}", r#"B 1 B.{x = ""}"#, "A 0 1", "B  0"],
+	);
+}
