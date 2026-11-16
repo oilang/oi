@@ -1661,7 +1661,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		(val, typ): TypedVal,
 		span: Span,
 	) -> Result<Emit<'e, 'a, M>, Diagnostic> {
-		let keyed = self.claims(&typ, role::KEYED) && (key.is_some() || !self.claims(&typ, role::ITERATOR));
+		let keyed =
+			self.claims(&typ, role::KEYED.path()) && (key.is_some() || !self.claims(&typ, role::ITERATOR.path()));
 		if let Some(key) = key.filter(|_| !keyed) {
 			return fail(format!("{typ} is not keyed"), key.1, "not keyed");
 		}
@@ -1797,7 +1798,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
-		if access == Access::Move && !direct && self.claims(&typ, role::KEYED) {
+		if access == Access::Move && !direct && self.claims(&typ, role::KEYED.path()) {
 			return fail(
 				"`loop move` needs an array, map or fixed array",
 				pat.1,
@@ -1865,7 +1866,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Cursor<'e, 'a, M>, Diagnostic> {
 		let owns = access == Access::Move;
 		let direct = matches!(typ.unkeyed(), Typ::Array(_) | Typ::Map(..) | Typ::FixedArray(..));
-		if self.claims(&typ, role::ITERATOR) || !direct && self.claims(&typ, role::KEYED) {
+		if self.claims(&typ, role::ITERATOR.path()) || !direct && self.claims(&typ, role::KEYED.path()) {
 			return Ok((self.iter_loop((pat, key), (val, typ), span)?, None));
 		}
 

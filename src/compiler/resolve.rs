@@ -623,7 +623,7 @@ impl TypeCtx<'_> {
 		let mut subst = HashMap::new();
 		for (param, arg) in params.iter().zip(args) {
 			let typ = self.arg_typ(param, arg, span)?;
-			if param.bound.as_deref() == Some(role::ISOLATED_TRAIT)
+			if param.bound.as_deref() == Some(role::ISOLATED_TRAIT.path())
 				&& let Some(t) = self.unisolated(&typ, &mut Vec::new())
 			{
 				let msg = format!("`{typ}` does not claim `Isolated`");

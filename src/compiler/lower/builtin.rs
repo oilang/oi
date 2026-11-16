@@ -353,7 +353,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.b.ins().iconst(self.int, member.disc)
 		} else {
 			// trait objects tagged by their vtable
-			let tn = if let Typ::Trait(tn) = typ { tn } else { role::ERROR };
+			let error = role::ERROR.path();
+			let tn = if let Typ::Trait(tn) = typ { tn } else { error };
 			if !self.world.trait_impls.contains(&(target.key(), tn.to_string())) {
 				return Ok(Some((self.make_option(&opt, None), opt)));
 			}

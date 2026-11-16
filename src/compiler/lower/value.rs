@@ -1192,7 +1192,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::Trait(tn) = to {
 			return self.make_trait_object(val, from, tn, span);
 		}
-		if to.key() == role::ALLOC && self.world.trait_impls.contains(&(from.key(), role::ALLOCATOR.into())) {
+		if to.key() == role::ALLOC && self.world.trait_impls.contains(&(from.key(), role::ALLOCATOR.path().into())) {
 			return Ok((self.alloc_record(val, from)?, to.clone()));
 		}
 		if *to == Typ::Error && self.open_error(from) {
@@ -1517,12 +1517,12 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Whether `typ` claims std `Error`, boxing into the open `Error` type.
 	pub(super) fn open_error(&self, typ: &Typ) -> bool {
-		self.world.trait_impls.contains(&(typ.key(), role::ERROR.to_string()))
+		self.world.trait_impls.contains(&(typ.key(), role::ERROR.path().to_string()))
 	}
 
 	// Box a claimer of `Error` behind its vtable.
 	pub(super) fn box_error(&mut self, val: Value, typ: &Typ) -> Value {
-		self.box_trait_object(val, typ, role::ERROR)
+		self.box_trait_object(val, typ, role::ERROR.path())
 	}
 
 	// Box `val` (an instance of `typ`) behind its `typ`/`tn` vtable. The box owns a heap copy.

@@ -212,7 +212,9 @@ impl<M: Module> Translator<'_, M> {
 	pub(crate) fn c_norm(&mut self, v: Value, typ: &Typ) -> Value {
 		let typ = typ.newtype().unwrap_or(typ);
 		let bool = typ.bool_bytes().map(|n| Typ::UInt(n * 8));
-		let Some(b) = typ.c_enum(&self.types).or(bool) else { return v };
+		let Some(b) = typ.c_enum(&self.types).or(bool) else {
+			return v;
+		};
 		let w = cl_type(&b, self.int);
 		let v = if self.b.func.dfg.value_type(v) == w {
 			v

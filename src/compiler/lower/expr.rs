@@ -210,7 +210,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				let tn = match &vt {
 					Typ::Trait(tn) => tn.clone(),
-					Typ::Error => role::ERROR.to_string(),
+					Typ::Error => role::ERROR.path().to_string(),
 					_ => {
 						return fail(
 							"`is` takes a type name or a trait object on the left",
@@ -231,7 +231,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Negative(e) => {
 				let (v, typ) = self.expr(e)?;
-				let out = match self.own_field(&typ, role::NEG) {
+				let out = match self.own_field(&typ, role::NEG.path()) {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(16) => {
 						let wide = self.widen_f16(v, &typ);
@@ -239,7 +239,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.numcast(neg, &Typ::Float(32), &typ)
 					}
 					Typ::Float(_) => self.b.ins().fneg(v),
-					t if t.nominal().is_some() => match self.fill(t, role::NEG, "neg", 1) {
+					t if t.nominal().is_some() => match self.fill(t, role::NEG.path(), "neg", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return fail(format!("cannot negate {typ}"), expr.1, format!("claim `Neg` for `{t}`"));
@@ -286,13 +286,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			},
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
-				let out = match self.own_field(&typ, role::NOT) {
+				let out = match self.own_field(&typ, role::NOT.path()) {
 					t if *t == Typ::Bool => self.b.ins().bxor_imm(v, 1),
 					t @ (Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) => {
 						let v = self.b.ins().bnot(v);
 						self.narrow(v, t)
 					}
-					t if t.nominal().is_some() => match self.fill(t, role::NOT, "not", 1) {
+					t if t.nominal().is_some() => match self.fill(t, role::NOT.path(), "not", 1) {
 						Some(sig) => return Ok(self.emit_call(&sig, &[v])),
 						None => {
 							return fail(
@@ -328,7 +328,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Recv(e) => {
 				let (v, typ) = self.expr(e)?;
 				let sig = (typ.nominal()).and_then(|n| {
-					self.fill(&typ, role::RECV, "recv", 1)
+					self.fill(&typ, role::RECV.path(), "recv", 1)
 						.or_else(|| self.sole_fill(&format!("{n}.recv")))
 				});
 				match sig {
@@ -533,7 +533,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 					// Error trait
 					if recv_typ == Typ::Error {
-						return self.dyn_call(recv_val, role::ERROR, method, args, expr.1);
+						return self.dyn_call(recv_val, role::ERROR.path(), method, args, expr.1);
 					}
 					let Some(owner) = method_owner(&recv_typ) else {
 						let msg = format!("`{recv_typ}` has no methods");
@@ -1004,7 +1004,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let idx = self.intcast(idx, self.int, true);
 						Ok((self.load_index((ptr, &typ), idx, collection.1), elem))
 					}
-					t if self.claims(t, role::INDEX) => {
+					t if self.claims(t, role::INDEX.path()) => {
 						let (val, typ) = self.index_call((ptr, typ), index, expr.1)?;
 						let Some(inner) = self.types.option_inner(&typ).filter(|_| !keep) else {
 							return Ok((val, typ));
@@ -1015,7 +1015,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					_ => fail(
 						format!("cannot index {typ}"),
 						collection.1,
-						format!("implement `{}` for `{typ}` to index it", role::INDEX),
+						format!("implement `{}` for `{typ}` to index it", role::INDEX.path()),
 					),
 				}
 			}
@@ -1025,7 +1025,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (ptr, typ) = self.deref(ptr, &typ);
 				let range = range.as_deref();
 				if let Some(r) = range
-					&& self.claims(&typ, role::INDEX)
+					&& self.claims(&typ, role::INDEX.path())
 				{
 					return self.index_call((ptr, typ), r, expr.1);
 				}

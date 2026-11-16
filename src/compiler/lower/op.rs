@@ -80,7 +80,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// `Eq` fill, or structural diff by default.
 	fn emit_val_eq(&mut self, lhs: Value, rhs: Value, typ: &Typ, owner: &str, span: Span) -> Result<Value, Diagnostic> {
 		if typ.nominal().is_some()
-			&& let Some(sig) = self.fill(typ, role::EQ, "eq", 2)
+			&& let Some(sig) = self.fill(typ, role::EQ.path(), "eq", 2)
 		{
 			return Ok(self.emit_call(&sig, &[lhs, rhs]).0);
 		}
@@ -147,7 +147,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	fn has_eq(&mut self, typ: &Typ) -> bool {
-		if typ.nominal().is_some() && self.fill(typ, role::EQ, "eq", 2).is_some() {
+		if typ.nominal().is_some() && self.fill(typ, role::EQ.path(), "eq", 2).is_some() {
 			return true;
 		}
 		match typ.newtype().unwrap_or(typ).clone() {
@@ -207,11 +207,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				(tps.iter().zip(&args))
 					.all(|(p, a)| self.types.value_param(p) || p.bound.as_ref().is_none_or(|b| self.claims(a, b)))
 			})
-			|| (self.world.core_traits.contains(tn) && builtin_claim(typ, tn))
+			|| builtin_claim(typ, tn)
 			|| (self.world.blankets.get(tn)).is_some_and(|p| p.bound.as_ref().is_some_and(|b| self.claims(typ, b)))
-				&& (tn != role::ORDINAL || self.types.assoc_int(&typ.to_string(), "count").is_some())
-			|| (tn == role::ISOLATED_TRAIT && self.types.unisolated(typ, &mut Vec::new()).is_none())
-			|| (tn == role::ORDINAL && self.plain_enum(typ))
+				&& (tn != role::ORDINAL.path() || self.types.assoc_int(&typ.to_string(), "count").is_some())
+			|| (tn == role::ISOLATED_TRAIT.path() && self.types.unisolated(typ, &mut Vec::new()).is_none())
+			|| (tn == role::ORDINAL.path() && self.plain_enum(typ))
 	}
 
 	// Compare two heap blocks field by field, from byte `base`.
@@ -471,21 +471,23 @@ impl<'a, M: Module> Translator<'a, M> {
 		r: &Spanned<Expr>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let (tn, method) = match op {
-			BinOp::Add => (role::ADD, "add"),
-			BinOp::Sub => (role::SUB, "sub"),
-			BinOp::Mul => (role::MUL, "mul"),
-			BinOp::Div => (role::DIV, "div"),
-			BinOp::Mod => (role::MOD, "mod"),
-			BinOp::Pow => (role::POW, "pow"),
-			BinOp::BitAnd => (role::BIT_AND, "bitand"),
-			BinOp::BitOr => (role::BIT_OR, "bitor"),
-			BinOp::BitXor => (role::BIT_XOR, "bitxor"),
-			BinOp::Shl => (role::SHL, "shl"),
-			BinOp::Shr => (role::SHR, "shr"),
-			BinOp::Send => (role::SEND, "send"),
+		let method = match op {
+			BinOp::Add => "add",
+			BinOp::Sub => "sub",
+			BinOp::Mul => "mul",
+			BinOp::Div => "div",
+			BinOp::Mod => "mod",
+			BinOp::Pow => "pow",
+			BinOp::BitAnd => "bitand",
+			BinOp::BitOr => "bitor",
+			BinOp::BitXor => "bitxor",
+			BinOp::Shl => "shl",
+			BinOp::Shr => "shr",
+			BinOp::Send => "send",
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
+		// operator traits are keyed by their method
+		let tn = role::Role(method).path();
 
 		let appending = self.appending.take() == Some(span);
 		let (r, moved) = match &r.0 {
@@ -795,7 +797,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let eq = self.emit_val_eq(lv, rv, l, &lt.to_string(), span)?;
 					self.b.ins().icmp_imm(cc, eq, 0)
 				} else if (l.nominal().is_some() || matches!(l, Typ::Map(..)))
-					&& let Some(sig) = self.fill(l, role::PARTIAL_CMP, "partial_cmp", 2)
+					&& let Some(sig) = self.fill(l, role::PARTIAL_CMP.path(), "partial_cmp", 2)
 				{
 					let (a, b) = if reversed { (rv, lv) } else { (lv, rv) };
 					let (order, opt) = self.emit_call(&sig, &[a, b]);
@@ -861,7 +863,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok(self.emit_call(&sig, &[rhs_val, lhs_val]));
 		}
 
-		if self.claims(&rhs_typ, role::CONTAINS) {
+		if self.claims(&rhs_typ, role::CONTAINS.path()) {
 			if let Some(sig) = self.resolve_method(&rhs_typ, "contains") {
 				let (v, _) = self.check_expr(lhs, access_peel(&sig.params[1].typ))?;
 				return Ok(self.emit_call(&sig, &[rhs_val, v]));

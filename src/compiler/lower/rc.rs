@@ -24,7 +24,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn is_resource_seen(&self, typ: &Typ, seen: &mut Vec<String>) -> bool {
 		match typ.unkeyed() {
 			Typ::Struct(_, fields) => {
-				let claimed = self.claims(typ, "Drop") || self.claims(typ, role::LINEAR);
+				let claimed = self.claims(typ, "Drop") || self.claims(typ, role::LINEAR.path());
 				claimed || fields.iter().any(|f| self.is_resource_seen(&f.typ, seen))
 			}
 			Typ::Array(elem) | Typ::FixedArray(elem, _) => self.is_resource_seen(elem, seen),
@@ -47,7 +47,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(crate) fn is_linear(&self, typ: &Typ) -> bool {
 		match typ.unkeyed() {
 			Typ::Array(elem) | Typ::FixedArray(elem, _) | Typ::Map(_, elem) => self.is_linear(elem),
-			t => self.claims(typ, role::LINEAR) || t.slots().is_some_and(|ts| ts.iter().any(|t| self.is_linear(t))),
+			t => {
+				self.claims(typ, role::LINEAR.path())
+					|| t.slots().is_some_and(|ts| ts.iter().any(|t| self.is_linear(t)))
+			}
 		}
 	}
 

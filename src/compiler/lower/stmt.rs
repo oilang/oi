@@ -261,7 +261,7 @@ impl<'a, M: Module> Translator<'a, M> {
 								"cannot assign into a string",
 							);
 						}
-						t if self.claims(t, role::INDEX_ASSIGN) => {
+						t if self.claims(t, role::INDEX_ASSIGN.path()) => {
 							let call = Expr::MethodCall {
 								recv: Box::new(collection),
 								method: "index_assign".into(),
@@ -275,7 +275,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							return fail(
 								format!("`{name}` is not an array"),
 								stmt.1,
-								format!("implement `{}` to assign into it", role::INDEX_ASSIGN),
+								format!("implement `{}` to assign into it", role::INDEX_ASSIGN.path()),
 							);
 						}
 					};

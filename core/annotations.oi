@@ -1,5 +1,8 @@
 module core
 
+## Binds a def to the compiler role named by `key`.
+pub lang :: struct { key: string }
+
 pub params :: ()
 pub required :: ()
 

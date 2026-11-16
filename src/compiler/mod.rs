@@ -24,7 +24,7 @@ mod comp;
 mod expand;
 mod lower;
 mod resolve;
-mod role;
+pub(crate) mod role;
 mod traits;
 mod typ;
 
@@ -610,7 +610,6 @@ struct World {
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
 	blankets: HashMap<String, TypeParam>,
 	claim_args: HashMap<(String, String), Vec<Spanned<TypeExpr>>>,
-	core_traits: HashSet<String>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
 	publics: Publics,
@@ -1167,10 +1166,6 @@ impl<M: Module> Compiler<M> {
 			if traits.insert(name.as_str(), item).is_some() {
 				let msg = format!("duplicate trait `{name}`");
 				return fail(msg, *span, "already defined");
-			}
-
-			if scope.module == "core" {
-				self.world.core_traits.insert(name.clone());
 			}
 
 			// generic trait defaults

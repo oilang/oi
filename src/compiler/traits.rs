@@ -32,6 +32,7 @@ pub(crate) struct TraitBody<'a> {
 // Whether a primitive natively satisfies std trait `tn`.
 pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 	use Typ::*;
+	let Some(tn) = role::key(tn) else { return false };
 	if matches!(tn, role::DISPLAY | role::DEBUG) {
 		return true;
 	}
@@ -408,8 +409,7 @@ pub(super) fn check_impls<'p>(
 			};
 			let (params, _, ret) = fill_from_decl(params, *params_tuple, ret, decl, m.1)?;
 			let (mut got, want) = (sig(&params, &ret)?, sig(tp, tr)?);
-			if matches!(tn.as_str(), role::ADD | role::SUB | role::MUL | role::DIV | role::MOD)
-				&& world.core_traits.contains(tn.as_str())
+			if matches!(role::key(&tn), Some(role::Role("add" | "sub" | "mul" | "div" | "mod")))
 				&& let (Typ::Fn(gp, _), Typ::Fn(wp, _)) = (&mut got, &want)
 				&& let ([_, gother], [_, wother]) = (gp.as_mut_slice(), wp.as_slice())
 			{

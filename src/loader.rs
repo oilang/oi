@@ -15,7 +15,7 @@ use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
-use crate::compiler::{builtin, cache, sized};
+use crate::compiler::{builtin, cache, role, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::lexer::{Token, lex_at, prescan, splice_raw};
 use crate::parser::parser;
@@ -1340,6 +1340,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	};
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
+	role::fill(&loader.program);
 	let os = (Expr::Atom(std::env::consts::OS.into()), Span::from(0..0));
 	loader.program.consts.insert("core::BUILD_OS".into(), os);
 	loader.program.publics.vis.insert("core::BUILD_OS".into(), Vis::Pub);

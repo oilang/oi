@@ -26,7 +26,7 @@ Alloc :< {
 }
 
 ## Claimers coerce to `Alloc`.
-pub Allocator :: trait {
+@lang.{"allocator"} pub Allocator :: trait {
 	alloc: fn(mut self; size: int, align: int) ptr
 	free :: fn(mut self; old: ptr, old_size: int) {}
 	free_all :: fn(mut self) {}

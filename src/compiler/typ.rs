@@ -135,7 +135,7 @@ pub(crate) fn embeds(fields: &[FieldDef]) -> impl Iterator<Item = (usize, &str, 
 // The name a field routes claims through, embedded or stated by a `via`.
 pub(crate) fn lends(f: &FieldDef) -> String {
 	match &f.typ {
-		Typ::Error => role::ERROR.into(),
+		Typ::Error => role::ERROR.path().into(),
 		t => t.to_string(),
 	}
 }
