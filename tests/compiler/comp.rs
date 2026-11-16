@@ -595,3 +595,22 @@ fn comp_match_guard_on_a_claim() {
 	"#};
 	check(src, ["eq", "slice", "claim", "other"]);
 }
+
+#[test]
+fn comp_reuses_a_generic_a_macro_instantiated() {
+	let src = indoc! {r#"
+		P :: struct { a: int }
+		get[T] :: fn(n: int) ?T {
+			if n > 0 do return T.{}
+			none
+		}
+		m! :: fn() Ast {
+			p := get[P](1) or P.{5}
+			a := p.a
+			`print(%a)`
+		}
+		m!()
+		print(comp (get[P](0) or P.{7}).a)
+	"#};
+	check(src, ["0", "7"]);
+}

@@ -321,9 +321,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		subst: HashMap<String, Typ>,
 	) -> Result<FnSig, Diagnostic> {
 		let sym = mangle(name, &subst, &def.type_params);
+		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
+		let params = types.resolve_params(&def.params)?;
+		let ret = match &def.ret {
+			Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,
+			None => Typ::unit(),
+		};
 		if let Some(sig) = self.out.mono.get(&sym) {
 			return Ok(sig.clone());
 		}
+
 		let depth = self.out.depths.get(&self.out.lowering).map_or(1, |d| d + 1);
 		if depth > MAX_GENERIC_DEPTH {
 			let name = name.split('#').next().unwrap_or(name);
@@ -334,12 +341,6 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		self.out.depths.insert(sym.clone(), depth);
-		let types = self.types.with_type_params(&subst).with_scope(self.home_scope(def));
-		let params = types.resolve_params(&def.params)?;
-		let ret = match &def.ret {
-			Some((ret_te, ret_span)) => types.resolve(ret_te, *ret_span)?,
-			None => Typ::unit(),
-		};
 
 		let mut sig = self.module.make_signature();
 		let typed = params.iter().map(|(_, t, a)| (t, *a));
