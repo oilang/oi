@@ -74,6 +74,19 @@ fn match_range() {
 }
 
 #[test]
+fn match_range_unsigned() {
+	let src = indoc! {r#"
+		x: u8 = 200
+		match x {
+			..3 => print("lo"),
+			128..=255 => print("hi"),
+			_ => print("mid")
+		}
+	"#};
+	check(src, "hi");
+}
+
+#[test]
 fn match_destructure() {
 	let src = indoc! {r#"
 		Point :: struct { x: int, y: int }

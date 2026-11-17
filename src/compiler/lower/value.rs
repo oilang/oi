@@ -934,13 +934,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		(start, end, inclusive): Bounds,
 		span: Span,
 	) -> Result<Value, Diagnostic> {
-		let Typ::Int(_) = st else {
+		if !matches!(st, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize) {
 			let msg = format!("range patterns need an integer subject, got {st}");
 			return fail(msg, span, "not an integer");
-		};
+		}
 		let zero = (Expr::Int(0), span);
 		let (range, rt) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
-		let sv = self.intcast(sv, types::I64, true);
+		let sv = self.intcast(sv, types::I64, matches!(st, Typ::Int(_) | Typ::ISize));
 		let (hit, _) = self.emit_contains(range, &rt, (sv, Typ::Int(64)), span)?;
 		Ok(self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0))
 	}
