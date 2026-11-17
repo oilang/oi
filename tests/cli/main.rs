@@ -7,6 +7,7 @@ mod color;
 mod exec;
 mod init;
 mod install;
+mod lsp;
 mod modules;
 mod repl;
 mod run;
