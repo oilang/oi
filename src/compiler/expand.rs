@@ -904,7 +904,12 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		Expr::StructLit { fields, .. } if fields.iter().all(|(n, _)| n.is_none()) => {
 			let mut list = fields.drain(..).map(|(_, v)| v).collect();
 			splice(&mut list, bound, args, suffix);
-			*fields = list.into_iter().map(|v| (None, v)).collect();
+			*fields = (list.into_iter())
+				.map(|v| match v {
+					(Expr::Assign { name, value }, _) => (Some(name), *value),
+					v => (None, v),
+				})
+				.collect();
 		}
 		_ => e.0.for_children(|c| match c {
 			List(list) => splice(list, bound, args, suffix),
@@ -914,6 +919,20 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 
 	if let Expr::Match { arms, .. } = &mut e.0 {
 		spread_arms(arms);
+	}
+
+	// spliced `name = value` args join the named-args record
+	if let Expr::Call { args: list, .. } | Expr::MacroCall { args: list, .. } | Expr::MethodCall { args: list, .. } =
+		&mut e.0
+		&& let Some(at) = list.iter().position(|a| matches!(a.0, Expr::Assign { .. }))
+	{
+		let span = list[at].1;
+		let named = list.split_off(at).into_iter().flat_map(|arg| match arg.0 {
+			Expr::Assign { name, value } => vec![((Expr::Ident(name), arg.1), *value)],
+			Expr::Record(entries) => entries,
+			_ => flag("positional args go before named args", vec![]),
+		});
+		list.push((Expr::Record(named.collect()), span));
 	}
 
 	// stacked notes
@@ -1359,14 +1378,19 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			ast(Expr::Ident(name.split(['(', ' ']).next().unwrap().to_lowercase()))
 		}
 		(b"str", e) => {
+			let (entry, e) = match e {
+				Expr::Assign { name, value } => (format!("{name} = "), &value.0),
+				e => (String::new(), e),
+			};
 			let s = match e {
-				Expr::Ident(s) | Expr::String(s) => s.clone(),
+				Expr::String(s) if !entry.is_empty() => format!("{s:?}"),
+				Expr::Ident(s) | Expr::String(s) | Expr::Atom(s) => s.clone(),
 				Expr::Int(n) => n.to_string(),
 				Expr::Float(n) => n.to_string(),
 				Expr::Bool(b) => b.to_string(),
 				_ => flag("`.str()` needs an Ast holding a name or literal", String::new()),
 			};
-			runtime::str_new(runtime::system_allocator(), s.as_bytes()) as i64
+			runtime::str_new(runtime::system_allocator(), format!("{entry}{s}").as_bytes()) as i64
 		}
 		(
 			b"name",
@@ -1383,15 +1407,20 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		) => ast(Expr::Ident(name.clone())),
 		(b"name", ident @ Expr::Ident(_)) => ast(ident.clone()),
 		(b"name", _) => flag("this Ast has no name", leak(empty()) as i64),
-		(
-			b"items",
-			Expr::Array(v)
-			| Expr::DotArray(_, v)
-			| Expr::Block(v)
-			| Expr::Call { args: v, .. }
-			| Expr::MacroCall { args: v, .. }
-			| Expr::Claim { fills: v, .. },
-		) => asts(&mut v.iter()),
+		(b"items", Expr::Array(v) | Expr::DotArray(_, v) | Expr::Block(v) | Expr::Claim { fills: v, .. }) => {
+			asts(&mut v.iter())
+		}
+		(b"items", Expr::Call { args, .. } | Expr::MacroCall { args, .. }) => {
+			let entry = |(key, value): &(Spanned<Expr>, Spanned<Expr>)| {
+				let (name, value) = (written(&key.0), Box::new(value.clone()));
+				ast(Expr::Assign { name, value })
+			};
+			let entries = args.iter().flat_map(|arg| match &arg.0 {
+				Expr::Record(named) => named.iter().map(entry).collect(),
+				_ => vec![leak(arg.clone()) as i64],
+			});
+			list(entries.collect())
+		}
 		(b"items", Expr::StructDef { fields, .. } | Expr::Fn { params: fields, .. }) => {
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}

@@ -45,8 +45,20 @@ Ast :< {
 	value[T] :: fn(self) T {
 		comp match T {
 			int => self.int(),
+			float => float.try_from(self.str()) or 0.0,
 			bool => self.str() == "true",
 			string => self.str(),
+			[]E => loop item in self.items { item.value[E]() },
+			Option[E] => {
+				if self == "none" do return none
+				self.value[E]()
+			},
+			_ if def(T).kind == "enum" => {
+				comp loop v in def(T).items {
+					if self.str() == %{v.str()} do return T.%v
+				}
+				zero[T]()
+			},
 			else => {
 				out := T.{}
 				# a bare `@note` is its zero value

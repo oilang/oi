@@ -923,6 +923,39 @@ fn typed_notes() {
 }
 
 #[test]
+fn named_entries() {
+	check(
+		indoc! {r#"
+			P :: struct { a: int, s: string }
+			g :: fn(a: int, s: string = "") { print(a, s) }
+			m! :: fn(call: Ast) Ast {
+				print(call.items[1])
+				`{
+					g(%{..call.items})
+					print(P.{ %{..call.items} })
+				}`
+			}
+			m!(f(1, s = "hi"))
+		"#},
+		[r#"s = "hi""#, "1 hi", r#"P.{a = 1, s = "hi"}"#],
+	);
+}
+
+#[test]
+fn values_read_back() {
+	check(
+		indoc! {"
+			Color :: enum { red, green }
+			prop :: struct { c: Color, scale: float }
+			P :: struct { a: int @prop.{:green, 2.5} }
+			comp loop f in def(P).items { print(f.note[prop]()) }
+			comp print(`[1, 2]`.value[[]int](), `none`.value[?int](), `3`.value[?int]())
+		"},
+		["[1, 2] none some.(3)", "some.(prop.{c = green, scale = 2.5})"],
+	);
+}
+
+#[test]
 fn relations() {
 	check(
 		indoc! {"

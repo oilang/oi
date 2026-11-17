@@ -960,7 +960,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// The enum instance named by a generic enum or type param.
 	pub(super) fn enum_instance(&self, head: &Spanned<Expr>) -> Option<String> {
 		let te = TypeExpr::from_expr(&head.0)?;
-		let (TypeExpr::Name(name) | TypeExpr::Generic(name, _)) = &te else {
+		let (TypeExpr::Name(name) | TypeExpr::Generic(name, _) | TypeExpr::Resolved(name)) = &te else {
 			return None;
 		};
 		if self.vars.contains_key(name) {
