@@ -552,11 +552,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.derived_str(val, &typ, false), Typ::Str));
 				}
 
-				if sname == role::PTR.path() {
+				let path = format!("{sname}.{method}");
+				if has_ann(self.types.consts.anns, &path, role::INTRINSIC.path()) {
 					let recv = bound.as_ref().map(|(v, _)| *v);
-					match method.as_str() {
-						"array" => return self.ptr_array(recv, type_args, args, expr.1),
-						m @ ("read" | "write") => return self.ptr_copy(m == "read", recv, type_args, args, expr.1),
+					match path.as_str() {
+						"core::ptr.array" => return self.ptr_array(recv, type_args, args, expr.1),
+						"core::ptr.read" => return self.ptr_copy(true, recv, type_args, args, expr.1),
+						"core::ptr.write" => return self.ptr_copy(false, recv, type_args, args, expr.1),
 						_ => {}
 					}
 				}

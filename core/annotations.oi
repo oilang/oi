@@ -40,3 +40,6 @@ pub test! :: fn(name: Ast, body: Ast) Ast {
 
 ## A fn that can run on another thread.
 @lang.{"isolated"} pub isolated :: ()
+
+## A fn the compiler lowers itself, keyed on its path.
+@lang.{"intrinsic"} pub intrinsic :: ()
