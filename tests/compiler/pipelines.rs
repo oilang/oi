@@ -56,6 +56,7 @@ fn or_catches_question_steps() {
 		print(show(7), show(1), both(3), both(1), inner(7), inner(1))
 	"#};
 	check(src, ["missing -1", "84 -1 1 0 43 0"]);
+	assert_clean(src);
 }
 
 #[test]

@@ -641,7 +641,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Build an Option value.
 	pub(super) fn make_option(&mut self, typ: &Typ, some: Option<Value>) -> Value {
 		if let Some(none) = self.types.opt_niche(typ)
-			&& self.types.nullable(typ).is_none()
+			&& !self.needs_release(typ)
 		{
 			return some.unwrap_or_else(|| self.b.ins().iconst(self.int, none));
 		}
@@ -1522,18 +1522,26 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn box_trait_object(&mut self, val: Value, typ: &Typ, tn: &str) -> Value {
 		let vtable = self.vtable_addr(&typ.key(), tn);
 		let mut val = self.copy_in(val, typ);
-		// stash a value without inline slots in a cell
+		let mut shape = typ.clone();
+
+		// stash a value without inline slots in an rc cell
 		if typ.slots().is_none() {
-			let cell = self.call_alloc_bytes(elem_size(typ).max(8));
-			self.st(cell, 0, val);
-			val = cell;
+			val = self.box_value(val, typ);
+			shape = Typ::Ref(Box::new(shape));
 		}
-		self.box_with(vtable, val)
+
+		let desc = self.any_desc(&shape);
+		let boxp = self.box_with(desc, vtable, val);
+		self.temp(boxp, &Typ::Trait(tn.into()));
+		boxp
 	}
 
 	// Box an owned `data` pointer behind `vtable`.
-	pub(super) fn box_with(&mut self, vtable: Value, data: Value) -> Value {
-		self.heap_slots(&[vtable, data])
+	pub(super) fn box_with(&mut self, desc: Value, vtable: Value, data: Value) -> Value {
+		self.untemp(data);
+		let boxp = self.rc_alloc(16, &[desc]);
+		self.store_slots(boxp, &[vtable, data]);
+		boxp
 	}
 
 	// The `(vtable, data)` behind a trait object box.

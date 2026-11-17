@@ -505,7 +505,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.lent_block(&[desc], &[id, val]))
 	}
 
-	fn any_desc(&mut self, typ: &Typ) -> Value {
+	pub(super) fn any_desc(&mut self, typ: &Typ) -> Value {
 		let slots = Typ::Tuple(vec![(None, Typ::ISize), (None, typ.clone())]);
 		self.trace_desc(&format!("any {}", typ.key()), &slots)
 	}
@@ -776,7 +776,7 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 		Typ::Map(..) => Some(("map_share", "map_release")),
 		Typ::Fn(..) | Typ::Closure(..) => Some(("ref_share", "fn_release")),
 		Typ::Annotated(a, t) if helpers::is_isolated(a) => handle_fns(t),
-		Typ::Ref(_) | Typ::Any => Some(("ref_share", "ref_release")),
+		Typ::Ref(_) | Typ::Any | Typ::Trait(_) | Typ::Error => Some(("ref_share", "ref_release")),
 		t if opt_ref(t) => Some(("ref_share", "ref_release")),
 		t => handle_fns(t.newtype()?),
 	}
@@ -790,7 +790,9 @@ fn cyclic(typ: &Typ) -> bool {
 	}
 }
 
-// Whether `typ` is a `?^T`.
+// Whether `typ` is a `?^T` or `?Error`.
 fn opt_ref(typ: &Typ) -> bool {
-	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION.path()).is_some_and(|args| args.starts_with("[^")))
+	let Typ::Enum(n) = typ else { return false };
+	n.strip_prefix(role::OPTION.path())
+		.is_some_and(|args| args.starts_with("[^") || args == "[Error]")
 }

@@ -1038,19 +1038,26 @@ impl<'a, M: Module> Translator<'a, M> {
 		let fits = (catch.throws.iter()).all(|(.., (_, t), s)| self.err_into(t, first, String::new(), *s).is_ok());
 		let want = if fits { first.clone() } else { Typ::Error };
 		let var = self.b.declare_var(cl_type(&want, self.int));
+
 		for (conv, rel, (v, t), span) in &catch.throws {
 			self.b.switch_to_block(*conv);
 			if t.is_unit() != want.is_unit() {
 				return fail("cannot catch both `?T` and `!T`", *span, format!("this throws {t}"));
 			}
+
 			let v = match self.err_into(t, &want, format!("cannot catch {t} as {want}"), *span)? {
 				Some(sig) => self.emit_call(&sig, &[*v]).0,
 				None => self.coerce(*v, t, &want, *span)?.0,
 			};
+			let v = self.copy_in(v, &want);
 			self.b.def_var(var, v);
 			self.b.ins().jump(*rel, &[]);
 			self.b.seal_block(*rel);
 		}
+
+		// `$` outlives the scopes `rel` releases, and reads 0 on other paths
+		self.own_local(var, &want);
+		self.flagged.push(var);
 		Ok((var, want))
 	}
 

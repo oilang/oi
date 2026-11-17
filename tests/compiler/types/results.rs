@@ -48,6 +48,7 @@ fn bare_returns_wrap() {
 		print(find(5), find(0))
 	"#};
 	check(src, r#"ok.(5) err.("not found")"#);
+	assert_clean(src);
 }
 
 #[test]
@@ -60,6 +61,7 @@ fn error_message() {
 		}
 	"#};
 	check(src, ["oops", "boom", "0"]);
+	assert_clean(src);
 }
 
 #[test]
@@ -240,6 +242,7 @@ fn result_context_wraps_the_error() {
 			"0",
 		],
 	);
+	assert_clean(src);
 }
 
 #[test]

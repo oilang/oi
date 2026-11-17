@@ -29,7 +29,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			let vtable = self.vtable_addr(role::SINK.path(), &format!("{}[string]", role::WRITE.path()));
 			let id = self.b.ins().iconst(self.int, sink as i64);
 			let data = self.lent_block(&[], &[id]);
-			let obj = self.lent_object(vtable, data);
+			let none = self.b.ins().iconst(self.int, 0);
+			let obj = self.lent_object(none, vtable, data);
 			self.emit_call(&sig, &[val, obj]);
 		} else if let Some(sig) = own(self, "str").filter(|sig| sig.params.len() == 1 && sig.ret == Typ::Str) {
 			let s = self.emit_call(&sig, &[val]).0;
@@ -225,11 +226,13 @@ impl<'a, M: Module> Translator<'a, M> {
 					unreachable!("no args to check")
 				};
 				self.raw(s, sink);
+				self.release_value(s, &Typ::Str);
 			}
 
 			Typ::Error => {
 				let s = self.error_message(val);
 				self.emit_print(s, &Typ::Str, quote, sink);
+				self.release_value(s, &Typ::Str);
 			}
 
 			Typ::Rune => {

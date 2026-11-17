@@ -552,6 +552,7 @@ fn scalar_trait_objects() {
 		print(n, x.area(), x)
 	"#};
 	check(src, "6 9.0 3.0");
+	assert_clean(src);
 	let twice = [
 		"Twice :: trait { twice: fn(self) Self }",
 		"int : Twice < { twice :: fn(self) Self do self }",
@@ -585,9 +586,12 @@ fn self_return_reboxes_through_object() {
 			clone :: fn(self) Self { Dog.{ "{self.n}2" } }
 		}
 		p : Pet : Dog.{ "rex" }
-		print(p.clone().name(), Dog.{ "a" }.clone().name())
+		f :: fn(mut p: Pet) string { p.clone().name() }
+		d := Dog.{ "b" }
+		print(p.clone().name(), Dog.{ "a" }.clone().name(), f(mut d))
 	"#};
-	check(src, "rex2 a2");
+	check(src, "rex2 a2 b2");
+	assert_clean(src);
 }
 
 #[test]
@@ -609,6 +613,7 @@ fn option_self_return_reboxes_through_object() {
 		}
 	"#};
 	check(src, "max end");
+	assert_clean(src);
 
 	let src = indoc! {r#"
 		Pet :: trait { next : fn(self, k: int) ?Self }

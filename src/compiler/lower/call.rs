@@ -571,7 +571,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				} else {
 					cell
 				};
-				return Ok((self.lent_object(vtable, data), to.clone(), Some((cell, entry))));
+				let desc = self.any_desc(&typ);
+				return Ok((self.lent_object(desc, vtable, data), to.clone(), Some((cell, entry))));
 			}
 			return Ok((cell, typ, Some((cell, entry))));
 		}
@@ -612,11 +613,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Pass the address of the caller's binding.
-	pub(super) fn lent_object(&mut self, vtable: Value, data: Value) -> Value {
-		let slot = self.stack_slot(24);
-		let obj = self.b.ins().iadd_imm(slot, 8);
-		self.store_slots(slot, &[obj, vtable, data]);
-		slot
+	pub(super) fn lent_object(&mut self, desc: Value, vtable: Value, data: Value) -> Value {
+		let obj = self.lent_block(&[desc], &[vtable, data]);
+		self.frame_slots(&[obj])
 	}
 
 	pub(super) fn lend_mut(&mut self, inner: &Spanned<Expr>) -> Result<(Value, Typ, Lent), Diagnostic> {
@@ -1147,16 +1146,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		let kept = self.pack_call.take_if(|_| opt);
 		let (val, typ) = self.call_value(method, Callee::Addr(fnptr), &typ, args, Some(data), span)?;
 		self.pack_call = self.pack_call.or(kept);
+
 		if opt {
 			let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 			self.on_variant(tag, 1, done, |s| {
-				let data = s.ld_word(val, 8);
-				let boxv = s.box_with(vtable, data);
+				let (desc, data) = (s.ld_word(boxv, -16), s.ld_word(val, 8));
+				let boxv = s.box_with(desc, vtable, data);
 				s.st(val, 8, boxv);
 			});
 			self.enter(done);
 		}
-		Ok((if bare { self.box_with(vtable, val) } else { val }, typ))
+		if !bare {
+			return Ok((val, typ));
+		}
+
+		let desc = self.ld_word(boxv, -16);
+		let boxp = self.box_with(desc, vtable, val);
+		self.temp(boxp, &typ);
+		Ok((boxp, typ))
 	}
 
 	// Dyn-dispatch `message()` on a boxed `Error`.
