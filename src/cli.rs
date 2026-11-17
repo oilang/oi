@@ -96,6 +96,9 @@ pub enum Command {
 	/// Start an interactive Oi REPL.
 	Repl,
 
+	/// Serve the language server over stdio.
+	Lsp,
+
 	/// Install a binary or module into OI_HOME.
 	Install {
 		/// Path to install. Defaults to the current directory.

@@ -28,6 +28,8 @@ oi-runtime = { path = "base/runtime", artifact = "staticlib", lib = true }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 reedline = "0.48.0"
 serde = { version = "1", features = ["derive"] }
+lsp-server = "0.10.0"
+serde_json = "1"
 
 [dev-dependencies]
 pretty_assertions = "1.4"
