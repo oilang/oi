@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use oi::diagnostics::ColorMode;
+use oi::diagnostics::{ColorMode, ErrorFormat};
 use oi::driver::DebugOpts;
 
 pub const VERSION: &str = concat!(
@@ -21,6 +21,10 @@ pub struct Cli {
 	/// Colorize diagnostics.
 	#[arg(long, global = true, value_enum, default_value = "auto")]
 	pub color: ColorMode,
+
+	/// Render diagnostics for humans or as JSON lines.
+	#[arg(long, global = true, value_enum, default_value = "human")]
+	pub error_format: ErrorFormat,
 
 	#[command(subcommand)]
 	pub command: Option<Command>,

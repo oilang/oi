@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
 use chumsky::error::{Rich, RichReason};
+use serde_json::json;
 
 use crate::Reported;
 use crate::ast::Span;
@@ -20,6 +21,22 @@ pub enum ColorMode {
 	Auto,
 	Always,
 	Never,
+}
+
+/// `--error-format`, set once by the CLI.
+pub static ERROR_FORMAT: OnceLock<ErrorFormat> = OnceLock::new();
+
+#[derive(clap::ValueEnum, Clone, Copy, Default, PartialEq)]
+pub enum ErrorFormat {
+	#[default]
+	Human,
+	Json,
+}
+
+// Get the 1-based line and column a source prefix ends at.
+fn line_col(before: &str) -> (usize, usize) {
+	let line = before.rsplit('\n').next().unwrap_or_default();
+	(before.matches('\n').count() + 1, line.chars().count() + 1)
 }
 
 // A source file at its program-wide byte offset.
@@ -74,9 +91,7 @@ impl SourceMap {
 	// Get actual source/metadata for a program-wide span.
 	pub fn locate_span(&self, span: Range<usize>) -> (&str, usize, usize, &str) {
 		let (file, local) = self.locate(&span);
-		let before = &file.src[..local.start];
-		let line = before.matches('\n').count() + 1;
-		let col = before[before.rfind('\n').map_or(0, |i| i + 1)..].chars().count() + 1;
+		let (line, col) = line_col(&file.src[..local.start]);
 		(&file.name, line, col, &file.src[local])
 	}
 
@@ -132,6 +147,29 @@ impl Diagnostic {
 	// Render to stderr, rebasing the span into its owning file.
 	pub fn report_mapped(&self, map: &SourceMap) -> Reported {
 		let (file, span) = map.locate(&self.span);
+		// one diagnostic per line, its span in bytes and 1-based lines and columns of `text`
+		if ERROR_FORMAT.get() == Some(&ErrorFormat::Json) {
+			let src = &file.src;
+			let (start, end) = (span.start.min(src.len()), span.end.min(src.len()));
+			let first = src[..start].rfind('\n').map_or(0, |i| i + 1);
+			let last = src[end..].find('\n').map_or(src.len(), |i| end + i);
+			let point = |offset: usize| {
+				let (line, col) = line_col(&src[..offset]);
+				json!({ "offset": offset, "line": line, "col": col })
+			};
+
+			let diag = json!({
+				"file": file.name,
+				"span": { "start": point(start), "end": point(end) },
+				"text": src[first..last],
+				"message": self.message,
+				"label": self.label,
+				"note": self.note,
+			});
+			eprintln!("{diag}");
+			return Reported;
+		}
+
 		let id = file.name.clone();
 		let color = match COLOR.get().copied().unwrap_or_default() {
 			ColorMode::Always => true,
