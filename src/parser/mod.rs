@@ -98,6 +98,29 @@ fn semi<'token, I: Tokens<'token>, O>(p: impl Rule<'token, I, O>) -> impl Rule<'
 	p.then_ignore(just(Token::Semicolon).or_not())
 }
 
+// Statements, erroring on two that share a line.
+fn lines<'token, I: Tokens<'token>>(
+	stmt: impl Rule<'token, I, Spanned<Expr>>,
+	src: &'token str,
+	origin: usize,
+) -> impl Rule<'token, I, Vec<Spanned<Expr>>> {
+	semi(stmt)
+		.repeated()
+		.collect::<Vec<_>>()
+		.validate(move |stmts: Vec<Spanned<Expr>>, _, emitter| {
+			for pair in stmts.windows(2) {
+				let gap = src.get(pair[0].1.end - origin..pair[1].1.start - origin);
+				if !gap.is_none_or(|gap| gap.contains(['\n', ';'])) {
+					emitter.emit(I::fault(
+						pair[1].1,
+						"consecutive statements on a line must be separated by `;`",
+					));
+				}
+			}
+			stmts
+		})
+}
+
 // Matrix literals.
 fn matrix<'token, I: Tokens<'token>>(
 	p: impl Rule<'token, I, Spanned<Expr>>,
@@ -549,23 +572,7 @@ where
 
 	// blocks
 	let do_body = just(Token::Do).ignore_then(do_stmt.clone()).map(|s| vec![s]);
-	let lines =
-		semi(stmt.clone())
-			.repeated()
-			.collect::<Vec<_>>()
-			.validate(move |stmts: Vec<Spanned<Expr>>, _, emitter| {
-				for pair in stmts.windows(2) {
-					let gap = src.get(pair[0].1.end - origin..pair[1].1.start - origin);
-					if !gap.is_none_or(|gap| gap.contains(['\n', ';'])) {
-						emitter.emit(I::fault(
-							pair[1].1,
-							"consecutive statements on a line must be separated by `;`",
-						));
-					}
-				}
-				stmts
-			});
-	block.define(brace(lines).or(do_body));
+	block.define(brace(lines(stmt.clone(), src, origin)).or(do_body));
 
 	let p = Parsers {
 		access,
@@ -598,5 +605,5 @@ where
 	};
 	expr.define(definition::definition(&p, header_expr, header_cond, juxt_expr));
 	stmt::stmt(&p, stmt, do_stmt, place, bind);
-	item::item(&p, item, attr_macro, anon_fields)
+	lines(item::item(&p, item, attr_macro, anon_fields), src, origin).then_ignore(end())
 }

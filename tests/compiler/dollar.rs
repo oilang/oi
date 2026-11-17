@@ -17,6 +17,6 @@ fn dollar() {
 
 #[test]
 fn dollar_rejects() {
-	fail("f :: fn(x: int) int { $.0 } f(9)", "cannot access a field of int");
-	fail("f :: fn(x: int, y: int) int { $.5 } f(1, 2)", "out of range");
+	fail("f :: fn(x: int) int { $.0 }; f(9)", "cannot access a field of int");
+	fail("f :: fn(x: int, y: int) int { $.5 }; f(1, 2)", "out of range");
 }

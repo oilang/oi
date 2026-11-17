@@ -25,7 +25,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 	mut item: Rec<'token, I, Spanned<Expr>>,
 	mut attr_macro: Rec<'token, I, Spanned<Expr>>,
 	mut anon_fields: Rec<'token, I, Vec<Param>>,
-) -> P<'token, I, Vec<Spanned<Expr>>> {
+) -> P<'token, I, Spanned<Expr>> {
 	let name_head = p.def_name.clone().then(p.type_params.clone());
 	let item_head = name_head.clone().then_ignore(just(Token::DoubleColon));
 	let vis = just(Token::Pub)
@@ -471,9 +471,5 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.or(module_decl)
 		.or(use_decl)
 		.or(p.stmt.clone())
-		.then_ignore(just(Token::Semicolon).or_not())
-		.repeated()
-		.collect()
-		.then_ignore(end())
 		.boxed()
 }

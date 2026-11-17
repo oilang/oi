@@ -119,7 +119,7 @@ fn match_sub_patterns() {
 	"#};
 	check(src, ["b", "near 7"]);
 	fail(
-		"n: ?int = .none match n { .some.(0) => 1, .none => 2 }",
+		"n: ?int = .none; match n { .some.(0) => 1, .none => 2 }",
 		"missing: some",
 	);
 
@@ -261,7 +261,7 @@ fn match_arm_guard() {
 	"#};
 	check(src, ["small 2", "small 3", "big"]);
 	fail(
-		r#"x: ?int = 4 match x { .some.(n) if n > 3 => (), .none => () }"#,
+		r#"x: ?int = 4; match x { .some.(n) if n > 3 => (), .none => () }"#,
 		"missing: some",
 	);
 }

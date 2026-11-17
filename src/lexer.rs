@@ -694,7 +694,7 @@ pub fn lex_at(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 			Token::Minus if i > 0 => {
 				let before = text(raw[i - 1].1.end, span.start);
 				let after = raw.get(i + 1).map(|(_, next)| text(span.end, next.start));
-				let lead = !before.is_empty() && !before.contains('\n') && after == Some("");
+				let lead = !before.is_empty() && after == Some("");
 				out.push((if lead { Token::SpaceMinus } else { Token::Minus }, *span));
 			}
 			Token::Not if i > 0 && !text(raw[i - 1].1.end, span.start).is_empty() => match raw.get(i + 1) {

@@ -31,7 +31,7 @@ fn wrong_return_type() {
 		bad()
 	"#};
 	fail(src, "expected int return value");
-	fail("bad :: fn() int { return 2.5 } bad()", "truncated");
+	fail("bad :: fn() int { return 2.5 }; bad()", "truncated");
 }
 
 #[test]

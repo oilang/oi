@@ -161,6 +161,16 @@ fn newline_led() {
 		print(f(1), f(5), y)
 	"};
 	check(src, "some.(2) none 5");
+
+	// newline led glued minus starts a negation
+	let src = indoc! {"
+		f :: fn(x: bool) int {
+			if x { return 63 }
+			-1
+		}
+		print(f(true), f(false))
+	"};
+	check(src, "63 -1");
 }
 
 #[test]

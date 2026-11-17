@@ -27,6 +27,10 @@ fn blocks_are_expressions() {
 fn same_line_statements_need_a_semicolon() {
 	check("{ 1; 2 }", "2");
 	fail("{ 1 2 }", "consecutive statements on a line must be separated by `;`");
+	fail(
+		"print(1) print(2)",
+		"consecutive statements on a line must be separated by `;`",
+	);
 }
 
 #[test]
