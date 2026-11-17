@@ -91,6 +91,7 @@ pub(super) struct Vars {
 	map: HashMap<String, Local>,
 	log: Vec<(String, Option<Local>)>,
 	marks: Vec<usize>,
+	moved: HashMap<String, Range<usize>>,
 }
 
 impl std::ops::Deref for Vars {
@@ -119,7 +120,10 @@ impl Vars {
 		for (name, old) in self.log.drain(mark..).rev() {
 			match old {
 				Some(local) => self.map.insert(name, local),
-				None => self.map.remove(&name),
+				None => {
+					self.moved.remove(&name);
+					self.map.remove(&name)
+				}
 			};
 		}
 	}
@@ -136,6 +140,12 @@ impl Vars {
 		let old = self.map.remove(name);
 		self.log(name.to_string(), &old);
 		old
+	}
+
+	// Unbinds `name`, remembering where it moved.
+	pub(super) fn move_out(&mut self, name: &str, span: Range<usize>) {
+		self.remove(name);
+		self.moved.insert(name.to_string(), span);
 	}
 
 	// Ends every unwrap below `path`.

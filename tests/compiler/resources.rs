@@ -15,7 +15,9 @@ fn reverse_drop_order() {
 
 #[test]
 fn bind_move_kills_source() {
-	fail([FILE, "f :: File.{fd = 1}", "g :: f", "print(f)"], "undefined variable");
+	let out = fail([FILE, "f :: File.{fd = 1}", "g :: f", "print(f)"], "`f` was moved");
+	assert!(out.contains("moved here"), "{out}");
+	fail([FILE, "f :: File.{fd = 1}", "if true { g :: f }", "print(f)"], "`f` was moved");
 }
 
 #[test]
@@ -95,11 +97,11 @@ fn resource_field_makes_its_owner_one() {
 	);
 	fail(
 		[FILE, owner, "h :: Handle.{file = File.{fd = 1}}", "g :: h", "print(h)"],
-		"undefined variable",
+		"was moved",
 	);
 	fail(
 		[FILE, owner, "f :: File.{fd = 1}", "h :: Handle.{file = f}", "print(f)"],
-		"undefined variable",
+		"was moved",
 	);
 }
 
@@ -114,10 +116,7 @@ fn array_elements_drop_with_their_last_owner() {
 		],
 		["built", "drop 1", "drop 2"],
 	);
-	fail(
-		[FILE, "f :: File.{fd = 1}", "a :: [f]", "print(f)"],
-		"undefined variable",
-	);
+	fail([FILE, "f :: File.{fd = 1}", "a :: [f]", "print(f)"], "was moved");
 }
 
 #[test]
@@ -180,7 +179,7 @@ fn overwrite_drops_the_old_value_and_moves_the_new() {
 	);
 	fail(
 		[FILE, "f := File.{fd = 1}", "g :: File.{fd = 2}", "f = g", "print(g)"],
-		"undefined variable",
+		"was moved",
 	);
 }
 
@@ -192,7 +191,7 @@ fn a_move_arg_transfers_ownership() {
 		[FILE, eat, f, "eat(move f)", r#"print("after")"#],
 		["ate 1", "drop 1", "after"],
 	);
-	fail([FILE, eat, f, "eat(move f)", "print(f.fd)"], "undefined variable");
+	fail([FILE, eat, f, "eat(move f)", "print(f.fd)"], "was moved");
 	fail([FILE, eat, f, "eat(f)"], "missing `move` at the callsite");
 	check([FILE, eat, "eat(File.{fd = 2})"], ["ate 2", "drop 2"]);
 	let close = r#"File :< { close :: fn(move self) { print("closed", self.fd) } }"#;
@@ -232,7 +231,7 @@ fn a_branch_move_drops_at_scope_exit() {
 	);
 	fail(
 		[FILE, go, "f :: File.{fd = 1}", "if true { eat(move f) }", "print(f.fd)"],
-		"undefined variable",
+		"was moved",
 	);
 }
 
@@ -245,7 +244,7 @@ fn move_self_consumes_the_receiver() {
 	);
 	fail(
 		[FILE, close, "f :: File.{fd = 1}", "f.close()", "print(f)"],
-		"undefined variable",
+		"was moved",
 	);
 }
 
@@ -262,7 +261,7 @@ fn an_object_cannot_hand_over_what_it_borrows() {
 fn fixed_array_elements_drop_with_their_last_owner() {
 	let a = "a : [2]File : .[File.{fd = 1}, File.{fd = 2}]";
 	check([FILE, a, "b :: a", r#"print("built")"#], ["built", "drop 1", "drop 2"]);
-	fail([FILE, a, "b :: a", "print(a[0].fd)"], "undefined variable");
+	fail([FILE, a, "b :: a", "print(a[0].fd)"], "was moved");
 }
 
 #[test]
@@ -281,7 +280,7 @@ fn boxed_payloads_drop_with_their_box() {
 	assert_clean([FILE, v, "o: ?File = File.{fd = 1}", "h :: V.Held.(File.{fd = 2})"]);
 	fail(
 		[FILE, v, "f :: File.{fd = 1}", "h :: V.Held.(f)", "print(f)"],
-		"undefined variable",
+		"was moved",
 	);
 }
 
@@ -534,7 +533,7 @@ fn a_drop_claim_overrides_inferred_copy() {
 		g := h
 		print(h)
 	"};
-	fail([REF, handle], "undefined variable");
+	fail([REF, handle], "was moved");
 }
 
 #[test]

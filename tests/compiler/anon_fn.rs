@@ -187,7 +187,7 @@ fn apply_a_fn_value_that_isnt_a_name() {
 fn move_capture_rejections() {
 	fail(
 		["xs :: [7]", "f :: fn [move xs] () int { xs[0] }", "print(xs)"],
-		"undefined variable",
+		"was moved",
 	);
 	fail(
 		[

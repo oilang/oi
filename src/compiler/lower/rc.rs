@@ -695,7 +695,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.scopes[depth].retain(|(v, _)| *v != local.var);
 		}
-		self.vars.remove(name);
+		self.vars.move_out(name, span);
 		Ok(self.read_local(local))
 	}
 

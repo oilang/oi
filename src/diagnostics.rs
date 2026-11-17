@@ -108,6 +108,7 @@ pub struct Diagnostic {
 	span: Range<usize>,
 	label: Option<String>,
 	note: Option<String>,
+	also: Option<Box<(Range<usize>, String)>>,
 }
 
 impl Diagnostic {
@@ -117,6 +118,7 @@ impl Diagnostic {
 			span,
 			label: None,
 			note: None,
+			also: None,
 		}
 	}
 
@@ -131,6 +133,11 @@ impl Diagnostic {
 
 	pub fn with_note(mut self, note: impl Into<String>) -> Self {
 		self.note = Some(note.into());
+		self
+	}
+
+	pub fn with_also(mut self, span: Range<usize>, label: impl Into<String>) -> Self {
+		self.also = Some(Box::new((span, label.into())));
 		self
 	}
 
@@ -188,6 +195,10 @@ impl Diagnostic {
 					.with_message(self.label.as_deref().unwrap_or("here"))
 					.with_color(Color::Red),
 			);
+		if let Some((at, label)) = self.also.as_deref() {
+			let (_, local) = map.locate(at);
+			builder = builder.with_label(Label::new((id.clone(), local)).with_message(label).with_color(Color::Blue));
+		}
 		if let Some(note) = &self.note {
 			builder = builder.with_note(note);
 		}

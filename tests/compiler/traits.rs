@@ -535,7 +535,7 @@ fn iterator_adapters_consume_their_receiver() {
 		doubled := it.map { $ * 2 }
 		print(it.next())
 	"#};
-	fail(src, "undefined variable `it`");
+	fail(src, "`it` was moved");
 }
 
 #[test]
