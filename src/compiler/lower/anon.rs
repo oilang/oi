@@ -186,7 +186,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if resolved.is_empty() {
 			let typ = Typ::Fn(params, Box::new(sig.ret.clone()));
 			let typ = match self.pure {
-				true => Typ::Annotated(vec![role::PURE.into()], typ.into()),
+				true => Typ::Annotated(vec![role::PURE.path().into()], typ.into()),
 				false => sig.ctx_marked(typ),
 			};
 			return Ok(((self.fn_object(sig.id), typ), sig.id));
@@ -215,7 +215,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let mut typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), owns));
 		if isolated {
-			typ = Typ::Annotated(vec![role::ISOLATED.into()], typ.into());
+			typ = Typ::Annotated(vec![role::ISOLATED.path().into()], typ.into());
 		}
 		self.temp(env, &typ);
 		Ok(((env, typ), sig.id))

@@ -52,7 +52,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let required = |f: &&FieldDef| {
 			f.annotations
 				.iter()
-				.any(|a| matches!(&a.0, Expr::Ident(n) if n == role::REQUIRED))
+				.any(|a| matches!(&a.0, Expr::Ident(n) if n == role::REQUIRED.path()))
 				|| (f.default.is_none() && self.nozero(&f.typ).is_some())
 		};
 		for (i, f) in struct_fields.iter().enumerate().filter(|(_, f)| required(f)) {
@@ -135,7 +135,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.nozero(elem);
 		}
 		let name = typ.nominal()?;
-		if has_ann(self.types.consts.anns, rc::base_name(name), role::NOZERO) {
+		if has_ann(self.types.consts.anns, rc::base_name(name), role::NOZERO.path()) {
 			return Some(name);
 		}
 		match typ {
@@ -1149,7 +1149,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if let Typ::Annotated(anns, inner) = target
 			&& let Typ::Fn(ps, _) = &**inner
-			&& anns.iter().any(|a| a == role::C)
+			&& anns.iter().any(|a| a == role::C.path())
 		{
 			let value = match &value.0 {
 				Expr::Annotated(a, v) if ann_names(self.types.scope, a) == *anns => v,
@@ -1218,7 +1218,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& **inner == *to
 			&& ctx_mark(anns).is_none()
 		{
-			if anns.iter().any(|a| a == role::C)
+			if anns.iter().any(|a| a == role::C.path())
 				&& let Typ::Fn(ps, _) = &**inner
 			{
 				return match self.c_callback {

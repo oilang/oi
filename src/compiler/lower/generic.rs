@@ -371,7 +371,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			foreign,
 			ctx: def.ctx.clone(),
 			unsafe_call: false,
-			pure: def.pure || has_ann(self.types.consts.anns, name, role::PURE),
+			pure: def.pure || has_ann(self.types.consts.anns, name, role::PURE.path()),
 			default: false,
 		};
 		self.out.mono.insert(sym.clone(), fn_sig.clone());

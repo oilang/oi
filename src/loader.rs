@@ -661,7 +661,8 @@ impl Loader {
 			};
 			if !anns.is_empty()
 				&& item.0.def_name().is_none()
-				&& !matches!(&item.0, Expr::Bind { value: Some(v), .. } if matches!(v.0, Expr::Foreign | Expr::Comp(_)))
+				&& !matches!(&item.0, Expr::Bind { value: Some(v), mutable, .. }
+					if matches!(v.0, Expr::Foreign | Expr::Comp(_)) || !main && !mutable && is_const_value(&v.0))
 			{
 				return Err(err(
 					"annotations only attach to definitions",

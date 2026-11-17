@@ -105,7 +105,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn check_noinit(&self, name: &str, span: Span) -> Result<(), Diagnostic> {
 		let base = rc::base_name(name);
 		let owner = module_of(base).unwrap_or_default();
-		if owner == self.types.scope.module || !has_ann(self.types.consts.anns, base, role::NOINIT) {
+		if owner == self.types.scope.module || !has_ann(self.types.consts.anns, base, role::NOINIT.path()) {
 			return Ok(());
 		}
 		let msg = format!("can't build `{}` outside module `{owner}`", display_name(name));

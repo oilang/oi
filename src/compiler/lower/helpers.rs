@@ -138,12 +138,12 @@ pub(super) fn cmp_cc(op: BinOp) -> (IntCC, FloatCC) {
 
 // Whether a list of annotations carry the `@pure` contract.
 pub(super) fn is_pure(anns: &[String]) -> bool {
-	anns.iter().any(|a| a == role::PURE)
+	anns.iter().any(|a| a == role::PURE.path())
 }
 
 // Whether a list of annotations mark an `@isolated` fn.
 pub(super) fn is_isolated(anns: &[String]) -> bool {
-	anns.iter().any(|a| a == role::ISOLATED)
+	anns.iter().any(|a| a == role::ISOLATED.path())
 }
 
 // The type of a `@ctx` annotation.

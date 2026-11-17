@@ -250,12 +250,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let synth;
 		let args = if args.len() + self_n + 1 == sig.params.len()
 			&& let Some(Typ::Struct(n, _)) = sig.params.last().map(|p| &p.typ)
-			&& self
-				.types
-				.consts
-				.anns
-				.get(n)
-				.is_some_and(|anns| anns.iter().any(|(e, _)| matches!(e, Expr::Ident(q) if q == role::PARAMS)))
+			&& has_ann(self.types.consts.anns, n, role::PARAMS.path())
 		{
 			synth = [args, &[(Expr::Record(vec![]), span)]].concat();
 			&synth[..]
@@ -852,7 +847,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		recv: Option<Value>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let c_abi = matches!(typ, Typ::Annotated(anns, _) if anns.iter().any(|a| a == role::C));
+		let c_abi = matches!(typ, Typ::Annotated(anns, _) if anns.iter().any(|a| a == role::C.path()));
 		let want = match typ {
 			Typ::Annotated(anns, _) => ctx_mark(anns),
 			_ => None,
@@ -1184,6 +1179,6 @@ impl<'a, M: Module> Translator<'a, M> {
 // Mark a C call's fn-typed params `@c`, so their args pass a C address.
 fn c_fn_params(params: &mut [FnParam]) {
 	for p in params.iter_mut().filter(|p| matches!(p.typ, Typ::Fn(..))) {
-		p.typ = Typ::Annotated(vec![role::C.into()], Box::new(p.typ.clone()));
+		p.typ = Typ::Annotated(vec![role::C.path().into()], Box::new(p.typ.clone()));
 	}
 }

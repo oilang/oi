@@ -638,7 +638,7 @@ impl TypeCtx<'_> {
 	pub fn unisolated(&self, typ: &Typ, seen: &mut Vec<String>) -> Option<Typ> {
 		let parts = match typ {
 			Typ::Ref(_) | Typ::Any | Typ::Closure(..) => return Some(typ.clone()),
-			Typ::Annotated(a, _) if a.iter().any(|a| a == role::ISOLATED) => return None,
+			Typ::Annotated(a, _) if a.iter().any(|a| a == role::ISOLATED.path()) => return None,
 			Typ::Enum(n) if !seen.contains(n) => {
 				seen.push(n.clone());
 				let vs = self.enums.borrow().get(n).cloned().unwrap_or_default();

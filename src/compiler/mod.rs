@@ -119,7 +119,7 @@ impl FnSig {
 	pub(crate) fn ctx_marked(&self, typ: Typ) -> Typ {
 		match self.ctx.as_deref() {
 			Some(CONTEXT) => typ,
-			None if self.foreign => Typ::Annotated(vec![role::C.into()], typ.into()),
+			None if self.foreign => Typ::Annotated(vec![role::C.path().into()], typ.into()),
 			t => Typ::Annotated(vec![ctx_name(t)], Box::new(typ)),
 		}
 	}
@@ -170,11 +170,12 @@ pub(crate) fn check_c_sig(types: TypeCtx, name: &str, ps: &[FnParam], ret: &Typ,
 
 // Handle annotated types.
 pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: Span) -> Result<(), Diagnostic> {
-	let c = |n: &String| n == role::C;
+	let c = |n: &String| n == role::C.path();
 	match (names, typ) {
 		([n], Typ::Fn(params, ret)) if c(n) => check_c_sig(types, "@c fn", params, ret, span),
 		([n], Typ::Closure(..)) if c(n) => fail("`@c` fns can't capture", span, "C has nowhere to keep an environment"),
-		([n], Typ::Fn(..)) if n == role::PURE || n == role::ISOLATED || n.starts_with(role::CTX) => Ok(()),
+		([n], Typ::Fn(..)) if matches!(role::key(n), Some(role::PURE | role::ISOLATED)) => Ok(()),
+		([n], Typ::Fn(..)) if n.starts_with(role::CTX) => Ok(()),
 		_ => {
 			let msg = format!("`{}{typ}` isn't a type", marks(names));
 			fail(msg, span, "only `@c`, `@pure`, `@isolated`, or `@ctx` on a fn, so far")
@@ -376,7 +377,7 @@ pub(crate) fn has_ann(anns: &HashMap<String, Vec<Annotation>>, name: &str, role:
 }
 
 pub(crate) fn is_c_struct(anns: &HashMap<String, Vec<Annotation>>, name: &str) -> bool {
-	has_ann(anns, name, role::C)
+	has_ann(anns, name, role::C.path())
 }
 
 const BARE_ANN: &str = "a bare annotation names a unit or struct const";
@@ -384,11 +385,12 @@ const BARE_ANN: &str = "a bare annotation names a unit or struct const";
 impl<'a> TypeCtx<'a> {
 	// Check that every struct marked `@c` has a C layout.
 	fn check_c_structs(self) -> Result<(), Diagnostic> {
+		let c = role::C.path();
 		for (name, fields) in self.structs.iter().filter(|(name, _)| self.is_c(name)) {
 			let Some(bad) = fields.iter().find(|f| f.typ.c_size_align(&self).is_none()) else {
 				continue;
 			};
-			let span = self.consts.anns[name].iter().find(|a| ann(a, role::C).is_some()).unwrap().1;
+			let span = self.consts.anns[name].iter().find(|a| ann(a, c).is_some()).unwrap().1;
 			let msg = format!("`{}.{}` has no C representation", display_name(name), bad.name);
 			return fail(msg, span, format!("`{}` is not a type with a known C layout", bad.typ));
 		}
@@ -1111,7 +1113,7 @@ impl<M: Module> Compiler<M> {
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
 		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {
 			let Expr::Claim { typ, fields, .. } = e else { continue };
-			let open = has_ann(&self.annotations, typ, role::OPEN);
+			let open = has_ann(&self.annotations, typ, role::OPEN.path());
 			if !fields.is_empty() && !open {
 				let msg = format!("`{typ}` can't gain fields");
 				return fail(msg, *span, "only `@open` structs gain fields");
@@ -1414,7 +1416,7 @@ impl<M: Module> Compiler<M> {
 					let test_ann = (!program.core_origin.contains(&scope.module))
 						.then(|| self.annotations.get(name))
 						.flatten()
-						.and_then(|anns| anns.iter().find_map(|a| ann(a, role::TEST)));
+						.and_then(|anns| anns.iter().find_map(|a| ann(a, role::TEST.path())));
 					if let Some(fields) = test_ann {
 						if !self.include_tests {
 							continue;
@@ -1558,7 +1560,7 @@ impl<M: Module> Compiler<M> {
 					let mut fs: Vec<FieldDef> = fields.iter().map(|p| field(&types, p)).collect::<Result<_, _>>()?;
 					if is_c_struct(&self.annotations, name) {
 						for f in fs.iter_mut().filter(|f| matches!(f.typ, Typ::Fn(..))) {
-							f.typ = Typ::Annotated(vec![role::C.into()], Box::new(f.typ.clone()));
+							f.typ = Typ::Annotated(vec![role::C.path().into()], Box::new(f.typ.clone()));
 						}
 					}
 					for (p, f) in fields.iter().zip(&fs) {
@@ -1602,7 +1604,7 @@ impl<M: Module> Compiler<M> {
 
 		// implicit traits
 		for (tn, anns) in &self.annotations {
-			if !traits.contains_key(tn.as_str()) || !anns.iter().any(|a| ann(a, role::IMPLICIT).is_some()) {
+			if !traits.contains_key(tn.as_str()) || !anns.iter().any(|a| ann(a, role::IMPLICIT.path()).is_some()) {
 				continue;
 			}
 
@@ -1705,18 +1707,18 @@ impl<M: Module> Compiler<M> {
 			let anns = self.annotations.get(&item.key);
 			let ann_span = |target| anns.into_iter().flatten().find_map(|a| Some((ann(a, target)?, a.1)));
 			let is_unsafe = ann_span("unsafe").is_some();
-			let pure = ann_span(role::PURE).map(|(_, s)| s);
+			let pure = ann_span(role::PURE.path()).map(|(_, s)| s);
 			if let Some(span) = pure
 				&& access.contains(&Access::Mut)
 			{
 				let msg = "a `@pure` fn can't take `mut` params";
 				return fail(msg, span, "mutation is a side effect");
 			}
-			if let Some((_, span)) = ann_span(role::C) {
+			if let Some((_, span)) = ann_span(role::C.path()) {
 				let msg = "`@c` marks a C layout, not a fn";
 				return fail(msg, span, "drop it, or `@export` the fn for a C symbol");
 			}
-			if let Some((fields, span)) = ann_span(role::EXPORT) {
+			if let Some((fields, span)) = ann_span(role::EXPORT.path()) {
 				check_c_sig(types, &item.key, &params, &ret, span)?;
 				let sym = match fields.first() {
 					Some((_, (Expr::String(s), _))) if !s.is_empty() => s.clone(),
@@ -1762,8 +1764,9 @@ impl<M: Module> Compiler<M> {
 			let cross = *self.module.isa().triple() != Triple::host();
 
 			// `@link`
+			let link = role::LINK.path();
 			for a in self.annotations.get(name).into_iter().flatten() {
-				let Some(fields) = ann(a, role::LINK) else { continue };
+				let Some(fields) = ann(a, link) else { continue };
 
 				let mut lib = None;
 				for (label, (v, _)) in fields {
@@ -2415,7 +2418,7 @@ impl<M: Module> Compiler<M> {
 		for (i, ((name, typ, access), &val)) in def.params.iter().zip(param_vals.iter()).enumerate() {
 			// a C fn pointer param is the bare address C passed
 			let typ = &match typ {
-				Typ::Fn(..) if def.foreign => Typ::Annotated(vec![role::C.into()], typ.clone().into()),
+				Typ::Fn(..) if def.foreign => Typ::Annotated(vec![role::C.path().into()], typ.clone().into()),
 				typ => typ.clone(),
 			};
 			let cl = trans.b.func.dfg.value_type(val);

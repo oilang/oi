@@ -289,7 +289,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if let (Typ::TupleStruct(p, _), Typ::Annotated(anns, _)) = (target, &typ)
 			&& p == role::PTR.path()
-			&& anns.iter().any(|a| a == role::C)
+			&& anns.iter().any(|a| a == role::C.path())
 		{
 			return Ok((val, target.clone()));
 		}
