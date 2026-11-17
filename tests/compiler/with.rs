@@ -89,7 +89,21 @@ fn glob_import() {
 		print(f())
 	"};
 	check(src, ["7", "9"]);
+	let src = indoc! {r#"
+		with use time
+		with use sync
+		with use json
+		@Time.{ 1 } P :: struct { Time, at: Time }
+		p := P.{ Time.{ 2 }, Time.{ 3 } }
+		print(p.ns + p.at.ns + spawn!(4).wait())
+		print(parse("[1, 2]") or panic!())
+	"#};
+	check(src, ["9", "[1,2]"]);
 	fail("with use math.{ max }", "`with` needs a module import");
+	fail(
+		["with use json", "with use encoding.base64", "f :: fn(d: decode) {}"],
+		"`decode` is ambiguous",
+	);
 }
 
 #[test]

@@ -78,6 +78,7 @@ pub struct Scope {
 	pub module: String,
 	pub files: Vec<(Range<usize>, Scope)>,
 	pub withs: Vec<String>,
+	pub clashes: HashMap<String, String>,
 }
 
 // Whether `name` is a reserved hook trait.
@@ -102,6 +103,11 @@ impl Scope {
 	// Look up a bare name in this file's imports, then its module's names.
 	pub(crate) fn lookup(&self, name: &str) -> Option<&String> {
 		self.env.get(name).or_else(|| self.module_env.get(name))
+	}
+
+	// Fail on a name two `with use` globs supply.
+	pub(crate) fn clash(&self, name: &str, span: Span) -> Result<(), Diagnostic> {
+		(self.clashes.get(name)).map_or(Ok(()), |both| Err(err(format!("`{name}` is ambiguous"), span, both)))
 	}
 
 	// Resolve a bare name through this module's env, qualifying a miss into its own module.
@@ -1229,6 +1235,31 @@ impl Loader {
 			for (_, f) in &mut m.scope.files {
 				f.module_env = module_env.clone();
 			}
+		}
+
+		// `with use` globs public names in under the file's own names.
+		let (publics, reexports) = (&self.program.publics, &self.program.reexports);
+		for (_, f) in self.program.modules.iter_mut().flat_map(|m| &mut m.scope.files) {
+			let mut globs = HashMap::new();
+			// NOTE: a narrowed `with m :: use m.{ .. }` only reaches fn bodies
+			for vis in f.withs.iter().filter_map(|w| f.visible.get(w)).filter(|v| v.only.is_none()) {
+				let module = format!("{}::", vis.module);
+				for key in publics.vis.keys().chain(reexports.keys()) {
+					let target = reexports.get(key).unwrap_or(key);
+					if let Some(bare) = key.strip_prefix(&module)
+						&& !f.env.contains_key(bare)
+						&& (f.module_env.get(bare)).is_none_or(|q| q.strip_prefix("core::") == Some(bare))
+						&& publics.is_visible(target, &f.module)
+						&& let Some(prev) = globs.insert(bare, target)
+						&& prev != target
+					{
+						f.clashes.insert(bare.into(), format!("both `{prev}` and `{target}` supply it"));
+					}
+				}
+			}
+
+			let globs = globs.into_iter().filter(|(bare, _)| !f.clashes.contains_key(*bare));
+			f.env.extend(globs.map(|(bare, target)| (bare.into(), target.clone())));
 		}
 	}
 

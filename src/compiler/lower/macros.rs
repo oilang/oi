@@ -132,6 +132,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"panic" | "unreachable" => (0, 1),
 			"todo" | "src" => (0, 0),
 			_ => {
+				self.types.scope.clash(&format!("{name}!"), span)?;
 				return fail(format!("no macro named `{name}!`"), span, "unknown macro");
 			}
 		};
