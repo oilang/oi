@@ -418,23 +418,6 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				self.make_enum(&variants, v.disc, &[])
 			}
-			// coerce literals through `From` claims
-			(Expr::String(_) | Expr::Int(_) | Expr::Float(_) | Expr::Rune(_) | Expr::Bool(_), _)
-				if self.claims(target, "core::From") =>
-			{
-				let typ = match inner {
-					Expr::String(_) => Typ::Str,
-					Expr::Int(_) => Typ::Int(64),
-					Expr::Rune(_) => Typ::Rune,
-					Expr::Bool(_) => Typ::Bool,
-					_ => Typ::Float(64),
-				};
-				let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ) else {
-					return Ok(None);
-				};
-				let val = self.lower(value, None)?.0;
-				self.emit_call(&sig, &[val]).0
-			}
 			_ => return Ok(None),
 		};
 		Ok(Some(v))
@@ -1284,7 +1267,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		// values widens into options
-		if self.types.option_inner(to).is_some_and(|i| i == *from) {
+		if let Some(inner) = self.types.option_inner(to)
+			&& let (val, typ) = self.coerce(val, from, &inner, span)?
+			&& typ == inner
+		{
 			return Ok((self.make_option(to, Some(val)), to.clone()));
 		}
 
@@ -1308,6 +1294,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			if let Some(v) = variants.iter().find(|v| v.payload == [from.clone()]) {
 				return Ok((self.make_enum(&variants, v.disc, &[val]), to.clone()));
 			}
+		}
+		if self.claims(to, "core::From")
+			&& let Some(sig) = self.find_fill(&format!("{to}.from"), 0, from)
+		{
+			return Ok((self.emit_call(&sig, &[val]).0, to.clone()));
 		}
 		Ok((val, from.clone()))
 	}

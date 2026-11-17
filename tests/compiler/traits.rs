@@ -821,7 +821,7 @@ fn a_trait_takes_type_arguments() {
 }
 
 #[test]
-fn a_literal_coerces_through_from() {
+fn a_value_coerces_through_from() {
 	let src = indoc! {r#"
 		Money :: struct { cents: int }
 		Money : From[int] < { from :: fn(n: int) Self { Money.{ n * 100 } } }
@@ -840,8 +840,14 @@ fn a_literal_coerces_through_from() {
 		Money : From[P] < { from :: fn(p: P) Self { Money.{ p.n } } }
 		r: Money = .{ n = 2 }
 		print(m.cents, cents("7"), g.code, f.on, b.cents, r.cents)
+
+		n := 3
+		k: Money = n
+		ks: []Money = .[n, "4"]
+		sum :: fn(ms: ..Money) int { ms[0].cents + ms[1].cents }
+		print(k.cents, ks[0].cents, ks[1].cents, sum(n, "{n}"))
 	"#};
-	check(src, "500 7 a true 1 2");
+	check(src, ["500 7 a true 1 2", "300 300 4 303"]);
 }
 
 #[test]
