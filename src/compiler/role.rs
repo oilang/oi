@@ -78,23 +78,23 @@ pub(crate) const ISOLATED_TRAIT: Role = Role("isolated_trait");
 pub(crate) const LINEAR: Role = Role("linear");
 
 // types
-pub(crate) const OPTION: &str = "core::Option";
-pub(crate) const RESULT: &str = "core::Result";
+pub(crate) const OPTION: Role = Role("option");
+pub(crate) const RESULT: Role = Role("result");
 pub(crate) const PACK_ERR: &str = "$err";
 pub(crate) const PACK_OK: &str = "$ok";
-pub(crate) const PTR: &str = "core::ptr";
-pub(crate) const RANGE: &str = "core::Range";
-pub(crate) const BITS: &str = "core::Bits";
-pub(crate) const SRC: &str = "core::Src";
-pub(crate) const ALLOC: &str = "core::Alloc";
-pub(crate) const SINK: &str = "core::Sink";
+pub(crate) const PTR: Role = Role("ptr");
+pub(crate) const RANGE: Role = Role("range");
+pub(crate) const BITS: Role = Role("bits");
+pub(crate) const SRC: Role = Role("src");
+pub(crate) const ALLOC: Role = Role("alloc");
+pub(crate) const SINK: Role = Role("sink");
 
 // fns
-pub(crate) const ZERO: &str = "core::zero";
-pub(crate) const ALLOC_SHIM: &str = "core::alloc_shim";
+pub(crate) const ZERO: Role = Role("zero");
+pub(crate) const ALLOC_SHIM: Role = Role("alloc_shim");
 pub(crate) const STR_CONTAINS: &str = "string.contains";
-pub(crate) const ORIGIN: &str = "core::origin";
-pub(crate) const RAISE: &str = "core::raise";
+pub(crate) const ORIGIN: Role = Role("origin");
+pub(crate) const RAISE: Role = Role("raise");
 
 // annotations
 pub(crate) const PARAMS: &str = "core::params";

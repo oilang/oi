@@ -54,7 +54,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn flow_operand(&mut self, value: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		match &value.0 {
 			Expr::Index { .. } | Expr::Cast { .. } | Expr::Bind { .. } => {
-				let (mut val, mut typ) = self.lower(value, Some(&Typ::Enum(role::OPTION.into())))?;
+				let (mut val, mut typ) = self.lower(value, Some(&Typ::Enum(role::OPTION.path().into())))?;
 				// rebind what the tail moved out by a read
 				if let Expr::Bind { name, mutable, .. } = &value.0
 					&& self.is_affine(&typ)
@@ -90,7 +90,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Whether a fallible operator keeps its Option for a hint.
 	fn keeps_option(&self, hint: Option<&Typ>) -> bool {
 		let hint = hint.map(|hint| self.types.pack_ret(hint).unwrap_or_else(|| hint.clone()));
-		matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION))
+		matches!(hint, Some(Typ::Enum(n)) if n.split('[').next() == Some(role::OPTION.path()))
 	}
 
 	// `val` when `hit`, else zero.
@@ -552,7 +552,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Ok((self.derived_str(val, &typ, false), Typ::Str));
 				}
 
-				if sname == role::PTR {
+				if sname == role::PTR.path() {
 					let recv = bound.as_ref().map(|(v, _)| *v);
 					match method.as_str() {
 						"array" => return self.ptr_array(recv, type_args, args, expr.1),
@@ -836,7 +836,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let elem = array_elem(&typ).clone();
 					let (data, _) = self.array_parts(ptr, &typ);
 					if field == "ptr" {
-						let typ = self.types.resolve(&TypeExpr::Name(role::PTR.into()), expr.1)?;
+						let typ = self.types.resolve(&TypeExpr::Name(role::PTR.path().into()), expr.1)?;
 						return Ok((data, typ));
 					}
 					return match field.parse::<i64>() {

@@ -43,7 +43,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					// stamp error with call site
 					_ if bare => {
 						let (src, _) = self.src_lit(span)?;
-						let sig = self.funcs[role::RAISE].clone();
+						let sig = self.funcs[role::RAISE.path()].clone();
 						let (v, t) = self.emit_call(&sig, &[av, src]);
 						Ok(Some((self.box_error(v, &t), Typ::Error)))
 					}
@@ -123,7 +123,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			field("file", Expr::String(file.to_string())),
 			field("line", Expr::Int(line as i128)),
 		];
-		self.struct_lit(role::SRC, &[], &fields, span, None)
+		self.struct_lit(role::SRC.path(), &[], &fields, span, None)
 			.inspect(|out| self.untemp(out.0))
 	}
 
@@ -244,7 +244,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			Typ::TupleStruct(_, fields) if fields.len() == 1 => &fields[0].1,
 			t => t,
 		};
-		let lit = matches!(value.0, Expr::AnonFn { .. }) && matches!(target, Typ::TupleStruct(p, _) if p == role::PTR);
+		let lit =
+			matches!(value.0, Expr::AnonFn { .. }) && matches!(target, Typ::TupleStruct(p, _) if p == role::PTR.path());
 		let (val, typ) = self.for_c(self.c_callback || lit, |s| s.check_expr(value, hint))?;
 		if typ == *target {
 			return Ok((val, target.clone()));
@@ -255,7 +256,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		if let (Typ::Ref(_), Typ::TupleStruct(p, _)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 		{
 			self.require_unsafe(&format!("{target} cast"), span)?;
 			return Ok((
@@ -265,7 +266,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		if let (Typ::Struct(name, _), Typ::TupleStruct(p, _)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 		{
 			// a raw address is a place
 			self.require_unsafe(&format!("{target} cast"), span)?;
@@ -276,24 +277,24 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((val, target.clone()));
 		}
 		if let (Typ::CStr, Typ::TupleStruct(p, _)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 		{
 			self.require_unsafe("cstr cast", span)?;
 			return Ok((val, Typ::CStr));
 		}
 		if let (Typ::Fn(..) | Typ::Annotated(..), Typ::TupleStruct(p, _)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 		{
 			return self.cast_fn_ptr(val, target, span);
 		}
 		if let (Typ::TupleStruct(p, _), Typ::Annotated(anns, _)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 			&& anns.iter().any(|a| a == role::C)
 		{
 			return Ok((val, target.clone()));
 		}
 		if let (Typ::TupleStruct(p, _), Typ::Fn(params, ret)) = (target, &typ)
-			&& p == role::PTR
+			&& p == role::PTR.path()
 		{
 			check_c_sig(self.types, "@c fn", params, ret, value.1)?;
 			return Ok((self.c_addr(value, val, params.len(), &typ)?, target.clone()));
@@ -436,7 +437,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				self.truncate(wide, target, to_signed)
 			}
 			(_, Int(_) | UInt(_) | ISize | USize | Rune) => self.truncate(val, target, signed),
-			(UInt(64), Typ::Struct(n, _)) if n.starts_with(role::BITS) => {
+			(UInt(64), Typ::Struct(n, _)) if n.starts_with(role::BITS.path()) => {
 				let words = self.ld_word(val, 0);
 				self.ld_word(words, 0)
 			}

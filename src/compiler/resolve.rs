@@ -192,7 +192,7 @@ impl<'a> TypeCtx<'a> {
 	// A niche Option's none word.
 	pub fn opt_niche(&self, typ: &Typ) -> Option<i64> {
 		let Typ::Enum(n) = typ else { return None };
-		let arg = n.strip_prefix(role::OPTION)?.strip_prefix('[')?;
+		let arg = n.strip_prefix(role::OPTION.path())?.strip_prefix('[')?;
 		let bare = arg.split(' ').find(|w| !w.starts_with('@'))?;
 		if arg.starts_with('^') || bare.starts_with("fn(") || bare == "Error]" || self.nullable(typ).is_some() {
 			return Some(0);
@@ -353,7 +353,7 @@ impl TypeCtx<'_> {
 						Typ::Const(lit) if let Expr::Int(n) = *lit => Ok(Typ::FixedArray(elem, n as usize)),
 						// ordinal sets
 						_ if elem.is_unit() && self.assoc_int(name, "count").is_some_and(|n| n <= 1 << 16) => {
-							let bits = TypeExpr::Generic(role::BITS.into(), vec![TypeExpr::Name(name.clone())]);
+							let bits = TypeExpr::Generic(role::BITS.path().into(), vec![TypeExpr::Name(name.clone())]);
 							self.resolve(&bits, span)
 						}
 						Typ::Enum(e) if let Some(n) = variants => Ok(Typ::Annotated(
@@ -747,8 +747,9 @@ impl TypeCtx<'_> {
 		builtin(name).is_some() || matches!(name, "array" | "map") || sized(name, Span::default()).is_some()
 	}
 
-	// An instance of a core generic enum.
-	pub fn core_enum(&self, name: &str, args: &[Typ]) -> Typ {
+	// An instance of the core generic enum `key` binds.
+	pub fn core_enum(&self, key: role::Role, args: &[Typ]) -> Typ {
+		let name = key.path();
 		let def = self.generics.enums.get(name).expect("core declares it");
 		let subst = (def.type_params.iter().zip(args))
 			.map(|(p, a)| (p.name.clone(), a.clone()))
@@ -766,11 +767,11 @@ impl TypeCtx<'_> {
 	}
 
 	pub fn option_inner(&self, typ: &Typ) -> Option<Typ> {
-		self.instance_of(typ, role::OPTION)?.pop()
+		self.instance_of(typ, role::OPTION.path())?.pop()
 	}
 
 	pub fn result_parts(&self, typ: &Typ) -> Option<(Typ, Typ)> {
-		let [ok, err] = <[Typ; 2]>::try_from(self.instance_of(typ, role::RESULT)?).ok()?;
+		let [ok, err] = <[Typ; 2]>::try_from(self.instance_of(typ, role::RESULT.path())?).ok()?;
 		Some((ok, err))
 	}
 

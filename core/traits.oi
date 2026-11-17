@@ -269,7 +269,7 @@ ParseError : Error < {
 }
 
 ## A source location, as `src!()` captures it.
-pub Src :: struct {
+@lang.{"src"} pub Src :: struct {
 	pub file: string,
 	pub line: int,
 }
@@ -287,10 +287,10 @@ Ctx : Error < {
 }
 
 # what `error("...")` builds
-raise :: fn(msg: string, at: Src) Err { Err.{msg, at} }
+@lang.{"raise"} raise :: fn(msg: string, at: Src) Err do Err.{msg, at}
 
 # appended to main's exit line
-origin :: fn(e: Error) string {
+@lang.{"origin"} origin :: fn(e: Error) string {
 	err :: Err.(e) or do return ""
 	at :: err.at or do return ""
 	"  at {at}"

@@ -1243,7 +1243,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.switch_to_block(sad);
 		let e = self.ld_word(val, 8);
 		let mut msg = self.derived_str(e, &err, false);
-		if let Some(sig) = (err == Typ::Error).then(|| self.funcs.get(role::ORIGIN).cloned()).flatten() {
+		if err == Typ::Error
+			&& let Some(sig) = self.funcs.get(role::ORIGIN.path()).cloned()
+		{
 			let (at, _) = self.emit_call(&sig, &[e]);
 			msg = self.rt_call("str_concat", &[msg, at]).unwrap();
 		}

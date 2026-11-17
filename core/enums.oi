@@ -1,12 +1,12 @@
 module core
 
-pub Option[T] :: enum {
+@lang.{"option"} pub Option[T] :: enum {
 	none
 	some(T)
 }
 
 @nozero
-pub Result[T, E] :: enum {
+@lang.{"result"} pub Result[T, E] :: enum {
 	ok(T)
 	err(E)
 }

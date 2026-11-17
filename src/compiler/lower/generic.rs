@@ -74,7 +74,7 @@ impl<'d> Infer<'d> {
 				self.unify(ret, found_ret)
 			}
 			(TypeExpr::Generic(name, args), found)
-				if name == "Option" && !matches!(found, Typ::Enum(e) if e.starts_with(role::OPTION)) =>
+				if name == "Option" && !matches!(found, Typ::Enum(e) if e.starts_with(role::OPTION.path())) =>
 			{
 				self.unify(&args[0], found)
 			}

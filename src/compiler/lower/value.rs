@@ -197,9 +197,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			Typ::Fn(_, ret) => {
 				// call `core::zero[ret]`
-				let def = self.world.generic_fns[role::ZERO].clone();
+				let def = self.world.generic_fns[role::ZERO.path()].clone();
 				let subst = HashMap::from([(def.type_params[0].name.clone(), (**ret).clone())]);
-				let Ok(sig) = self.declare_instance(role::ZERO, &def, subst) else {
+				let Ok(sig) = self.declare_instance(role::ZERO.path(), &def, subst) else {
 					unreachable!("core::zero instance")
 				};
 				self.fn_object(sig.id)
@@ -855,7 +855,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		step: Value,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let typ = self.types.resolve(&TypeExpr::Name(role::RANGE.into()), span)?;
+		let typ = self.types.resolve(&TypeExpr::Name(role::RANGE.path().into()), span)?;
 		let ptr = self.struct_slot(&typ, &[true; 3])?;
 		let tag = self.b.ins().iconst(self.int, end.is_some() as i64);
 		let end = end.map_or(tag, |v| self.intcast(v, types::I64, true));
@@ -1192,7 +1192,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Typ::Trait(tn) = to {
 			return self.make_trait_object(val, from, tn, span);
 		}
-		if to.key() == role::ALLOC && self.world.trait_impls.contains(&(from.key(), role::ALLOCATOR.path().into())) {
+		if to.key() == role::ALLOC.path()
+			&& self.world.trait_impls.contains(&(from.key(), role::ALLOCATOR.path().into()))
+		{
 			return Ok((self.alloc_record(val, from)?, to.clone()));
 		}
 		if *to == Typ::Error && self.open_error(from) {
@@ -1457,10 +1459,10 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// An `Allocator` claimer as `Alloc`, on the root ctx since C calls it.
 	fn alloc_record(&mut self, val: Value, typ: &Typ) -> Result<Value, Diagnostic> {
-		let def = self.world.generic_fns[role::ALLOC_SHIM].clone();
+		let def = self.world.generic_fns[role::ALLOC_SHIM.path()].clone();
 		let subst = HashMap::from([(def.type_params[0].name.clone(), typ.clone())]);
-		let sym = mangle(role::ALLOC_SHIM, &subst, &def.type_params);
-		let sig = self.declare_instance(role::ALLOC_SHIM, &def, subst)?;
+		let sym = mangle(role::ALLOC_SHIM.path(), &subst, &def.type_params);
+		let sig = self.declare_instance(role::ALLOC_SHIM.path(), &def, subst)?;
 		self.out.roots.push(sym);
 		self.out.wanted.push(sig.id);
 		let fref = self.module.declare_func_in_func(sig.id, self.b.func);

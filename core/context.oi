@@ -13,7 +13,7 @@ pub AllocMode :: enum {
 }
 
 ## A C-callable allocator record.
-pub Alloc :: struct {
+@lang.{"alloc"} pub Alloc :: struct {
 	pub proc: @c fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr
 	pub data: ptr
 }
@@ -33,6 +33,7 @@ Alloc :< {
 }
 
 # `Alloc.proc` for a claimer `T` behind `data`.
+@lang.{"alloc_shim"}
 pub alloc_shim[T: Allocator] :: fn(data: ptr, mode: AllocMode, size: int, align: int, old: ptr, old_size: int) ptr {
 	match mode {
 		.alloc => unsafe T.(data).alloc(size, align),

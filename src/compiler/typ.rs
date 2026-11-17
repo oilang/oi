@@ -682,13 +682,13 @@ pub(crate) fn oi_symbol(name: &str) -> String {
 // Spell the core Option/Result instances back as `?T` / `!T` where possible.
 pub(crate) fn sugar(name: &str) -> Option<String> {
 	let args = |base: &str| name.strip_prefix(base)?.strip_prefix('[')?.strip_suffix(']');
-	if let Some(inner) = args(role::OPTION) {
+	if let Some(inner) = args(role::OPTION.path()) {
 		return Some(format!("?{inner}"));
 	}
-	if let Some(inner) = args(role::BITS) {
+	if let Some(inner) = args(role::BITS.path()) {
 		return Some(format!("[{inner}]()"));
 	}
-	let parts = args(role::RESULT)?;
+	let parts = args(role::RESULT.path())?;
 	Some(match parts.strip_suffix(", Error") {
 		Some(ok) => format!("!{ok}"),
 		None => format!("Result[{parts}]"),
@@ -759,7 +759,7 @@ impl VariantInfo {
 }
 
 pub(crate) fn is_range(t: &Typ) -> bool {
-	matches!(t, Typ::Struct(n, _) if n == role::RANGE)
+	matches!(t, Typ::Struct(n, _) if n == role::RANGE.path())
 }
 
 // An enum is a tagged union if any variant has fields.

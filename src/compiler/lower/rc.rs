@@ -792,5 +792,5 @@ fn cyclic(typ: &Typ) -> bool {
 
 // Whether `typ` is a `?^T`.
 fn opt_ref(typ: &Typ) -> bool {
-	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION).is_some_and(|args| args.starts_with("[^")))
+	matches!(typ, Typ::Enum(n) if n.strip_prefix(role::OPTION.path()).is_some_and(|args| args.starts_with("[^")))
 }
