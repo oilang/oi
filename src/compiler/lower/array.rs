@@ -208,11 +208,14 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Autocast a fixed array into a fresh rc'd dynamic buffer.
 	pub(super) fn fixed_to_array(&mut self, ptr: Value, elem: &Typ, n: usize) -> Value {
-		let stride = self.elem_stride(elem);
-		let vals = (0..n).map(|i| self.load_elem(ptr, (i as i64 * stride) as i32, elem)).collect();
-		let (data, len) = self.heap_alloc(vals, elem);
-		let typ = Typ::Array(Box::new(elem.clone()));
-		self.make_array(data, len, &typ)
+		let data = self.rc_alloc(n as i64 * self.elem_stride(elem), &[]);
+		let moved = self.is_affine(elem);
+		if moved {
+			self.untemp(ptr);
+		}
+		self.fixed_move(data, ptr, elem, n, moved);
+		let len = self.b.ins().iconst(self.int, n as i64);
+		self.make_array(data, len, &Typ::Array(Box::new(elem.clone())))
 	}
 
 	// Copy-in point for rc'd handles.

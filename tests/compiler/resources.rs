@@ -61,6 +61,18 @@ fn returned_tuple_and_unbound_resources_drop_once() {
 }
 
 #[test]
+fn fixed_array_passed_as_slice_moves_once() {
+	let src = [
+		FILE,
+		"count :: fn(fs: []File) { print(fs.len()) }",
+		"fs : [2]File : .[File.{fd = 1}, File.{fd = 2}]",
+		"count(fs)",
+	];
+	check(src, ["2", "drop 1", "drop 2"]);
+	assert_clean(src);
+}
+
+#[test]
 fn block_tail_moves_its_local_out() {
 	check(
 		[

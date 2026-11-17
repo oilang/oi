@@ -575,6 +575,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((cell, typ, Some((cell, entry))));
 		}
+
 		// a read-only `any` or `..any` varargs borrows the caller's values from the frame
 		match (access, want, &arg.0) {
 			(Access::Read, Some(Typ::Any), _) => return Ok((self.lent_any(arg)?, Typ::Any, None)),
@@ -590,14 +591,23 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			_ => {}
 		}
+
 		let (val, typ) = match want {
 			Some(want) => self.check_expr(arg, want)?,
 			None => self.expr(arg)?,
 		};
+
 		if access == Access::Move {
 			self.move_out(arg, &typ)?;
 			self.untemp(val);
+		} else if let Expr::Ident(name) = &arg.0
+			&& let Some(Typ::FixedArray(..)) = self.vars.get(name).map(|l| &l.typ)
+			&& matches!(typ, Typ::Array(_))
+		{
+			// widening moves resources into the fresh buffer
+			self.move_resource(arg, &typ)?;
 		}
+
 		Ok((val, typ, None))
 	}
 
@@ -628,15 +638,18 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => {
 				let (mut place, name) = (inner.clone(), format!("$lent{}_{}", inner.1.start, inner.1.end));
 				let mut stmts = crate::ast::pin(&mut place);
+
 				stmts.push(crate::ast::bind(&name, place.clone()));
 				for e in &stmts {
 					self.expr(e)?;
 				}
+
 				let tmp = self.local(&name, inner.1.into_range())?;
 				let back = crate::ast::assign(place, None, (Expr::Ident(name), inner.1), inner.1);
 				(self.read_local(&tmp), tmp.typ.clone(), Lent::Place(tmp, Box::new(back)))
 			}
 		};
+
 		let slot = self.stack_slot(8);
 		self.st(slot, 0, cur);
 		Ok((slot, typ, entry))
@@ -684,6 +697,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"calling a `mut self` method needs a `mut` binding",
 			)?;
 		}
+
 		for (i, (&arg, &want)) in args.iter().zip(&access[recv.is_some() as usize..]).enumerate() {
 			let Some(arg) = arg else { continue };
 			let given = match &arg.0 {
@@ -692,6 +706,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ if want == Access::Move && !Self::is_place(arg) => want,
 				_ => Access::Read,
 			};
+
 			if given != want {
 				let (msg, label) = match given {
 					Access::Read => (
@@ -708,6 +723,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			if want != Access::Mut {
 				continue;
 			}
+
 			let name = self.mut_place(
 				Self::place_root(arg_inner(arg)),
 				"only a mutable binding can be lent `mut`",
@@ -717,11 +733,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			for e in recv.into_iter().chain(others) {
 				e.0.idents(&mut touched);
 			}
+
 			if touched.contains(name) {
 				let msg = format!("cannot use `{name}` while it is lent `mut`");
 				return fail(msg, arg.1, "borrowed exclusively for this call");
 			}
 		}
+
 		Ok(())
 	}
 
