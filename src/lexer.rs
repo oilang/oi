@@ -380,7 +380,7 @@ pub enum Token {
 	// comments
 	#[token("#{", lex_block_comment)]
 	BlockComment,
-	#[regex(r"#([^{#\r\n][^\r\n]*)?", logos::skip)]
+	#[regex(r"#([^{#\r\n][^\r\n]*)?")]
 	Comment,
 	#[regex(r"##( [^\r\n]+)?", |lex| {
 		let s = lex.slice();
@@ -502,7 +502,7 @@ fn raw_lex(src: &str, base: usize) -> Vec<(Token, SimpleSpan)> {
 		.filter_map(|(tok, sp)| {
 			let span = (base + sp.start..base + sp.end).into();
 			match tok {
-				Ok(Token::BlockComment) => None,
+				Ok(Token::BlockComment | Token::Comment) => None,
 				Ok(tok) => Some((tok, span)),
 				Err(()) => Some((Token::Error(src[sp].into()), span)),
 			}
