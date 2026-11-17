@@ -101,9 +101,10 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		_ => Member::Field(f),
 	});
 	// embedded structs
-	let embedded = just(Token::Pub).or_not().then(ident()).map_with(|(public, name), ex| Param {
+	let path = p.dotted_name.clone();
+	let embedded = just(Token::Pub).or_not().then(path).map_with(|(public, typ), ex| Param {
 		public: public.is_some(),
-		..Param::new(name.clone(), TypeExpr::Name(name), ex.span())
+		..Param::new(typ.rsplit('.').next().unwrap().into(), TypeExpr::Name(typ), ex.span())
 	});
 	let struct_def = item_head
 		.clone()

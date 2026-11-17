@@ -103,6 +103,14 @@ fn import_alias() {
 		.main(["f :: use foo", "print(foo.hi())"])
 		.lib("foo", ["pub hi :: fn() int { 7 }"]);
 	p.fail_with("foo");
+
+	let lib = [
+		"pub K :: 1",
+		"pub V :: struct { pub v: int }",
+		"pub m! :: fn(e: Ast) Ast { `{ x: foo.V = foo.V.{ v = %e + foo.K }; x.v }` }",
+	];
+	let p = Project::new().main(["f :: use foo", "print(f.m!(6))"]).lib("foo", lib);
+	p.check("7");
 }
 
 #[test]

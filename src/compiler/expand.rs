@@ -285,31 +285,45 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 	});
 }
 
-// Resolve a template's keyed types where the macro is actually defined.
+// Resolve a template's module paths where the macro is defined.
 fn def_site(e: &mut Expr, scope: &Scope) {
-	if let Expr::Annotated(anns, _) = e {
-		*anns = super::qualify_anns(scope, anns);
+	let key = |path: &str| {
+		let (m, rest) = path.split_once('.')?;
+		match scope.visible.contains_key(m) {
+			true => Some(scope.qualify_name(path)),
+			false => (scope.module.rsplit('.').next() == Some(m)).then(|| scope.qualify_name(rest)),
+		}
+	};
+	let qualify = |n: &mut String| _ = key(n).map(|k| *n = k);
+	for t in e.types() {
+		t.walk_mut(&mut |t| {
+			if let TypeExpr::Name(n) | TypeExpr::Generic(n, _) = t {
+				qualify(n)
+			}
+		});
 	}
-	let Expr::MethodCall {
-		recv,
-		method,
-		type_args,
-		args,
-	} = e
-	else {
-		return;
-	};
-	let Expr::Ident(m) = &recv.0 else { return };
-	let name = match scope.visible.contains_key(m) {
-		true => scope.qualify_name(&format!("{m}.{method}")),
-		false if scope.module.rsplit('.').next() == Some(m) => scope.qualify_name(method),
-		false => return,
-	};
-	*e = Expr::Call {
-		name,
-		type_args: std::mem::take(type_args),
-		args: std::mem::take(args),
-	};
+	match e {
+		Expr::Annotated(anns, _) => *anns = super::qualify_anns(scope, anns),
+		Expr::StructLit { name, .. } => qualify(name),
+		Expr::Field { tuple, field }
+			if let Expr::Ident(m) = &tuple.0
+				&& let Some(k) = key(&format!("{m}.{field}")) =>
+		{
+			*e = Expr::Ident(k)
+		}
+		Expr::MethodCall {
+			recv,
+			method,
+			type_args,
+			args,
+		} if let Expr::Ident(m) = &recv.0
+			&& let Some(name) = key(&format!("{m}.{method}")) =>
+		{
+			let (type_args, args) = (std::mem::take(type_args), std::mem::take(args));
+			*e = Expr::Call { name, type_args, args }
+		}
+		_ => {}
+	}
 }
 
 impl Expander {

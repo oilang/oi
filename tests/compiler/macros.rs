@@ -69,6 +69,7 @@ fn macro_run_error_is_a_diagnostic() {
 		print(grow!(true))
 	"};
 	fail(src, "while running `grow!`");
+	fail(r#"m! :: fn(e: Ast) Ast { panic!("x") }; m!(1)"#, "panic: x");
 }
 
 #[test]

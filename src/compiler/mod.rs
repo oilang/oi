@@ -1049,6 +1049,9 @@ impl<M: Module> Compiler<M> {
 		self.world.reexports = program.reexports.clone();
 		self.consts = program.consts.clone();
 		self.world.map = program.map.clone();
+		if !self.stage0 {
+			comp::MAP.set(program.map.clone());
+		}
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
 		let scope_of = |key: &str| {

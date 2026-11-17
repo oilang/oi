@@ -121,7 +121,7 @@ pub(crate) struct FieldDef {
 
 // Whether a field is embedded.
 pub(crate) fn embedded(p: &Param) -> bool {
-	matches!(&p.typ, TypeExpr::Name(n) if *n == p.name)
+	matches!(&p.typ, TypeExpr::Name(n) if n.rsplit('.').next() == Some(&p.name))
 }
 
 // The embedded fields of a struct.

@@ -42,7 +42,7 @@ static DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
 	static STACK: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
-	static MAP: RefCell<SourceMap> = RefCell::default();
+	pub(super) static MAP: RefCell<SourceMap> = RefCell::default();
 	static TYPES: RefCell<Vec<Typ>> = const { RefCell::new(Vec::new()) };
 	static INSTANCES: RefCell<HashMap<String, Vec<Typ>>> = RefCell::default();
 	static CALLS: RefCell<HashMap<String, Option<Expr>>> = RefCell::default();
@@ -734,7 +734,6 @@ pub(crate) fn eval(
 	consts: &mut HashMap<String, Spanned<Expr>>,
 	stage0: &mut Option<Compiler>,
 ) -> Result<(), Diagnostic> {
-	MAP.set(program.map.clone());
 	CALLS.take();
 
 	// consts reading from comp
