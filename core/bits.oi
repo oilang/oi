@@ -1,7 +1,7 @@
 module core
 
 ## A set of ordinals, one bit each.
-@lang.{"bits"} pub Bits[E: Ordinal] :: struct {
+@lang pub Bits[E: Ordinal] :: struct {
 	words: [((E.count + 63) / 64)]u64,
 }
 

@@ -1,12 +1,12 @@
 module core
 
-## Binds a def to the compiler role named by `key`.
+## Binds a def to the compiler role named by `key`, or by the def's own name.
 pub lang :: struct { key: string }
 
-@lang.{"params"} pub params :: ()
-@lang.{"required"} pub required :: ()
+@lang pub params :: ()
+@lang pub required :: ()
 
-@lang.{"test"} pub test :: struct {
+@lang pub test :: struct {
 	name: string = ""
 	skip: bool = false
 }
@@ -17,29 +17,29 @@ pub test! :: fn(name: Ast, body: Ast) Ast {
 	`@test.{%name} %id :: fn() { %{..body.items} }`
 }
 
-@lang.{"link"} pub link :: struct { lib: string, name: string }
-@lang.{"export"} pub export :: struct { name: string }
+@lang pub link :: struct { lib: string, name: string }
+@lang pub export :: struct { name: string }
 
 ## Marks a struct as also describing a C struct.
-@lang.{"c"} pub c :: ()
+@lang pub c :: ()
 
 ## Marks a trait as satisfied by shape alone.
-@lang.{"implicit"} pub implicit :: ()
+@lang pub implicit :: ()
 
 ## Marks a fn as free of I/O and other impure calls.
-@lang.{"pure"} pub pure :: ()
+@lang pub pure :: ()
 
 ## Ensures a type is always explicitly initialized.
-@lang.{"nozero"} pub nozero :: ()
+@lang pub nozero :: ()
 
 ## Bans struct literals for this type outside its own module.
-@lang.{"noinit"} pub noinit :: ()
+@lang pub noinit :: ()
 
 ## Lets other modules add defaulted fields to a struct with `:<`.
-@lang.{"open"} pub open :: ()
+@lang pub open :: ()
 
 ## A fn that can run on another thread.
-@lang.{"isolated"} pub isolated :: ()
+@lang pub isolated :: ()
 
 ## A fn the compiler lowers itself, keyed on its path.
-@lang.{"intrinsic"} pub intrinsic :: ()
+@lang pub intrinsic :: ()

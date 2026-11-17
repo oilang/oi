@@ -19,11 +19,14 @@ pub(crate) fn fill(core: &Program) {
 	TABLE.get_or_init(|| {
 		let mut table = HashMap::new();
 		for (def, anns) in &core.annotations {
-			if let Some([(None, (Expr::String(key), _))]) = anns.iter().find_map(|note| ann(note, "lang")) {
-				let dup = table.insert(key.clone(), def.clone());
-				assert!(dup.is_none(), "`@lang` binds `{key}` twice");
-				table.insert(def.clone(), key.clone());
-			}
+			let key = match anns.iter().find_map(|note| ann(note, "lang")) {
+				Some([]) => def.rsplit("::").next().unwrap(),
+				Some([(None, (Expr::String(key), _))]) => key,
+				_ => continue,
+			};
+			let dup = table.insert(key.to_string(), def.clone());
+			assert!(dup.is_none(), "`@lang` binds `{key}` twice");
+			table.insert(def.clone(), key.to_string());
 		}
 		table
 	});
@@ -42,52 +45,53 @@ impl Role {
 }
 
 // traits
-pub(crate) const EQ: Role = Role("eq");
-pub(crate) const PARTIAL_CMP: Role = Role("partial_cmp");
-pub(crate) const CMP: Role = Role("cmp");
-pub(crate) const NEG: Role = Role("neg");
-pub(crate) const ADD: Role = Role("add");
-pub(crate) const SUB: Role = Role("sub");
-pub(crate) const MUL: Role = Role("mul");
-pub(crate) const DIV: Role = Role("div");
-pub(crate) const MOD: Role = Role("mod");
-pub(crate) const POW: Role = Role("pow");
-pub(crate) const NOT: Role = Role("not");
-pub(crate) const BIT_AND: Role = Role("bitand");
-pub(crate) const BIT_OR: Role = Role("bitor");
-pub(crate) const BIT_XOR: Role = Role("bitxor");
-pub(crate) const SHL: Role = Role("shl");
-pub(crate) const SHR: Role = Role("shr");
+pub(crate) const EQ: Role = Role("Eq");
+pub(crate) const PARTIAL_CMP: Role = Role("PartialCmp");
+pub(crate) const CMP: Role = Role("Cmp");
+pub(crate) const NEG: Role = Role("Neg");
+pub(crate) const ADD: Role = Role("Add");
+pub(crate) const SUB: Role = Role("Sub");
+pub(crate) const MUL: Role = Role("Mul");
+pub(crate) const DIV: Role = Role("Div");
+pub(crate) const MOD: Role = Role("Mod");
+pub(crate) const POW: Role = Role("Pow");
+pub(crate) const NOT: Role = Role("Not");
+pub(crate) const BIT_AND: Role = Role("BitAnd");
+pub(crate) const BIT_OR: Role = Role("BitOr");
+pub(crate) const BIT_XOR: Role = Role("BitXor");
+pub(crate) const SHL: Role = Role("Shl");
+pub(crate) const SHR: Role = Role("Shr");
 pub(crate) const BITWISE: [Role; 6] = [NOT, BIT_AND, BIT_OR, BIT_XOR, SHL, SHR];
-pub(crate) const CONTAINS: Role = Role("contains");
-pub(crate) const RECV: Role = Role("recv");
-pub(crate) const INDEX: Role = Role("index");
-pub(crate) const INDEX_ASSIGN: Role = Role("index_assign");
-pub(crate) const ITERATOR: Role = Role("iterator");
-pub(crate) const KEYED: Role = Role("keyed");
-pub(crate) const ERROR: Role = Role("error");
-pub(crate) const ALLOCATOR: Role = Role("allocator");
-pub(crate) const DISPLAY: Role = Role("display");
-pub(crate) const DEBUG: Role = Role("debug");
-pub(crate) const NUMBER: Role = Role("number");
-pub(crate) const INTEGER: Role = Role("integer");
-pub(crate) const LENGTH: Role = Role("length");
-pub(crate) const WRITE: Role = Role("write");
-pub(crate) const ORDINAL: Role = Role("ordinal");
-pub(crate) const ISOLATED_TRAIT: Role = Role("isolated_trait");
-pub(crate) const LINEAR: Role = Role("linear");
+pub(crate) const CONTAINS: Role = Role("Contains");
+pub(crate) const SEND: Role = Role("Send");
+pub(crate) const RECV: Role = Role("Recv");
+pub(crate) const INDEX: Role = Role("Index");
+pub(crate) const INDEX_ASSIGN: Role = Role("IndexAssign");
+pub(crate) const ITERATOR: Role = Role("Iterator");
+pub(crate) const KEYED: Role = Role("Keyed");
+pub(crate) const ERROR: Role = Role("Error");
+pub(crate) const ALLOCATOR: Role = Role("Allocator");
+pub(crate) const DISPLAY: Role = Role("Display");
+pub(crate) const DEBUG: Role = Role("Debug");
+pub(crate) const NUMBER: Role = Role("Number");
+pub(crate) const INTEGER: Role = Role("Integer");
+pub(crate) const LENGTH: Role = Role("Length");
+pub(crate) const WRITE: Role = Role("Write");
+pub(crate) const ORDINAL: Role = Role("Ordinal");
+pub(crate) const ISOLATED_TRAIT: Role = Role("Isolated");
+pub(crate) const LINEAR: Role = Role("Linear");
 
 // types
-pub(crate) const OPTION: Role = Role("option");
-pub(crate) const RESULT: Role = Role("result");
+pub(crate) const OPTION: Role = Role("Option");
+pub(crate) const RESULT: Role = Role("Result");
 pub(crate) const PACK_ERR: &str = "$err";
 pub(crate) const PACK_OK: &str = "$ok";
 pub(crate) const PTR: Role = Role("ptr");
-pub(crate) const RANGE: Role = Role("range");
-pub(crate) const BITS: Role = Role("bits");
-pub(crate) const SRC: Role = Role("src");
-pub(crate) const ALLOC: Role = Role("alloc");
-pub(crate) const SINK: Role = Role("sink");
+pub(crate) const RANGE: Role = Role("Range");
+pub(crate) const BITS: Role = Role("Bits");
+pub(crate) const SRC: Role = Role("Src");
+pub(crate) const ALLOC: Role = Role("Alloc");
+pub(crate) const SINK: Role = Role("Sink");
 
 // fns
 pub(crate) const ZERO: Role = Role("zero");

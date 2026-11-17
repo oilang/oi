@@ -4,7 +4,7 @@ use rt
 
 # ranges
 
-@lang.{"range"} pub Range :: struct { start: int, end: ?int, step: int }
+@lang pub Range :: struct { start: int, end: ?int, step: int }
 
 Range :< {
 	str :: fn(self) string {
@@ -42,7 +42,7 @@ Range : Iterator[int] < {
 # ffi
 
 ## An untyped pointer for C boundaries.
-@lang.{"ptr"} pub ptr :: struct (usize)
+@lang pub ptr :: struct (usize)
 
 ptr :< {
 	## Copy `len` bytes into an owned string.

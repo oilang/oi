@@ -409,7 +409,7 @@ pub(super) fn check_impls<'p>(
 			};
 			let (params, _, ret) = fill_from_decl(params, *params_tuple, ret, decl, m.1)?;
 			let (mut got, want) = (sig(&params, &ret)?, sig(tp, tr)?);
-			if matches!(role::key(&tn), Some(role::Role("add" | "sub" | "mul" | "div" | "mod")))
+			if matches!(role::key(&tn), Some(role::Role("Add" | "Sub" | "Mul" | "Div" | "Mod")))
 				&& let (Typ::Fn(gp, _), Typ::Fn(wp, _)) = (&mut got, &want)
 				&& let ([_, gother], [_, wother]) = (gp.as_mut_slice(), wp.as_slice())
 			{

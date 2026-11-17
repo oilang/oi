@@ -471,23 +471,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		r: &Spanned<Expr>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let method = match op {
-			BinOp::Add => "add",
-			BinOp::Sub => "sub",
-			BinOp::Mul => "mul",
-			BinOp::Div => "div",
-			BinOp::Mod => "mod",
-			BinOp::Pow => "pow",
-			BinOp::BitAnd => "bitand",
-			BinOp::BitOr => "bitor",
-			BinOp::BitXor => "bitxor",
-			BinOp::Shl => "shl",
-			BinOp::Shr => "shr",
-			BinOp::Send => "send",
+		let (method, tn) = match op {
+			BinOp::Add => ("add", role::ADD),
+			BinOp::Sub => ("sub", role::SUB),
+			BinOp::Mul => ("mul", role::MUL),
+			BinOp::Div => ("div", role::DIV),
+			BinOp::Mod => ("mod", role::MOD),
+			BinOp::Pow => ("pow", role::POW),
+			BinOp::BitAnd => ("bitand", role::BIT_AND),
+			BinOp::BitOr => ("bitor", role::BIT_OR),
+			BinOp::BitXor => ("bitxor", role::BIT_XOR),
+			BinOp::Shl => ("shl", role::SHL),
+			BinOp::Shr => ("shr", role::SHR),
+			BinOp::Send => ("send", role::SEND),
 			_ => unreachable!("non-arithmetic op in binop"),
 		};
-		// operator traits are keyed by their method
-		let tn = role::Role(method).path();
+		let tn = tn.path();
 
 		let appending = self.appending.take() == Some(span);
 		let (r, moved) = match &r.0 {

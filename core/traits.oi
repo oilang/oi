@@ -3,74 +3,74 @@ module core
 # operator overloads
 
 # comparison
-@lang.{"eq"} pub Eq :: trait { eq: fn(self, other: Self) bool }
+@lang pub Eq :: trait { eq: fn(self, other: Self) bool }
 pub Ordering :: enum { less, equal, greater }
-@lang.{"partial_cmp"} pub PartialCmp :: trait { partial_cmp: fn(self, other: Self) ?Ordering }
-@lang.{"cmp"} pub Cmp : PartialCmp, Eq : trait {
+@lang pub PartialCmp :: trait { partial_cmp: fn(self, other: Self) ?Ordering }
+@lang pub Cmp : PartialCmp, Eq : trait {
 	cmp: fn(self, other: Self) Ordering
 	partial_cmp :: fn(self, other: Self) ?Ordering do self.cmp(other)
 	eq :: fn(self, other: Self) bool do self.cmp(other) == .equal
 }
 
 # arithmetic
-@lang.{"neg"} pub Neg :: trait {
+@lang pub Neg :: trait {
 	neg: fn(self) Self
 }
-@lang.{"add"} pub Add[Rhs :: Self] :: trait {
+@lang pub Add[Rhs :: Self] :: trait {
 	Out :: Self
 	add: fn(self; other: Rhs) Out
 }
-@lang.{"sub"} pub Sub[Rhs :: Self] :: trait {
+@lang pub Sub[Rhs :: Self] :: trait {
 	Out :: Self
 	sub: fn(self; other: Rhs) Out
 }
-@lang.{"mul"} pub Mul[Rhs :: Self] :: trait {
+@lang pub Mul[Rhs :: Self] :: trait {
 	Out :: Self
 	mul: fn(self; other: Rhs) Out
 }
-@lang.{"div"} pub Div[Rhs :: Self] :: trait {
+@lang pub Div[Rhs :: Self] :: trait {
 	Out :: Self
 	div: fn(self; other: Rhs) Out
 }
-@lang.{"mod"} pub Mod[Rhs :: Self] :: trait {
+@lang pub Mod[Rhs :: Self] :: trait {
 	Out :: Self
 	mod: fn(self; other: Rhs) Out
 }
-@lang.{"pow"} pub Pow[Rhs :: Self] :: trait {
+@lang pub Pow[Rhs :: Self] :: trait {
 	Out :: Self
 	pow: fn(self; other: Rhs) Out
 }
 
 # bitwise
-@lang.{"not"} pub Not :: trait { not: fn(self) Self }
-@lang.{"bitand"} pub BitAnd[Rhs :: Self] :: trait { bitand: fn(self; other: Rhs) Self }
-@lang.{"bitor"} pub BitOr[Rhs :: Self] :: trait { bitor: fn(self; other: Rhs) Self }
-@lang.{"bitxor"} pub BitXor[Rhs :: Self] :: trait { bitxor: fn(self; other: Rhs) Self }
-@lang.{"shl"} pub Shl[Rhs :: int] :: trait { shl: fn(self; other: Rhs) Self }
-@lang.{"shr"} pub Shr :: trait { shr: fn(self; other: int) Self }
+@lang pub Not :: trait { not: fn(self) Self }
+@lang pub BitAnd[Rhs :: Self] :: trait { bitand: fn(self; other: Rhs) Self }
+@lang pub BitOr[Rhs :: Self] :: trait { bitor: fn(self; other: Rhs) Self }
+@lang pub BitXor[Rhs :: Self] :: trait { bitxor: fn(self; other: Rhs) Self }
+@lang pub Shl[Rhs :: int] :: trait { shl: fn(self; other: Rhs) Self }
+@lang pub Shr :: trait { shr: fn(self; other: int) Self }
 
 # membership
-@lang.{"contains"} pub Contains[T] :: trait { contains: fn(self; v: T) bool }
+@lang pub Contains[T] :: trait { contains: fn(self; v: T) bool }
 
 # indexing
 # TODO: handle index oob
-@lang.{"index"} pub Index[I, T] :: trait { index: fn(self; i: I) T }
-@lang.{"index_assign"} pub IndexAssign[I, T] :: trait { index_assign: fn(mut self; i: I, v: T) }
+@lang pub Index[I, T] :: trait { index: fn(self; i: I) T }
+@lang pub IndexAssign[I, T] :: trait { index_assign: fn(mut self; i: I, v: T) }
 
 # channels
-@lang.{"send"} pub Send[T] :: trait { send: fn(self; move v: T) !() }
-@lang.{"recv"} pub Recv[T] :: trait { recv: fn(self) ?T }
+@lang pub Send[T] :: trait { send: fn(self; move v: T) !() }
+@lang pub Recv[T] :: trait { recv: fn(self) ?T }
 
 ## Holds no `^T`, `any`, or fn env, so it can cross threads. Checked structurally.
-@lang.{"isolated_trait"} pub Isolated :: trait {}
+@lang pub Isolated :: trait {}
 
 ## A resource with no implicit drop.
 ## It must be moved into a consumer, and only its own methods can `discard` it.
-@lang.{"linear"} pub Linear :: trait {}
+@lang pub Linear :: trait {}
 
 ## A finite, positive domain.
 ## Fieldless enums claim it implicitly.
-@lang.{"ordinal"} pub Ordinal :: trait {
+@lang pub Ordinal :: trait {
 	count: int
 	index: fn(self) int
 	from_index: fn(i: int) ?Self
@@ -108,10 +108,10 @@ rune : Ordinal < {
 }
 
 ## Supports reporting length.
-@lang.{"length"} pub Length :: trait { len: fn(self) int }
+@lang pub Length :: trait { len: fn(self) int }
 
 # iteration
-@lang.{"iterator"} pub Iterator[Item] :: trait {
+@lang pub Iterator[Item] :: trait {
 	next: fn(mut self) ?Item
 
 	## Lazily applies `f` to each item.
@@ -172,7 +172,7 @@ FilterIter[I, T] : Iterator[T] < {
 
 ## A collection walked by cursor, its key unless it claims otherwise.
 ## `pairs(none)` is the first entry, `pairs(c)` is the one after `c`.
-@lang.{"keyed"} pub Keyed[K, V] :: trait {
+@lang pub Keyed[K, V] :: trait {
 	Cursor :: K
 	pairs: fn(self; after: ?Cursor) ?(V, Cursor)
 
@@ -198,13 +198,13 @@ KeyedIter[S, V] : Iterator[V] < {
 # rendering
 
 ## Accepts written values, like a buffer or an output stream.
-@lang.{"write"} pub Write[T :: string] :: trait {
+@lang pub Write[T :: string] :: trait {
 	write: fn(mut self; v: T)
 }
 
 ## Every type renders, through its own `fmt` or `str`, or the derived printer.
 @implicit
-@lang.{"display"} pub Display :: trait {
+@lang pub Display :: trait {
 	fmt :: fn(self; mut w: Write) {
 		w.write(__render(self))
 	}
@@ -220,7 +220,7 @@ KeyedIter[S, V] : Iterator[V] < {
 
 ## Every type debugs, through its own `debug` or the derived printer.
 @implicit
-@lang.{"debug"} pub Debug :: trait {
+@lang pub Debug :: trait {
 	debug :: fn(self; mut w: Write) {
 		w.write(__repr(self))
 	}
@@ -241,7 +241,7 @@ pub TryFrom[T] :: trait { try_from: fn(v: T) !Self }
 
 # errors
 
-@lang.{"error"} pub Error :: trait {
+@lang pub Error :: trait {
 	message :: fn(self) string { self.str() }
 	cause :: fn(self) ?Error { none }
 }
@@ -269,7 +269,7 @@ ParseError : Error < {
 }
 
 ## A source location, as `src!()` captures it.
-@lang.{"src"} pub Src :: struct {
+@lang pub Src :: struct {
 	pub file: string,
 	pub line: int,
 }
@@ -287,10 +287,10 @@ Ctx : Error < {
 }
 
 # what `error("...")` builds
-@lang.{"raise"} raise :: fn(msg: string, at: Src) Err do Err.{msg, at}
+@lang raise :: fn(msg: string, at: Src) Err do Err.{msg, at}
 
 # appended to main's exit line
-@lang.{"origin"} origin :: fn(e: Error) string {
+@lang origin :: fn(e: Error) string {
 	err :: Err.(e) or do return ""
 	at :: err.at or do return ""
 	"  at {at}"
