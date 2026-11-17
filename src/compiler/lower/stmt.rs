@@ -156,7 +156,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						_ => self.expr(value)?,
 					};
-					if i + 1 == stmts.len() {
+					if i + 1 == stmts.len() && !self.is_affine(&typ) {
 						last = (ptr, typ.clone());
 					}
 					self.consume_parts(pat, value, ptr, &typ)?;

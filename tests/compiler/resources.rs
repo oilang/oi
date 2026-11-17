@@ -570,7 +570,7 @@ fn linear_values_end_only_through_a_consumer() {
 	let guard = "f :: fn(b: bool) { t := Tx.{id = 1}; defer t.commit(); if b { return }; print(\"tail\") }";
 	check(
 		[TX, guard, "main :: fn() { f(true); f(false) }"],
-		"commit 1\ntail\ncommit 1",
+		["commit 1", "tail", "commit 1"],
 	);
 	fail(
 		[TX, "main :: fn() { discard Tx.{id = 1} }"],
@@ -583,5 +583,13 @@ fn block_bind_of_a_drop_value_fails() {
 	fail(
 		[FILE, "a := b := File.{fd = 1}"],
 		"`File` is move-only, so `a` can't copy it",
+	);
+}
+
+#[test]
+fn tuple_destructure_of_a_resource_as_last_statement() {
+	check(
+		[FILE, "two :: fn() (File, int) { (File.{fd = 1}, 2) }", "p, n := two()"],
+		["drop 1"],
 	);
 }
