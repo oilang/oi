@@ -10,13 +10,16 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<Option<TypedVal>, Diagnostic> {
-		// user fns shadow builtins
-		let qualified = self.qualify(name);
-		if self.funcs.contains_key(&*qualified) || self.world.generic_fns.contains_key(&*qualified) {
-			return Ok(None);
-		}
+		let qualified = self.qualify(name).into_owned();
+		let path = match has_ann(self.types.consts.anns, &qualified, role::INTRINSIC.path()) {
+			true => qualified.as_str(),
+			false if self.funcs.contains_key(&qualified) || self.world.generic_fns.contains_key(&qualified) => {
+				return Ok(None);
+			}
+			false => name,
+		};
 
-		match name {
+		match path {
 			"error" => {
 				if args.len() != 1 {
 					return fail(
@@ -64,7 +67,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			// an owned copy with no shared buffers
-			"__unshare" => {
+			"core::__unshare" => {
 				let (val, typ) = self.expr(&args[0])?;
 				if self.is_affine(&typ) {
 					self.move_out(&args[0], &typ)?;
@@ -76,14 +79,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			// `fmt` and `debug` defaults
-			"__render" | "__repr" => {
+			"core::__render" | "core::__repr" => {
 				let (val, typ) = self.expr(&args[0])?;
-				Ok(Some((self.derived_str(val, &typ, name == "__repr"), Typ::Str)))
+				Ok(Some((self.derived_str(val, &typ, path == "core::__repr"), Typ::Str)))
 			}
 
 			// a map or fixed enum array's key or value at the given position
-			"__key_at" | "__value_at" => {
-				let ((coll, typ), key) = (self.expr(&args[0])?, name == "__key_at");
+			"core::__key_at" | "core::__value_at" => {
+				let ((coll, typ), key) = (self.expr(&args[0])?, path == "core::__key_at");
 				let at = self.check_typed(&args[1], &Typ::Int(64), "not an int")?;
 				if let Some((key_typ, arr)) = typ.keyed() {
 					return Ok(Some(match key {
@@ -104,7 +107,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 
 			// hands a `comp` site's value back to the host, tagged so it can be reified as a literal
-			"__comp_yield" => {
+			"core::__comp_yield" => {
 				(self.ret, self.is_main) = (None, true);
 				let (val, typ) = self.expr(&args[0])?;
 				self.comp_yield(val, &typ, args[0].1)?;

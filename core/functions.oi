@@ -5,6 +5,26 @@ use rt
 ## Get the zeroed value of a type.
 @lang pub zero[T] :: fn() T { z: T; z }
 
+# intrinsics
+
+## Copy a value into one that shares no buffers.
+@intrinsic pub(package) __unshare[T] :: fn(value: T) T {}
+
+## Render a value with the derived printer (`fmt`).
+@intrinsic __render[T] :: fn(value: T) string {}
+
+## Render a value with the derived debug printer (`debug`).
+@intrinsic __repr[T] :: fn(value: T) string {}
+
+## The key at a position in a map.
+@intrinsic __key_at[K, V] :: fn(keyed: [K]V, at: int) K {}
+
+## The value at a position in a map.
+@intrinsic __value_at[K, V] :: fn(keyed: [K]V, at: int) V {}
+
+## Hand a comp site's value back to the host.
+@intrinsic __comp_yield[T] :: fn(value: T) {}
+
 # stdio
 
 pub print :: fn(args: ..any) { put(0, args, "\n") }

@@ -672,7 +672,7 @@ pub(crate) fn fold(
 			ret: None,
 			body: vec![(
 				Expr::Call {
-					name: "__comp_yield".into(),
+					name: "core::__comp_yield".into(),
 					type_args: vec![],
 					args: vec![inner],
 				},
