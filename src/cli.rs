@@ -26,6 +26,10 @@ pub struct Cli {
 	#[arg(long, global = true, value_enum, default_value = "human")]
 	pub error_format: ErrorFormat,
 
+	/// Read unsaved sources over disk from stdin, as JSON `{path: text}`.
+	#[arg(long, global = true)]
+	pub overlay: bool,
+
 	#[command(subcommand)]
 	pub command: Option<Command>,
 }

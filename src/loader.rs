@@ -7,7 +7,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use chumsky::{input::Stream, prelude::*};
 use cranelift::codegen::incremental_cache::CacheKvStore;
@@ -356,10 +356,14 @@ fn is_const_value(e: &Expr) -> bool {
 	}
 }
 
-/// Read a source file, reporting failure.
+/// Unsaved sources by absolute path, from `--overlay`.
+pub static OVERLAY: OnceLock<HashMap<PathBuf, String>> = OnceLock::new();
+
+/// Read a source file from the overlay or disk, reporting failure.
 pub fn read_src(path: &Path) -> Result<(String, String), Reported> {
-	let src =
-		fs::read_to_string(path).map_err(|e| crate::driver::fail(format!("cannot read {}: {e}", path.display())))?;
+	let overlay = OVERLAY.get().and_then(|overlay| overlay.get(&std::path::absolute(path).ok()?));
+	let src = overlay.map_or_else(|| fs::read_to_string(path), |src| Ok(src.clone()));
+	let src = src.map_err(|e| crate::driver::fail(format!("cannot read {}: {e}", path.display())))?;
 	Ok((path.display().to_string(), src))
 }
 
@@ -511,7 +515,7 @@ fn walk_tree(dir: &Path) -> Vec<PathBuf> {
 // Read the scans of every file under a given library package from its interface, writing it on a miss.
 fn read_interface(store: &mut cache::Store, pkg: &Path) -> HashMap<String, Scanned> {
 	let files = walk_tree(pkg).into_iter();
-	let files = files.filter_map(|path| Some((path.display().to_string(), fs::read_to_string(path).ok()?)));
+	let files = files.filter_map(|path| read_src(&path).ok());
 	let mut files: Vec<_> = files.collect();
 	files.sort();
 	let exe = std::env::current_exe()

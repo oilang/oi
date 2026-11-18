@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use logos::Logos;
@@ -43,29 +45,36 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 		"definitionProvider": true,
 	}))?;
 
+	let docs = Arc::new(Mutex::new(HashMap::<PathBuf, String>::new()));
 	let (checks, requests) = mpsc::channel::<PathBuf>();
-	let sender = conn.sender.clone();
+	let (sender, unsaved) = (conn.sender.clone(), docs.clone());
 	let checker = std::thread::spawn(move || {
 		let (mut queue, mut published) = (vec![], HashMap::new());
 		while let Some(entry) = queue.pop().or_else(|| requests.recv().ok()) {
-			queue.extend(requests.try_iter());
+			// collect requests until edits pause
+			let pause = Duration::from_millis(400);
+			queue.extend(std::iter::from_fn(|| requests.recv_timeout(pause).ok()));
 			queue.retain(|queued| *queued != entry);
-			let Some(stderr) = output(&entry, &requests, &mut queue) else {
+
+			let overlay = serde_json::to_string(&*unsaved.lock().unwrap()).unwrap_or_default();
+			let Some(stderr) = output(&entry, &overlay, &requests, &mut queue) else {
 				continue;
 			};
+
 			for msg in check(&entry, &stderr, &mut published) {
 				sender.send(msg).ok();
 			}
 		}
 	});
 
-	let mut docs: HashMap<PathBuf, String> = HashMap::new();
 	for msg in &conn.receiver {
+		let mut docs = docs.lock().unwrap();
 		match msg {
 			Message::Request(req) => {
 				if conn.handle_shutdown(&req)? {
 					break;
 				}
+
 				let file = req.params["textDocument"]["uri"].as_str().and_then(file_path);
 				let src = file.and_then(|file| docs.get(&file)).map_or("", String::as_str);
 				let resp = match req.method.as_str() {
@@ -116,7 +125,7 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 					docs.insert(file.clone(), text.into());
 				}
 
-				if matches!(note.method.as_str(), "textDocument/didOpen" | "textDocument/didSave") {
+				if text.is_some() || note.method == "textDocument/didSave" {
 					checks.send(entry(&file))?;
 				}
 			}
@@ -288,12 +297,14 @@ fn file_uri(path: &str) -> String {
 
 /// Run a check of `entry` in a child process, returning its stderr.
 /// Gives up on a newer request for `entry`, a 20s run, or shutdown.
-fn output(entry: &Path, requests: &Receiver<PathBuf>, queue: &mut Vec<PathBuf>) -> Option<String> {
-	let args = ["--error-format", "json", "run", "--check"];
+fn output(entry: &Path, overlay: &str, requests: &Receiver<PathBuf>, queue: &mut Vec<PathBuf>) -> Option<String> {
+	let args = ["--error-format", "json", "--overlay", "run", "--check"];
 	let mut cmd = Command::new(std::env::current_exe().ok()?);
-	let mut child = (cmd.args(args).arg(entry).stdout(Stdio::null()).stderr(Stdio::piped()).spawn()).ok()?;
+	cmd.args(args).arg(entry).stdin(Stdio::piped());
+	let mut child = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn().ok()?;
 	let pipe = child.stderr.take()?;
 	let reader = std::thread::spawn(move || std::io::read_to_string(pipe));
+	child.stdin.take()?.write_all(overlay.as_bytes()).ok();
 
 	let started = Instant::now();
 	while child.try_wait().ok()?.is_none() {

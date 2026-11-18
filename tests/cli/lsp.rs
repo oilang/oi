@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Stdio;
 
-use crate::common::{Project, oi};
+use crate::common::oi;
 
 /// Run `msgs` through an `oi lsp` session, returning its stdout.
 fn session(msgs: &[&str]) -> String {
@@ -113,18 +113,16 @@ fn semantic_tokens_come_from_the_lexer() {
 
 #[test]
 fn diagnostics_publish_on_open() {
-	let project = Project::new().main("main :: fn() {\n\tx: int = \"s\"\n}");
-	let uri = format!("file://{}", project.as_ref().join("main.oi").display());
-	let open = format!(
-		r#"{{
+	// never saved, so the check reads the overlay
+	let stdout = session_until(
+		&[r#"{
 			"jsonrpc":"2.0",
 			"method":"textDocument/didOpen",
-			"params":{{"textDocument":{{"uri":"{uri}","text":""}}}}
-		}}"#
+			"params":{"textDocument":{"uri":"file:///a.oi","text":"main :: fn() {\n\tx: int = \"s\"\n}"}}
+		}"#],
+		"publishDiagnostics",
 	);
-	let stdout = session_until(&[&open], "publishDiagnostics");
 
-	let diag = r#"{"message":"expected int, got string\ndoes not match the declared type","range":{"end":{"character":13,"line":2},"start":{"character":10,"line":2}},"severity":1,"source":"oi"}"#;
-	let publish = format!(r#"{{"diagnostics":[{diag}],"uri":"{uri}"}}"#);
-	assert!(stdout.contains(&publish), "{stdout}");
+	let diag = r#"{"diagnostics":[{"message":"expected int, got string\ndoes not match the declared type","range":{"end":{"character":13,"line":1},"start":{"character":10,"line":1}},"severity":1,"source":"oi"}],"uri":"file:///a.oi"}"#;
+	assert!(stdout.contains(diag), "{stdout}");
 }
