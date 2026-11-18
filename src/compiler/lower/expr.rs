@@ -732,7 +732,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						return Ok((self.b.ins().iconst(self.int, n), Typ::Int(64)));
 					}
 
-					if let Some(v) = self.numeric_bound(&t, field) {
+					if let Some(v) = self.int_bound(&t, field) {
 						return Ok((v, t));
 					}
 
@@ -1311,23 +1311,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Get arch bounds of numeric types.
-	fn numeric_bound(&mut self, t: &Typ, field: &str) -> Option<Value> {
-		let hi = match field {
-			"max" => true,
-			"min" => false,
+	// Fill `Integer.max`/`min` for ints of every width.
+	fn int_bound(&mut self, t: &Typ, field: &str) -> Option<Value> {
+		let (min, max) = t.int_bounds()?;
+		let bound = match field {
+			"max" => max,
+			"min" => min,
 			_ => return None,
 		};
-		if let Some((min, max)) = t.int_bounds() {
-			return Some(self.int_const(cl_type(t, self.int), if hi { max } else { min }));
-		}
-		let ins = self.b.ins();
-		Some(match t {
-			Typ::Float(64) => ins.f64const(if hi { f64::MAX } else { f64::MIN }),
-			Typ::Float(32) => ins.f32const(if hi { f32::MAX } else { f32::MIN }),
-			Typ::Float(16) => ins.f16const(Ieee16::with_bits(if hi { 0x7bff } else { 0xfbff })),
-			_ => return None,
-		})
+		Some(self.int_const(cl_type(t, self.int), bound))
 	}
 }
 

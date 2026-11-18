@@ -341,7 +341,7 @@ pub(super) fn check_impls<'p>(
 				}
 				continue;
 			}
-			let want = types.with_type_params(&sig_params).with_scope(home).resolve(&tf.typ, tf.span)?;
+			let want = (types.with_type_params(&sig_params).with_scope(home)).resolve(&subst(&tf.typ, &me), tf.span)?;
 			// let embedded structs satisfy field requirements
 			let stored = field_slot(&types, typ, &tf.name).map(|(_, t)| t);
 			let missing = || {

@@ -3,6 +3,8 @@ module core
 float :< {
 	## Smallest step between distinct `float` values near 1.0.
 	epsilon :: 2.0 ** -52.0
+	max :: 1.7976931348623157e308
+	min :: -1.7976931348623157e308
 
 	## Whether this is NaN.
 	is_nan :: fn(self) bool {
@@ -17,16 +19,33 @@ float :< {
 
 f32 :< {
 	epsilon :: 2.0 ** -23.0
+	max :: 3.4028234663852886e38
+	min :: -3.4028234663852886e38
+}
+
+f16 :< {
+	max :: 65504.0
+	min :: -65504.0
 }
 
 ## Any int or float, of any width.
 @lang pub Number :: trait {}
 
 ## Any int, of any width.
-@lang pub Integer :: trait {}
+@lang pub Integer :: trait {
+	## Largest value.
+	max: Self
+	## Smallest value.
+	min: Self
+}
 
 ## Floating point, of any width.
-pub Float :: trait {}
+pub Float :: trait {
+	## Largest finite value.
+	max: Self
+	## Most negative finite value.
+	min: Self
+}
 float :< Float
 f32 :< Float
 f16 :< Float

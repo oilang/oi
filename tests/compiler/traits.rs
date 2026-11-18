@@ -1128,3 +1128,18 @@ fn ordinal_claims() {
 	check(src, "180 270 some.(c) some.(true) some.(255) 1114112");
 	fail("print(ord(1))", "does not claim `core::Ordinal`");
 }
+
+#[test]
+fn self_typed_trait_consts() {
+	let src = indoc! {"
+		Zero :: trait { zero: Self }
+		u8 : Zero < { zero :: 7 }
+		top[T: Float] :: fn() T { T.max }
+		print(u8.zero, top[f32](), top[float]() == float.max)
+	"};
+	check(src, "7 3.4028235e38 true");
+	fail(
+		"Zero :: trait { zero: Self }\nint : Zero < { zero :: 1.5 }",
+		"a `int` literal",
+	);
+}
