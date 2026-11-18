@@ -2446,7 +2446,8 @@ impl<M: Module> Compiler<M> {
 		Expr::Block(def.body.to_vec()).walk(&mut |e| match e {
 			Expr::Dollar => dollar = true,
 			Expr::Ref(inner) if let Expr::Ident(n) = &inner.0 => _ = trans.addressed.insert(n.clone()),
-			Expr::Assign { name, .. } | Expr::FieldAssign { name, .. } if name == CTX => writes = true,
+			Expr::FieldAssign { name, .. } if name == CTX => writes = true,
+			e if e.assign_name().is_some_and(|name| name == CTX) => writes = true,
 			_ => {}
 		});
 		if dollar {

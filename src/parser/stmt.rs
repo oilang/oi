@@ -157,19 +157,16 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	});
 
 	// assignment
+	let name = p.def_name.clone().map_with(|n, ex| (Expr::Ident(n), ex.span()));
 	let mut assign = Recursive::declare();
 	assign.define(
-		(p.def_name.clone().map(|n| (n, None)).or(hole.clone()))
+		(p.unquote.clone().or(name))
 			.then(assign_op)
 			.then(assign.clone().or(values.clone()))
-			.map_with(move |(((name, binder), op), value), ex| {
-				let lhs = binder.clone().map_or(Expr::Ident(name.clone()), Expr::UnquoteExpr);
-				let value = Box::new(fold(op, lhs, value, ex.span()));
-				let assign = (Expr::Assign { name, value }, ex.span());
-				match binder {
-					Some(b) => (Expr::UnquoteBind(b, Box::new(assign)), ex.span()),
-					None => assign,
-				}
+			.map_with(move |((key, op), value), ex| {
+				let value = Box::new(fold(op, key.0.clone(), value, ex.span()));
+				let key = Box::new(key);
+				(Expr::Assign { key, value }, ex.span())
 			}),
 	);
 

@@ -303,7 +303,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Lower member access through a `with` subject.
 	pub(super) fn through_with(&self, e: &Spanned<Expr>) -> Result<Option<Spanned<Expr>>, Diagnostic> {
-		let (Expr::Ident(name) | Expr::Call { name, .. } | Expr::Assign { name, .. }) = &e.0 else {
+		let ((Expr::Ident(name) | Expr::Call { name, .. }, _) | (_, Some(name))) = (&e.0, e.0.assign_name()) else {
 			return Ok(None);
 		};
 		if self.vars.contains_key(name) {

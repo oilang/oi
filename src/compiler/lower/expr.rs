@@ -277,8 +277,8 @@ impl<'a, M: Module> Translator<'a, M> {
 							type_args: vec![],
 							args,
 						};
-						let value = Box::new((call, expr.1));
-						self.lower(&(Expr::Assign { name, value }, expr.1), hint)
+						let assign = crate::ast::assign((Expr::Ident(name), l.1), None, (call, expr.1), expr.1);
+						self.lower(&assign, hint)
 					}
 					None => self.binop(*op, l, r, expr.1),
 				},

@@ -377,8 +377,8 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn rewrap_writes(&mut self, body: &[Spanned<Expr>]) {
 		let mut written = HashSet::new();
 		Expr::Block(body.to_vec()).walk(&mut |e| match e {
-			Expr::Assign { name, .. }
-			| Expr::DerefAssign { name, .. }
+			Expr::Assign { key, .. } if let Expr::Ident(name) = &key.0 => _ = written.insert(name.clone()),
+			Expr::DerefAssign { name, .. }
 			| Expr::FieldAssign { name, .. }
 			| Expr::IndexAssign { name, .. }
 			| Expr::Append { name, .. } => _ = written.insert(name.clone()),

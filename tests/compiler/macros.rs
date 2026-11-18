@@ -1056,3 +1056,18 @@ fn comp_loop_selects_by_shape() {
 		["A 2 A.{x = 0, y = 0}", r#"B 1 B.{x = ""}"#, "A 0 1", "B  0"],
 	);
 }
+
+#[test]
+fn map_entries_are_items() {
+	check(
+		indoc! {r#"
+			m! :: fn(lit: Ast) Ast {
+				loop entry in lit.items { print(entry) }
+				`[%{..lit.items}]`
+			}
+			k := "one"
+			print(m!([k = 1, "two" = 2]))
+		"#},
+		["k = 1", r#""two" = 2"#, r#"["one" = 1, "two" = 2]"#],
+	);
+}

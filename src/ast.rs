@@ -27,9 +27,9 @@ pub enum Expr {
 		value: Option<Box<Spanned<Expr>>>,
 	},
 
-	// `name = value`
+	// `key = value`
 	Assign {
-		name: String,
+		key: Box<Spanned<Expr>>,
 		value: Box<Spanned<Expr>>,
 	},
 
@@ -391,6 +391,14 @@ impl Expr {
 		}
 	}
 
+	// The name written by an assignment.
+	pub fn assign_name(&self) -> Option<&String> {
+		match self {
+			Expr::Assign { key, .. } if let Expr::Ident(name) = &key.0 => Some(name),
+			_ => None,
+		}
+	}
+
 	// Split definitions into annotations, publicness, and item.
 	pub fn peel_meta(e: &Spanned<Expr>) -> (&[Spanned<Expr>], bool, &Spanned<Expr>) {
 		let (anns, e) = match &e.0 {
@@ -427,8 +435,7 @@ impl Expr {
 			Expr::Bind { value, .. } => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::Return(value) => value.iter_mut().for_each(|v| f(One(v))),
 			Expr::Defer { body, .. } => f(One(body)),
-			Expr::Assign { value: v, .. }
-			| Expr::PatBind { value: v, .. }
+			Expr::PatBind { value: v, .. }
 			| Expr::ArgMod(_, v)
 			| Expr::Discard(v)
 			| Expr::Spread(v)
@@ -461,6 +468,7 @@ impl Expr {
 				index: b,
 			}
 			| Expr::IndexAssign { index: a, value: b, .. }
+			| Expr::Assign { key: a, value: b }
 			| Expr::Pipe { value: a, step: b }
 			| Expr::UnquoteBind(a, b)
 			| Expr::Binary(_, a, b) => {
@@ -860,7 +868,10 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 	}
 	let value = Box::new(value);
 	match unplace(&place.0) {
-		Some((name, None)) => return (Expr::Assign { name, value }, span),
+		Some((_, None)) => {
+			let key = Box::new(place);
+			return (Expr::Assign { key, value }, span);
+		}
 		Some((name, Some(field))) => return (Expr::FieldAssign { name, field, value }, span),
 		None => {}
 	}

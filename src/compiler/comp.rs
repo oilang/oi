@@ -177,9 +177,9 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 						}
 						field => vec![field],
 					})
-					.map(|field| match field {
-						(None, (Expr::Assign { name, value }, _)) => (Some(name), *value),
-						field => field,
+					.map(|field| match (field.1.0.assign_name().cloned(), field) {
+						(Some(name), (None, (Expr::Assign { value, .. }, _))) => (Some(name), *value),
+						(_, field) => field,
 					})
 					.collect();
 			}
