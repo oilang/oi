@@ -72,6 +72,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if self.is_affine(&typ) {
 					self.move_out(&args[0], &typ)?;
 				}
+
 				let val = self.copy_bind(val, &typ);
 				let val = self.unshare(val, &typ);
 				self.temp(val, &typ);
@@ -88,6 +89,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			"core::__key_at" | "core::__value_at" => {
 				let ((coll, typ), key) = (self.expr(&args[0])?, path == "core::__key_at");
 				let at = self.check_typed(&args[1], &Typ::Int(64), "not an int")?;
+
 				if let Some((key_typ, arr)) = typ.keyed() {
 					return Ok(Some(match key {
 						true => (self.enum_disc(&key_typ, at), key_typ),
@@ -97,6 +99,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				let Typ::Map(key_typ, val_typ) = &typ else {
 					unreachable!("a map or `[E]T`")
 				};
+
 				let out = if key { key_typ } else { val_typ };
 				let flag = self.b.ins().iconst(self.int, key as i64);
 				let bits = self.rt_call("map_at", &[coll, at, flag]).unwrap();
@@ -110,6 +113,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			"core::__comp_yield" => {
 				(self.ret, self.is_main) = (None, true);
 				let (val, typ) = self.expr(&args[0])?;
+
+				// reify reads it after the run
+				self.untemp(val);
+
 				self.comp_yield(val, &typ, args[0].1)?;
 				Ok(Some(self.unit_value()))
 			}

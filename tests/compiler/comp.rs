@@ -6,6 +6,11 @@ fn comp_folds() {
 	let src = indoc! {r#"
 		use math
 		f :: fn() int { 40 + 2 }
+		grow :: fn() []u8 {
+			out: []u8
+			loop i in 0..976 do out << 97
+			out
+		}
 		PI :: comp 22.0 / 7.0
 		V :: comp f()
 		X :: comp {
@@ -14,9 +19,10 @@ fn comp_folds() {
 		}
 		S :: comp "hi" + " there"
 		A :: comp math.abs(0 - 5)
-		print(PI, V, X, S, A)
+		B :: comp string.(grow())
+		print(PI, V, X, S, A, B.len())
 	"#};
-	check(src, "3.142857142857143 42 20 hi there 5");
+	check(src, "3.142857142857143 42 20 hi there 5 976");
 }
 
 #[test]
