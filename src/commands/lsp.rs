@@ -59,15 +59,15 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 		}
 	});
 
-	let mut docs: HashMap<String, String> = HashMap::new();
+	let mut docs: HashMap<PathBuf, String> = HashMap::new();
 	for msg in &conn.receiver {
 		match msg {
 			Message::Request(req) => {
 				if conn.handle_shutdown(&req)? {
 					break;
 				}
-				let src = req.params["textDocument"]["uri"].as_str().and_then(|uri| docs.get(uri));
-				let src = src.map_or("", String::as_str);
+				let file = req.params["textDocument"]["uri"].as_str().and_then(file_path);
+				let src = file.and_then(|file| docs.get(&file)).map_or("", String::as_str);
 				let resp = match req.method.as_str() {
 					"textDocument/semanticTokens/full" => Response::new_ok(req.id, json!({ "data": highlight(src) })),
 					"textDocument/documentSymbol" => Response::new_ok(req.id, symbols(src)),
@@ -83,7 +83,8 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 							let at = |offset| position(program.map.before(offset));
 							let range = json!({ "start": at(span.start), "end": at(span.end) });
 							// embedded core has no file
-							file.starts_with('/').then_some(json!({ "uri": format!("file://{file}"), "range": range }))
+							file.starts_with('/')
+								.then_some(json!({ "uri": file_uri(file), "range": range }))
 						});
 						Response::new_ok(req.id, found)
 					}
@@ -94,7 +95,10 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 
 			Message::Notification(note) => {
 				let doc = &note.params["textDocument"];
-				let uri = doc["uri"].as_str().unwrap_or_default();
+				let Some(file) = doc["uri"].as_str().and_then(file_path) else {
+					continue;
+				};
+
 				let text = match note.method.as_str() {
 					"textDocument/didOpen" => doc["text"].as_str(),
 					// full sync, so the last change is the whole document
@@ -102,20 +106,18 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 						.as_array()
 						.and_then(|changes| changes.last()?["text"].as_str()),
 					"textDocument/didClose" => {
-						docs.remove(uri);
+						docs.remove(&file);
 						None
 					}
 					_ => None,
 				};
 
 				if let Some(text) = text {
-					docs.insert(uri.into(), text.into());
+					docs.insert(file.clone(), text.into());
 				}
 
-				if matches!(note.method.as_str(), "textDocument/didOpen" | "textDocument/didSave")
-					&& let Some(file) = uri.strip_prefix("file://")
-				{
-					checks.send(entry(Path::new(file)))?;
+				if matches!(note.method.as_str(), "textDocument/didOpen" | "textDocument/didSave") {
+					checks.send(entry(&file))?;
 				}
 			}
 
@@ -235,9 +237,9 @@ fn position(before: &str) -> Value {
 }
 
 /// Load the program around the request's file, with the dotted name under its cursor.
-fn program_at(docs: &HashMap<String, String>, params: &Value) -> Option<(Program, String)> {
-	let uri = params["textDocument"]["uri"].as_str()?;
-	let src = docs.get(uri)?;
+fn program_at(docs: &HashMap<PathBuf, String>, params: &Value) -> Option<(Program, String)> {
+	let file = file_path(params["textDocument"]["uri"].as_str()?)?;
+	let src = docs.get(&file)?;
 	let [row, column] = ["line", "character"].map(|key| params["position"][key].as_u64().unwrap_or_default() as usize);
 	let line = src.split_inclusive('\n').take(row).map(str::len).sum::<usize>();
 	let before: String = char::decode_utf16(src[line..].encode_utf16().take(column)).flatten().collect();
@@ -251,9 +253,8 @@ fn program_at(docs: &HashMap<String, String>, params: &Value) -> Option<(Program
 	}
 
 	// `load` reads modules from disk, so only the entry can be an open buffer
-	let main = entry(Path::new(uri.strip_prefix("file://")?));
-	let open = docs.get(&format!("file://{}", main.display())).cloned();
-	let text = open.or_else(|| std::fs::read_to_string(&main).ok())?;
+	let main = entry(&file);
+	let text = docs.get(&main).cloned().or_else(|| std::fs::read_to_string(&main).ok())?;
 	let program = load(vec![(main.display().to_string(), text)], root(&main)).ok()?;
 	Some((program, src[toks[start].1.start..toks[end].1.end].into()))
 }
@@ -263,6 +264,26 @@ fn program_at(docs: &HashMap<String, String>, params: &Value) -> Option<(Program
 fn entry(file: &Path) -> PathBuf {
 	let mut mains = file.ancestors().skip(1).map(|dir| dir.join("main.oi"));
 	mains.find(|main| main.exists()).unwrap_or_else(|| file.into())
+}
+
+/// Percent-decode a `file://` URI into its path.
+fn file_path(uri: &str) -> Option<PathBuf> {
+	let mut parts = uri.strip_prefix("file://")?.split('%');
+	let mut bytes = parts.next()?.as_bytes().to_vec();
+	for part in parts {
+		bytes.push(u8::from_str_radix(part.get(..2)?, 16).ok()?);
+		bytes.extend(&part.as_bytes()[2..]);
+	}
+	String::from_utf8(bytes).ok().map(PathBuf::from)
+}
+
+/// Percent-encode a path into a `file://` URI.
+fn file_uri(path: &str) -> String {
+	let encode = |byte: u8| match byte {
+		_ if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) => char::from(byte).to_string(),
+		_ => format!("%{byte:02X}"),
+	};
+	format!("file://{}", path.bytes().map(encode).collect::<String>())
 }
 
 /// Run a check of `entry` in a child process, returning its stderr.
@@ -314,7 +335,7 @@ fn check(entry: &Path, stderr: &str, published: &mut HashMap<PathBuf, Vec<String
 			json!({ "line": row, "character": before.map(char::len_utf16).sum::<usize>() })
 		};
 
-		files.entry(format!("file://{file}")).or_default().push(json!({
+		files.entry(file_uri(file)).or_default().push(json!({
 			"range": {
 				"start": position("start", text.split('\n').next()),
 				"end": position("end", text.rsplit('\n').next()),
