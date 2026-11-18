@@ -7,7 +7,7 @@ use oi::Reported;
 use oi::ast::{Expr, Span, Spanned};
 use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
-use oi::loader::{core_source, load, parse_file};
+use oi::loader::{Program, core_source, load, parse_file};
 
 use crate::cli::VERSION;
 
@@ -94,15 +94,19 @@ fn help_topic(name: &str, session: &str) {
 	let Ok(program) = load(vec![("<repl>".into(), src)], Path::new(".")) else {
 		return;
 	};
-	let Some(span) = program.modules.iter().rev().find_map(|m| find_def(&m.items, "", name)) else {
-		return eprintln!("no docs for `{name}`");
-	};
+	let docs = lookup(&program, name).unwrap_or_else(|| format!("no docs for `{name}`"));
+	eprintln!("{docs}");
+}
+
+// Finds the docs and signature of the last definition at a dotted path.
+pub fn lookup(program: &Program, name: &str) -> Option<String> {
+	let span = program.modules.iter().rev().find_map(|m| find_def(&m.items, "", name))?;
 	let (.., text) = program.map.locate_span(span.into_range());
 	let (above, indent) = program.map.before(span.start).rsplit_once('\n').unwrap_or_default();
 	let docs = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
 	let docs: Vec<_> = docs.take_while(|l| l.starts_with("##")).collect();
-	docs.iter().rev().for_each(|doc| eprintln!("{doc}"));
-	eprintln!("{}{}", indent.trim_start(), text.lines().next().unwrap_or_default());
+	let docs: String = docs.iter().rev().map(|doc| format!("{doc}\n")).collect();
+	Some(docs + indent.trim_start() + text.lines().next().unwrap_or_default())
 }
 
 // The last definition at the given dotted path.

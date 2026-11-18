@@ -9,8 +9,11 @@ use lsp_server::{Connection, ErrorCode, Message, Notification, Response};
 use oi::Reported;
 use oi::driver::fail;
 use oi::lexer::{Token, lex_at};
-use oi::loader::scan;
+use oi::loader::{Program, load, scan};
 use serde_json::{Value, json};
+
+use super::repl::lookup;
+use super::run::root;
 
 const LEGEND: [&str; 9] = [
 	"comment",
@@ -35,6 +38,7 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 		"textDocumentSync": { "openClose": true, "change": 1, "save": true },
 		"semanticTokensProvider": { "legend": { "tokenTypes": LEGEND, "tokenModifiers": [] }, "full": true },
 		"documentSymbolProvider": true,
+		"hoverProvider": true,
 	}))?;
 
 	let (checks, entries) = mpsc::channel::<PathBuf>();
@@ -60,6 +64,11 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 				let resp = match req.method.as_str() {
 					"textDocument/semanticTokens/full" => Response::new_ok(req.id, json!({ "data": highlight(src) })),
 					"textDocument/documentSymbol" => Response::new_ok(req.id, symbols(src)),
+					"textDocument/hover" => {
+						let found = program_at(&docs, &req.params).and_then(|(program, name)| lookup(&program, &name));
+						let hover = |text| json!({ "contents": { "kind": "markdown", "value": format!("```oi\n{text}\n```") } });
+						Response::new_ok(req.id, found.map(hover))
+					}
 					_ => Response::new_err(req.id, ErrorCode::MethodNotFound as i32, req.method),
 				};
 				conn.sender.send(resp.into())?;
@@ -205,6 +214,30 @@ fn symbols(src: &str) -> Vec<Value> {
 fn position(before: &str) -> Value {
 	let column = before.rsplit('\n').next().unwrap_or_default();
 	json!({ "line": before.matches('\n').count(), "character": column.encode_utf16().count() })
+}
+
+/// Load the program around the request's file, with the dotted name under its cursor.
+fn program_at(docs: &HashMap<String, String>, params: &Value) -> Option<(Program, String)> {
+	let uri = params["textDocument"]["uri"].as_str()?;
+	let src = docs.get(uri)?;
+	let [row, column] = ["line", "character"].map(|key| params["position"][key].as_u64().unwrap_or_default() as usize);
+	let line = src.split_inclusive('\n').take(row).map(str::len).sum::<usize>();
+	let before: String = char::decode_utf16(src[line..].encode_utf16().take(column)).flatten().collect();
+	let (toks, at) = (lex_at(src, 0), line + before.len());
+	let end = toks
+		.iter()
+		.position(|(tok, span)| matches!(tok, Token::Ident(_)) && (span.start..=span.end).contains(&at))?;
+	let mut start = end;
+	while let [.., (Token::Ident(_), _), (Token::Dot, _)] = &toks[..start] {
+		start -= 2;
+	}
+
+	// `load` reads modules from disk, so only the entry can be an open buffer
+	let main = entry(Path::new(uri.strip_prefix("file://")?));
+	let open = docs.get(&format!("file://{}", main.display())).cloned();
+	let text = open.or_else(|| std::fs::read_to_string(&main).ok())?;
+	let program = load(vec![(main.display().to_string(), text)], root(&main)).ok()?;
+	Some((program, src[toks[start].1.start..toks[end].1.end].into()))
 }
 
 /// Find the program a given file belongs to.

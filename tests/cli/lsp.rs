@@ -46,6 +46,26 @@ fn document_symbols_list_top_level_decls() {
 }
 
 #[test]
+fn hover_shows_docs_and_signature() {
+	let stdout = session(&[
+		r#"{
+			"jsonrpc":"2.0",
+			"method":"textDocument/didOpen",
+			"params":{"textDocument":{"uri":"file:///a.oi","text":"use math\nmain :: fn() { math.sqrt(2.0) }"}}
+		}"#,
+		r#"{
+			"jsonrpc":"2.0",
+			"id":2,
+			"method":"textDocument/hover",
+			"params":{"textDocument":{"uri":"file:///a.oi"},"position":{"line":1,"character":21}}
+		}"#,
+	]);
+
+	let sqrt = r#""value":"```oi\n## Square root.\npub sqrt[T] :: fn(n: T) float {\n```""#;
+	assert!(stdout.contains(sqrt), "{stdout}");
+}
+
+#[test]
 fn semantic_tokens_come_from_the_lexer() {
 	let stdout = session(&[
 		r#"{
