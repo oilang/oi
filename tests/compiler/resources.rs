@@ -17,7 +17,10 @@ fn reverse_drop_order() {
 fn bind_move_kills_source() {
 	let out = fail([FILE, "f :: File.{fd = 1}", "g :: f", "print(f)"], "`f` was moved");
 	assert!(out.contains("moved here"), "{out}");
-	fail([FILE, "f :: File.{fd = 1}", "if true { g :: f }", "print(f)"], "`f` was moved");
+	fail(
+		[FILE, "f :: File.{fd = 1}", "if true { g :: f }", "print(f)"],
+		"`f` was moved",
+	);
 }
 
 #[test]

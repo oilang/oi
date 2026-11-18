@@ -9,6 +9,7 @@ use lsp_server::{Connection, ErrorCode, Message, Notification, Response};
 use oi::Reported;
 use oi::driver::fail;
 use oi::lexer::{Token, lex_at};
+use oi::loader::scan;
 use serde_json::{Value, json};
 
 const LEGEND: [&str; 9] = [
@@ -33,6 +34,7 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 	conn.initialize(json!({
 		"textDocumentSync": { "openClose": true, "change": 1, "save": true },
 		"semanticTokensProvider": { "legend": { "tokenTypes": LEGEND, "tokenModifiers": [] }, "full": true },
+		"documentSymbolProvider": true,
 	}))?;
 
 	let (checks, entries) = mpsc::channel::<PathBuf>();
@@ -53,14 +55,12 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 				if conn.handle_shutdown(&req)? {
 					break;
 				}
-				let resp = if req.method == "textDocument/semanticTokens/full" {
-					let src = req.params["textDocument"]["uri"].as_str().and_then(|uri| docs.get(uri));
-					Response::new_ok(
-						req.id,
-						json!({ "data": src.map_or_else(Vec::new, |src| highlight(src)) }),
-					)
-				} else {
-					Response::new_err(req.id, ErrorCode::MethodNotFound as i32, req.method)
+				let src = req.params["textDocument"]["uri"].as_str().and_then(|uri| docs.get(uri));
+				let src = src.map_or("", String::as_str);
+				let resp = match req.method.as_str() {
+					"textDocument/semanticTokens/full" => Response::new_ok(req.id, json!({ "data": highlight(src) })),
+					"textDocument/documentSymbol" => Response::new_ok(req.id, symbols(src)),
+					_ => Response::new_err(req.id, ErrorCode::MethodNotFound as i32, req.method),
 				};
 				conn.sender.send(resp.into())?;
 			}
@@ -180,6 +180,31 @@ fn highlight(src: &str) -> Vec<u32> {
 	}
 
 	data
+}
+
+/// List top-level declarations as document symbols.
+fn symbols(src: &str) -> Vec<Value> {
+	let (toks, mut found) = (lex_at(src, 0), vec![]);
+	for (name, decl) in scan(&toks).decls {
+		// lsp SymbolKind
+		let kind = match toks.get(decl.end) {
+			Some((Token::Fn, _)) => 12,
+			Some((Token::Struct, _)) => 23,
+			Some((Token::Enum, _)) => 10,
+			Some((Token::Trait, _)) => 11,
+			_ => 14,
+		};
+		let span = toks[decl.start].1;
+		let range = json!({ "start": position(&src[..span.start]), "end": position(&src[..span.end]) });
+		found.push(json!({ "name": name, "kind": kind, "range": range, "selectionRange": range }));
+	}
+	found
+}
+
+/// Find the LSP position at the end of `before`.
+fn position(before: &str) -> Value {
+	let column = before.rsplit('\n').next().unwrap_or_default();
+	json!({ "line": before.matches('\n').count(), "character": column.encode_utf16().count() })
 }
 
 /// Find the program a given file belongs to.

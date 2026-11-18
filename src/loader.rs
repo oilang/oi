@@ -428,11 +428,11 @@ pub fn parse_file(
 
 // A library file's top-level names and every name it mentions, read off its tokens.
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Scan {
+pub struct Scan {
 	module: String,
 	base: Option<usize>,
 	header: Option<String>,
-	decls: Vec<String>,
+	pub decls: Vec<(String, Range<usize>)>,
 	claims: Vec<Vec<String>>,
 	idents: HashSet<String>,
 	eager: bool,
@@ -442,12 +442,12 @@ impl Scan {
 	// Checks whether a fill over `needed` parses this file.
 	pub(crate) fn fires(&self, needed: &HashSet<String>) -> bool {
 		self.eager
-			|| self.decls.iter().any(|d| needed.contains(d))
+			|| self.decls.iter().any(|(d, _)| needed.contains(d))
 			|| self.claims.iter().any(|head| head.iter().all(|n| needed.contains(n)))
 	}
 }
 
-fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
+pub fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
 	let name = |i: usize| match toks.get(i) {
 		Some((Token::Ident(n), _)) => Some(n.to_string()),
 		_ => None,
@@ -477,8 +477,10 @@ fn scan(toks: &[(Token, SimpleSpan)]) -> Scan {
 			Token::LParen | Token::LBracket | Token::LBrace => depth += 1,
 			Token::RParen | Token::RBracket | Token::RBrace => depth -= 1,
 			_ if depth > 0 => {}
-			Token::DoubleColon | Token::Bind => out.decls.extend(name(head)),
-			Token::Colon | Token::Assign if let Some(start) = middle.take() => out.decls.extend(name(start)),
+			Token::DoubleColon | Token::Bind => out.decls.extend(name(head).map(|n| (n, head..i + 1))),
+			Token::Colon | Token::Assign if let Some(start) = middle.take() => {
+				out.decls.extend(name(start).map(|n| (n, start..i + 1)))
+			}
 			Token::Colon => (middle, args) = (Some(head), vec![]),
 			Token::Lt if let Some(start) = middle.take() => {
 				owner = name(start).into_iter().chain(args.drain(..)).collect();

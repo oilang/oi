@@ -24,6 +24,28 @@ fn session(msgs: &[&str]) -> String {
 }
 
 #[test]
+fn document_symbols_list_top_level_decls() {
+	let stdout = session(&[
+		r#"{
+			"jsonrpc":"2.0",
+			"method":"textDocument/didOpen",
+			"params":{"textDocument":{"uri":"file:///a.oi","text":"pub sqrt[T] :: fn() {\n\tx :: 1\n}\nCAP : int : 1"}}
+		}"#,
+		r#"{
+			"jsonrpc":"2.0",
+			"id":2,
+			"method":"textDocument/documentSymbol",
+			"params":{"textDocument":{"uri":"file:///a.oi"}}
+		}"#,
+	]);
+
+	let sqrt = r#"{"kind":12,"name":"sqrt","range":{"end":{"character":8,"line":0},"start":{"character":4,"line":0}}"#;
+	let cap = r#"{"kind":14,"name":"CAP","range":{"end":{"character":3,"line":3},"start":{"character":0,"line":3}}"#;
+	let top_level = stdout.contains(sqrt) && stdout.contains(cap) && !stdout.contains(r#""name":"x""#);
+	assert!(top_level, "{stdout}");
+}
+
+#[test]
 fn semantic_tokens_come_from_the_lexer() {
 	let stdout = session(&[
 		r#"{
