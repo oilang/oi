@@ -93,16 +93,6 @@ pub(crate) fn claim_assoc(
 		.collect()
 }
 
-// Bind `Self`, plus this type's associated types under their bare slot names.
-pub(crate) fn bind_self(aliases: &mut HashMap<String, TypeExpr>, typ: &str) {
-	aliases.insert("Self".into(), TypeExpr::Resolved(typ.into()));
-	let prefix = format!("{typ}::");
-	let slots: Vec<_> = (aliases.iter())
-		.filter_map(|(k, v)| Some((k.strip_prefix(&prefix)?.to_string(), v.clone())))
-		.collect();
-	aliases.extend(slots);
-}
-
 // Pin a claim's type args to their keys so trait defaults can lower in the trait's scope.
 pub(crate) fn pin_args<'a>(args: &[Spanned<TypeExpr>], scope: &Scope) -> &'a [Spanned<TypeExpr>] {
 	let mut args = args.to_vec();
@@ -371,9 +361,7 @@ pub(super) fn check_impls<'p>(
 			let lit = typed_lit(types, lit, &want, msg)?;
 			consts.insert(key, lit);
 		}
-		let mut sig_aliases = types.aliases.clone();
-		bind_self(&mut sig_aliases, typ);
-		let sig_types = types.with_aliases(&sig_aliases).with_type_params(&sig_params).with_scope(scope);
+		let sig_types = types.with_self(Some(typ)).with_type_params(&sig_params).with_scope(scope);
 		let sig = |ps: &[Param], ret: &Option<Spanned<TypeExpr>>| -> Result<Typ, Diagnostic> {
 			let param = |p: &Param| {
 				let typ = sig_types.param(&p.typ, p.span)?;

@@ -1688,11 +1688,8 @@ impl<M: Module> Compiler<M> {
 		// hoist fns
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
 		for item in &others {
-			let mut aliases = aliases.clone();
-			if let Some(t) = item.key.rsplit_once('.').map(|(t, _)| t) {
-				bind_self(&mut aliases, t);
-			}
-			let types = base.with_aliases(&aliases).with_scope(item.scope);
+			let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
+			let types = base.with_self(self_type).with_scope(item.scope);
 			let (resolved, ret) = types.resolve_params_ret(&item.params, &item.ret)?;
 			let ret = ret.map_or_else(Typ::unit, |(typ, _)| typ);
 			let params: Vec<FnParam> = (item.params.iter().zip(&resolved))
@@ -2023,12 +2020,7 @@ impl<M: Module> Compiler<M> {
 				let Some(i) = unlowered.remove(&id) else { continue };
 				let item = &others[i];
 				let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
-				let mut aliases = aliases.clone();
-				if let Some(t) = self_type {
-					bind_self(&mut aliases, t);
-				}
-
-				let types = base.with_aliases(&aliases).with_scope(item.scope);
+				let types = base.with_self(self_type).with_scope(item.scope);
 				let sig = &funcs[&item.key];
 				let mut body = std::borrow::Cow::Borrowed(item.body);
 				if let Some(typ) = self_type.filter(|_| item.default) {

@@ -117,7 +117,7 @@ pub(crate) struct TypeCtx<'a> {
 	pub traits: &'a HashMap<&'a str, TraitItem<'a>>,
 	pub consts: Consts<'a>,
 	pub scope: &'a Scope,
-	// keep track of generic instantiations to catch recursion
+	self_type: Option<&'a str>,
 	depth: usize,
 }
 
@@ -143,6 +143,7 @@ impl<'a> TypeCtx<'a> {
 				comp: None,
 			},
 			scope: &NO_SCOPE,
+			self_type: None,
 			depth: 0,
 		}
 	}
@@ -156,8 +157,9 @@ impl<'a> TypeCtx<'a> {
 		TypeCtx { structs, ..self }
 	}
 
-	pub fn with_aliases(self, aliases: &'a HashMap<String, TypeExpr>) -> Self {
-		TypeCtx { aliases, ..self }
+	// Bind `Self`, plus this type's associated types under their bare slot names.
+	pub fn with_self(self, self_type: Option<&'a str>) -> Self {
+		TypeCtx { self_type, ..self }
 	}
 
 	// Const folding.
@@ -866,6 +868,9 @@ impl TypeCtx<'_> {
 		if let Some(typ) = self.type_params.get(name) {
 			return Ok(typ.clone());
 		}
+		if let Some(typ) = self.self_type.filter(|_| name == "Self") {
+			return self.with_scope(&NO_SCOPE).named(typ, span);
+		}
 
 		if name == "$?" {
 			// an omitted param type that no expected fn type filled in
@@ -922,12 +927,12 @@ impl TypeCtx<'_> {
 			return result;
 		}
 
-		let slot = (self.aliases.get("Self"))
-			.is_some_and(|t| matches!(t, TypeExpr::Resolved(t) if self.aliases.contains_key(&format!("{t}::{name}"))));
+		let slot = (self.self_type.map(|t| format!("{t}::{name}"))).filter(|key| self.aliases.contains_key(key));
 		self.scope.clash(name, span)?;
-		let name = match self.scope.lookup(name) {
-			Some(q) => q.as_str(),
-			None if !self.scope.module.is_empty() && name != "Self" && !slot && !name.contains("::") => {
+		let name = match self.scope.lookup(name).map(String::as_str) {
+			Some(q) if q != name => q,
+			_ if let Some(key) = &slot => key,
+			None if !self.scope.module.is_empty() && !name.contains("::") => {
 				return fail(format!("unknown type `{name}`"), span, "not a known type");
 			}
 			_ => name,

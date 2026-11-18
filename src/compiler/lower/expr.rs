@@ -13,7 +13,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			return self.append_target(l);
 		}
 
-		let Expr::Ident(n) = &Self::place_root(l).0 else { return None };
+		let Expr::Ident(n) = &Self::place_root(l).0 else {
+			return None;
+		};
 		let array = !matches!(l.0, Expr::Slice { .. }) && matches!(self.type_of(l).ok()?, Typ::Array(_));
 		array.then(|| (n.clone(), l.clone()))
 	}
