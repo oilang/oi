@@ -8,10 +8,10 @@ use logos::Logos;
 use lsp_server::{Connection, ErrorCode, Message, Notification, Response};
 use oi::Reported;
 use oi::driver::fail;
-use oi::lexer::Token;
+use oi::lexer::{Token, lex_at};
 use serde_json::{Value, json};
 
-const LEGEND: [&str; 8] = [
+const LEGEND: [&str; 9] = [
 	"comment",
 	"keyword",
 	"string",
@@ -20,6 +20,7 @@ const LEGEND: [&str; 8] = [
 	"enumMember",
 	"decorator",
 	"parameter",
+	"macro",
 ];
 
 /// Serve the language server over stdio.
@@ -109,6 +110,7 @@ fn kind(tok: Token, text: &str, prev: Option<Token>) -> Option<usize> {
 	use Token::*;
 	let name = match tok {
 		Ident(_) if prev == Some(At) => "decorator",
+		Ident(_) if text.ends_with('!') => "macro",
 		Error(_) | Ident(_) | LParen | RParen | LBrace | RBrace | LBracket | RBracket | Dot | Colon | Comma
 		| Backtick | Semicolon => return None,
 		BlockComment | Comment | Doc(_) => "comment",
@@ -128,9 +130,29 @@ fn highlight(src: &str) -> Vec<u32> {
 	let utf16 = |text: &str| text.encode_utf16().count() as u32;
 	let (mut data, mut last, mut prev) = (vec![], 0, None);
 
+	let mut toks = vec![];
 	for (tok, span) in Token::lexer(src).spanned() {
-		let tok = tok.ok();
+		let (tok, mut from) = (tok.ok(), span.start);
+		if let Some(Token::String(_)) = tok {
+			let code = lex_at(&src[span.clone()], from).into_iter();
+			for (inner, at) in code.filter(|(_, at)| at.into_range().len() < span.len()) {
+				toks.extend([(tok, from..at.start), (Some(inner), at.into_range())]);
+				from = at.end;
+			}
+		}
 
+		if tok == Some(Token::Not)
+			&& let Some((Some(Token::Ident(_)), name)) = toks.last_mut()
+			&& name.end == from
+		{
+			name.end = span.end;
+			continue;
+		}
+
+		toks.push((tok, from..span.end));
+	}
+
+	for (tok, span) in toks {
 		if let Some(ty) = tok.and_then(|tok| kind(tok, &src[span.clone()], prev)) {
 			let mut start = span.start;
 

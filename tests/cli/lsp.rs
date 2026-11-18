@@ -29,7 +29,7 @@ fn semantic_tokens_come_from_the_lexer() {
 		r#"{
 			"jsonrpc":"2.0",
 			"method":"textDocument/didOpen",
-			"params":{"textDocument":{"uri":"file:///a.oi","text":"@test\nf :: fn() { # é\n\t:ok\n}\n"}}
+			"params":{"textDocument":{"uri":"file:///a.oi","text":"@test\nf :: fn() { # é\n\t:ok\n}\nx! \"a{1}b\""}}
 		}"#,
 		r#"{
 			"jsonrpc":"2.0",
@@ -39,8 +39,8 @@ fn semantic_tokens_come_from_the_lexer() {
 		}"#,
 	]);
 
-	// decorator `@` `test`, operator `::`, keyword `fn`, utf-16 comment `# é`, atom `:ok`
-	let data = "[0,0,1,6,0,0,1,4,6,0,1,2,2,4,0,0,3,2,1,0,0,7,3,0,0,1,1,3,5,0]";
+	// decorator `@` `test`, operator `::`, keyword `fn`, utf-16 comment `# é`, atom `:ok`, macro `x!`, interpolated `1`
+	let data = "[0,0,1,6,0,0,1,4,6,0,1,2,2,4,0,0,3,2,1,0,0,7,3,0,0,1,1,3,5,0,2,0,2,8,0,0,3,3,2,0,0,3,1,3,0,0,1,3,2,0]";
 	assert!(stdout.contains(data), "{stdout}");
 }
 
