@@ -1,26 +1,44 @@
-use crate::common::{Project, Run, oi, stderr};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::process::Stdio;
+
+use crate::common::{Project, oi};
 
 /// Run `msgs` through an `oi lsp` session, returning its stdout.
 fn session(msgs: &[&str]) -> String {
-	let msgs = [
-		&[
-			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}"#,
-			r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#,
-		],
-		msgs,
-		&[
-			r#"{"jsonrpc":"2.0","id":3,"method":"shutdown"}"#,
-			r#"{"jsonrpc":"2.0","method":"exit"}"#,
-		],
-	]
-	.concat();
-	let input: String = msgs
-		.iter()
-		.map(|msg| format!("Content-Length: {}\r\n\r\n{msg}", msg.len()))
-		.collect();
-	let out = oi(&["lsp"]).run(Some(&input));
-	assert!(out.status.success(), "lsp failed:\n{}", stderr(&out));
-	String::from_utf8_lossy(&out.stdout).into()
+	session_until(msgs, "")
+}
+
+/// Like `session`, shutting down only once stdout mentions `until`.
+fn session_until(msgs: &[&str], until: &str) -> String {
+	let frame = |msgs: &[&str]| -> String {
+		let frame = |msg: &&str| format!("Content-Length: {}\r\n\r\n{msg}", msg.len());
+		msgs.iter().map(frame).collect()
+	};
+	let init = [
+		r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}"#,
+		r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#,
+	];
+	let exit = [
+		r#"{"jsonrpc":"2.0","id":3,"method":"shutdown"}"#,
+		r#"{"jsonrpc":"2.0","method":"exit"}"#,
+	];
+
+	let mut lsp = oi(&["lsp"]).stdin(Stdio::piped()).stderr(Stdio::inherit()).spawn().unwrap();
+	let mut stdin = lsp.stdin.take().unwrap();
+	let mut stdout = BufReader::new(lsp.stdout.take().unwrap());
+	stdin.write_all(frame(&[&init, msgs].concat()).as_bytes()).unwrap();
+
+	let mut seen = vec![];
+	while !String::from_utf8_lossy(&seen).contains(until) {
+		let read = stdout.read_until(b'}', &mut seen).unwrap();
+		assert_ne!(read, 0, "{}", String::from_utf8_lossy(&seen));
+	}
+
+	stdin.write_all(frame(&exit).as_bytes()).unwrap();
+	drop(stdin);
+	stdout.read_to_end(&mut seen).unwrap();
+	assert!(lsp.wait().unwrap().success());
+	String::from_utf8_lossy(&seen).into()
 }
 
 #[test]
@@ -97,13 +115,14 @@ fn semantic_tokens_come_from_the_lexer() {
 fn diagnostics_publish_on_open() {
 	let project = Project::new().main("main :: fn() {\n\tx: int = \"s\"\n}");
 	let uri = format!("file://{}", project.as_ref().join("main.oi").display());
-	let stdout = session(&[&format!(
+	let open = format!(
 		r#"{{
 			"jsonrpc":"2.0",
 			"method":"textDocument/didOpen",
 			"params":{{"textDocument":{{"uri":"{uri}","text":""}}}}
 		}}"#
-	)]);
+	);
+	let stdout = session_until(&[&open], "publishDiagnostics");
 
 	let diag = r#"{"message":"expected int, got string\ndoes not match the declared type","range":{"end":{"character":13,"line":2},"start":{"character":10,"line":2}},"severity":1,"source":"oi"}"#;
 	let publish = format!(r#"{{"diagnostics":[{diag}],"uri":"{uri}"}}"#);

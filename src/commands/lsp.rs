@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::mpsc;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 use logos::Logos;
 use lsp_server::{Connection, ErrorCode, Message, Notification, Response};
@@ -42,12 +43,17 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 		"definitionProvider": true,
 	}))?;
 
-	let (checks, entries) = mpsc::channel::<PathBuf>();
+	let (checks, requests) = mpsc::channel::<PathBuf>();
 	let sender = conn.sender.clone();
 	let checker = std::thread::spawn(move || {
-		let mut published = HashMap::new();
-		for entry in entries {
-			for msg in check(&entry, &mut published) {
+		let (mut queue, mut published) = (vec![], HashMap::new());
+		while let Some(entry) = queue.pop().or_else(|| requests.recv().ok()) {
+			queue.extend(requests.try_iter());
+			queue.retain(|queued| *queued != entry);
+			let Some(stderr) = output(&entry, &requests, &mut queue) else {
+				continue;
+			};
+			for msg in check(&entry, &stderr, &mut published) {
 				sender.send(msg).ok();
 			}
 		}
@@ -259,15 +265,40 @@ fn entry(file: &Path) -> PathBuf {
 	mains.find(|main| main.exists()).unwrap_or_else(|| file.into())
 }
 
-/// Check `entry` in a child process, publishing every file it reported now or last time.
-fn check(entry: &Path, published: &mut HashMap<PathBuf, Vec<String>>) -> Vec<Message> {
+/// Run a check of `entry` in a child process, returning its stderr.
+/// Gives up on a newer request for `entry`, a 20s run, or shutdown.
+fn output(entry: &Path, requests: &Receiver<PathBuf>, queue: &mut Vec<PathBuf>) -> Option<String> {
 	let args = ["--error-format", "json", "run", "--check"];
-	let out = std::env::current_exe().and_then(|exe| Command::new(exe).args(args).arg(entry).output());
-	let stderr = out.map(|out| out.stderr).unwrap_or_default();
+	let mut cmd = Command::new(std::env::current_exe().ok()?);
+	let mut child = (cmd.args(args).arg(entry).stdout(Stdio::null()).stderr(Stdio::piped()).spawn()).ok()?;
+	let pipe = child.stderr.take()?;
+	let reader = std::thread::spawn(move || std::io::read_to_string(pipe));
 
+	let started = Instant::now();
+	while child.try_wait().ok()?.is_none() {
+		let next = requests.recv_timeout(Duration::from_millis(50));
+		let stop = match &next {
+			Ok(next) => next == entry,
+			Err(RecvTimeoutError::Timeout) => started.elapsed() > Duration::from_secs(20),
+			Err(RecvTimeoutError::Disconnected) => {
+				queue.clear();
+				true
+			}
+		};
+		queue.extend(next);
+		if stop {
+			child.kill().and_then(|_| child.wait()).ok();
+			return None;
+		}
+	}
+	reader.join().ok()?.ok()
+}
+
+/// Publish a check's diagnostics for every file `entry` reported now or last time.
+fn check(entry: &Path, stderr: &str, published: &mut HashMap<PathBuf, Vec<String>>) -> Vec<Message> {
 	let stale = published.remove(entry).unwrap_or_default();
 	let mut files: HashMap<_, Vec<_>> = stale.into_iter().map(|uri| (uri, vec![])).collect();
-	for line in String::from_utf8_lossy(&stderr).lines() {
+	for line in stderr.lines() {
 		let Ok(diag) = serde_json::from_str::<Value>(line) else {
 			continue;
 		};
