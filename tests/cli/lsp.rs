@@ -46,7 +46,7 @@ fn document_symbols_list_top_level_decls() {
 }
 
 #[test]
-fn hover_shows_docs_and_signature() {
+fn hover_under_cursor() {
 	let stdout = session(&[
 		r#"{
 			"jsonrpc":"2.0",
@@ -59,10 +59,17 @@ fn hover_shows_docs_and_signature() {
 			"method":"textDocument/hover",
 			"params":{"textDocument":{"uri":"file:///a.oi"},"position":{"line":1,"character":21}}
 		}"#,
+		r#"{
+			"jsonrpc":"2.0",
+			"id":4,
+			"method":"textDocument/definition",
+			"params":{"textDocument":{"uri":"file:///a.oi"},"position":{"line":1,"character":2}}
+		}"#,
 	]);
 
 	let sqrt = r#""value":"```oi\n## Square root.\npub sqrt[T] :: fn(n: T) float {\n```""#;
-	assert!(stdout.contains(sqrt), "{stdout}");
+	let main = r#"{"range":{"end":{"character":31,"line":1},"start":{"character":0,"line":1}},"uri":"file:///a.oi"}"#;
+	assert!(stdout.contains(sqrt) && stdout.contains(main), "{stdout}");
 }
 
 #[test]

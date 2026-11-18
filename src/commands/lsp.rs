@@ -12,7 +12,7 @@ use oi::lexer::{Token, lex_at};
 use oi::loader::{Program, load, scan};
 use serde_json::{Value, json};
 
-use super::repl::lookup;
+use super::repl::{definition, lookup};
 use super::run::root;
 
 const LEGEND: [&str; 9] = [
@@ -39,6 +39,7 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 		"semanticTokensProvider": { "legend": { "tokenTypes": LEGEND, "tokenModifiers": [] }, "full": true },
 		"documentSymbolProvider": true,
 		"hoverProvider": true,
+		"definitionProvider": true,
 	}))?;
 
 	let (checks, entries) = mpsc::channel::<PathBuf>();
@@ -68,6 +69,17 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 						let found = program_at(&docs, &req.params).and_then(|(program, name)| lookup(&program, &name));
 						let hover = |text| json!({ "contents": { "kind": "markdown", "value": format!("```oi\n{text}\n```") } });
 						Response::new_ok(req.id, found.map(hover))
+					}
+					"textDocument/definition" => {
+						let found = program_at(&docs, &req.params).and_then(|(program, name)| {
+							let span = definition(&program, &name)?;
+							let (file, ..) = program.map.locate_span(span.into_range());
+							let at = |offset| position(program.map.before(offset));
+							let range = json!({ "start": at(span.start), "end": at(span.end) });
+							// embedded core has no file
+							file.starts_with('/').then_some(json!({ "uri": format!("file://{file}"), "range": range }))
+						});
+						Response::new_ok(req.id, found)
 					}
 					_ => Response::new_err(req.id, ErrorCode::MethodNotFound as i32, req.method),
 				};

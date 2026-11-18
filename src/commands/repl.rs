@@ -98,9 +98,14 @@ fn help_topic(name: &str, session: &str) {
 	eprintln!("{docs}");
 }
 
+// Finds the span of the last definition at a dotted path.
+pub fn definition(program: &Program, name: &str) -> Option<Span> {
+	program.modules.iter().rev().find_map(|m| find_def(&m.items, "", name))
+}
+
 // Finds the docs and signature of the last definition at a dotted path.
 pub fn lookup(program: &Program, name: &str) -> Option<String> {
-	let span = program.modules.iter().rev().find_map(|m| find_def(&m.items, "", name))?;
+	let span = definition(program, name)?;
 	let (.., text) = program.map.locate_span(span.into_range());
 	let (above, indent) = program.map.before(span.start).rsplit_once('\n').unwrap_or_default();
 	let docs = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
