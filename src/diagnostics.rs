@@ -76,6 +76,14 @@ impl SourceMap {
 		base
 	}
 
+	// Print the loaded file names as a JSON line, under `--error-format json`.
+	pub fn report_files(&self) {
+		if ERROR_FORMAT.get() == Some(&ErrorFormat::Json) {
+			let names: Vec<_> = self.files.iter().map(|file| &file.name).collect();
+			eprintln!("{}", json!({ "files": names }));
+		}
+	}
+
 	pub fn src(&self, base: usize) -> &str {
 		&self.files[self.files.partition_point(|f| f.base < base)].src
 	}

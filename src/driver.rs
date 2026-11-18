@@ -72,6 +72,10 @@ pub fn run_source(entry: Entry, root: &Path, args: &[String], opts: DebugOpts) -
 	}
 
 	let map = program.map.clone();
+	if opts.check {
+		map.report_files();
+	}
+
 	let code = compiler.compile(program).map_err(|e| e.report_mapped(&map))?;
 	if opts.check {
 		return Ok(());

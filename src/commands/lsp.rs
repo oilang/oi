@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -57,11 +57,24 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 			queue.retain(|queued| *queued != entry);
 
 			let overlay = serde_json::to_string(&*unsaved.lock().unwrap()).unwrap_or_default();
-			let Some(stderr) = output(&entry, &overlay, &requests, &mut queue) else {
+			let mut oi = |args: &[&str]| output(args, &entry, &overlay, &requests, &mut queue);
+			let Some(mut stderr) = oi(&["run", "--check", &entry.to_string_lossy()]) else {
 				continue;
 			};
 
-			for msg in check(&entry, &stderr, &mut published) {
+			// give strays a hint and a check of their module
+			let strays = strays(&entry, &stderr, &unsaved.lock().unwrap());
+			for file in strays.keys() {
+				let hint = json!({ "file": file, "severity": 3, "message": "not reached from main.oi" });
+				stderr += &format!("{hint}\n");
+			}
+			let uses: HashSet<_> = strays.values().collect();
+			let more: Option<String> = uses.iter().map(|source| oi(&["exec", "--check", source])).collect();
+			let Some(more) = more else {
+				continue;
+			};
+
+			for msg in check(&entry, &(stderr + &more), &mut published) {
 				sender.send(msg).ok();
 			}
 		}
@@ -295,12 +308,33 @@ fn file_uri(path: &str) -> String {
 	format!("file://{}", path.bytes().map(encode).collect::<String>())
 }
 
-/// Run a check of `entry` in a child process, returning its stderr.
+/// Map open files of `entry`'s program that its check never loaded to the `use` that loads each.
+fn strays(entry: &Path, stderr: &str, open: &HashMap<PathBuf, String>) -> HashMap<PathBuf, String> {
+	let files = |line| serde_json::from_str::<Value>(line).ok()?["files"].as_array().cloned();
+	let loaded = stderr.lines().find_map(files);
+	let stray = |file: &&PathBuf| loaded.as_ref().is_some_and(|loaded| !loaded.contains(&json!(file)));
+	let module_use = |file: &PathBuf| {
+		let rel = file.strip_prefix(entry.parent()?).ok()?.with_extension("");
+		let module = rel.parent().filter(|sub| *sub != Path::new("")).unwrap_or(&rel);
+		let source = format!("use {}", module.display()).replace('/', ".");
+		(self::entry(file) == entry).then_some((file.clone(), source))
+	};
+	open.keys().filter(stray).filter_map(module_use).collect()
+}
+
+/// Run `oi` with `args` from `entry`'s dir in a child process, returning its stderr.
 /// Gives up on a newer request for `entry`, a 20s run, or shutdown.
-fn output(entry: &Path, overlay: &str, requests: &Receiver<PathBuf>, queue: &mut Vec<PathBuf>) -> Option<String> {
-	let args = ["--error-format", "json", "--overlay", "run", "--check"];
+fn output(
+	args: &[&str],
+	entry: &Path,
+	overlay: &str,
+	requests: &Receiver<PathBuf>,
+	queue: &mut Vec<PathBuf>,
+) -> Option<String> {
+	let dir = entry.ancestors().find(|dir| dir.is_dir())?;
 	let mut cmd = Command::new(std::env::current_exe().ok()?);
-	cmd.args(args).arg(entry).stdin(Stdio::piped());
+	cmd.current_dir(dir).args(["--error-format", "json", "--overlay"]);
+	cmd.args(args).stdin(Stdio::piped());
 	let mut child = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn().ok()?;
 	let pipe = child.stderr.take()?;
 	let reader = std::thread::spawn(move || std::io::read_to_string(pipe));
@@ -334,7 +368,11 @@ fn check(entry: &Path, stderr: &str, published: &mut HashMap<PathBuf, Vec<String
 		let Ok(diag) = serde_json::from_str::<Value>(line) else {
 			continue;
 		};
-		let Some(file) = diag["file"].as_str() else {
+
+		// `<exec>` and embedded core have no file to publish to
+		let file = diag["file"].as_str().unwrap_or_default();
+		let path: PathBuf = entry.with_file_name(file).components().collect();
+		let Some(file) = path.to_str().filter(|_| path == entry || path.is_file()) else {
 			continue;
 		};
 
@@ -351,7 +389,7 @@ fn check(entry: &Path, stderr: &str, published: &mut HashMap<PathBuf, Vec<String
 				"start": position("start", text.split('\n').next()),
 				"end": position("end", text.rsplit('\n').next()),
 			},
-			"severity": 1,
+			"severity": diag["severity"].as_u64().unwrap_or(1),
 			"source": "oi",
 			"message": message.collect::<Vec<_>>().join("\n"),
 		}));
