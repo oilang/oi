@@ -411,10 +411,11 @@ fn field_append() {
 	let src = indoc! {"
 		Bag :: struct { xs: []int = [] }
 		Bag :< { push :: fn(mut self; x: int) { self.xs << x << x + 1 } }
-		b := Bag.{}
-		b.push(1)
-		b.xs << 5
-		b.xs
+		Box :: struct { bag: Bag }
+		b := Box.{}
+		b.bag.push(1)
+		b.bag.xs << 5
+		b.bag.xs
 	"};
 	check(src, "[1, 2, 5]");
 	let src = indoc! {"

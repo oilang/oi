@@ -8,20 +8,14 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Get the array place for an append operation, if any.
-	fn append_target(&self, l: &Spanned<Expr>) -> Option<(String, Option<String>)> {
-		match &l.0 {
-			Expr::Ident(n) => matches!(self.vars.get(n)?.typ, Typ::Array(_)).then(|| (n.clone(), None)),
-			Expr::Field { tuple, field } => {
-				let Expr::Ident(n) = &tuple.0 else { return None };
-				let Typ::Struct(s, fs) = self.peeled(&self.vars.get(n)?.typ) else {
-					return None;
-				};
-				let (.., t) = self.struct_field(&s, &fs, field, l.1).ok()?;
-				matches!(t, Typ::Array(_)).then(|| (n.clone(), Some(field.clone())))
-			}
-			Expr::Binary(BinOp::Shl, l, _) => self.append_target(l),
-			_ => None,
+	fn append_target(&mut self, l: &Spanned<Expr>) -> Option<(String, Spanned<Expr>)> {
+		if let Expr::Binary(BinOp::Shl, l, _) = &l.0 {
+			return self.append_target(l);
 		}
+
+		let Expr::Ident(n) = &Self::place_root(l).0 else { return None };
+		let array = !matches!(l.0, Expr::Slice { .. }) && matches!(self.type_of(l).ok()?, Typ::Array(_));
+		array.then(|| (n.clone(), l.clone()))
 	}
 
 	// The local under a `<<` overload that appends rather than shifts.
@@ -262,10 +256,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				BinOp::In => self.in_op(l, r),
 				BinOp::Shl => match self.append_target(l) {
 					// arrays append, ints shift
-					Some((name, field)) => {
+					Some((name, place)) => {
 						self.expr(l)?;
-						let value = r.clone();
-						self.lower(&(Expr::Append { name, field, value }, expr.1), hint)
+						let (place, value) = (Box::new(place), r.clone());
+						self.lower(&(Expr::Append { name, place, value }, expr.1), hint)
 					}
 					// overloaded appending
 					None if let Some(name) = self.grow_target(l) => {

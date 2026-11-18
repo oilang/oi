@@ -700,7 +700,7 @@ fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 		Expr::Assign { key, .. } if matches!(&key.0, Expr::Ident(name) if name == "_") => return None,
 		Expr::Assign { key, .. } => key.0.clone(),
 		Expr::Bind { name, .. } | Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
-		Expr::Append { name, field, .. } => return Some(place(name, field.as_ref(), stmt.1)),
+		Expr::Append { place, .. } => return Some((**place).clone()),
 		Expr::IndexAssign { name, field, index, .. } => Expr::Index {
 			collection: Box::new(place(name, field.as_ref(), stmt.1)),
 			index: index.clone(),
