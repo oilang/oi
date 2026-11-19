@@ -898,6 +898,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			infix(left(5), is, |lhs, negated: bool, pat: Spanned<Expr>, ex| {
 				let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
 				let arms = vec![MatchArm {
+					is: true,
 					body: hit(true),
 					patterns: vec![pat],
 					..Default::default()

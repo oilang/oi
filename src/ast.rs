@@ -776,6 +776,7 @@ impl TypeExpr {
 pub struct MatchArm {
 	pub with: bool,
 	pub mutable: bool,
+	pub is: bool,
 	pub patterns: Vec<Spanned<Expr>>,
 	pub guard: Option<Box<Spanned<Expr>>>,
 	pub body: Vec<Spanned<Expr>>,

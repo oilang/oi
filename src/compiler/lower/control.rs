@@ -653,7 +653,13 @@ impl<'a, M: Module> Translator<'a, M> {
 				[(Expr::Is { typ, .. }, _)] => self.unwrap_is(subject, typ, true),
 				_ => None,
 			};
+
 			let binds_names = binds.iter().any(|(_, names)| !names.is_empty());
+			if arm.is && binds_names {
+				return fail("`is` can't bind names", arm.patterns[0].1, "binds a name")
+					.map_err(|d| d.with_note("to bind, use `if P := x { .. }`, or `_` to ignore"));
+			}
+
 			if i > 0 && falls(&arms[i - 1]) && (unwrapping.is_some() || binds_names) {
 				let msg = "`fallthrough` into an arm that binds names";
 				return fail(msg, arm.patterns[0].1, "nothing to bind");

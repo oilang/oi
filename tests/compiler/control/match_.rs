@@ -331,3 +331,11 @@ fn is_pattern() {
 		"false true true true true",
 	);
 }
+
+#[test]
+fn is_pattern_rejects_binds() {
+	fail(
+		["o: ?(int, int) = .none", "print(o is .some.((a, 1)))"],
+		"`is` can't bind names",
+	);
+}
