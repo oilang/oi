@@ -122,12 +122,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.map_with(|((name, type_params), members), ex| {
 			let (fields, fills, _) = split_members(members);
 			(
-				Expr::StructDef(Box::new(StructDef {
-					name,
-					type_params,
-					fields,
-					fills,
-				})),
+				Expr::StructDef(Box::new(StructDef { name, type_params, fields, fills })),
 				ex.span(),
 			)
 		})
@@ -344,10 +339,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 				for name in [v].into_iter().chain(k).filter(|n| n != "()") {
 					let p = match ps.iter().position(|p| p.name == name) {
 						Some(i) => ps.remove(i),
-						None => TypeParam {
-							name,
-							..TypeParam::default()
-						},
+						None => TypeParam { name, ..TypeParam::default() },
 					};
 					ps.insert(0, p);
 				}
@@ -407,17 +399,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::Use))
 		.then(spanned(ident()).separated_by(just(Token::Dot)).at_least(1).collect())
 		.then(just(Token::Dot).ignore_then(brace(loose_list(use_item))).or_not())
-		.map_with(|(((w, name), path), group), ex| {
-			(
-				Expr::Use {
-					name,
-					path,
-					group,
-					with: w.is_some(),
-				},
-				ex.span(),
-			)
-		})
+		.map_with(|(((w, name), path), group), ex| (Expr::Use { name, path, group, with: w.is_some() }, ex.span()))
 		.boxed();
 	let public = vis
 		.clone()

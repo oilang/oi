@@ -12,12 +12,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Type a returnless fn literal against `params`, inferring its return from the body.
 	pub(super) fn anon_hint(&mut self, lit: &Spanned<Expr>, params: Vec<FnParam>) -> Result<Option<Typ>, Diagnostic> {
 		let (names, body) = match &lit.0 {
-			Expr::AnonFn {
-				ret: None,
-				params,
-				body,
-				..
-			} => (&params[..], body),
+			Expr::AnonFn { ret: None, params, body, .. } => (&params[..], body),
 			Expr::Block(body) => (&[][..], body),
 			_ => return Ok(None),
 		};

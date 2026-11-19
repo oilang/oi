@@ -103,10 +103,7 @@ impl std::ops::Deref for Vars {
 
 impl From<HashMap<String, Local>> for Vars {
 	fn from(map: HashMap<String, Local>) -> Self {
-		Vars {
-			map,
-			..Default::default()
-		}
+		Vars { map, ..Default::default() }
 	}
 }
 

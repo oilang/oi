@@ -302,11 +302,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						let callee = format!("$not{}", self.vars.len());
 						self.hidden_local(callee.clone(), v, typ.clone());
 						let args = (0..params.len()).map(|i| (Expr::Ident(format!("${i}")), expr.1)).collect();
-						let call = Expr::Call {
-							name: callee,
-							type_args: vec![],
-							args,
-						};
+						let call = Expr::Call { name: callee, type_args: vec![], args };
 						let body = [(Expr::Not(Box::new((call, expr.1))), expr.1)];
 						let sig = AnonSig::Inferred(t.clone());
 						return Ok(self.declare_anon_fn(&None, &[], false, sig, &body, expr.1)?.0);
@@ -403,12 +399,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::MacroCall { name, args } => self.macro_call(name, args, expr.1),
 
-			Expr::MethodCall {
-				recv,
-				method,
-				type_args,
-				args,
-			} => {
+			Expr::MethodCall { recv, method, type_args, args } => {
 				let dotted = self.dotted_type(recv);
 				let recv = dotted.as_ref().unwrap_or(recv);
 
@@ -566,15 +557,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					let (recv, args) = (x.clone(), args[1..].to_vec());
 					let (method, type_args) = (method.clone(), type_args.clone());
-					return self.expr(&(
-						Expr::MethodCall {
-							recv,
-							method,
-							type_args,
-							args,
-						},
-						expr.1,
-					));
+					return self.expr(&(Expr::MethodCall { recv, method, type_args, args }, expr.1));
 				}
 
 				let recv_expr = bound.is_some().then_some(recv);
@@ -1073,11 +1056,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => self.block_expr(body, hint, expr.1),
 			},
 
-			Expr::StructLit {
-				name,
-				type_args,
-				fields,
-			} => self.struct_lit(name, type_args, fields, expr.1, hint),
+			Expr::StructLit { name, type_args, fields } => self.struct_lit(name, type_args, fields, expr.1, hint),
 
 			Expr::Ref(inner) => {
 				let span = expr.1.into_range();

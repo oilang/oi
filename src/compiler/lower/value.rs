@@ -280,10 +280,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if *target == Typ::Ast
 			&& let Some((n, q)) = match &value.0 {
 				Expr::Ident(n) if !self.vars.contains_key(n) => Some((n, self.qualify(n).into_owned())),
-				Expr::Field {
-					tuple: (Expr::Ident(m), _),
-					field,
-				} => self.dotted_key(m, field).map(|q| (field, q)),
+				Expr::Field { tuple: (Expr::Ident(m), _), field } => self.dotted_key(m, field).map(|q| (field, q)),
 				_ => None,
 			}
 			&& (self.types.named(n, value.1).is_ok()
@@ -319,10 +316,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				Expr::Ident("none") | Expr::EnumShorthand { variant: "none", .. } => {
 					return Ok(Some(self.make_option(target, None)));
 				}
-				Expr::EnumShorthand {
-					variant: "some",
-					args: [arg],
-				} => {
+				Expr::EnumShorthand { variant: "some", args: [arg] } => {
 					let v = self.check_typed(arg, &some, "type mismatch")?;
 					self.move_resource(arg, &some)?;
 					return Ok(Some(self.make_option(target, Some(v))));
@@ -779,16 +773,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& let Some((head, field)) = name.rsplit_once('.') =>
 				{
 					let tuple = Box::new((Expr::Ident(head.into()), pat.1));
-					self.enum_pattern(
-						&(
-							Expr::Field {
-								tuple,
-								field: field.into(),
-							},
-							pat.1,
-						),
-						typ,
-					)
+					self.enum_pattern(&(Expr::Field { tuple, field: field.into() }, pat.1), typ)
 				}
 				None => bad(format!("`{typ}` has no variant `{disp}`")).map_err(|d| match self.fallible_split(typ) {
 					Some(_) => d.with_note("bind it to unwrap: `if v := o { .. }`"),
@@ -816,10 +801,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
 			Expr::Atom(v) => (v, &[]),
-			Expr::Field {
-				tuple: (Expr::Ident(_), _),
-				field,
-			} => (field, &[]),
+			Expr::Field { tuple: (Expr::Ident(_), _), field } => (field, &[]),
 			_ => return bad(format!("`{typ}` is matched by its variants")),
 		};
 
@@ -899,13 +881,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let bad = |msg: &str, label: &str| Diagnostic::new(msg, start.1.into_range()).with_label(label);
-		if let Some((
-			Expr::Range {
-				start: b, end: None, ..
-			},
-			_,
-		)) = end
-		{
+		if let Some((Expr::Range { start: b, end: None, .. }, _)) = end {
 			let start = Box::new(start.clone());
 			let stepped = Expr::Range {
 				start,

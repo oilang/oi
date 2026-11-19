@@ -420,11 +420,7 @@ impl<'a> TypeCtx<'a> {
 					}
 					None => return fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
 				},
-				Expr::Call {
-					name,
-					args: [(Expr::Ident(_), _)],
-					..
-				} if name == role::CTX => {}
+				Expr::Call { name, args: [(Expr::Ident(_), _)], .. } if name == role::CTX => {}
 				Expr::Call { .. } => {
 					let msg = "annotation fns aren't supported here yet";
 					return fail(msg, a.1, "only main-file items take fn annotations");
@@ -538,13 +534,7 @@ fn typed_lit(
 		(Expr::Int(n), Typ::Float(_)) => (Expr::Float(*n as f64), span),
 		(Expr::Atom(_), Typ::Enum(n)) => {
 			let target = Box::new((TypeExpr::Name(n.clone()), span));
-			(
-				Expr::Cast {
-					target,
-					args: vec![lit],
-				},
-				span,
-			)
+			(Expr::Cast { target, args: vec![lit] }, span)
 		}
 		_ => lit,
 	})
@@ -578,13 +568,7 @@ pub(crate) fn subst(te: &TypeExpr, by: &[(String, TypeExpr)]) -> TypeExpr {
 
 // `subst` over a whole fn signature.
 fn subst_sig(params: &[Param], ret: &TypeSlot, by: &[(String, TypeExpr)]) -> (Vec<Param>, TypeSlot) {
-	let params = params
-		.iter()
-		.map(|p| Param {
-			typ: subst(&p.typ, by),
-			..p.clone()
-		})
-		.collect();
+	let params = params.iter().map(|p| Param { typ: subst(&p.typ, by), ..p.clone() }).collect();
 	(params, ret.as_ref().map(|(te, span)| Box::new((subst(te, by), *span))))
 }
 
@@ -728,10 +712,7 @@ fn comptime_only(e: &Expr) -> bool {
 		Expr::Fn(Func { params, ret, .. }) => {
 			params.iter().any(|p| mentions(&p.typ, "Ast")) || ret.as_ref().is_some_and(|r| mentions(&r.0, "Ast"))
 		}
-		Expr::Bind {
-			typ: Some((t @ TypeExpr::Fn(..), _)),
-			..
-		} => mentions(t, "Ast"),
+		Expr::Bind { typ: Some((t @ TypeExpr::Fn(..), _)), .. } => mentions(t, "Ast"),
 		Expr::Claim(Claim { typ, .. }) => typ == "Ast",
 		_ => false,
 	}
@@ -1174,12 +1155,7 @@ impl<M: Module> Compiler<M> {
 
 		for (scope, item) in program.items() {
 			match &item.0 {
-				Expr::StructDef(StructDef {
-					name,
-					type_params,
-					fields,
-					fills,
-				}) => {
+				Expr::StructDef(StructDef { name, type_params, fields, fills }) => {
 					if type_params.is_empty() {
 						struct_items.push((name.as_str(), fields.as_slice()));
 					} else {
@@ -1369,12 +1345,7 @@ impl<M: Module> Compiler<M> {
 					};
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
-				Expr::Fn(Func {
-					name: "main",
-					body,
-					ret,
-					..
-				}) => {
+				Expr::Fn(Func { name: "main", body, ret, .. }) => {
 					main_body = Some(body);
 					main_ret = ret.as_deref();
 				}
@@ -1433,12 +1404,7 @@ impl<M: Module> Compiler<M> {
 					foreign_items.push((name.clone(), t.clone(), item.1, scope));
 				}
 				// statics
-				Expr::Bind {
-					mutable: true,
-					name,
-					typ,
-					value,
-				} if has_main || !scope.module.is_empty() => {
+				Expr::Bind { mutable: true, name, typ, value } if has_main || !scope.module.is_empty() => {
 					let init = value.as_ref().map(|v| (**v).clone());
 					static_items.push((name.clone(), typ.clone(), init, scope, item.1));
 				}
@@ -1887,10 +1853,7 @@ impl<M: Module> Compiler<M> {
 				let cell = styp.slots().is_none();
 				let recv = if cell { Typ::ISize } else { styp.clone() };
 				let param = [("self".into(), recv, Access::Read)];
-				let def = FnDef {
-					params: &param,
-					..FnDef::default()
-				};
+				let def = FnDef { params: &param, ..FnDef::default() };
 
 				let (mut trans, block) = self.translator(&def, &funcs, base);
 				let mut val = trans.b.block_params(block)[0];
@@ -1948,11 +1911,7 @@ impl<M: Module> Compiler<M> {
 						None => {
 							let want = base.resolve(&tf.typ, tf.span)?;
 							let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
-							if let Expr::Cast {
-								args: [(Expr::Atom(a), _)],
-								..
-							} = &lit
-							{
+							if let Expr::Cast { args: [(Expr::Atom(a), _)], .. } = &lit {
 								lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
 							}
 							let sym = oi_symbol(&format!("const_{typ}_{tn}_{}", tf.name));
@@ -2113,10 +2072,7 @@ impl<M: Module> Compiler<M> {
 	fn compile_printers(&mut self, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Option<Pending> {
 		while let Some((sym, typ)) = self.out.env_drops.pop() {
 			let params = [(String::new(), Typ::ISize, Access::Read)];
-			let def = FnDef {
-				params: &params,
-				..FnDef::default()
-			};
+			let def = FnDef { params: &params, ..FnDef::default() };
 			let (mut trans, block) = self.translator(&def, funcs, types);
 			let env = trans.b.block_params(block)[0];
 			trans.release_box(env, &typ, sym.ends_with("#copy"));
@@ -2139,10 +2095,7 @@ impl<M: Module> Compiler<M> {
 
 			let (sym, typ, quote, sink) = self.out.printers.remove(i);
 			let params = [(String::new(), typ.clone(), Access::Read)];
-			let def = FnDef {
-				params: &params,
-				..FnDef::default()
-			};
+			let def = FnDef { params: &params, ..FnDef::default() };
 			let (mut trans, block) = self.translator(&def, funcs, types);
 			let val = trans.b.block_params(block)[0];
 			trans.emit_variant(&typ, val, quote, sink);
@@ -2159,10 +2112,7 @@ impl<M: Module> Compiler<M> {
 		}
 		while let Some((sym, typ)) = self.out.eqs.pop() {
 			let params = vec![(String::new(), typ.clone(), Access::Read); 2];
-			let def = FnDef {
-				params: &params,
-				..FnDef::default()
-			};
+			let def = FnDef { params: &params, ..FnDef::default() };
 			let (mut trans, block) = self.translator(&def, funcs, types);
 			trans.b.func.signature.returns.push(AbiParam::new(types::I8));
 			let [a, b]: [Value; 2] = trans.b.block_params(block).try_into().unwrap();

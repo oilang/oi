@@ -29,16 +29,8 @@ pub(super) fn annotation<'token, I: Tokens<'token>>(
 			.then_ignore(adjacent.clone().then(just(Token::Not)).not())
 			.then(adjacent.clone().ignore_then(ann_tail).or_not())
 			.map(|(name, tail)| match tail {
-				Some(AnnTail::Fields(fields)) => Expr::StructLit {
-					name,
-					type_args: vec![],
-					fields,
-				},
-				Some(AnnTail::Args(args)) => Expr::Call {
-					name,
-					type_args: vec![],
-					args,
-				},
+				Some(AnnTail::Fields(fields)) => Expr::StructLit { name, type_args: vec![], fields },
+				Some(AnnTail::Args(args)) => Expr::Call { name, type_args: vec![], args },
 				None => Expr::Ident(name),
 			}),
 	);

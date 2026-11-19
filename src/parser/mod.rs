@@ -282,14 +282,7 @@ fn shadow_params(params: &[Param], mut body: Vec<Spanned<Expr>>) -> Vec<Spanned<
 	let pats = params.iter().filter_map(|p| {
 		let value = Box::new((Expr::Ident(p.name.clone()), p.span));
 		let pat = p.pattern.clone()?;
-		Some((
-			Expr::PatBind {
-				pat,
-				value,
-				mutable: Some(false),
-			},
-			p.span,
-		))
+		Some((Expr::PatBind { pat, value, mutable: Some(false) }, p.span))
 	});
 	body.splice(0..0, pats.chain(copies).chain(withs));
 	body
@@ -476,12 +469,9 @@ where
 		.ignore_then(spanned(type_expr.clone()))
 		.then(just(Token::Assign).ignore_then(expr.clone()).or_not());
 	let bound_ret = bind_default.clone().map_with(|(typ, default), ex| ((typ, ex.span()), default));
-	let named = ident().then(typed.or(bound_ret)).map(|(name, ((typ, at), default))| {
-		vec![Param {
-			default,
-			..Param::new(name, typ, at)
-		}]
-	});
+	let named = ident()
+		.then(typed.or(bound_ret))
+		.map(|(name, ((typ, at), default))| vec![Param { default, ..Param::new(name, typ, at) }]);
 
 	// treat a list with an untyped slot as a tuple type
 	let slots = params.clone().map(|(slots, _)| slots);
@@ -526,10 +516,7 @@ where
 					for at in (1..group.len()).rev() {
 						let (bare, next) = (&group[at - 1], &group[at]);
 						if bare.bound.is_none() && bare.value_type.is_none() && bare.default.is_none() {
-							group[at - 1] = TypeParam {
-								name: bare.name.clone(),
-								..next.clone()
-							};
+							group[at - 1] = TypeParam { name: bare.name.clone(), ..next.clone() };
 						}
 					}
 					group

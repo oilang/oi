@@ -30,10 +30,7 @@ pub fn build(file: &Path, out: Option<&Path>, lib: bool, target: Option<&str>, t
 		true => format!("{}{stem}{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX).into(),
 		false => PathBuf::from(&stem),
 	};
-	let opts = DebugOpts {
-		timings,
-		..Default::default()
-	};
+	let opts = DebugOpts { timings, ..Default::default() };
 	let out = out.unwrap_or(&default);
 	build_source(files(file)?, root(file), &stem, out, lib, target, opts)
 }

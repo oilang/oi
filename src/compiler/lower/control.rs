@@ -12,12 +12,7 @@ pub(super) struct Join {
 
 impl Join {
 	pub(super) fn new(kw: &'static str, span: Span, result: Option<(Variable, Typ)>) -> Self {
-		Join {
-			kw,
-			span,
-			result,
-			reached: false,
-		}
+		Join { kw, span, result, reached: false }
 	}
 }
 
@@ -51,29 +46,16 @@ fn chain(cond: &Spanned<Expr>) -> Vec<Spanned<Expr>> {
 // An `if` on a header chain's clauses, whose `else` takes a miss.
 fn clause_if(cond: Spanned<Expr>, then: &[Spanned<Expr>], els: Option<&[Spanned<Expr>]>) -> Expr {
 	let (cond, then, els) = (Box::new(cond), then.to_vec(), els.map(<[_]>::to_vec));
-	Expr::If {
-		cond,
-		then,
-		els,
-		chain: true,
-	}
+	Expr::If { cond, then, els, chain: true }
 }
 
 // A `:=` header bind's body, behind a mutable copy of what it unwrapped.
 fn mutable_copy(cond: &Spanned<Expr>, body: &[Spanned<Expr>]) -> Vec<Spanned<Expr>> {
-	let Expr::Bind {
-		name, mutable: true, ..
-	} = &cond.0
-	else {
+	let Expr::Bind { name, mutable: true, .. } = &cond.0 else {
 		return body.to_vec();
 	};
 	let (name, value) = (name.clone(), Some(Box::new((Expr::Ident(name.clone()), cond.1))));
-	let copy = Expr::Bind {
-		mutable: true,
-		name,
-		typ: None,
-		value,
-	};
+	let copy = Expr::Bind { mutable: true, name, typ: None, value };
 	[vec![(copy, cond.1)], body.to_vec()].concat()
 }
 
@@ -118,14 +100,7 @@ fn refute(cond: &mut Spanned<Expr>, binds: &mut Vec<Spanned<Expr>>) {
 		Expr::Gen { pat, .. } if matches!(pat.0, Expr::EnumShorthand { .. } | Expr::Quote(_)) => {
 			let item = (Expr::Ident(format!("$item{}", binds.len())), pat.1);
 			let (pat, value) = (Box::new(std::mem::replace(&mut **pat, item.clone())), Box::new(item));
-			binds.push((
-				Expr::PatBind {
-					pat,
-					value,
-					mutable: Some(false),
-				},
-				cond.1,
-			));
+			binds.push((Expr::PatBind { pat, value, mutable: Some(false) }, cond.1));
 		}
 		Expr::Binary(BinOp::And, lhs, rhs) => {
 			refute(lhs, binds);
@@ -152,11 +127,9 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<Option<TypedVal>, Diagnostic> {
 		self.header_scoped(|s| match &expr.0 {
 			Expr::If { .. } => s.conditional(expr, hint, want),
-			Expr::Match {
-				subject,
-				arms,
-				else_body,
-			} => s.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1),
+			Expr::Match { subject, arms, else_body } => {
+				s.match_expr(subject, arms, else_body.as_deref(), None, hint, expr.1)
+			}
 			Expr::Loop { label, cond, body } => {
 				let want = want && label.as_deref() != Some(DIM);
 				s.collected(want, hint, |s| s.loop_expr(label.as_deref(), cond.as_deref(), body))
@@ -377,10 +350,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn rewrap_writes(&mut self, body: &[Spanned<Expr>]) {
 		let mut written = HashSet::new();
 		Expr::Block(body.to_vec()).walk(&mut |e| match e {
-			Expr::Assign {
-				key: (Expr::Ident(name), _),
-				..
-			} => _ = written.insert(name.clone()),
+			Expr::Assign { key: (Expr::Ident(name), _), .. } => _ = written.insert(name.clone()),
 			Expr::DerefAssign { name, .. }
 			| Expr::FieldAssign { name, .. }
 			| Expr::IndexAssign { name, .. }
@@ -1549,13 +1519,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		cond: &'e Spanned<Expr>,
 		body: &[Spanned<Expr>],
 	) -> Option<(&'e Spanned<Expr>, MatchArm)> {
-		let Expr::Bind {
-			name,
-			typ: None,
-			value: Some(src),
-			..
-		} = &cond.0
-		else {
+		let Expr::Bind { name, typ: None, value: Some(src), .. } = &cond.0 else {
 			return None;
 		};
 

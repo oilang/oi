@@ -29,16 +29,7 @@ pub(super) fn patterns<'token, I: Tokens<'token>>() -> P<'token, I, Spanned<Expr
 	let struct_pat = spanned(ident())
 		.then_ignore(just(Token::Dot))
 		.then(brace(loose_list(struct_pat_field)))
-		.map(|((name, nspan), fields)| {
-			(
-				Expr::StructLit {
-					name,
-					type_args: vec![],
-					fields,
-				},
-				nspan,
-			)
-		});
+		.map(|((name, nspan), fields)| (Expr::StructLit { name, type_args: vec![], fields }, nspan));
 	// array patterns
 	let array_pat = spanned(bracket(loose_list(pat_name.clone()))).try_map(|(elems, espan), span| {
 		if elems.is_empty() {
@@ -175,15 +166,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::Dot))
 		.then_ignore(just(Token::Ident("delete".into())))
 		.then(bracket(p.expr.clone()))
-		.map_with(|(name, key), ex| {
-			(
-				Expr::MapDelete {
-					name,
-					key: Box::new(key),
-				},
-				ex.span(),
-			)
-		});
+		.map_with(|(name, key), ex| (Expr::MapDelete { name, key: Box::new(key) }, ex.span()));
 
 	// assignment through a field/index/deref chain
 	let seg = just(Token::Dot)

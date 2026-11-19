@@ -129,14 +129,7 @@ pub fn str_new(a: *const Allocator, bytes: &[u8]) -> *const StrHeader {
 // A counted string header with `extra` bytes of room after it.
 unsafe fn str_header(a: *const Allocator, extra: i64, data: i64, len: i64, owner: *mut StrHeader) -> *mut StrHeader {
 	let out = unsafe { alloc(a, size_of::<StrHeader>() as i64 + extra) } as *mut StrHeader;
-	unsafe {
-		*out = StrHeader {
-			data,
-			len,
-			rc: 1,
-			owner,
-		}
-	};
+	unsafe { *out = StrHeader { data, len, rc: 1, owner } };
 	out
 }
 
@@ -458,10 +451,7 @@ fn layout(size: i64) -> std::alloc::Layout {
 }
 
 fn record(proc: AllocProc, data: i64) -> *const Allocator {
-	Box::leak(Box::new(Allocator {
-		proc: proc as i64,
-		data,
-	}))
+	Box::leak(Box::new(Allocator { proc: proc as i64, data }))
 }
 
 /// The system heap, and what the root context allocates from.
@@ -666,11 +656,7 @@ pub fn array_of(elems: &[i64], width: i64) -> *const Header {
 			std::ptr::copy_nonoverlapping(v.to_le_bytes().as_ptr(), data.add(i * width as usize), width as usize)
 		};
 	}
-	let h = Header {
-		data: data as i64,
-		len,
-		cap: len,
-	};
+	let h = Header { data: data as i64, len, cap: len };
 	unsafe { new_header(system_allocator(), h) }
 }
 
@@ -820,11 +806,7 @@ pub unsafe extern "C" fn array_reserve(a: *const Allocator, header: *mut Header,
 #[unsafe(export_name = "oi_array_extend")]
 pub unsafe extern "C" fn array_extend(a: *const Allocator, dst: *mut Header, src: *const Header, elem_size: i64) {
 	let dst_len = unsafe { (*dst).len };
-	let Header {
-		data: src_data,
-		len: src_len,
-		..
-	} = unsafe { *src };
+	let Header { data: src_data, len: src_len, .. } = unsafe { *src };
 	unsafe { array_reserve(a, dst, dst_len + src_len, elem_size) };
 	unsafe {
 		let dst_data = (*dst).data as *mut u8;

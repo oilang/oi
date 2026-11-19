@@ -352,12 +352,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let field = name.clone();
 		let recv = Box::new((place.as_ref().map_or(Expr::Ident(s.clone()), |(p, _)| p.clone()), e.1));
 		let member = match e.0.clone() {
-			Expr::Call { type_args, args, .. } => Expr::MethodCall {
-				recv,
-				method: field,
-				type_args,
-				args,
-			},
+			Expr::Call { type_args, args, .. } => Expr::MethodCall { recv, method: field, type_args, args },
 			Expr::Assign { .. } if place.is_none() && s.starts_with("with#") => {
 				return fail(
 					"cannot assign into a temporary `with` subject",

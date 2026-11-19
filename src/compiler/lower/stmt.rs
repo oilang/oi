@@ -35,12 +35,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => stmt,
 			};
 			match &stmt.0 {
-				Expr::Bind {
-					mutable,
-					name,
-					typ,
-					value,
-				} => {
+				Expr::Bind { mutable, name, typ, value } => {
 					// spliced definitions
 					if let Some((_, _, (def, at))) = value.as_deref().map(Expr::peel_meta)
 						&& let Some(def) = def.def_name()
@@ -56,11 +51,9 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& typ.is_none()
 						&& let Some(v) = value
 						&& let Some(te) = match &v.0 {
-							Expr::Call {
-								name: "type",
-								args: [arg],
-								..
-							} => Some(TypeExpr::Infer(Box::new(arg.clone()))),
+							Expr::Call { name: "type", args: [arg], .. } => {
+								Some(TypeExpr::Infer(Box::new(arg.clone())))
+							}
 							Expr::Call { name, .. }
 								if (self.funcs.get(self.qualify(name).as_ref()))
 									.is_some_and(|f| f.ret == Typ::TypeId) =>
@@ -165,10 +158,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 
-				Expr::Assign {
-					key: (Expr::Ident("_"), _),
-					value,
-				} => last = self.expr(value)?,
+				Expr::Assign { key: (Expr::Ident("_"), _), value } => last = self.expr(value)?,
 				Expr::Assign { value, .. } | Expr::DerefAssign { value, .. } => {
 					let ((Expr::DerefAssign { name, .. }, _) | (_, Some(name))) = (&stmt.0, stmt.0.assign_name())
 					else {
@@ -226,12 +216,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 
-				Expr::IndexAssign {
-					name,
-					field,
-					index,
-					value,
-				} => {
+				Expr::IndexAssign { name, field, index, value } => {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
 					let collection = place(name, field.as_ref(), stmt.1);
 					let (ptr, typ) = self.expr(&collection)?;
@@ -384,9 +369,9 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// unwrapping the rest of a block
-				Expr::If {
-					cond, then, els: None, ..
-				} if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) => {
+				Expr::If { cond, then, els: None, .. }
+					if !want && matches!(cond.0, Expr::Is { .. }) && control::diverges(then) =>
+				{
 					let els = Some(stmts[i + 1..].to_vec());
 					let guard = (
 						Expr::If {
@@ -459,11 +444,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (ptr, layout) = self.follow(base, &peeled, &path);
 
 					// variant fields
-					let variant = Field {
-						off: idx as i32 * 8,
-						words: 1,
-						typ: ftyp,
-					};
+					let variant = Field { off: idx as i32 * 8, words: 1, typ: ftyp };
 					let field = layout.fields.into_iter().nth(idx).unwrap_or(variant);
 					self.rc_field(ptr, &field, false);
 					self.st_field(ptr, &field, val);
@@ -477,12 +458,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let atom = atom.map(|l| (Expr::Atom(l.clone()), stmt.1));
 					let i = self.loop_target(label.as_deref().filter(|_| atom.is_none()), "break", stmt.1)?;
 					let payload = atom.as_ref().or(payload.as_deref());
-					let LoopFrame {
-						depth,
-						exit,
-						fallthrough,
-						..
-					} = self.loops[i];
+					let LoopFrame { depth, exit, fallthrough, .. } = self.loops[i];
 
 					// a bare `break` ends the loop the way running out does
 					if let (None, Some(end)) = (payload, fallthrough) {
@@ -700,10 +676,7 @@ impl<'a, M: Module> Translator<'a, M> {
 fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	let name = |n: &String| Box::new((Expr::Ident(n.clone()), stmt.1));
 	let read = match &stmt.0 {
-		Expr::Assign {
-			key: (Expr::Ident("_"), _),
-			..
-		} => return None,
+		Expr::Assign { key: (Expr::Ident("_"), _), .. } => return None,
 		Expr::Assign { key, .. } => key.0.clone(),
 		Expr::Bind { name, .. } | Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
 		Expr::Append { place, .. } => return Some((**place).clone()),
@@ -711,10 +684,7 @@ fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 			collection: Box::new(place(name, field.as_ref(), stmt.1)),
 			index: index.clone(),
 		},
-		Expr::FieldAssign { name: n, field, .. } => Expr::Field {
-			tuple: name(n),
-			field: field.clone(),
-		},
+		Expr::FieldAssign { name: n, field, .. } => Expr::Field { tuple: name(n), field: field.clone() },
 		Expr::DerefAssign { name: n, .. } => Expr::Deref(name(n)),
 		_ => return None,
 	};

@@ -251,11 +251,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (tag, done) = (self.ld_word(val, 0), self.b.create_block());
 		for v in self.variants_of(typ) {
 			let owned: Vec<_> = (v.payload.into_iter().enumerate())
-				.map(|(i, typ)| Field {
-					off: (i as i32 + 1) * 8,
-					words: 1,
-					typ,
-				})
+				.map(|(i, typ)| Field { off: (i as i32 + 1) * 8, words: 1, typ })
 				.filter(|field| self.slot_owns(&field.typ))
 				.collect();
 			if !owned.is_empty() {

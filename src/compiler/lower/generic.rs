@@ -13,11 +13,7 @@ pub(crate) struct Infer<'d> {
 impl<'d> Infer<'d> {
 	pub(crate) fn new(params: &'d [TypeParam], generics: &'d Generics) -> Self {
 		let subst = HashMap::new();
-		Infer {
-			params,
-			subst,
-			generics,
-		}
+		Infer { params, subst, generics }
 	}
 
 	// Extend `subst` by matching a declared type against a concrete one.

@@ -414,14 +414,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			if with.is_some() && !cond.as_ref().is_some_and(|cond| open_gens(cond, &mut body)) {
 				emitter.emit(I::fault(ex.span(), "`with` needs a name"));
 			}
-			(
-				Expr::Loop {
-					label,
-					cond: cond.map(Box::new),
-					body,
-				},
-				ex.span(),
-			)
+			(Expr::Loop { label, cond: cond.map(Box::new), body }, ex.span())
 		})
 		.boxed();
 
@@ -484,10 +477,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			..Default::default()
 		})
 		.boxed();
-	let arm_spread = p.unquote.clone().map(|e| MatchArm {
-		body: vec![e],
-		..Default::default()
-	});
+	let arm_spread = p.unquote.clone().map(|e| MatchArm { body: vec![e], ..Default::default() });
 
 	let arm_loop = just(Token::Comp)
 		.ignore_then(just(Token::Loop))
@@ -606,12 +596,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		_ if rooted(&e.0) => e,
 		_ => {
 			let (name, value) = (format!("with#{}", e.1.start), Some(Box::new(e.clone())));
-			let bind = Expr::Bind {
-				mutable: false,
-				name,
-				typ: None,
-				value,
-			};
+			let bind = Expr::Bind { mutable: false, name, typ: None, value };
 			(bind, e.1)
 		}
 	};
@@ -757,22 +742,10 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			// field/tuple/method access
 			postfix(14, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
 				Dot::Fields(parts) => parts.into_iter().fold(lhs, |cur, field| {
-					(
-						Expr::Field {
-							tuple: Box::new(cur),
-							field,
-						},
-						ex.span(),
-					)
+					(Expr::Field { tuple: Box::new(cur), field }, ex.span())
 				}),
 				Dot::Hole(binder) => {
-					let field = (
-						Expr::Field {
-							tuple: Box::new(lhs),
-							field: "%".into(),
-						},
-						ex.span(),
-					);
+					let field = (Expr::Field { tuple: Box::new(lhs), field: "%".into() }, ex.span());
 					(Expr::UnquoteBind(binder, Box::new(field)), ex.span())
 				}
 				Dot::Method(method, type_args, args) => (
@@ -789,14 +762,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			postfix(14, subscript, |lhs, sub: Option<Spanned<Expr>>, ex| {
 				let collection = Box::new(lhs);
 				let e = match sub {
-					Some(index) if index.0.bounds().is_none() => Expr::Index {
-						collection,
-						index: Box::new(index),
-					},
-					range => Expr::Slice {
-						collection,
-						range: range.map(Box::new),
-					},
+					Some(index) if index.0.bounds().is_none() => Expr::Index { collection, index: Box::new(index) },
+					range => Expr::Slice { collection, range: range.map(Box::new) },
 				};
 				(e, ex.span())
 			}),
@@ -842,14 +809,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					}
 					(Expr::Propagate(inner), ex.span())
 				}
-				(
-					Expr::StructLit {
-						ref name,
-						ref type_args,
-						..
-					},
-					s,
-				) if !name.is_empty() && type_args.is_empty() => {
+				(Expr::StructLit { ref name, ref type_args, .. }, s) if !name.is_empty() && type_args.is_empty() => {
 					let target = Box::new((types::result_of(TypeExpr::Name(name.clone()), None), s));
 					let args = vec![rhs];
 					(Expr::Cast { target, args }, ex.span())
@@ -968,52 +928,27 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					let has_lead = lead.is_some();
 					let args: Vec<_> = lead.into_iter().chain(trail).collect();
 					let e = match inner {
-						Expr::Ident(name) => Expr::Call {
-							name,
-							type_args: vec![],
-							args,
-						},
+						Expr::Ident(name) => Expr::Call { name, type_args: vec![], args },
 						Expr::Field { tuple, field } => Expr::MethodCall {
 							recv: tuple,
 							method: field,
 							type_args: vec![],
 							args,
 						},
-						Expr::Call {
-							name,
-							type_args,
-							args: mut a,
-						} if !has_lead => {
+						Expr::Call { name, type_args, args: mut a } if !has_lead => {
 							a.extend(args);
-							Expr::Call {
-								name,
-								type_args,
-								args: a,
-							}
+							Expr::Call { name, type_args, args: a }
 						}
-						Expr::MethodCall {
-							recv,
-							method,
-							type_args,
-							args: mut a,
-						} if !has_lead => {
+						Expr::MethodCall { recv, method, type_args, args: mut a } if !has_lead => {
 							a.extend(args);
-							Expr::MethodCall {
-								recv,
-								method,
-								type_args,
-								args: a,
-							}
+							Expr::MethodCall { recv, method, type_args, args: a }
 						}
 						Expr::Apply { callee, args: mut a } if !has_lead => {
 							a.extend(args);
 							Expr::Apply { callee, args: a }
 						}
 						callee @ (Expr::Index { .. } | Expr::Deref(_) | Expr::Propagate(_)) if !has_lead => {
-							Expr::Apply {
-								callee: Box::new((callee, s)),
-								args,
-							}
+							Expr::Apply { callee: Box::new((callee, s)), args }
 						}
 						_ => return Err(I::fault(span, "trailing arg needs a call or method callee")),
 					};

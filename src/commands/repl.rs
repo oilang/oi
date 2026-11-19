@@ -126,9 +126,7 @@ fn find_def(items: &[Spanned<Expr>], prefix: &str, path: &str) -> Option<Span> {
 			Expr::Claim(Claim { typ, fills, .. }) => return find_def(fills, &format!("{prefix}{typ}."), path),
 			Expr::StructDef(StructDef { name, fills, .. })
 			| Expr::EnumDef(EnumDef { name, fills, .. })
-			| Expr::TraitDef(TraitDef {
-				name, methods: fills, ..
-			}) => (name, fills),
+			| Expr::TraitDef(TraitDef { name, methods: fills, .. }) => (name, fills),
 			Expr::Bind { name, .. } | Expr::MacroDef(Func { name, .. }) => (name, &[]),
 			e => (e.def_name()?, &[]),
 		};

@@ -218,10 +218,7 @@ impl<'a> TypeCtx<'a> {
 			fields.push(Field { off, words, typ: t });
 			off += words * 8;
 		}
-		Some(Layout {
-			fields,
-			size: off as u32,
-		})
+		Some(Layout { fields, size: off as u32 })
 	}
 
 	// Whether a field of `owner` holds a boxed Option inline.
@@ -471,10 +468,7 @@ impl TypeCtx<'_> {
 		e.walk(&mut |e| {
 			let path = match e {
 				Expr::Ident(path) => path.clone(),
-				Expr::Field {
-					tuple: (Expr::Ident(name), _),
-					field,
-				} => format!("{name}.{field}"),
+				Expr::Field { tuple: (Expr::Ident(name), _), field } => format!("{name}.{field}"),
 				_ => return,
 			};
 			if let Some(n) = path.split_once('.').and_then(|(name, field)| self.assoc_int(name, field)) {
@@ -548,10 +542,7 @@ impl TypeCtx<'_> {
 					Expr::EnumShorthand { .. } | Expr::DotTuple(_) => {
 						let bound = TypeExpr::Name(p.bound.clone().unwrap_or_default());
 						let target = Box::new((p.value_type.clone().unwrap_or(bound), arg.1));
-						arg.0 = Expr::Cast {
-							target,
-							args: vec![(*arg).clone()],
-						};
+						arg.0 = Expr::Cast { target, args: vec![(*arg).clone()] };
 					}
 					_ => {}
 				}
@@ -676,10 +667,7 @@ impl TypeCtx<'_> {
 		if self.depth > MAX_GENERIC_DEPTH {
 			return fail(format!("`{name}` recurses without end"), span, label);
 		}
-		Ok(TypeCtx {
-			depth: self.depth + 1,
-			..*self
-		})
+		Ok(TypeCtx { depth: self.depth + 1, ..*self })
 	}
 
 	// Record an instance's type args under its display name.

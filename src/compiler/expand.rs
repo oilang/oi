@@ -92,16 +92,7 @@ fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]
 	for m in &mut program.modules {
 		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
 		for item in &mut m.items {
-			let items = if let (
-				Expr::Claim(Claim {
-					traits: [],
-					fills,
-					fields,
-					..
-				}),
-				_,
-			) = item
-			{
+			let items = if let (Expr::Claim(Claim { traits: [], fills, fields, .. }), _) = item {
 				queue.extend(fields.iter_mut().filter_map(|f| f.default.as_mut()).map(|d| &mut d.0));
 				fills.as_mut_slice()
 			} else {
@@ -207,9 +198,9 @@ pub(super) fn pat_names(pat: &mut Spanned<Expr>) -> Vec<&mut String> {
 fn for_binders(e: &mut Expr, f: &mut impl FnMut(&mut String)) {
 	match e {
 		Expr::Bind { name, .. } if !name.starts_with('%') => f(name),
-		Expr::PatBind {
-			pat, mutable: Some(_), ..
-		} => pat_names(pat).into_iter().filter(|n| !n.starts_with('%')).for_each(f),
+		Expr::PatBind { pat, mutable: Some(_), .. } => {
+			pat_names(pat).into_iter().filter(|n| !n.starts_with('%')).for_each(f)
+		}
 		Expr::Gen { pat, key, .. } => (std::iter::once(pat).chain(key))
 			.flat_map(|pat| pat_names(pat))
 			.filter(|n| !n.starts_with('%'))
@@ -264,11 +255,7 @@ fn direct_calls(e: &mut Expr, macros: &HashMap<String, (usize, *const u8)>, scop
 		let resolved = resolve_bare(name, scope);
 		if macros.contains_key(&resolved) {
 			let args = std::mem::take(args);
-			*e = Expr::Call {
-				name: resolved,
-				type_args: vec![],
-				args,
-			};
+			*e = Expr::Call { name: resolved, type_args: vec![], args };
 		}
 	}
 	if in_quote {
@@ -829,9 +816,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 		| Expr::Append { name: n, .. }
 		| Expr::MapDelete { name: n, .. } => rename(n),
 		Expr::PatBind { pat, mutable: None, .. } => pat_names(pat).into_iter().for_each(rename),
-		Expr::AnonFn {
-			captures: Some(list), ..
-		} => {
+		Expr::AnonFn { captures: Some(list), .. } => {
 			for c in list {
 				let (Capture::ReadOnly(n) | Capture::Mut(n) | Capture::Move(n)) = c;
 				rename(n);
@@ -850,18 +835,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	}
 
 	match &mut e.0 {
-		Expr::Fn(Func {
-			params,
-			params_tuple,
-			ret,
-			..
-		})
-		| Expr::AnonFn {
-			params,
-			params_tuple,
-			ret,
-			..
-		} => {
+		Expr::Fn(Func { params, params_tuple, ret, .. }) | Expr::AnonFn { params, params_tuple, ret, .. } => {
 			fill_sig(params, ret.as_deref_mut(), args);
 			*params_tuple |= params.len() != 1;
 		}
@@ -957,13 +931,7 @@ pub(super) fn spread_arms(arms: &mut Vec<MatchArm>) {
 fn to_param(hole: &Param, a: &Spanned<Expr>) -> Param {
 	let mut p = hole.clone();
 	let (notes, _, (e, _)) = Expr::peel_meta(a);
-	if let Expr::Bind {
-		name,
-		typ: Some(t),
-		value,
-		..
-	} = e
-	{
+	if let Expr::Bind { name, typ: Some(t), value, .. } = e {
 		p.name = name.split('#').next().unwrap_or(name).into();
 		(p.typ, p.default) = (t.0.clone(), value.as_deref().cloned());
 		p.annotations.extend_from_slice(notes);
@@ -1296,10 +1264,7 @@ fn note_keys(def: &Spanned<Expr>) -> impl Iterator<Item = &String> {
 fn written(e: &Expr) -> String {
 	match e {
 		Expr::Ident(n) => n.clone(),
-		Expr::Field {
-			tuple: (Expr::Ident(m), _),
-			field,
-		} => format!("{m}.{field}"),
+		Expr::Field { tuple: (Expr::Ident(m), _), field } => format!("{m}.{field}"),
 		_ => String::new(),
 	}
 }

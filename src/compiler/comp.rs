@@ -223,11 +223,7 @@ pub(crate) fn instantiate(
 			};
 		}
 
-		if let Expr::Match {
-			subject,
-			arms,
-			else_body,
-		} = &mut inner.0
+		if let Expr::Match { subject, arms, else_body } = &mut inner.0
 			&& let Some(typ) = as_type(subject).filter(|typ| !matches!(typ, Typ::Const(_)))
 		{
 			let mut kept = None;
@@ -288,10 +284,7 @@ pub(crate) fn instantiate(
 					.map(|t| spell(t, &types.generics.instance_args.borrow()))
 			{
 				*e = super::expand::type_ast(&t);
-			} else if let Expr::Ident(n)
-			| Expr::Bind {
-				name: n, value: None, ..
-			} = e
+			} else if let Expr::Ident(n) | Expr::Bind { name: n, value: None, .. } = e
 				&& let Some(TypeExpr::Name(to)) = types.type_params.get(n).and_then(type_expr)
 			{
 				*n = to;
@@ -457,20 +450,13 @@ fn reify(span: Span, instances: &HashMap<String, Vec<Typ>>) -> Expr {
 							false => Expr::EnumShorthand { variant: name, args },
 						};
 						let target = Box::new((spell(&of(id), instances), span));
-						Expr::Cast {
-							target,
-							args: vec![(anon, span)],
-						}
+						Expr::Cast { target, args: vec![(anon, span)] }
 					}
 					Entry::Scalar(tag, v) => scalar(tag, v),
 					Entry::Struct(name, nfields) => {
 						let at = exprs.len() - nfields;
 						let fields = exprs.split_off(at).into_iter().map(|e| (None, (e, span))).collect();
-						Expr::StructLit {
-							name,
-							type_args: vec![],
-							fields,
-						}
+						Expr::StructLit { name, type_args: vec![], fields }
 					}
 				};
 				exprs.push(e);
@@ -526,18 +512,11 @@ pub(crate) fn fold(
 ) -> Result<Expr, Diagnostic> {
 	// claim check
 	if let Expr::Bind {
-		name,
-		typ: Some((typ, _)),
-		value: None,
-		..
+		name, typ: Some((typ, _)), value: None, ..
 	} = inner.0
 	{
 		let subject = Box::new((Expr::Ident(name), inner.1));
-		inner.0 = Expr::Is {
-			subject,
-			typ,
-			negated: false,
-		};
+		inner.0 = Expr::Is { subject, typ, negated: false };
 	}
 
 	// conditional compilation
@@ -556,12 +535,7 @@ pub(crate) fn fold(
 	}
 
 	// comp match
-	if let Expr::Match {
-		subject,
-		arms,
-		else_body,
-	} = &mut inner.0
-	{
+	if let Expr::Match { subject, arms, else_body } = &mut inner.0 {
 		let span = subject.1;
 		let at = |i: i128| vec![(Expr::Quote(vec![(Expr::Int(i), span)]), span)];
 
@@ -580,10 +554,7 @@ pub(crate) fn fold(
 		let probe = Expr::Match {
 			subject: subject.clone(),
 			arms: (arms.iter().zip(0..))
-				.map(|(arm, i)| MatchArm {
-					body: probe_arm(arm, i),
-					..arm.clone()
-				})
+				.map(|(arm, i)| MatchArm { body: probe_arm(arm, i), ..arm.clone() })
 				.collect(),
 			else_body: Some(at(-1)),
 		};
@@ -616,9 +587,7 @@ pub(crate) fn fold(
 	}
 
 	// comp loop
-	if let Expr::Loop {
-		cond: Some(cond), body, ..
-	} = &mut inner.0
+	if let Expr::Loop { cond: Some(cond), body, .. } = &mut inner.0
 		&& let Expr::Gen { pat, key, .. } = &mut cond.0
 	{
 		let captures = match &pat.0 {
@@ -638,15 +607,7 @@ pub(crate) fn fold(
 				.filter(|&(var, ast)| body.iter_mut().fold(false, |named, e| unquote(e, var, ast) | named))
 				.map(|(var, _)| {
 					let (name, value) = (var.into(), Some(Box::new(splice(var))));
-					(
-						Expr::Bind {
-							mutable: false,
-							name,
-							typ: None,
-							value,
-						},
-						span,
-					)
+					(Expr::Bind { mutable: false, name, typ: None, value }, span)
 				})
 				.collect();
 			*body = vec![(Expr::Quote([named, std::mem::take(body)].concat()), span)];
@@ -688,9 +649,14 @@ pub(crate) fn fold(
 			_ if at.is_some_and(|s| names_in_flight(s.at(item.1), item)) => false,
 			Expr::Fn(Func { name, .. }) => name != "main",
 			Expr::Bind { mutable: true, .. } => has_main || module != "main",
-			Expr::Bind {
-				name, value: Some(v), ..
-			} if !has_main && module == "main" && !consts.contains_key(name) && TypeExpr::from_expr(&v.0).is_none() => false,
+			Expr::Bind { name, value: Some(v), .. }
+				if !has_main
+					&& module == "main"
+					&& !consts.contains_key(name)
+					&& TypeExpr::from_expr(&v.0).is_none() =>
+			{
+				false
+			}
 			e => is_def(e) && first_comp(std::slice::from_mut(item)).is_none(),
 		});
 		if module == target {
@@ -749,10 +715,7 @@ pub(crate) fn eval(
 			let mut reads = false;
 			v.0.clone().walk(&mut |e| {
 				let path = match e {
-					Expr::Field {
-						tuple: (Expr::Ident(module), _),
-						field,
-					} => format!("{module}.{field}"),
+					Expr::Field { tuple: (Expr::Ident(module), _), field } => format!("{module}.{field}"),
 					Expr::Ident(n) => n.clone(),
 					_ => return,
 				};
@@ -807,10 +770,7 @@ pub(crate) fn eval(
 		// const binds
 		let m = &mut program.modules[i];
 		m.items.retain_mut(|(item, span)| {
-			let Expr::Bind {
-				name, value: Some(v), ..
-			} = item
-			else {
+			let Expr::Bind { name, value: Some(v), .. } = item else {
 				return true;
 			};
 			let (Expr::Comp(_), Some(lit)) = (&v.0, consts.get(name.as_str())) else {
@@ -869,15 +829,9 @@ pub(super) fn splice_fields(fills: &mut Vec<Spanned<Expr>>, mut fields: Option<&
 		.flat_map(|f| if let Expr::Block(v) = f.0 { v } else { vec![f] })
 	{
 		match (e, &mut fields) {
-			(
-				Expr::Bind {
-					name,
-					typ: Some(t),
-					value: None,
-					..
-				},
-				Some(fields),
-			) => fields.push(Param::new(name, t.0, t.1)),
+			(Expr::Bind { name, typ: Some(t), value: None, .. }, Some(fields)) => {
+				fields.push(Param::new(name, t.0, t.1))
+			}
 			(e, _) => fills.push((e, span)),
 		}
 	}

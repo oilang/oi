@@ -405,10 +405,7 @@ impl Expr {
 	// The name written by an assignment.
 	pub fn assign_name(&self) -> Option<&String> {
 		match self {
-			Expr::Assign {
-				key: (Expr::Ident(name), _),
-				..
-			} => Some(name),
+			Expr::Assign { key: (Expr::Ident(name), _), .. } => Some(name),
 			_ => None,
 		}
 	}
@@ -479,10 +476,7 @@ impl Expr {
 				f(One(v));
 			}
 			Expr::Cast { args, .. } => f(List(args)),
-			Expr::Index {
-				collection: a,
-				index: b,
-			}
+			Expr::Index { collection: a, index: b }
 			| Expr::IndexAssign { index: a, value: b, .. }
 			| Expr::Assign { key: a, value: b }
 			| Expr::Pipe { value: a, step: b }
@@ -535,11 +529,7 @@ impl Expr {
 				[Some(collection), range.as_mut()].into_iter().flatten().for_each(|x| f(One(x)))
 			}
 			Expr::Range { start, end, .. } => [Some(start), end.as_mut()].into_iter().flatten().for_each(|x| f(One(x))),
-			Expr::Match {
-				subject,
-				arms,
-				else_body,
-			} => {
+			Expr::Match { subject, arms, else_body } => {
 				f(One(subject));
 				for arm in arms {
 					f(List(&mut arm.patterns));
@@ -599,9 +589,7 @@ impl Expr {
 			Expr::Ident(n) | Expr::Call { name: n, .. } => {
 				out.insert(n.clone());
 			}
-			Expr::AnonFn {
-				captures: Some(list), ..
-			} => {
+			Expr::AnonFn { captures: Some(list), .. } => {
 				for c in list {
 					let (Capture::ReadOnly(n) | Capture::Mut(n) | Capture::Move(n)) = c;
 					out.insert(n.clone());
@@ -869,10 +857,7 @@ pub fn assign(mut place: Spanned<Expr>, op: Option<BinOp>, value: Spanned<Expr>,
 fn unplace(e: &Expr) -> Option<(String, Option<String>)> {
 	match e {
 		Expr::Ident(name) => Some((name.clone(), None)),
-		Expr::Field {
-			tuple: (Expr::Ident(name), _),
-			field,
-		} => Some((name.clone(), Some(field.clone()))),
+		Expr::Field { tuple: (Expr::Ident(name), _), field } => Some((name.clone(), Some(field.clone()))),
 		_ => None,
 	}
 }
@@ -904,15 +889,7 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 		&& let Some((name, field)) = unplace(&collection.0)
 	{
 		let index = index.clone();
-		return (
-			Expr::IndexAssign {
-				name,
-				field,
-				index,
-				value,
-			},
-			span,
-		);
+		return (Expr::IndexAssign { name, field, index, value }, span);
 	}
 	let hole = match &mut place.0 {
 		Expr::UnquoteBind(_, field) => &mut field.0,

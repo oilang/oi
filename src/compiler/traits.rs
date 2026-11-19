@@ -67,9 +67,7 @@ pub(crate) fn claim_assoc(
 ) -> Vec<(String, TypeExpr)> {
 	let filled = |slot: &str| {
 		fills.iter().find_map(|f| match &Expr::peel_meta(f).2.0 {
-			Expr::Bind {
-				name, value: Some(v), ..
-			} if name == slot => Some(&v.0),
+			Expr::Bind { name, value: Some(v), .. } if name == slot => Some(&v.0),
 			_ => None,
 		})
 	};
@@ -159,12 +157,7 @@ pub(crate) fn fill_from_decl(fill: &Func, dps: &[Param], dret: &TypeSlot, span: 
 				} else {
 					format!("${i}")
 				};
-				Param {
-					name,
-					span,
-					default: None,
-					..d.clone()
-				}
+				Param { name, span, default: None, ..d.clone() }
 			})
 			.collect();
 		return Ok((ps, dps.len() != 1, ret));
@@ -176,10 +169,7 @@ pub(crate) fn fill_from_decl(fill: &Func, dps: &[Param], dret: &TypeSlot, span: 
 	}
 	let ps = (params.iter().enumerate())
 		.map(|(i, p)| match dps.get(i) {
-			Some(d) if omitted(p) => Param {
-				typ: d.typ.clone(),
-				..p.clone()
-			},
+			Some(d) if omitted(p) => Param { typ: d.typ.clone(), ..p.clone() },
 			_ => p.clone(),
 		})
 		.collect();

@@ -318,12 +318,7 @@ type ConstFill<'a> = (&'a String, &'a TypeSlot, &'a Spanned<Expr>);
 fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
 	match e {
 		Expr::Pub(_, b) => const_fill(&b.0),
-		Expr::Bind {
-			name,
-			typ,
-			value: Some(v),
-			..
-		} => Some((name, typ, v)),
+		Expr::Bind { name, typ, value: Some(v), .. } => Some((name, typ, v)),
 		_ => None,
 	}
 }
@@ -703,13 +698,7 @@ impl Loader {
 					"not a definition",
 				));
 			}
-			if let Expr::Use {
-				name,
-				path,
-				group,
-				with,
-			} = &item.0
-			{
+			if let Expr::Use { name, path, group, with } = &item.0 {
 				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
 				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
@@ -747,10 +736,7 @@ impl Loader {
 					}
 					let only =
 						narrows.then(|| items.iter().map(|it| (it.local.0.clone(), it.remote().0.clone())).collect());
-					let vis = Visible {
-						module: module.clone(),
-						only,
-					};
+					let vis = Visible { module: module.clone(), only };
 					if public.is_some() {
 						self.reexported_modules.insert(format!("{}::{local}", m.name), vis.clone());
 						if !narrows {
@@ -817,11 +803,7 @@ impl Loader {
 				m.items.push(item);
 				continue;
 			}
-			if let Expr::TypeAlias {
-				name,
-				typ: TypeExpr::Sum(members),
-				..
-			} = &mut item.0
+			if let Expr::TypeAlias { name, typ: TypeExpr::Sum(members), .. } = &mut item.0
 				&& let Some(v) = members
 					.iter()
 					.try_fold(0, |acc, t| Some(acc | flag(t, &self.program.consts, &m.scope)?))
@@ -861,12 +843,7 @@ impl Loader {
 					name.push('!');
 					self.define(m, name, !main, public, span)?;
 				}
-				Expr::Bind {
-					mutable,
-					name,
-					typ,
-					value,
-				} if !main || matches!(value, Some((Expr::Foreign, _))) => {
+				Expr::Bind { mutable, name, typ, value } if !main || matches!(value, Some((Expr::Foreign, _))) => {
 					if let Some(v) = value.as_deref_mut()
 						&& let Some(c) = self.const_value(v, &m.scope)
 					{
@@ -920,12 +897,7 @@ impl Loader {
 						self.program.consts.insert(name.clone(), (**v).clone());
 					}
 				}
-				Expr::Claim(Claim {
-					typ,
-					type_params,
-					fills,
-					..
-				}) => {
+				Expr::Claim(Claim { typ, type_params, fills, .. }) => {
 					// `u64` is keyed as `uint`
 					if let Some(Ok(sized)) = sized(typ, span) {
 						*typ = sized.key();
@@ -955,10 +927,7 @@ impl Loader {
 
 		// imports stay with the file that wrote them
 		let env = locals.into_iter().flat_map(|l| [format!("{l}!"), l]);
-		let core = Visible {
-			module: "core".into(),
-			only: None,
-		};
+		let core = Visible { module: "core".into(), only: None };
 		m.scope.visible.entry("core".into()).or_insert(core);
 		Ok(Scope {
 			env: env.filter_map(|k| m.scope.env.remove_entry(&k)).collect(),
@@ -1253,10 +1222,7 @@ impl Loader {
 	fn seed_prelude(&mut self) {
 		let core_pub: Vec<&String> = self.program.publics.vis.keys().filter(|q| q.starts_with("core::")).collect();
 		for m in self.program.modules.iter_mut().filter(|m| m.name != "core") {
-			let core = Visible {
-				module: "core".into(),
-				only: None,
-			};
+			let core = Visible { module: "core".into(), only: None };
 			m.scope.visible.entry("core".into()).or_insert(core);
 			for q in &core_pub {
 				m.scope
