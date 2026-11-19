@@ -33,8 +33,10 @@ impl<'a, M: Module> Translator<'a, M> {
 			let obj = self.lent_object(none, vtable, data);
 			self.emit_call(&sig, &[val, obj]);
 		} else if let Some(sig) = own(self, "str").filter(|sig| sig.params.len() == 1 && sig.ret == Typ::Str) {
-			let s = self.emit_call(&sig, &[val]).0;
+			let (s, typ) = self.emit_call(&sig, &[val]);
 			self.raw(s, sink);
+			self.untemp(s);
+			self.release_value(s, &typ);
 		} else {
 			return false;
 		}

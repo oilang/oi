@@ -429,3 +429,12 @@ fn element_append_respects_shared_buffer() {
 	check(src, r#"["azzz", "byyy"] ["a", "b"] b"#);
 	assert_clean(src);
 }
+
+#[test]
+fn printed_display_strings_are_freed() {
+	assert_clean(indoc! {r#"
+		Tag :: struct { t: int }
+		Tag : Display < { str :: fn(self) string { "tag {self.t}" } }
+		print(Tag.{7}, [Tag.{8}, Tag.{9}])
+	"#});
+}
