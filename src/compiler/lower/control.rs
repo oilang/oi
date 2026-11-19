@@ -586,11 +586,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			else_body = gap.filter(|g| !g.is_empty());
 		}
 
+		let unguarded = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
+		let pats = || unguarded().filter(|p| !refutable_subs(p));
+		let mut exhaustive = else_body.is_none() && pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
+
 		// ensure match covers every variant when applicable
 		if st.is_enumish() {
-			let unguarded = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
-			let pats = || unguarded().filter(|p| !refutable_subs(p));
-			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
+			let catch_all = else_body.is_some() || exhaustive;
 			if !catch_all && st == Typ::Any {
 				return Err(Diagnostic::new("a match on `any` needs `else`", span.into_range()));
 			}
@@ -604,7 +606,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					.filter(|v| !covered.contains(&v.disc))
 					.map(|v| v.name.clone())
 					.collect();
-				if !missing.is_empty() {
+				exhaustive = missing.is_empty();
+				if !exhaustive {
 					if gap.is_none() {
 						let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
 						return fail(msg, span, "cover these variants or add `else`");
@@ -730,10 +733,18 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		self.b.switch_to_block(else_blk);
 		self.b.seal_block(else_blk);
-		let else_flow = self.else_default(else_body, &join, target)?;
+
+		let else_flow = if exhaustive {
+			self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+			None
+		} else {
+			self.else_default(else_body, &join, target)?
+		};
+
 		let unreachable = else_flow.is_none() || (st.is_enumish() && else_body.is_none());
 		self.rejoin(&outer, &mut live, unreachable);
 		self.slots = live;
+
 		let tail = self.branch_tail(&owned, &mut tails, else_flow.is_some());
 		if let Some(vt) = else_flow {
 			self.contribute(vt, &mut join, tail)?;

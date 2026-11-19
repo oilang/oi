@@ -339,3 +339,18 @@ fn is_pattern_rejects_binds() {
 		"`is` can't bind names",
 	);
 }
+
+#[test]
+fn covered_match_needs_no_zero() {
+	let src = indoc! {r#"
+		P :: struct { a: int }
+		f :: fn(n: int) !?P {
+			match n { 0 => return none, _ => P.{ a = n } }
+		}
+		g :: fn(o: ?int) !?P {
+			match o { .none => return none, .some => P.{} }
+		}
+		print(f(2), g(none))
+	"#};
+	check(src, "ok.(some.(P.{a = 2})) ok.(none)");
+}
