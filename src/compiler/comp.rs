@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::{Diagnostic, SourceMap};
-use crate::loader::{Program, Scope, module_of};
+use crate::loader::{Program, Scope, fold_const, module_of};
 use crate::runtime;
 
 use super::expand::Slot;
@@ -604,11 +604,12 @@ pub(crate) fn fold(
 		return Ok(super::expand::one(body, span).0);
 	}
 
-	if let Expr::Bool(_) = inner.0 {
-		return Ok(inner.0);
-	}
 	let span = inner.1;
 	let scope = program.modules.iter().find(|m| m.name == target).map(|m| m.scope.at(span));
+	if let Some(lit) = scope.and_then(|s| fold_const(&inner.0, consts, s)) {
+		return Ok(lit);
+	}
+
 	let key = scope.and_then(|s| call_key(s, &inner));
 	if let Some(k) = &key {
 		if let Some(Some(lit)) = CALLS.with_borrow(|calls| calls.get(k).cloned()) {

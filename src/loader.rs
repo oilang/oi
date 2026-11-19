@@ -254,6 +254,21 @@ pub(crate) fn fold_const(e: &Expr, consts: &HashMap<String, Spanned<Expr>>, scop
 			}
 			_ => return None,
 		},
+		Expr::Binary(op @ (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge), a, b) => {
+			let ord = match (fold(a)?, fold(b)?) {
+				(Expr::Int(a), Expr::Int(b)) => a.cmp(&b),
+				(Expr::Float(a), Expr::Float(b)) => a.partial_cmp(&b)?,
+				_ => return None,
+			};
+			Expr::Bool(match op {
+				BinOp::Eq => ord.is_eq(),
+				BinOp::Ne => ord.is_ne(),
+				BinOp::Lt => ord.is_lt(),
+				BinOp::Gt => ord.is_gt(),
+				BinOp::Le => ord.is_le(),
+				_ => ord.is_ge(),
+			})
+		}
 		Expr::Binary(op, a, b) => match (fold(a)?, fold(b)?) {
 			(Expr::Int(a), Expr::Int(b)) => Expr::Int(match op {
 				BinOp::Add => a.wrapping_add(b),
