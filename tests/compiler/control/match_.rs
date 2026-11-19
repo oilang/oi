@@ -314,3 +314,18 @@ fn match_nested_binds_cover_variants() {
 	"#};
 	check(src, ["3", "12"]);
 }
+
+#[test]
+fn is_pattern() {
+	check(
+		"x := 3
+		o: ?int = 3
+		print(
+			x is 1..5 && x !is 3,
+			o is .some.(3),
+			(x, 2) is (3, _),
+			x is _,
+		)",
+		"false true true true",
+	);
+}

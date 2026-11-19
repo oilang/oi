@@ -79,25 +79,20 @@ tags: []
 	- `oi lsp`
 # TODO
 - immediate
-	- [ ] `matches!` macro (use in `Json.from_json` in the nested matches `rust`
 	- [ ] namespaced methods, like nushell's `" foo " | str trim` `nu`
 	- [ ] named returns with propagators: `out: string![]int`, `out: ?Point`, etc.
-	- [x] multiple declarations, using the param syntax outside of params `a, b, c: string`
 - [ ] let `:h <topic>` look at text files too, like vim does (offline wiki kind of thing? or maybe that's too much) `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`
 	- Tabling for now. I tried brainstorming a few different designs but not happy with any of them.
 - [ ] start publishing the blog posts I've been writing for some of the bigger decisions/changes
 - [ ] better errors. atom and int code support?
-- [x] channels
 - [ ] units and unit conversion
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] more types (paths, `b\d+`, `version`, `date`, `typeid`, `complex\d+`, `matrix`) `odin v rust`
 - [ ] swizzle (tried implementing, but I'm going to add core vector types instead) `odin`
 - [ ] allow fn math with arithmetic traits
-- [x] let `oi test` or at least `just test` for my own personal benefit take multiple test spec patterns
-- [x] reedline repl niceties (`ctrl-u` is a biggie)
-- [x] `string16` `odin`
+
 ## consider
 - `nil`
 - fns that return things should probably error if no binds or `_` blackhole register or `discard` `nim`

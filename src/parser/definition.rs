@@ -294,7 +294,10 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		});
 	let is_typ = (p.type_expr.clone())
 		.or(dot().ignore_then(ident()).map(|variant| TypeExpr::Name(format!(".{variant}"))))
+		.filter(|typ| !matches!(typ, TypeExpr::Name(n) if n == "_"))
+		.then_ignore(one_of([Token::Dot, Token::SpaceDot, Token::DotDot, Token::DotDotEq]).not())
 		.boxed();
+	let is = just(Token::Is).to(false).or(just(Token::NotIs).to(true));
 	let is_pat = just(Token::Is).ignore_then(is_typ.clone()).map_with(|typ, ex| {
 		let subject = Box::new((Expr::Dollar, ex.span()));
 		(
@@ -879,7 +882,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			// trait check
 			postfix(
 				5,
-				just(Token::Is).to(false).or(just(Token::NotIs).to(true)).then(is_typ),
+				is.then(is_typ),
 				|lhs, (negated, typ): (bool, TypeExpr), ex| {
 					(
 						Expr::Is {
@@ -891,9 +894,25 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					)
 				},
 			),
+			// is operator
+			infix(left(5), is, |lhs, negated: bool, pat: Spanned<Expr>, ex| {
+				let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
+				let arms = vec![MatchArm {
+					body: hit(true),
+					patterns: vec![pat],
+					..Default::default()
+				}];
+				(
+					Expr::Match {
+						subject: Box::new(lhs),
+						arms,
+						else_body: Some(hit(false)),
+					},
+					ex.span(),
+				)
+			}),
 			// equality | membership
-			binop(4, Token::Eq, BinOp::Eq),
-			binop(4, Token::Ne, BinOp::Ne),
+			(binop(4, Token::Eq, BinOp::Eq), binop(4, Token::Ne, BinOp::Ne)),
 			infix(
 				left(4),
 				just(Token::In).to(false).or(just(Token::NotIn).to(true)),
