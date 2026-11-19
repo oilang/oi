@@ -915,19 +915,23 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					just(Token::DotDot).then_ignore(just(Token::LBrace).not().then(p.expr.clone()).not()),
 					|l, _, ex| range(l, None, false, ex.span()),
 				),
-				infix(left(6), just(Token::DotDot), |l, _, r, ex| {
-					range(l, Some(r), false, ex.span())
-				}),
-				infix(left(6), just(Token::DotDotEq), |l, _, r, ex| {
-					range(l, Some(r), true, ex.span())
-				}),
+				infix(
+					left(6),
+					p.same_line.clone().ignore_then(just(Token::DotDot)),
+					|l, _, r, ex| range(l, Some(r), false, ex.span()),
+				),
+				infix(
+					left(6),
+					p.same_line.clone().ignore_then(just(Token::DotDotEq)),
+					|l, _, r, ex| range(l, Some(r), true, ex.span()),
+				),
 				prefix(6, just(Token::DotDot), |_, r, ex| {
 					(Expr::Spread(Box::new(r)), ex.span())
 				}),
 			),
 			(
 				// channels
-				binop(1, Token::ArrowL, BinOp::Send),
+				binop_with(left(1), p.same_line.clone(), Token::ArrowL, BinOp::Send),
 				// pipelines
 				infix(left(0), just(Token::Pipeline), |l, _, r, ex| pipe(l, r, ex.span())),
 			),

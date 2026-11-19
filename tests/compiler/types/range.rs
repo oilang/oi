@@ -102,3 +102,8 @@ fn range_values() {
 fn range_bound_must_be_int() {
 	fail("0..true", "must be Int");
 }
+
+#[test]
+fn range_operators_stop_at_newline() {
+	check(["x :: 1", "y :: 5", "print(x)", "..y", "print(x)"], ["1", "1"]);
+}
