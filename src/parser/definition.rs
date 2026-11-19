@@ -69,6 +69,44 @@ fn pipe(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> 
 	)
 }
 
+// Builds `$ is T`.
+fn dollar_is(typ: TypeExpr, span: Span) -> Spanned<Expr> {
+	let (subject, negated) = (Box::new((Expr::Dollar, span)), false);
+	(Expr::Is { subject, typ, negated }, span)
+}
+
+// Splits `a | b` and `is A | B` into one pattern each.
+fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	match pat {
+		Expr::Binary(BinOp::BitOr, lhs, rhs) => [alts(*lhs), alts(*rhs)].concat(),
+		Expr::Is { subject, typ, negated } => match typ {
+			TypeExpr::Sum(typs) => typs.into_iter().map(|typ| dollar_is(typ, span)).collect(),
+			TypeExpr::AtomSum(atoms) => atoms.into_iter().map(|atom| (Expr::Atom(atom), span)).collect(),
+			typ => vec![(Expr::Is { subject, typ, negated }, span)],
+		},
+		pat => vec![(pat, span)],
+	}
+}
+
+// Desugars `x is P` into a one-arm match.
+fn is_match(subject: Spanned<Expr>, negated: bool, pat: Spanned<Expr>, span: Span) -> Spanned<Expr> {
+	let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
+	let arms = vec![MatchArm {
+		is: true,
+		body: hit(true),
+		patterns: alts(pat),
+		..Default::default()
+	}];
+	(
+		Expr::Match {
+			subject: Box::new(subject),
+			arms,
+			else_body: Some(hit(false)),
+		},
+		span,
+	)
+}
+
 // A juxtaposed leading literal and/or trailing fn.
 type Juxt = (Option<Spanned<Expr>>, Option<Spanned<Expr>>);
 
@@ -295,20 +333,12 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let is_typ = (p.type_expr.clone())
 		.or(dot().ignore_then(ident()).map(|variant| TypeExpr::Name(format!(".{variant}"))))
 		.filter(|typ| !matches!(typ, TypeExpr::Name(n) if n == "_"))
-		.then_ignore(one_of([Token::Dot, Token::SpaceDot, Token::DotDot, Token::DotDotEq]).not())
+		.then_ignore(one_of([Token::Dot, Token::SpaceDot, Token::DotDot, Token::DotDotEq, Token::Pipe]).not())
 		.boxed();
 	let is = just(Token::Is).to(false).or(just(Token::NotIs).to(true));
-	let is_pat = just(Token::Is).ignore_then(is_typ.clone()).map_with(|typ, ex| {
-		let subject = Box::new((Expr::Dollar, ex.span()));
-		(
-			Expr::Is {
-				subject,
-				typ,
-				negated: false,
-			},
-			ex.span(),
-		)
-	});
+	let is_pat = just(Token::Is)
+		.ignore_then(is_typ.clone())
+		.map_with(|typ, ex| dollar_is(typ, ex.span()));
 	let match_pat = struct_pat.or(is_pat).or(p.expr.clone()).boxed();
 
 	let slice_type = just(Token::LBracket)
@@ -475,7 +505,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
 	let match_arm = just(Token::With)
 		.or_not()
-		.then(trailing_list1(match_pat.clone()))
+		.then(trailing_list1(match_pat.clone()).map(|pats| pats.into_iter().flat_map(alts).collect()))
 		.then(just(Token::If).ignore_then(header_cond.clone()).map(Box::new).or_not())
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
@@ -883,34 +913,19 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			postfix(
 				5,
 				is.then(is_typ),
-				|lhs, (negated, typ): (bool, TypeExpr), ex| {
-					(
-						Expr::Is {
-							subject: Box::new(lhs),
-							typ,
-							negated,
-						},
-						ex.span(),
-					)
+				|lhs, (negated, typ): (bool, TypeExpr), ex| match typ {
+					TypeExpr::Sum(_) | TypeExpr::AtomSum(_) => {
+						is_match(lhs, negated, dollar_is(typ, ex.span()), ex.span())
+					}
+					typ => {
+						let subject = Box::new(lhs);
+						(Expr::Is { subject, typ, negated }, ex.span())
+					}
 				},
 			),
 			// is operator
-			infix(left(5), is, |lhs, negated: bool, pat: Spanned<Expr>, ex| {
-				let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
-				let arms = vec![MatchArm {
-					is: true,
-					body: hit(true),
-					patterns: vec![pat],
-					..Default::default()
-				}];
-				(
-					Expr::Match {
-						subject: Box::new(lhs),
-						arms,
-						else_body: Some(hit(false)),
-					},
-					ex.span(),
-				)
+			infix(left(5), is, |lhs, negated: bool, pat, ex| {
+				is_match(lhs, negated, pat, ex.span())
 			}),
 			// equality | membership
 			(binop(4, Token::Eq, BinOp::Eq), binop(4, Token::Ne, BinOp::Ne)),

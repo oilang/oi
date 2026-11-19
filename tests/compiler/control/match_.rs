@@ -317,19 +317,27 @@ fn match_nested_binds_cover_variants() {
 
 #[test]
 fn is_pattern() {
-	check(
-		"x := 3
+	let src = r#"
+		x := 3
 		o: ?int = 3
 		c: :a | :b = :b
+		a: any = "s"
 		print(
 			x is 1..5 && x !is 3,
 			o is .some.(3),
 			(x, 2) is (3, _),
 			x is _,
 			c is :b && c !is :a,
-		)",
-		"false true true true true",
-	);
+			x is 3 | 4 && o is .none | .some && c is :a | :b && a is int | string,
+			match c {
+				is :a | :b => match x {
+					1 | 2 => 1,
+					_ => 2
+				},
+			},
+		)
+	"#;
+	check(src, "false true true true true true 2");
 }
 
 #[test]
