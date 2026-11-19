@@ -188,7 +188,7 @@ pub decode[T] :: fn(s: string) !T {
 ## Convert a `Json` value into a `T`.
 pub from_json[T] :: fn(j: Json) !T {
 	comp match T {
-		Option[E] => match j { :null => return none, _ => from_json[E](j)? },
+		Option[E] => if j is :null do none else do from_json[E](j)?,
 		[]E => loop v in want[Arr](j)? { from_json[E](v)? },
 		int => {
 			n :: want[float](j)?

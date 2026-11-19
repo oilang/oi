@@ -864,7 +864,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				binop(10, Token::GtGt, BinOp::Shr),
 				binop(9, Token::Amp, BinOp::BitAnd),
 				binop(8, Token::Tilde, BinOp::BitXor),
-				binop(7, Token::Pipe, BinOp::BitOr),
+				binop(6, Token::Pipe, BinOp::BitOr),
 			),
 			// relational
 			binop(5, Token::Lt, BinOp::Lt),
@@ -909,21 +909,21 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			// ranges
 			(
 				postfix(
-					6,
+					7,
 					just(Token::DotDot).then_ignore(just(Token::LBrace).not().then(p.expr.clone()).not()),
 					|l, _, ex| range(l, None, false, ex.span()),
 				),
 				infix(
-					left(6),
+					left(7),
 					p.same_line.clone().ignore_then(just(Token::DotDot)),
 					|l, _, r, ex| range(l, Some(r), false, ex.span()),
 				),
 				infix(
-					left(6),
+					left(7),
 					p.same_line.clone().ignore_then(just(Token::DotDotEq)),
 					|l, _, r, ex| range(l, Some(r), true, ex.span()),
 				),
-				prefix(6, just(Token::DotDot), |_, r, ex| {
+				prefix(7, just(Token::DotDot), |_, r, ex| {
 					(Expr::Spread(Box::new(r)), ex.span())
 				}),
 			),
