@@ -148,6 +148,19 @@ fn comp_if() {
 		f[int]()
 	"#};
 	check(src, ["3 true", "slice", "opt true", "no"]);
+
+	// comp if type pattern that returns
+	let src = indoc! {r#"
+		f[T] :: fn(m: [string]int) ?int {
+			v :: m["k"] or {
+				comp if ?E := T { return none } else { return 0 }
+			}
+			v + 1
+		}
+		m: [string]int = []
+		print(f[?int](m), f[int](m))
+	"#};
+	check(src, "none some.(0)");
 }
 
 #[test]

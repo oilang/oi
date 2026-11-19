@@ -264,7 +264,7 @@ pub(crate) fn instantiate(
 			};
 
 			bound.extend(binds);
-			patch_first(body, Expr::Block(arm));
+			patch_first(body, super::expand::one(arm, inner.1).0);
 			continue;
 		}
 		inner.0.walk(&mut |e| {
