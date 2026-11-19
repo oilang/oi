@@ -23,11 +23,20 @@ fn scaffold(dir: &Path) -> Result<(), Reported> {
 	if entry.exists() {
 		return Err(fail(format!("{} already exists", entry.display())));
 	}
+
 	write(&entry, include_str!("../../templates/src/main.oi"))?;
 	let ignore = dir.join(".gitignore");
 	if !ignore.exists() {
 		write(&ignore, include_str!("../../templates/.gitignore"))?;
 	}
+
+	let manifest = dir.join("oi.toml");
+	if !manifest.exists() {
+		let full = dir.canonicalize().unwrap_or_default();
+		let name = full.file_name().unwrap_or_default().to_string_lossy();
+		write(&manifest, &format!("name = \"{name}\"\nroot = \"src\"\n"))?;
+	}
+
 	if !dir.canonicalize().is_ok_and(|p| p.ancestors().any(|a| a.join(".git").exists())) {
 		Command::new("git").args(["init", "--quiet"]).arg(dir).status().ok();
 	}
