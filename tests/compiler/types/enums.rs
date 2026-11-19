@@ -27,13 +27,14 @@ fn in_match() {
 			Color :: enum { red green blue }
 			c :: Color.green
 			print(match c { Color.red => "r", Color.green => "g", else => "?" })
+			print(c is Color.green, c !is Color.red)
 			match c {
 				.red => "r",
 				.green => "g",
 				else => "?",
 			}
 		"#},
-		["g", "g"],
+		["g", "true true", "g"],
 	);
 }
 

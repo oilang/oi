@@ -764,15 +764,24 @@ impl<'a, M: Module> Translator<'a, M> {
 				TypeExpr::AtomSum(atoms) if atoms.len() == 1 => Some(atoms[0].as_str()),
 				_ => None,
 			};
+
 			if let Some(variant) = variant {
 				return self.enum_pattern(&(Expr::Atom(variant.into()), pat.1), typ);
 			}
 			if *typ == Typ::Any {
 				return Ok((typeid(&self.types.resolve(te, pat.1)?), vec![]));
 			}
+
 			let (variants, disp) = (self.variants_of(typ), self.sum_display(te, pat.1)?);
 			return match variants.iter().find(|x| x.name == disp) {
 				Some(x) => Ok((x.disc, vec![])),
+				// `C.red` parses as a type path, retry it as the arm pattern
+				None if let TypeExpr::Name(name) = te
+					&& let Some((head, field)) = name.rsplit_once('.') =>
+				{
+					let tuple = Box::new((Expr::Ident(head.into()), pat.1));
+					self.enum_pattern(&(Expr::Field { tuple, field: field.into() }, pat.1), typ)
+				}
 				None => bad(format!("`{typ}` has no variant `{disp}`")).map_err(|d| match self.fallible_split(typ) {
 					Some(_) => d.with_note("bind it to unwrap: `if v := o { .. }`"),
 					None => d,
@@ -802,10 +811,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			Expr::Field { tuple, field } if matches!(tuple.0, Expr::Ident(_)) => (field, &[]),
 			_ => return bad(format!("`{typ}` is matched by its variants")),
 		};
+
 		let variants = self.variants_of(typ);
 		let Some(v) = variants.iter().find(|v| v.name == variant) else {
 			return bad(format!("`{typ}` has no variant `{variant}`"));
 		};
+
 		let binds = if let [(Expr::Record(entries), _)] = args {
 			let mut binds = Vec::with_capacity(entries.len());
 			for (k, val) in entries {
