@@ -938,11 +938,20 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("range patterns need an integer subject, got {st}");
 			return fail(msg, span, "not an integer");
 		}
+
 		let zero = (Expr::Int(0), span);
 		let (range, rt) = self.range_value(start.unwrap_or(&zero), end, inclusive, span)?;
 		let sv = self.intcast(sv, types::I64, matches!(st, Typ::Int(_) | Typ::ISize));
 		let (hit, _) = self.emit_contains(range, &rt, (sv, Typ::Int(64)), span)?;
-		Ok(self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0))
+		let hit = self.b.ins().icmp_imm(IntCC::NotEqual, hit, 0);
+		if !matches!(st, Typ::UInt(64) | Typ::USize) {
+			return Ok(hit);
+		}
+
+		// bounds are i64, so anything past i64::MAX only works in an open-ended range
+		let past_max = self.b.ins().icmp_imm(IntCC::SignedLessThan, sv, 0);
+		let open_end = self.b.ins().iconst(types::I8, end.is_none() as i64);
+		Ok(self.b.ins().select(past_max, open_end, hit))
 	}
 
 	// Split `Enum.variant` into its enum and variant.

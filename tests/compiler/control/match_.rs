@@ -82,8 +82,14 @@ fn match_range_unsigned() {
 			128..=255 => print("hi"),
 			_ => print("mid")
 		}
+		big: u64 = 9223372036854775808
+		print(match big {
+			5..=100 => "mid",
+			101.. => "hi",
+			_ => "none",
+		})
 	"#};
-	check(src, "hi");
+	check(src, ["hi", "hi"]);
 }
 
 #[test]
