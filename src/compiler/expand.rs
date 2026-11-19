@@ -4,7 +4,10 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Capture, Child, EnumVariant, Expr, MatchArm, Param, Span, Spanned, TypeExpr, int_word};
+use crate::ast::{
+	Capture, Child, Claim, EnumDef, EnumVariant, Expr, Func, MatchArm, Param, Span, Spanned, StructDef, TraitDef,
+	TypeExpr, int_word,
+};
 use crate::diagnostics::{Diagnostic, arity_err, fail};
 use crate::loader::{Module, Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
@@ -34,22 +37,22 @@ pub(super) fn lend(
 			// rebuilt so dead fills are never cloned
 			let mut items: Vec<_> = (m.items.iter().chain(&m.comptime).filter(|e| live(e)))
 				.map(|(e, span)| match e {
-					Expr::Claim {
+					Expr::Claim(Claim {
 						typ,
 						type_params,
 						traits,
 						via,
 						fills,
 						fields,
-					} => (
-						Expr::Claim {
+					}) => (
+						Expr::Claim(Box::new(Claim {
 							typ: typ.clone(),
 							type_params: type_params.clone(),
 							traits: traits.clone(),
 							via: via.clone(),
 							fills: fills.iter().filter(|e| live(e)).cloned().collect(),
 							fields: fields.clone(),
-						},
+						})),
 						*span,
 					),
 					_ => (e.clone(), *span),
@@ -81,7 +84,7 @@ pub(super) fn lend(
 
 fn fn_name(e: &Spanned<Expr>) -> Option<&String> {
 	match Expr::peel_meta(e) {
-		([], _, (Expr::Fn { name, .. }, _)) => Some(name),
+		([], _, (Expr::Fn(Func { name, .. }), _)) => Some(name),
 		_ => None,
 	}
 }
@@ -96,8 +99,8 @@ fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]
 	for m in &mut program.modules {
 		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
 		for item in &mut m.items {
-			let items = if matches!(&item.0, Expr::Claim { traits, .. } if traits.is_empty())
-				&& let (Expr::Claim { fills, fields, .. }, _) = item
+			let items = if matches!(&item.0, Expr::Claim(c) if c.traits.is_empty())
+				&& let (Expr::Claim(Claim { fills, fields, .. }), _) = item
 			{
 				queue.extend(fields.iter_mut().filter_map(|f| f.default.as_mut()).map(|d| &mut d.0));
 				fills.as_mut_slice()
@@ -125,7 +128,7 @@ fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]
 		};
 		item.walk(&mut |e| {
 			if let Expr::Ident(n)
-			| Expr::Fn { name: n, .. }
+			| Expr::Fn(Func { name: n, .. })
 			| Expr::Call { name: n, .. }
 			| Expr::MethodCall { method: n, .. }
 			| Expr::Field { field: n, .. }
@@ -162,7 +165,7 @@ pub(super) fn prune(program: &mut Program, roots: &[String]) -> Result<bool, Dia
 	let live = |e: &Spanned<Expr>| fn_name(e).is_none_or(|n| !dead.contains(&simple(n)));
 	for m in &mut program.modules {
 		m.items.retain_mut(|item| {
-			if let Expr::Claim { fills, .. } = &mut item.0 {
+			if let Expr::Claim(Claim { fills, .. }) = &mut item.0 {
 				fills.retain(live);
 			}
 			live(item)
@@ -228,12 +231,12 @@ fn name_slot(e: &mut Expr) -> Option<&mut String> {
 		Expr::MethodCall { method, .. } => Some(method),
 		Expr::Ident(name)
 		| Expr::Bind { name, .. }
-		| Expr::Fn { name, .. }
-		| Expr::StructDef { name, .. }
-		| Expr::EnumDef { name, .. }
+		| Expr::Fn(Func { name, .. })
+		| Expr::StructDef(StructDef { name, .. })
+		| Expr::EnumDef(EnumDef { name, .. })
 		| Expr::TypeAlias { name, .. }
 		| Expr::StructLit { name, .. }
-		| Expr::Claim { typ: name, .. } => Some(name),
+		| Expr::Claim(Claim { typ: name, .. }) => Some(name),
 		Expr::Gen { pat, .. } => match &mut pat.0 {
 			Expr::Ident(name) => Some(name),
 			_ => None,
@@ -250,7 +253,7 @@ fn resolve_bare(name: &str, scope: &Scope) -> String {
 // Get a fn's defining module, encoded in its qualified name.
 fn owner(e: &Spanned<Expr>) -> &str {
 	match &e.0 {
-		Expr::Fn { name, .. } => module_of(name).unwrap_or("main"),
+		Expr::Fn(Func { name, .. }) => module_of(name).unwrap_or("main"),
 		_ => "main",
 	}
 }
@@ -330,7 +333,7 @@ impl Expander {
 		&mut self,
 		name: String,
 		mut params: Vec<Param>,
-		ret: Option<Spanned<TypeExpr>>,
+		ret: Option<Box<Spanned<TypeExpr>>>,
 		body: Vec<Spanned<Expr>>,
 		span: Span,
 	) -> Result<(), Diagnostic> {
@@ -356,14 +359,14 @@ impl Expander {
 			return fail("macros return `Ast`", *rspan, "not Ast");
 		}
 		self.macros.insert(name.clone(), (params.len(), std::ptr::null()));
-		let f = Expr::Fn {
+		let f = Expr::Fn(Box::new(Func {
 			name,
 			type_params: vec![],
 			params_tuple: params.len() != 1,
 			params,
-			ret: Some((TypeExpr::Name("Ast".into()), Span::default())),
+			ret: Some(Box::new((TypeExpr::Name("Ast".into()), Span::default()))),
 			body,
-		};
+		}));
 		self.defs.push((f, span));
 		Ok(())
 	}
@@ -386,7 +389,7 @@ impl Expander {
 			items.retain_mut(|(e, span)| {
 				let lent = match e {
 					_ if module != "main" => true,
-					Expr::Fn { name, .. } => name != "main",
+					Expr::Fn(Func { name, .. }) => name != "main",
 					Expr::Bind { .. } => false,
 					_ => super::comp::is_def(e),
 				};
@@ -550,7 +553,7 @@ impl Expander {
 				}
 				self.expand_types(&mut e.0, scope, depth)?;
 				match &e.0 {
-					Expr::Fn { name, .. } if name.contains('!') => Ok(()),
+					Expr::Fn(f) if f.name.contains('!') => Ok(()),
 					Expr::Quote(_) => Ok(()),
 					Expr::MacroDef { .. } => {
 						fail("macros can only be defined at the top level", e.1, "nested macro def")
@@ -614,7 +617,7 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 		let keys: HashSet<_> = defs.iter().map(|d| d.0.clone()).collect();
 		for (name, def, scope) in &mut defs {
 			def.0.walk(&mut |e| {
-				if let Expr::StructDef { fields, .. } = e {
+				if let Expr::StructDef(StructDef { fields, .. }) = e {
 					let notes = fields.iter_mut().flat_map(|f| &mut f.annotations);
 					notes.for_each(|note| resolve(note, scope));
 					for default in fields.iter_mut().filter_map(|f| f.default.as_mut()) {
@@ -637,7 +640,7 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 		}
 		let defs = defs.into_iter().map(|(name, def, _)| (name, def));
 		let claims = out.items().flat_map(|(scope, item)| match &Expr::peel_meta(item).2.0 {
-			Expr::Claim { typ, traits, .. } => (traits.iter())
+			Expr::Claim(Claim { typ, traits, .. }) => (traits.iter())
 				.map(|t| (scope.qualify_name(typ), scope.qualify_name(&t.0)))
 				.collect(),
 			_ => vec![],
@@ -773,7 +776,7 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 			if let Some(n) = name_slot(e).and_then(|n| n.strip_prefix('%')) {
 				push_name(slots, n);
 			}
-			if let Expr::Fn { params, .. } | Expr::AnonFn { params, .. } = e {
+			if let Expr::Fn(Func { params, .. }) | Expr::AnonFn { params, .. } = e {
 				params
 					.iter()
 					.filter_map(|p| p.name.strip_prefix('%'))
@@ -869,22 +872,22 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 	}
 
 	match &mut e.0 {
-		Expr::Fn {
+		Expr::Fn(Func {
 			params,
 			params_tuple,
 			ret,
 			..
-		}
+		})
 		| Expr::AnonFn {
 			params,
 			params_tuple,
 			ret,
 			..
 		} => {
-			fill_sig(params, ret.as_mut(), args);
+			fill_sig(params, ret.as_deref_mut(), args);
 			*params_tuple |= params.len() != 1;
 		}
-		Expr::StructDef { fields, .. } => fill_sig(fields, None, args),
+		Expr::StructDef(StructDef { fields, .. }) => fill_sig(fields, None, args),
 		_ => e.0.types().into_iter().for_each(|t| fill_type(t, args)),
 	}
 
@@ -1038,7 +1041,7 @@ fn fill_sig(params: &mut Vec<Param>, ret: Option<&mut Spanned<TypeExpr>>, args: 
 
 // Promote enum fills to variants.
 pub(super) fn splice_variants(e: &mut Expr) {
-	if let Expr::EnumDef { variants, fills, .. } = e {
+	if let Expr::EnumDef(EnumDef { variants, fills, .. }) = e {
 		let spliced = fills.extract_if(.., |f| {
 			matches!(f.0, Expr::Ident(_) | Expr::Call { .. } | Expr::Apply { .. })
 		});
@@ -1185,7 +1188,7 @@ pub(crate) extern "C" fn rt_quote_match(tpl: usize, subject: *mut Spanned<Expr>,
 // Take child subtrees of an expression, leaving placeholders.
 fn split(mut e: Expr) -> (String, Vec<Vec<Spanned<Expr>>>) {
 	let mut kids = match &mut e {
-		Expr::StructDef { fields, .. } => vec![fields.drain(..).map(|f| (field_ast(&f), f.span)).collect()],
+		Expr::StructDef(StructDef { fields, .. }) => vec![fields.drain(..).map(|f| (field_ast(&f), f.span)).collect()],
 		Expr::Call { args, .. } | Expr::MacroCall { args, .. } | Expr::Array(args) | Expr::DotTuple(args) => {
 			vec![std::mem::take(args)]
 		}
@@ -1269,7 +1272,7 @@ pub(crate) extern "C" fn rt_ast_def(a: *mut Spanned<Expr>) -> *mut Spanned<Expr>
 		};
 		let mut def = defs.iter().find(|d| d.0 == name)?.1.clone();
 		def.0.walk(&mut |e| {
-			if let Expr::StructDef { type_params, .. } = e
+			if let Expr::StructDef(StructDef { type_params, .. }) = e
 				&& !args.is_empty()
 			{
 				let params = std::mem::take(type_params).into_iter().map(|p| p.name);
@@ -1352,7 +1355,7 @@ fn field_ast(f: &Param) -> Expr {
 	let bind = Expr::Bind {
 		mutable: false,
 		name: f.name.clone(),
-		typ: Some((f.typ.clone(), f.span)),
+		typ: Some(Box::new((f.typ.clone(), f.span))),
 		value: f.default.clone().map(Box::new),
 	};
 	match f.annotations.is_empty() {
@@ -1378,16 +1381,16 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	};
 	match (m, subject) {
 		(b"notes", _) => asts(&mut notes.iter()),
-		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn { ret: Some((t, _)), .. }) => ast(type_ast(t)),
+		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn(Func { ret: Some((t, _)), .. })) => ast(type_ast(t)),
 		(b"typ", Expr::TypePat(TypeExpr::Array(t) | TypeExpr::FixedArray(t, _))) => ast(type_ast(t)),
-		(b"typ", Expr::Fn { ret: None, .. }) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
+		(b"typ", Expr::Fn(Func { ret: None, .. })) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
 		(b"typ", _) => flag("this Ast has no type", leak(empty()) as i64),
 		(b"len", Expr::TypePat(TypeExpr::FixedArray(_, n))) => ast(n.0.clone()),
 		(b"kind", e) => {
 			let name = match e {
-				Expr::StructDef { .. } => "struct".into(),
-				Expr::EnumDef { .. } => "enum".into(),
-				Expr::TraitDef { .. } => "trait".into(),
+				Expr::StructDef(_) => "struct".into(),
+				Expr::EnumDef(_) => "enum".into(),
+				Expr::TraitDef(_) => "trait".into(),
 				Expr::TypeAlias { .. } => "alias".into(),
 				Expr::TypePat(t) => format!("{t:?}"),
 				e => format!("{e:?}"),
@@ -1414,21 +1417,21 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 		}
 		(
 			b"name",
-			Expr::StructDef { name, .. }
-			| Expr::EnumDef { name, .. }
+			Expr::StructDef(StructDef { name, .. })
+			| Expr::EnumDef(EnumDef { name, .. })
 			| Expr::TypeAlias { name, .. }
-			| Expr::TraitDef { name, .. }
+			| Expr::TraitDef(TraitDef { name, .. })
 			| Expr::Call { name, .. }
 			| Expr::MacroCall { name, .. }
 			| Expr::Bind { name, .. }
-			| Expr::Fn { name, .. }
-			| Expr::Claim { typ: name, .. }
+			| Expr::Fn(Func { name, .. })
+			| Expr::Claim(Claim { typ: name, .. })
 			| Expr::StructLit { name, .. },
 		) => ast(Expr::Ident(name.clone())),
 		(b"name", ident @ Expr::Ident(_)) => ast(ident.clone()),
 		(b"name", Expr::Atom(variant) | Expr::EnumShorthand { variant, .. }) => ast(Expr::Ident(variant.clone())),
 		(b"name", _) => flag("this Ast has no name", leak(empty()) as i64),
-		(b"items", Expr::Array(v) | Expr::DotArray(_, v) | Expr::Block(v) | Expr::Claim { fills: v, .. }) => {
+		(b"items", Expr::Array(v) | Expr::DotArray(_, v) | Expr::Block(v) | Expr::Claim(Claim { fills: v, .. })) => {
 			asts(&mut v.iter())
 		}
 		(b"items", Expr::Map(named)) => list(named.iter().map(pair).collect()),
@@ -1439,7 +1442,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			});
 			list(entries.collect())
 		}
-		(b"items", Expr::StructDef { fields, .. } | Expr::Fn { params: fields, .. }) => {
+		(b"items", Expr::StructDef(StructDef { fields, .. }) | Expr::Fn(Func { params: fields, .. })) => {
 			list(fields.iter().map(|f| ast(field_ast(f))).collect())
 		}
 		(b"items", Expr::StructLit { fields, .. }) => {
@@ -1454,20 +1457,23 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			leak(arm.patterns[0].clone()) as i64,
 			leak((Expr::Block(arm.body.clone()), *span)) as i64,
 		]),
-		(b"items", Expr::EnumDef { variants, .. }) => {
+		(b"items", Expr::EnumDef(EnumDef { variants, .. })) => {
 			list(variants.iter().map(|v| ast(Expr::Ident(v.name.clone()))).collect())
 		}
 		(b"items", _) => flag("this Ast has no items", list(vec![])),
-		(b"fills", Expr::StructDef { fills, .. } | Expr::EnumDef { fills, .. } | Expr::Claim { fills, .. }) => {
-			asts(&mut fills.iter())
-		}
+		(
+			b"fills",
+			Expr::StructDef(StructDef { fills, .. })
+			| Expr::EnumDef(EnumDef { fills, .. })
+			| Expr::Claim(Claim { fills, .. }),
+		) => asts(&mut fills.iter()),
 		(b"fills", _) => flag("this Ast has no fills", list(vec![])),
 		(b"claims" | b"embeds" | b"claimants" | b"embedders", e) => DEFS.with_borrow(|(_, module, defs, publics)| {
 			let key = e.def_name().unwrap_or_default();
 			let embeds = |def: &Expr, key: &str| {
 				let field =
 					|f: &Param| f.name == display_name(key) && matches!(&f.typ, TypeExpr::Resolved(k) if k == key);
-				matches!(def, Expr::StructDef { fields, .. } if fields.iter().any(field))
+				matches!(def, Expr::StructDef(s) if s.fields.iter().any(field))
 			};
 			CLAIMS.with_borrow(|claims| {
 				let related = |(name, def): &&Def| match m {

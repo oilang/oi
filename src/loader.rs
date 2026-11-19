@@ -14,7 +14,10 @@ use cranelift::codegen::incremental_cache::CacheKvStore;
 use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
-use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
+use crate::ast::{
+	Annotation, BinOp, Child, Claim, EnumDef, Expr, Func, Span, Spanned, StructDef, TraitDef, TypeExpr, UseItem, Vis,
+	int_word,
+};
 use crate::compiler::{builtin, cache, role, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::driver::fail;
@@ -134,7 +137,7 @@ impl Scope {
 	pub(crate) fn key_claim<'a>(&self, (item, span): &'a mut Spanned<Expr>) -> Option<&'a mut String> {
 		let own = format!("{}::", self.module);
 		match item {
-			Expr::Claim { typ, type_params, .. }
+			Expr::Claim(Claim { typ, type_params, .. })
 				if !crate::compiler::TypeCtx::builtin_type(typ)
 					&& type_params.iter().all(|p| p.name != *typ)
 					&& (typ.starts_with(&own) || !typ.contains("::")) =>
@@ -309,7 +312,7 @@ fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) ->
 	}
 }
 
-type ConstFill<'a> = (&'a String, &'a Option<Spanned<TypeExpr>>, &'a Spanned<Expr>);
+type ConstFill<'a> = (&'a String, &'a Option<Box<Spanned<TypeExpr>>>, &'a Spanned<Expr>);
 
 // Fill an associated const.
 fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
@@ -330,11 +333,11 @@ pub(crate) fn wrapped_def(e: &mut Expr) -> Option<(Option<Vis>, &mut String)> {
 	match e {
 		Expr::Pub(v, b) => wrapped_def(&mut b.0).map(|(_, n)| (Some(*v), n)),
 		Expr::Annotated(_, b) => wrapped_def(&mut b.0),
-		Expr::Fn { name, .. }
-		| Expr::StructDef { name, .. }
-		| Expr::EnumDef { name, .. }
+		Expr::Fn(Func { name, .. })
+		| Expr::StructDef(StructDef { name, .. })
+		| Expr::EnumDef(EnumDef { name, .. })
 		| Expr::TypeAlias { name, .. }
-		| Expr::TraitDef { name, .. } => Some((None, name)),
+		| Expr::TraitDef(TraitDef { name, .. }) => Some((None, name)),
 		_ => None,
 	}
 }
@@ -631,14 +634,14 @@ impl Loader {
 			let key = format!("{typ}::{n}");
 			if let Some(lit) = self.const_value(v, scope) {
 				if let Some(t) = t {
-					self.program.const_types.insert(key.clone(), t.clone());
+					self.program.const_types.insert(key.clone(), (**t).clone());
 				}
 				self.program.consts.insert(key, lit);
 			} else if let Some(typ) = TypeExpr::from_expr(&v.0) {
 				let alias = Expr::TypeAlias {
 					name: key,
 					type_params: vec![],
-					typ,
+					typ: Box::new(typ),
 				};
 				aliases.push((alias, v.1));
 			} else {
@@ -796,11 +799,11 @@ impl Loader {
 			}
 			let span = item.1;
 			// make fn bindings shadow
-			if let Expr::Fn { name, .. } = &item.0
+			if let Expr::Fn(Func { name, .. }) = &item.0
 				&& let Some(prev) = m.scope.env.get(name.as_str()).cloned()
 				&& let Some(i) = m.items[file_start..]
 					.iter()
-					.position(|it| matches!(&it.0, Expr::Fn { name: n, .. } if *n == prev))
+					.position(|it| matches!(&it.0, Expr::Fn(f) if f.name == prev))
 			{
 				m.items.remove(file_start + i);
 				m.scope.env.remove(name.as_str());
@@ -830,18 +833,18 @@ impl Loader {
 
 			let mut assoc_types = vec![];
 			match &mut item.0 {
-				Expr::Fn { name, .. }
-				| Expr::StructDef { name, .. }
-				| Expr::EnumDef { name, .. }
+				Expr::Fn(Func { name, .. })
+				| Expr::StructDef(StructDef { name, .. })
+				| Expr::EnumDef(EnumDef { name, .. })
 				| Expr::TypeAlias { name, .. }
-				| Expr::TraitDef { name, .. } => {
+				| Expr::TraitDef(TraitDef { name, .. }) => {
 					self.define(m, name, !main, public, span)?;
 					if !anns.is_empty() {
 						self.program.annotations.entry(name.clone()).or_default().extend(anns);
 					}
 					match &mut item.0 {
-						Expr::StructDef { name, fills, .. } => assoc_types = self.assoc_fills(name, fills, &m.scope)?,
-						Expr::TraitDef { fields, .. } => {
+						Expr::StructDef(s) => assoc_types = self.assoc_fills(&s.name, &mut s.fills, &m.scope)?,
+						Expr::TraitDef(TraitDef { fields, .. }) => {
 							for f in fields {
 								if let TypeExpr::Infer(v) = &f.typ
 									&& self.const_value(v, &m.scope).is_none()
@@ -917,12 +920,12 @@ impl Loader {
 						self.program.consts.insert(name.clone(), (**v).clone());
 					}
 				}
-				Expr::Claim {
+				Expr::Claim(Claim {
 					typ,
 					type_params,
 					fills,
 					..
-				} => {
+				}) => {
 					// `u64` is keyed as `uint`
 					if let Some(Ok(sized)) = sized(typ, span) {
 						*typ = sized.key();

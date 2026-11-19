@@ -1,3 +1,5 @@
+#![feature(deref_patterns)]
+
 pub mod ast;
 pub mod compiler;
 pub mod diagnostics;

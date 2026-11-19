@@ -1226,15 +1226,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					.block_tail(std::slice::from_ref(expr), hint)?
 					.expect("a place never diverges"))
 			}
-			Expr::Fn { .. }
-			| Expr::StructDef { .. }
-			| Expr::EnumDef { .. }
-			| Expr::TraitDef { .. }
-			| Expr::TypeAlias { .. } => Err(Diagnostic::new(
-				"definitions are only allowed at the top level",
-				expr.1.into_range(),
-			)),
-			Expr::Claim { .. } => unreachable!("claim in expression position"),
+			Expr::Fn(_) | Expr::StructDef(_) | Expr::EnumDef(_) | Expr::TraitDef(_) | Expr::TypeAlias { .. } => Err(
+				Diagnostic::new("definitions are only allowed at the top level", expr.1.into_range()),
+			),
+			Expr::Claim(_) => unreachable!("claim in expression position"),
 			Expr::TypePat(te) => Ok((self.type_val(te, expr.1)?, Typ::TypeId)),
 			Expr::Return(_) | Expr::Break(..) | Expr::Continue(_) => fail(
 				"`return`, `break`, and `continue` never produce a value",

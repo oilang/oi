@@ -142,7 +142,7 @@ impl<M: Module> Translator<'_, M> {
 				.with_label("end the pipeline with a fn, or write the fn out")
 		};
 		let ret = match &stage.0 {
-			Expr::AnonFn { ret: Some(ret), .. } => return Ok(ret.clone()),
+			Expr::AnonFn { ret: Some(ret), .. } => return Ok((**ret).clone()),
 			Expr::Ident(name) | Expr::Call { name, .. } => self.callable(name).ok_or_else(vague)?.1,
 			_ => return Err(vague()),
 		};

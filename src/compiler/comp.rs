@@ -4,7 +4,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::ast::{Annotation, BinOp, Child, Expr, MatchArm, Param, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{
+	Annotation, BinOp, Child, Claim, EnumDef, Expr, Func, MatchArm, Param, Span, Spanned, StructDef, TypeExpr,
+	TypeParam,
+};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::loader::{Program, Scope, fold_const, module_of};
 use crate::runtime;
@@ -126,9 +129,11 @@ pub(crate) extern "C" fn rt_comp_panic(assert: i64, msg: *const runtime::StrHead
 fn sites(items: &mut [Spanned<Expr>], f: &mut impl FnMut(&mut Expr)) {
 	for (e, _) in items {
 		match e {
-			Expr::Fn { type_params, .. } | Expr::StructDef { type_params, .. } | Expr::Claim { type_params, .. }
+			Expr::Fn(Func { type_params, .. })
+			| Expr::StructDef(StructDef { type_params, .. })
+			| Expr::Claim(Claim { type_params, .. })
 				if !type_params.is_empty() => {}
-			Expr::TraitDef { .. } => {}
+			Expr::TraitDef(_) => {}
 			Expr::Comp(_) => f(e),
 			e => e.for_children(|c| match c {
 				Child::List(list) => sites(list, f),
@@ -385,12 +390,12 @@ fn unquote(e: &mut Spanned<Expr>, var: &str, ast: bool) -> bool {
 pub(super) fn is_def(e: &Expr) -> bool {
 	matches!(
 		e,
-		Expr::Fn { .. }
-			| Expr::StructDef { .. }
-			| Expr::EnumDef { .. }
-			| Expr::TraitDef { .. }
+		Expr::Fn(_)
+			| Expr::StructDef(_)
+			| Expr::EnumDef(_)
+			| Expr::TraitDef(_)
 			| Expr::TypeAlias { .. }
-			| Expr::Claim { .. }
+			| Expr::Claim(_)
 			| Expr::Bind { .. }
 	)
 }
@@ -452,7 +457,7 @@ fn reify(span: Span, instances: &HashMap<String, Vec<Typ>>) -> Expr {
 							true => Expr::DotTuple(args),
 							false => Expr::EnumShorthand { variant: name, args },
 						};
-						let target = (spell(&of(id), instances), span);
+						let target = Box::new((spell(&of(id), instances), span));
 						Expr::Cast {
 							target,
 							args: vec![(anon, span)],
@@ -478,13 +483,13 @@ fn reify(span: Span, instances: &HashMap<String, Vec<Typ>>) -> Expr {
 
 // Copy a comp fn to take its type params.
 fn bracket_copy((e, span): &Spanned<Expr>, anns: &HashMap<String, Vec<Annotation>>) -> Option<Spanned<Expr>> {
-	let Expr::Fn {
+	let Expr::Fn(Func {
 		name,
 		params,
 		ret,
 		body,
 		..
-	} = e
+	}) = e
 	else {
 		return None;
 	};
@@ -496,14 +501,14 @@ fn bracket_copy((e, span): &Spanned<Expr>, anns: &HashMap<String, Vec<Annotation
 			..TypeParam::default()
 		})
 		.collect();
-	let copy = Expr::Fn {
+	let copy = Expr::Fn(Box::new(Func {
 		name: format!("{name}#comp"),
 		type_params,
 		params: vec![],
 		params_tuple: true,
 		ret: ret.clone(),
 		body: body.clone(),
-	};
+	}));
 	Some((copy, *span))
 }
 
@@ -665,7 +670,7 @@ pub(crate) fn fold(
 	// functions
 	let name = format!("__comp{}", SITE.fetch_add(1, Ordering::Relaxed));
 	let thunk = (
-		Expr::Fn {
+		Expr::Fn(Box::new(Func {
 			name: name.clone(),
 			type_params: vec![],
 			params: vec![],
@@ -679,17 +684,17 @@ pub(crate) fn fold(
 				},
 				span,
 			)],
-		},
+		})),
 		span,
 	);
 
 	// imports
 	let mut synthetic = super::expand::lend(program, &Default::default(), |module, items| {
-		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn { name, .. } if name == "main"));
+		let has_main = items.iter().any(|it| matches!(&it.0, Expr::Fn(f) if f.name == "main"));
 		let at = program.modules.iter().find(|m| m.name == module).map(|m| &m.scope);
 		items.retain_mut(|item| match &item.0 {
 			_ if at.is_some_and(|s| names_in_flight(s.at(item.1), item)) => false,
-			Expr::Fn { name, .. } => name != "main",
+			Expr::Fn(Func { name, .. }) => name != "main",
 			Expr::Bind { mutable: true, .. } => has_main || module != "main",
 			Expr::Bind {
 				name, value: Some(v), ..
@@ -845,8 +850,8 @@ pub(crate) fn eval(
 			// members yielded in comp
 			let def = &mut program.modules[i].items[j].0;
 			match def {
-				Expr::StructDef { fields, fills, .. } => splice_fields(fills, Some(fields)),
-				Expr::EnumDef { fills, .. } => splice_fields(fills, None),
+				Expr::StructDef(StructDef { fields, fills, .. }) => splice_fields(fills, Some(fields)),
+				Expr::EnumDef(EnumDef { fills, .. }) => splice_fields(fills, None),
 				_ => {}
 			}
 			super::expand::splice_variants(def);

@@ -79,7 +79,7 @@ pub(super) fn binds<'token, I: Tokens<'token>>(
 				Expr::Bind {
 					mutable,
 					name,
-					typ,
+					typ: typ.map(Box::new),
 					value: value.map(Box::new),
 				},
 				ex.span(),
@@ -266,7 +266,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 				Expr::Bind {
 					mutable,
 					name,
-					typ,
+					typ: typ.map(Box::new),
 					value,
 				},
 				ex.span(),

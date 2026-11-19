@@ -2,7 +2,9 @@ use super::{
 	Member, P, Parsers, Rec, Rule, Tokens, brace, bracket, fn_def, group_untyped, ident, list, list1, loose_list,
 	named_ret, paren, spanned, split_members, trailing_list, trailing_list1,
 };
-use crate::ast::{EnumVariant, Expr, Param, Spanned, TypeExpr, TypeParam, UseItem, Vis};
+use crate::ast::{
+	Claim, EnumDef, EnumVariant, Expr, Func, Param, Spanned, StructDef, TraitDef, TypeExpr, TypeParam, UseItem, Vis,
+};
 use crate::lexer::Token;
 
 use chumsky::prelude::*;
@@ -93,7 +95,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 			Expr::Bind {
 				mutable: false,
 				name: f.name,
-				typ: (!matches!(f.typ, TypeExpr::Infer(_))).then_some((f.typ, f.span)),
+				typ: (!matches!(f.typ, TypeExpr::Infer(_))).then(|| Box::new((f.typ, f.span))),
 				value: Some(Box::new(v)),
 			},
 			f.span,
@@ -120,12 +122,12 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.map_with(|((name, type_params), members), ex| {
 			let (fields, fills, _) = split_members(members);
 			(
-				Expr::StructDef {
+				Expr::StructDef(Box::new(StructDef {
 					name,
 					type_params,
 					fields,
 					fills,
-				},
+				})),
 				ex.span(),
 			)
 		})
@@ -143,7 +145,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.then_ignore(just(Token::Struct))
 		.then(paren(trailing_list1(ts_field)))
 		.map_with(|((name, type_params), fields), ex| {
-			let typ = TypeExpr::TupleStruct(name.clone(), fields);
+			let typ = Box::new(TypeExpr::TupleStruct(name.clone(), fields));
 			(Expr::TypeAlias { name, type_params, typ }, ex.span())
 		})
 		.boxed();
@@ -196,13 +198,13 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 				emitter.emit(I::fault(ex.span(), "a raw value needs a string backing"));
 			}
 			(
-				Expr::EnumDef {
+				Expr::EnumDef(Box::new(EnumDef {
 					name,
 					backing,
 					type_params,
 					variants,
 					fills,
-				},
+				})),
 				ex.span(),
 			)
 		})
@@ -220,7 +222,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		}
 	}
 	let type_alias = plain_head
-		.then(p.type_expr.clone())
+		.then(p.type_expr.clone().map(Box::new))
 		.filter(|((_, type_params), typ)| !type_params.is_empty() || !expr_shaped(typ))
 		.then_ignore(
 			one_of([
@@ -251,7 +253,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.to(vec![])
 		.or(just(Token::Colon).ignore_then(list(ident())).then_ignore(just(Token::Colon)));
 	let default_fn = func.clone().map(|(mut e, sp)| {
-		if let Expr::Fn { body, .. } = &mut e
+		if let Expr::Fn(Func { body, .. }) = &mut e
 			&& body.is_empty()
 		{
 			body.push((Expr::Tuple(vec![]), sp));
@@ -270,18 +272,18 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.map_with(|(((name, type_params), supers), members), ex| {
 			let (fields, mut methods, _) = split_members(members);
 			for (method, _) in &mut methods {
-				if let Expr::Fn { params, .. } = method {
+				if let Expr::Fn(Func { params, .. }) = method {
 					Param::type_receiver(params);
 				}
 			}
 			(
-				Expr::TraitDef {
+				Expr::TraitDef(Box::new(TraitDef {
 					name,
 					type_params,
 					supers,
 					fields,
 					methods,
-				},
+				})),
 				ex.span(),
 			)
 		})
@@ -371,14 +373,14 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 			.map(|(head, via)| ((head, via), (vec![], vec![]))))
 		.map_with(|((((typ, type_params), traits), via), (fills, fields)), ex| {
 			(
-				Expr::Claim {
+				Expr::Claim(Box::new(Claim {
 					typ,
 					type_params,
 					traits,
 					via,
 					fills,
 					fields,
-				},
+				})),
 				ex.span(),
 			)
 		})

@@ -14,7 +14,10 @@ use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Linkage, M
 use cranelift_object::{ObjectBuilder, ObjectModule, object::SymbolScope};
 use target_lexicon::{BinaryFormat, Triple};
 
-use crate::ast::{Access, Annotation, Capture, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam, int_word};
+use crate::ast::{
+	Access, Annotation, Capture, Claim, EnumDef, EnumVariant, Expr, Func, Param, Span, Spanned, StructDef, TraitDef,
+	TypeExpr, TypeParam, int_word,
+};
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
 use crate::runtime;
@@ -59,7 +62,7 @@ struct FnItem<'a> {
 	scope: &'a Scope,
 	params: Vec<Param>,
 	params_tuple: bool,
-	ret: Option<Spanned<TypeExpr>>,
+	ret: Option<Box<Spanned<TypeExpr>>>,
 	body: &'a [Spanned<Expr>],
 	default: bool,
 }
@@ -188,7 +191,7 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 pub(crate) struct GenericFnDef {
 	pub params: Vec<Param>,
 	pub params_tuple: bool,
-	pub ret: Option<Spanned<TypeExpr>>,
+	pub ret: Option<Box<Spanned<TypeExpr>>>,
 	pub body: Vec<Spanned<Expr>>,
 	pub type_params: Vec<TypeParam>,
 	pub captures: Vec<(String, Typ, bool)>,
@@ -530,7 +533,7 @@ fn typed_lit(
 	Ok(match (&lit.0, want) {
 		(Expr::Int(n), Typ::Float(_)) => (Expr::Float(*n as f64), span),
 		(Expr::Atom(_), Typ::Enum(n)) => {
-			let target = (TypeExpr::Name(n.clone()), span);
+			let target = Box::new((TypeExpr::Name(n.clone()), span));
 			(
 				Expr::Cast {
 					target,
@@ -572,9 +575,9 @@ pub(crate) fn subst(te: &TypeExpr, by: &[(String, TypeExpr)]) -> TypeExpr {
 // `subst` over a whole fn signature.
 fn subst_sig(
 	params: &[Param],
-	ret: &Option<Spanned<TypeExpr>>,
+	ret: &Option<Box<Spanned<TypeExpr>>>,
 	by: &[(String, TypeExpr)],
-) -> (Vec<Param>, Option<Spanned<TypeExpr>>) {
+) -> (Vec<Param>, Option<Box<Spanned<TypeExpr>>>) {
 	let params = params
 		.iter()
 		.map(|p| Param {
@@ -582,7 +585,7 @@ fn subst_sig(
 			..p.clone()
 		})
 		.collect();
-	(params, ret.as_ref().map(|(te, span)| (subst(te, by), *span)))
+	(params, ret.as_ref().map(|(te, span)| Box::new((subst(te, by), *span))))
 }
 
 #[derive(Clone)]
@@ -722,14 +725,14 @@ fn static_typ(e: &Expr, types: &TypeCtx, span: Span) -> Result<Typ, Diagnostic> 
 fn comptime_only(e: &Expr) -> bool {
 	match e {
 		Expr::Pub(_, inner) | Expr::Annotated(_, inner) => comptime_only(&inner.0),
-		Expr::Fn { params, ret, .. } => {
+		Expr::Fn(Func { params, ret, .. }) => {
 			params.iter().any(|p| mentions(&p.typ, "Ast")) || ret.as_ref().is_some_and(|r| mentions(&r.0, "Ast"))
 		}
 		Expr::Bind {
 			typ: Some((t @ TypeExpr::Fn(..), _)),
 			..
 		} => mentions(t, "Ast"),
-		Expr::Claim { typ, .. } => typ == "Ast",
+		Expr::Claim(Claim { typ, .. }) => typ == "Ast",
 		_ => false,
 	}
 }
@@ -922,14 +925,14 @@ impl<M: Module> Compiler<M> {
 	) -> Result<(), Diagnostic> {
 		for m in fills {
 			let (anns, public, m) = Expr::peel_meta(m);
-			let Expr::Fn {
+			let Expr::Fn(Func {
 				name,
 				type_params: mtp,
 				params,
 				params_tuple,
 				ret,
 				body,
-			} = &m.0
+			}) = &m.0
 			else {
 				continue;
 			};
@@ -1123,7 +1126,9 @@ impl<M: Module> Compiler<M> {
 		// field amendments
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
 		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {
-			let Expr::Claim { typ, fields, .. } = e else { continue };
+			let Expr::Claim(Claim { typ, fields, .. }) = e else {
+				continue;
+			};
 			let open = has_ann(&self.annotations, typ, role::OPEN.path());
 			if !fields.is_empty() && !open {
 				let msg = format!("`{typ}` can't gain fields");
@@ -1139,7 +1144,7 @@ impl<M: Module> Compiler<M> {
 				.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
 		}
 		for (e, _) in program.modules.iter_mut().flat_map(|m| &mut m.items) {
-			if let Expr::StructDef { name, fields, .. } = e
+			if let Expr::StructDef(StructDef { name, fields, .. }) = e
 				&& let Some(extra) = added.remove(name.as_str())
 			{
 				fields.extend(extra);
@@ -1154,19 +1159,17 @@ impl<M: Module> Compiler<M> {
 				.unwrap_or_else(|| scopes[module_of(key).unwrap_or("main")])
 		};
 
-		let has_main = program
-			.items()
-			.any(|(_, i)| matches!(&i.0, Expr::Fn { name, .. } if name == "main"));
+		let has_main = program.items().any(|(_, i)| matches!(&i.0, Expr::Fn(f) if f.name == "main"));
 
 		let mut traits: HashMap<&str, TraitItem> = HashMap::new();
 		for (scope, (e, span)) in program.items() {
-			let Expr::TraitDef {
+			let Expr::TraitDef(TraitDef {
 				name,
 				type_params,
 				supers,
 				fields,
 				methods,
-			} = e
+			}) = e
 			else {
 				continue;
 			};
@@ -1186,7 +1189,7 @@ impl<M: Module> Compiler<M> {
 
 			// generic trait defaults
 			let runs = |m: &&Spanned<Expr>| {
-				matches!(&m.0, Expr::Fn { name, body, .. }
+				matches!(&m.0, Expr::Fn(Func { name, body, .. })
 					if !body.is_empty() && (!type_params.is_empty() || !has_slot(methods, name)))
 			};
 			for m in methods.iter().filter(runs) {
@@ -1197,12 +1200,12 @@ impl<M: Module> Compiler<M> {
 
 		for (scope, item) in program.items() {
 			match &item.0 {
-				Expr::StructDef {
+				Expr::StructDef(StructDef {
 					name,
 					type_params,
 					fields,
 					fills,
-				} => {
+				}) => {
 					if type_params.is_empty() {
 						struct_items.push((name.as_str(), fields.as_slice()));
 					} else {
@@ -1222,13 +1225,13 @@ impl<M: Module> Compiler<M> {
 					}
 					self.register_fills(name, type_params, fills, scope, &mut others, Fills::default())?;
 				}
-				Expr::EnumDef {
+				Expr::EnumDef(EnumDef {
 					name,
 					type_params,
 					backing,
 					variants,
 					fills,
-				} => {
+				}) => {
 					if type_params.is_empty() {
 						enum_items.push((name.as_str(), backing.as_ref(), variants.as_slice()));
 					} else {
@@ -1246,7 +1249,7 @@ impl<M: Module> Compiler<M> {
 						let msg = format!("`{name}` is a builtin type");
 						return fail(msg, item.1, "pick another struct name");
 					}
-					let mut typ = typ.clone();
+					let mut typ = (**typ).clone();
 					typ.walk_mut(&mut |t| {
 						if let TypeExpr::Name(n) = t
 							&& !TypeCtx::builtin_type(n)
@@ -1260,15 +1263,15 @@ impl<M: Module> Compiler<M> {
 						false => _ = generics.aliases.insert(name.clone(), (type_params.clone(), typ)),
 					}
 				}
-				Expr::TraitDef { .. } => {}
-				Expr::Claim {
+				Expr::TraitDef(_) => {}
+				Expr::Claim(Claim {
 					typ,
 					type_params,
 					traits: ts,
 					via,
 					fills,
 					..
-				} if fills.is_empty()
+				}) if fills.is_empty()
 					&& type_params.is_empty()
 					&& via.is_none()
 					&& !typ.contains("::")
@@ -1276,14 +1279,14 @@ impl<M: Module> Compiler<M> {
 				{
 					loose_refs.push(item)
 				}
-				Expr::Claim {
+				Expr::Claim(Claim {
 					typ,
 					type_params,
 					traits: claimed,
 					via,
 					fills,
 					..
-				} => {
+				}) => {
 					let mut claimed: Vec<(String, &[Spanned<TypeExpr>])> = (claimed.iter())
 						.map(|(tn, args)| (scope.qualify_trait(tn), pin_args(args, scope)))
 						.collect();
@@ -1300,7 +1303,7 @@ impl<M: Module> Compiler<M> {
 					}
 
 					// a claim implies each supertrait its defaults cover
-					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn { body, .. } if body.is_empty());
+					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn(f) if f.body.is_empty());
 					for i in 0..claimed.len() {
 						let Some((supers, _, _, ms, _)) = traits.get(claimed[i].0.as_str()) else {
 							continue;
@@ -1356,11 +1359,10 @@ impl<M: Module> Compiler<M> {
 								traits.get(tn.as_str()).map_or((&[][..], &[][..], scope), |t| (t.1, t.3, t.4));
 							let decls: Vec<TraitFn> = trait_fns(ms).collect();
 							let filled = |n: &str| {
-								(fills.iter())
-									.any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn { name, .. } if name == n))
+								(fills.iter()).any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn(f) if f.name == n))
 							};
 							for d in ms {
-								if matches!(&d.0, Expr::Fn { name, body, type_params: mtp, .. }
+								if matches!(&d.0, Expr::Fn(Func { name, body, type_params: mtp, .. })
 									if !body.is_empty() && !filled(name) && !(type_params.is_empty() && mtp.is_empty()))
 								{
 									let claim = Fills {
@@ -1397,32 +1399,32 @@ impl<M: Module> Compiler<M> {
 					};
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
-				Expr::Fn { name, body, ret, .. } if name == "main" => {
+				Expr::Fn(Func { name, body, ret, .. }) if name == "main" => {
 					main_body = Some(body);
-					main_ret = ret.as_ref();
+					main_ret = ret.as_deref();
 				}
-				Expr::Fn {
+				Expr::Fn(Func {
 					name,
 					type_params,
 					params,
 					params_tuple,
 					ret,
 					body,
-				} if !type_params.is_empty() => {
+				}) if !type_params.is_empty() => {
 					let mut type_params = type_params.clone();
 					qualify_bounds(scope, &mut type_params);
 					let sig = (params.clone(), *params_tuple, ret.clone());
 					let def = GenericFnDef::new(sig, body, type_params, &scope.module, item.1);
 					self.world.generic_fns.insert(name.clone(), def);
 				}
-				Expr::Fn {
+				Expr::Fn(Func {
 					name,
 					params,
 					params_tuple,
 					ret,
 					body,
 					..
-				} => {
+				}) => {
 					// `@test`
 					let test_ann = (!program.core_origin.contains(&scope.module))
 						.then(|| self.annotations.get(name))
@@ -1522,7 +1524,10 @@ impl<M: Module> Compiler<M> {
 		let binds: HashMap<String, Spanned<TypeExpr>> = (program.items())
 			.filter_map(|(_, (e, span))| match e {
 				Expr::Bind { name, typ, value, .. } => {
-					let te = typ.clone().or_else(|| Some((TypeExpr::Infer(value.clone()?), *span)))?;
+					let te = typ
+						.as_deref()
+						.cloned()
+						.or_else(|| Some((TypeExpr::Infer(value.clone()?), *span)))?;
 					Some((name.clone(), te))
 				}
 				_ => None,
@@ -2104,7 +2109,7 @@ impl<M: Module> Compiler<M> {
 		&mut self,
 		sym: &str,
 		sig: &FnSig,
-		(decls, ret): (&[Param], &Option<Spanned<TypeExpr>>),
+		(decls, ret): (&[Param], &Option<Box<Spanned<TypeExpr>>>),
 		def: FnDef,
 		funcs: &HashMap<String, FnSig>,
 		types: TypeCtx,

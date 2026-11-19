@@ -23,7 +23,7 @@ pub enum Expr {
 	Bind {
 		mutable: bool,
 		name: String,
-		typ: Option<Spanned<TypeExpr>>,
+		typ: Option<Box<Spanned<TypeExpr>>>,
 		value: Option<Box<Spanned<Expr>>>,
 	},
 
@@ -45,21 +45,14 @@ pub enum Expr {
 	Spread(Box<Spanned<Expr>>),
 
 	// functions
-	Fn {
-		name: String,
-		type_params: Vec<TypeParam>,
-		params: Vec<Param>,
-		params_tuple: bool,
-		ret: Option<Spanned<TypeExpr>>,
-		body: Vec<Spanned<Expr>>,
-	},
+	Fn(Box<Func>),
 
 	// `fn [captures]? (params)? ret? { body }`
 	AnonFn {
 		captures: Option<Vec<Capture>>,
 		params: Vec<Param>,
 		params_tuple: bool,
-		ret: Option<Spanned<TypeExpr>>,
+		ret: Option<Box<Spanned<TypeExpr>>>,
 		body: Vec<Spanned<Expr>>,
 	},
 
@@ -99,7 +92,7 @@ pub enum Expr {
 
 	// `Target.(args)`
 	Cast {
-		target: Spanned<TypeExpr>,
+		target: Box<Spanned<TypeExpr>>,
 		args: Vec<Spanned<Expr>>,
 	},
 
@@ -109,7 +102,7 @@ pub enum Expr {
 	MacroDef {
 		name: String,
 		params: Vec<Param>,
-		ret: Option<Spanned<TypeExpr>>,
+		ret: Option<Box<Spanned<TypeExpr>>>,
 		body: Vec<Spanned<Expr>>,
 	},
 
@@ -178,7 +171,7 @@ pub enum Expr {
 	// arrays
 	Array(Vec<Spanned<Expr>>),
 	// `.[ ..expr ]`, `T.[ ..expr ]`
-	DotArray(Option<Spanned<TypeExpr>>, Vec<Spanned<Expr>>),
+	DotArray(Option<Box<Spanned<TypeExpr>>>, Vec<Spanned<Expr>>),
 	// `.( ..expr )`
 	DotTuple(Vec<Spanned<Expr>>),
 	// `collection[index]`
@@ -244,12 +237,7 @@ pub enum Expr {
 
 	// structs
 	// `Name :: struct {}`
-	StructDef {
-		name: String,
-		type_params: Vec<TypeParam>,
-		fields: Vec<Param>,
-		fills: Vec<Spanned<Expr>>,
-	},
+	StructDef(Box<StructDef>),
 	// `Name {}`
 	StructLit {
 		name: String,
@@ -277,29 +265,16 @@ pub enum Expr {
 	},
 
 	// `Type :< { fills }`
-	Claim {
-		typ: String,
-		type_params: Vec<TypeParam>,
-		traits: Vec<TraitRef>,
-		via: Option<String>,
-		fills: Vec<Spanned<Expr>>,
-		fields: Vec<Param>,
-	},
+	Claim(Box<Claim>),
 
 	// `trait Name {}`
-	TraitDef {
-		name: String,
-		type_params: Vec<TypeParam>,
-		supers: Vec<String>,
-		fields: Vec<Param>,
-		methods: Vec<Spanned<Expr>>,
-	},
+	TraitDef(Box<TraitDef>),
 
 	// `type Name = TypeExpr`
 	TypeAlias {
 		name: String,
 		type_params: Vec<TypeParam>,
-		typ: TypeExpr,
+		typ: Box<TypeExpr>,
 	},
 
 	TypePat(TypeExpr),
@@ -311,13 +286,7 @@ pub enum Expr {
 	},
 
 	// `Name : backing? : enum {}`
-	EnumDef {
-		name: String,
-		backing: Option<Spanned<TypeExpr>>,
-		type_params: Vec<TypeParam>,
-		variants: Vec<EnumVariant>,
-		fills: Vec<Spanned<Expr>>,
-	},
+	EnumDef(Box<EnumDef>),
 	// `.variant`, `.variant(args)`
 	EnumShorthand {
 		variant: String,
@@ -362,6 +331,52 @@ pub enum Expr {
 	Doc(Vec<String>),
 }
 
+#[derive(Debug, Clone)]
+pub struct Func {
+	pub name: String,
+	pub type_params: Vec<TypeParam>,
+	pub params: Vec<Param>,
+	pub params_tuple: bool,
+	pub ret: Option<Box<Spanned<TypeExpr>>>,
+	pub body: Vec<Spanned<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+	pub name: String,
+	pub type_params: Vec<TypeParam>,
+	pub fields: Vec<Param>,
+	pub fills: Vec<Spanned<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Claim {
+	pub typ: String,
+	pub type_params: Vec<TypeParam>,
+	pub traits: Vec<TraitRef>,
+	pub via: Option<String>,
+	pub fills: Vec<Spanned<Expr>>,
+	pub fields: Vec<Param>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitDef {
+	pub name: String,
+	pub type_params: Vec<TypeParam>,
+	pub supers: Vec<String>,
+	pub fields: Vec<Param>,
+	pub methods: Vec<Spanned<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumDef {
+	pub name: String,
+	pub backing: Option<Spanned<TypeExpr>>,
+	pub type_params: Vec<TypeParam>,
+	pub variants: Vec<EnumVariant>,
+	pub fills: Vec<Spanned<Expr>>,
+}
+
 pub enum Child<'a> {
 	List(&'a mut Vec<Spanned<Expr>>),
 	One(&'a mut Spanned<Expr>),
@@ -382,11 +397,11 @@ impl Expr {
 	// The name a top-level definition binds.
 	pub fn def_name(&self) -> Option<&str> {
 		match self {
-			Expr::Fn { name, .. }
-			| Expr::StructDef { name, .. }
-			| Expr::EnumDef { name, .. }
+			Expr::Fn(Func { name, .. })
+			| Expr::StructDef(StructDef { name, .. })
+			| Expr::EnumDef(EnumDef { name, .. })
 			| Expr::TypeAlias { name, .. }
-			| Expr::TraitDef { name, .. } => Some(name),
+			| Expr::TraitDef(TraitDef { name, .. }) => Some(name),
 			_ => None,
 		}
 	}
@@ -415,12 +430,14 @@ impl Expr {
 	pub fn types(&mut self) -> Vec<&mut TypeExpr> {
 		match self {
 			Expr::Bind { typ: Some((t, _)), .. } | Expr::Cast { target: (t, _), .. } => vec![t],
-			Expr::Fn { params, ret, .. } | Expr::AnonFn { params, ret, .. } | Expr::MacroDef { params, ret, .. } => {
+			Expr::Fn(Func { params, ret, .. })
+			| Expr::AnonFn { params, ret, .. }
+			| Expr::MacroDef { params, ret, .. } => {
 				let ret = ret.iter_mut().map(|(t, _)| t);
 				params.iter_mut().map(|p| &mut p.typ).chain(ret).collect()
 			}
-			Expr::StructDef { fields, .. } => fields.iter_mut().map(|p| &mut p.typ).collect(),
-			Expr::Claim { traits, .. } => traits.iter_mut().flat_map(|(_, ts)| ts).map(|(t, _)| t).collect(),
+			Expr::StructDef(StructDef { fields, .. }) => fields.iter_mut().map(|p| &mut p.typ).collect(),
+			Expr::Claim(Claim { traits, .. }) => traits.iter_mut().flat_map(|(_, ts)| ts).map(|(t, _)| t).collect(),
 			Expr::Call { type_args, .. } | Expr::MethodCall { type_args, .. } => {
 				type_args.iter_mut().map(|(t, _)| t).collect()
 			}
@@ -475,17 +492,17 @@ impl Expr {
 				f(One(a));
 				f(One(b));
 			}
-			Expr::Fn { body, .. }
+			Expr::Fn(Func { body, .. })
 			| Expr::AnonFn { body, .. }
 			| Expr::MacroDef { body, .. }
-			| Expr::StructDef { fills: body, .. }
-			| Expr::Claim { fills: body, .. }
+			| Expr::StructDef(StructDef { fills: body, .. })
+			| Expr::Claim(Claim { fills: body, .. })
 			| Expr::Block(body)
 			| Expr::Labeled { body, .. }
 			| Expr::With(body)
 			| Expr::Quote(body)
-			| Expr::EnumDef { fills: body, .. }
-			| Expr::TraitDef { methods: body, .. } => f(List(body)),
+			| Expr::EnumDef(EnumDef { fills: body, .. })
+			| Expr::TraitDef(TraitDef { methods: body, .. }) => f(List(body)),
 			Expr::Call { args, .. }
 			| Expr::MacroCall { args, .. }
 			| Expr::EnumShorthand { args, .. }

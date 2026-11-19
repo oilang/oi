@@ -4,7 +4,7 @@ use std::path::Path;
 
 use indoc::eprintdoc;
 use oi::Reported;
-use oi::ast::{Expr, Span, Spanned};
+use oi::ast::{Claim, EnumDef, Expr, Span, Spanned, StructDef, TraitDef};
 use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
 use oi::loader::{Program, core_source, load, parse_file};
@@ -123,12 +123,12 @@ fn find_def(items: &[Spanned<Expr>], prefix: &str, path: &str) -> Option<Span> {
 		};
 		let def = Expr::peel_meta(item).2;
 		let (name, members): (&str, &[_]) = match &def.0 {
-			Expr::Claim { typ, fills, .. } => return find_def(fills, &format!("{prefix}{typ}."), path),
-			Expr::StructDef { name, fills, .. }
-			| Expr::EnumDef { name, fills, .. }
-			| Expr::TraitDef {
+			Expr::Claim(Claim { typ, fills, .. }) => return find_def(fills, &format!("{prefix}{typ}."), path),
+			Expr::StructDef(StructDef { name, fills, .. })
+			| Expr::EnumDef(EnumDef { name, fills, .. })
+			| Expr::TraitDef(TraitDef {
 				name, methods: fills, ..
-			} => (name, fills),
+			}) => (name, fills),
 			Expr::Bind { name, .. } | Expr::MacroDef { name, .. } => (name, &[]),
 			e => (e.def_name()?, &[]),
 		};
@@ -173,7 +173,7 @@ fn defs(line: &str, raw: &HashSet<String>) -> String {
 fn is_def(e: &Expr) -> bool {
 	match e {
 		Expr::Pub(_, b) | Expr::Annotated(_, b) => is_def(&b.0),
-		Expr::Bind { .. } | Expr::Use { .. } | Expr::Claim { .. } | Expr::MacroDef { .. } => true,
+		Expr::Bind { .. } | Expr::Use { .. } | Expr::Claim(_) | Expr::MacroDef { .. } => true,
 		_ => e.def_name().is_some(),
 	}
 }

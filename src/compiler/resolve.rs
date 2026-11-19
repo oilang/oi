@@ -538,7 +538,7 @@ impl TypeCtx<'_> {
 					Expr::StructLit { name, .. } if name.is_empty() => *name = p.bound.clone().unwrap_or_default(),
 					Expr::EnumShorthand { .. } | Expr::DotTuple(_) => {
 						let bound = TypeExpr::Name(p.bound.clone().unwrap_or_default());
-						let target = (p.value_type.clone().unwrap_or(bound), arg.1);
+						let target = Box::new((p.value_type.clone().unwrap_or(bound), arg.1));
 						arg.0 = Expr::Cast {
 							target,
 							args: vec![(*arg).clone()],
@@ -1053,7 +1053,7 @@ impl TypeCtx<'_> {
 	pub fn resolve_params_ret(
 		&self,
 		params: &[Param],
-		ret: &Option<Spanned<TypeExpr>>,
+		ret: &Option<Box<Spanned<TypeExpr>>>,
 	) -> Result<ParamsRet, Diagnostic> {
 		let params = self.resolve_params(params)?;
 		let ret = ret

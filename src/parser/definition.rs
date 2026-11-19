@@ -152,6 +152,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	// options
 	let typed_lit = spanned(p.type_expr.clone())
+		.map(Box::new)
 		.then_ignore(p.adjacent.clone())
 		.then(spanned(struct_lit.clone()).map(|lit| vec![lit]))
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
@@ -247,10 +248,11 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.or_not()
 		.then_ignore(dot())
 		.then(bracket(matrix(p.expr.clone())))
-		.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| (t, ex.span())), elems), ex.span()));
+		.map_with(|(elem, elems), ex| (Expr::DotArray(elem.map(|t| Box::new((t, ex.span()))), elems), ex.span()));
 
 	// casting
 	let cast = spanned(head.clone())
+		.map(Box::new)
 		.then_ignore(just(Token::Dot))
 		.then(
 			paren(loose_list(p.expr.clone()))
@@ -275,6 +277,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	// dot map literals
 	let typed_map = spanned(head.clone())
+		.map(Box::new)
 		.then_ignore(dot())
 		.then(map.clone().map(|lit| vec![lit]))
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
@@ -677,7 +680,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					captures,
 					params,
 					params_tuple: tuple,
-					ret,
+					ret: ret.map(Box::new),
 					body,
 				},
 				ex.span(),
@@ -828,7 +831,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			),
 			prefix(13, just(Token::Not), |_, rhs, ex| match rhs {
 				(Expr::Cast { target: (t, ts), args }, _) => {
-					let target = (types::result_of(t, None), ts);
+					let target = Box::new((types::result_of(t, None), ts));
 					(Expr::Cast { target, args }, ex.span())
 				}
 				(Expr::Propagate(mut inner), _) if matches!(inner.0, Expr::Cast { .. }) => {
@@ -845,7 +848,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					},
 					s,
 				) if !name.is_empty() && type_args.is_empty() => {
-					let target = (types::result_of(TypeExpr::Name(name.clone()), None), s);
+					let target = Box::new((types::result_of(TypeExpr::Name(name.clone()), None), s));
 					let args = vec![rhs];
 					(Expr::Cast { target, args }, ex.span())
 				}

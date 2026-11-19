@@ -13,10 +13,10 @@ pub(crate) type TraitItem<'a> = (
 );
 
 // A trait method's name, params, and return annotation.
-pub(crate) type TraitFn<'a> = (&'a str, &'a [Param], &'a Option<Spanned<TypeExpr>>);
+pub(crate) type TraitFn<'a> = (&'a str, &'a [Param], &'a Option<Box<Spanned<TypeExpr>>>);
 
 // A fill's params, tuple-ness, and return annotation.
-pub(crate) type FillSig = (Vec<Param>, bool, Option<Spanned<TypeExpr>>);
+pub(crate) type FillSig = (Vec<Param>, bool, Option<Box<Spanned<TypeExpr>>>);
 
 // A trait impl body.
 pub(crate) struct TraitBody<'a> {
@@ -131,13 +131,13 @@ pub(crate) fn bind_trait_args<'a>(
 
 pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = TraitFn<'_>> {
 	methods.iter().filter_map(|m| match &m.0 {
-		Expr::Fn { name, params, ret, .. } => Some((name.as_str(), params.as_slice(), ret)),
+		Expr::Fn(Func { name, params, ret, .. }) => Some((name.as_str(), params.as_slice(), ret)),
 		_ => None,
 	})
 }
 
 // Whether a trait fn returns `?Self`, reboxed through an object.
-pub(crate) fn self_option(ret: &Option<Spanned<TypeExpr>>) -> bool {
+pub(crate) fn self_option(ret: &Option<Box<Spanned<TypeExpr>>>) -> bool {
 	matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [TypeExpr::Name(n)] if n == "Self"))
 }
 
@@ -154,7 +154,7 @@ pub(crate) fn object_safe((_, params, ret): TraitFn) -> bool {
 // Whether a method gets a vtable slot.
 pub(crate) fn has_slot(methods: &[Spanned<Expr>], method: &str) -> bool {
 	methods.iter().any(|m| {
-		matches!(&m.0, Expr::Fn { name, type_params, params, ret, .. }
+		matches!(&m.0, Expr::Fn(Func { name, type_params, params, ret, .. })
 			if name == method && type_params.is_empty() && object_safe((name, params, ret)))
 	})
 }
@@ -164,7 +164,7 @@ pub(crate) fn has_slot(methods: &[Spanned<Expr>], method: &str) -> bool {
 pub(crate) fn fill_from_decl(
 	params: &[Param],
 	params_tuple: bool,
-	ret: &Option<Spanned<TypeExpr>>,
+	ret: &Option<Box<Spanned<TypeExpr>>>,
 	(_, dps, dret): TraitFn,
 	span: Span,
 ) -> Result<FillSig, Diagnostic> {
@@ -297,7 +297,7 @@ pub(super) fn check_impls<'p>(
 		if is_hook_trait(&tn) {
 			let hook = hook_method(&tn);
 			let well_formed = methods.iter().any(|m| {
-				matches!(&m.0, Expr::Fn { name, params, .. }
+				matches!(&m.0, Expr::Fn(Func { name, params, .. })
 					if *name == hook && params.len() == 1 && params[0].is_receiver() && params[0].access == Access::Mut)
 			});
 			if !well_formed {
@@ -374,7 +374,7 @@ pub(super) fn check_impls<'p>(
 			consts.insert(key, lit);
 		}
 		let sig_types = types.with_self(Some(typ)).with_type_params(&sig_params).with_scope(scope);
-		let sig = |ps: &[Param], ret: &Option<Spanned<TypeExpr>>| -> Result<Typ, Diagnostic> {
+		let sig = |ps: &[Param], ret: &Option<Box<Spanned<TypeExpr>>>| -> Result<Typ, Diagnostic> {
 			let param = |p: &Param| {
 				let typ = sig_types.param(&p.typ, p.span)?;
 				Ok(FnParam::of(p, access_wrap(p.access, typ)))
@@ -394,13 +394,13 @@ pub(super) fn check_impls<'p>(
 			}
 		};
 		for m in methods {
-			let Expr::Fn {
+			let Expr::Fn(Func {
 				name,
 				params,
 				params_tuple,
 				ret,
 				..
-			} = &m.0
+			}) = &m.0
 			else {
 				continue;
 			};
@@ -418,18 +418,18 @@ pub(super) fn check_impls<'p>(
 			same_sig(name, got, want, m.1)?;
 		}
 		for t in tmethods.iter().map(|t| bind_trait_args(t, tparams, args)) {
-			let Expr::Fn {
+			let Expr::Fn(Func {
 				name,
 				params,
 				params_tuple,
 				ret,
 				body,
 				type_params: mtp,
-			} = &t.0
+			}) = &t.0
 			else {
 				continue;
 			};
-			if !mtp.is_empty() || methods.iter().any(|m| matches!(&m.0, Expr::Fn { name: n, .. } if n == name)) {
+			if !mtp.is_empty() || methods.iter().any(|m| matches!(&m.0, Expr::Fn(f) if f.name == *name)) {
 				continue;
 			}
 			// check whether an overlapping fill is already present

@@ -1,4 +1,4 @@
-use crate::ast::{Access, Child, EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
+use crate::ast::{Access, Child, EnumVariant, Expr, Func, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -242,7 +242,7 @@ fn named_ret(slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec
 		let decl = Expr::Bind {
 			mutable: true,
 			name: s.name,
-			typ: Some((s.typ, s.span)),
+			typ: Some(Box::new((s.typ, s.span))),
 			value: s.default.map(Box::new),
 		};
 		(decl, span)
@@ -254,7 +254,7 @@ fn named_ret(slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec
 // Bind return variables for named results.
 fn bind_return((e, span): &mut Spanned<Expr>, value: &Expr) {
 	match e {
-		Expr::Fn { .. } | Expr::AnonFn { .. } | Expr::MacroDef { .. } | Expr::Quote(_) => return,
+		Expr::Fn(_) | Expr::AnonFn { .. } | Expr::MacroDef { .. } | Expr::Quote(_) => return,
 		Expr::Return(v @ None) => *v = Some(Box::new((value.clone(), *span))),
 		_ => {}
 	}
@@ -312,14 +312,14 @@ fn fn_def(
 	});
 	let body = shadow_params(&params, body);
 	(
-		Expr::Fn {
+		Expr::Fn(Box::new(Func {
 			name,
 			type_params,
 			params,
 			params_tuple,
-			ret,
+			ret: ret.map(Box::new),
 			body,
-		},
+		})),
 		span,
 	)
 }
@@ -563,7 +563,7 @@ where
 				Expr::MacroDef {
 					name,
 					params,
-					ret,
+					ret: ret.map(Box::new),
 					body,
 				},
 				ex.span(),

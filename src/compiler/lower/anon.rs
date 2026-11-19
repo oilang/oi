@@ -166,7 +166,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let def = GenericFnDef {
 			params,
 			params_tuple,
-			ret: Some(ret_te),
+			ret: Some(Box::new(ret_te)),
 			body: body.to_vec(),
 			type_params: vec![],
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
