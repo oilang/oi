@@ -316,6 +316,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.ignore_then(p.type_expr.clone())
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));
 	let struct_type = just(Token::Struct)
+		.or(just(Token::Question))
 		.rewind()
 		.ignore_then(p.type_expr.clone())
 		.map_with(|t, ex| (Expr::TypePat(t), ex.span()));

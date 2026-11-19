@@ -1070,7 +1070,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.isolated = true;
 					self.lower(expr, Some(t))
 				}
-				_ => self.block_expr(body, expr.1),
+				_ => self.block_expr(body, hint, expr.1),
 			},
 
 			Expr::StructLit {

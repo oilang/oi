@@ -70,7 +70,8 @@ fn comp_if_is_conditional_compilation() {
 }
 
 #[test]
-fn comp_match_on_a_type_param() {
+fn comp_match() {
+	// comp match on a type param
 	let src = indoc! {r#"
 		f[T] :: fn() {
 			comp match T {
@@ -86,10 +87,20 @@ fn comp_match_on_a_type_param() {
 		f[int]()
 	"#};
 	check(src, ["str", "slice 7", "3 true", "other"]);
-}
 
-#[test]
-fn comp_match_keeps_the_matching_arm() {
+	// comp match arm takes the return type
+	let src = indoc! {r#"
+		f[T] :: fn(b: bool) ?int {
+			comp match T { int => if b do 5, _ => none }
+		}
+		g[T] :: fn(n: int) !?int {
+			comp match T { int => match n { 1 => none, 2 => error("two"), else => n }, _ => 0 }
+		}
+		print(f[int](false), f[int](true), g[int](1), g[int](2), g[int](3))
+	"#};
+	check(src, r#"none some.(5) ok.(none) err.("two") ok.(some.(3))"#);
+
+	// comp match keeps the matching arm
 	let src = indoc! {r#"
 		C :: enum { red, green }
 		OS :: :linux
@@ -128,13 +139,15 @@ fn comp_if() {
 		f[T] :: fn() {
 			comp if [N]E := T do print("{N} {E == int}")
 			else if []E := T do print("slice")
+			else if ?E := T do print("opt {E == int}")
 			else do print("no")
 		}
 		f[[3]int]()
 		f[[]int]()
+		f[?int]()
 		f[int]()
 	"#};
-	check(src, ["3 true", "slice", "no"]);
+	check(src, ["3 true", "slice", "opt true", "no"]);
 }
 
 #[test]

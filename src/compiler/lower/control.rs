@@ -518,8 +518,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// A macro expansion scoped block, with no surface syntax of its own.
-	pub(super) fn block_expr(&mut self, body: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
-		match self.scoped(|s| s.block_tail(body, None))? {
+	pub(super) fn block_expr(
+		&mut self,
+		body: &[Spanned<Expr>],
+		tail: Option<&Typ>,
+		span: Span,
+	) -> Result<TypedVal, Diagnostic> {
+		match self.scoped(|s| s.block_tail(body, tail))? {
 			Some(vt) => Ok(vt),
 			None => fail(
 				"this block never produces a value",

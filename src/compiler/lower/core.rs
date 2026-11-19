@@ -437,7 +437,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.types = self.types_at(span);
 
 		let typ = self.when(unset, |s| {
-			let (val, typ) = s.block_expr(std::slice::from_ref(inner), span)?;
+			let (val, typ) = s.block_expr(std::slice::from_ref(inner), None, span)?;
 			let val = s.copy_in(val, &typ);
 			s.st(cell, 8, val);
 			let one = s.b.ins().iconst(s.int, 1);
