@@ -17,7 +17,9 @@ use crate::Reported;
 use crate::ast::{Annotation, BinOp, Child, Expr, Span, Spanned, TypeExpr, UseItem, Vis, int_word};
 use crate::compiler::{builtin, cache, role, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
+use crate::driver::fail;
 use crate::lexer::{Token, lex_at, prescan, splice_raw};
+use crate::manifest::Manifest;
 use crate::parser::parser;
 
 static CORE: Dir = include_dir!("$CARGO_MANIFEST_DIR/core");
@@ -551,6 +553,7 @@ struct Loader {
 	prescanned: HashSet<String>,
 	pkg_store: Option<cache::Store>,
 	interfaces: HashMap<PathBuf, HashMap<String, Scanned>>,
+	named: HashMap<String, PathBuf>,
 }
 
 impl Loader {
@@ -1008,15 +1011,23 @@ impl Loader {
 		self.seal(module, imports)
 	}
 
+	// Map a given dir to its absolute path.
+	fn local(&self, dir: &str) -> String {
+		let (head, rest) = dir.split_once('/').unwrap_or((dir, ""));
+		let named = self.named.get(head).map(|root| root.join(rest).to_string_lossy().into());
+		named.unwrap_or(dir.into())
+	}
+
 	// Whether `name` is a module dir.
 	fn is_module(&self, name: &str) -> bool {
 		let path = name.replace('.', "/");
-		self.program.roots.iter().any(|r| r.join(&path).is_dir())
+		self.program.roots.iter().any(|r| r.join(self.local(&path)).is_dir())
 			|| CORE.get_dir(path.strip_prefix("core/").unwrap_or(&path)).is_some()
 	}
 
 	// Whether root `r` has module `dir`.
 	fn on_disk(&self, r: &Path, dir: &str) -> bool {
+		let dir = self.local(dir);
 		let file = r.join(format!("{dir}.oi"));
 		r.join(dir).is_dir() || (file.is_file() && !self.entry_paths.contains(&file))
 	}
@@ -1078,6 +1089,7 @@ impl Loader {
 		let from_core = from_core || name.starts_with("core.");
 		let dir = &name.strip_prefix("core.").unwrap_or(name).replace('.', "/");
 		let file = format!("{dir}.oi");
+		let local = &self.local(dir);
 		let root = self
 			.program
 			.roots
@@ -1085,12 +1097,13 @@ impl Loader {
 			.find(|r| self.on_disk(r, dir))
 			.unwrap_or(&self.program.roots[0]);
 		let mut disk = if !from_core {
-			walk_oi(&root.join(dir))
+			walk_oi(&root.join(local))
 		} else {
 			Vec::default()
 		};
+		disk.retain(|path| !self.entry_paths.contains(path));
 		disk.sort();
-		let candidate = root.join(&file);
+		let candidate = root.join(format!("{local}.oi"));
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
 			disk.iter().map(|path| read_src(path)).collect::<Result<_, _>>()?
 		} else if !from_core && candidate.is_file() && !self.entry_paths.contains(&candidate) {
@@ -1372,10 +1385,20 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		entry_paths: entry
 			.iter()
 			.map(|(n, _)| root.join(Path::new(n).file_name().unwrap_or_default()))
+			.flat_map(|path| [path.canonicalize().unwrap_or_default(), path])
 			.collect(),
 		pkg_store: cache::Store::open(root, "pkg").inspect(cache::Store::sweep),
 		..Loader::default()
 	};
+
+	if let Some((dir, manifest)) = Manifest::find(root)? {
+		let (name, dir) = (manifest.name(&dir), dir.join(manifest.root));
+		if loader.on_disk(root, &name) && fs::canonicalize(root.join(&name)).ok() != fs::canonicalize(&dir).ok() {
+			return Err(fail(format!("package `{name}` is also a module in {}", root.display())));
+		}
+		loader.named.insert(name, dir);
+	}
+
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
 	role::fill(&loader.program);

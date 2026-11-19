@@ -472,3 +472,22 @@ fn extensions_ride_whole_module_imports() {
 	let p = Project::new().main(["use shapes", "use ext.{ id }", "print(shapes.P.{ x = id(3) }.dbl())"]);
 	p.lib("ext", ext).lib("shapes", shapes).fail_with("has no method `dbl`");
 }
+
+#[test]
+fn manifest_name_reaches_package_root() {
+	let p = Project::new()
+		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#, "[deps]"])
+		.file("src/lib.oi", ["pub top :: fn() int do 3"])
+		.file("src/foo/lib.oi", ["pub hi :: fn() int do 7"])
+		.file("src/main.oi", ["use dodge", "print(dodge.foo.hi() + dodge.top())"]);
+	assert_eq!(p.ok(&["run", "src/main.oi"]), "10");
+}
+
+#[test]
+fn manifest_name_clashing_with_entry_module_rejected() {
+	let p = Project::new()
+		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])
+		.file("dodge/lib.oi", ["pub hi :: fn() int do 1"])
+		.main(["print(1)"]);
+	p.fail_with("package `dodge` is also a module");
+}

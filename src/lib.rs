@@ -4,6 +4,7 @@ pub mod diagnostics;
 pub mod driver;
 pub mod lexer;
 pub mod loader;
+pub mod manifest;
 pub mod parser;
 pub mod runtime;
 
