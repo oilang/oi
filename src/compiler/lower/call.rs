@@ -1109,21 +1109,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let ((_, _, _, tmethods, _), sub) = self.types.trait_instance(tn);
+		let ((_, def, _), sub) = self.types.trait_instance(tn);
 		let types = self.types.with_type_params(&sub);
-		let Some((idx, (_, params, ret))) = trait_fns(tmethods).enumerate().find(|(_, (n, ..))| *n == method) else {
+		let Some((idx, decl)) = trait_fns(&def.methods).enumerate().find(|(_, f)| f.name == method) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "method", method, span));
 		};
+
+		let Func { params, ret, .. } = decl;
 		if params.first().is_some_and(|p| p.access == Access::Move) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return fail(msg, span, "an object only borrows its data");
 		}
 
 		// Self/?Self
-		let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
-		let bare = matches!(ret, Some((te, _)) if is_self(te));
+		let bare = matches!(ret, Some((TypeExpr::Name("Self"), _)));
 		let opt = self_option(ret);
-		if !object_safe((method, params, ret)) {
+		if !object_safe(decl) {
 			let msg = format!("cannot call `{method}` through a `{tn}` object");
 			return fail(msg, span, "uses `Self` beyond the receiver");
 		}
@@ -1182,13 +1183,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		field: &str,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let ((_, _, tfields, tmethods, _), _) = self.types.trait_instance(tn);
-		let Some(idx) = tfields.iter().position(|f| f.name == field) else {
+		let (_, def, _) = self.types.trait_instance(tn).0;
+		let Some(idx) = def.fields.iter().position(|f| f.name == field) else {
 			return Err(unknown_member(format!("trait `{tn}`"), "field", field, span));
 		};
-		let ftyp = self.types.resolve(&tfields[idx].typ, tfields[idx].span)?;
+
+		let ftyp = self.types.resolve(&def.fields[idx].typ, def.fields[idx].span)?;
 		let (vtable, data) = self.unbox(boxv);
-		let m = trait_fns(tmethods).count();
+		let m = trait_fns(&def.methods).count();
+
 		// slot offset lives after the method pointers in the vtable
 		let off = self.ld_word(vtable, ((m + idx) * 8) as i32);
 		let addr = self.rt_call("trait_field", &[data, off]).unwrap();

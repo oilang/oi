@@ -16,7 +16,7 @@ use target_lexicon::{BinaryFormat, Triple};
 
 use crate::ast::{
 	Access, Annotation, Capture, Claim, EnumDef, EnumVariant, Expr, Func, Param, Span, Spanned, StructDef, TraitDef,
-	TypeExpr, TypeParam, int_word,
+	TypeExpr, TypeParam, TypeSlot, int_word,
 };
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
@@ -62,7 +62,7 @@ struct FnItem<'a> {
 	scope: &'a Scope,
 	params: Vec<Param>,
 	params_tuple: bool,
-	ret: Option<Box<Spanned<TypeExpr>>>,
+	ret: TypeSlot,
 	body: &'a [Spanned<Expr>],
 	default: bool,
 }
@@ -86,7 +86,7 @@ type EnumItem<'a> = (&'a str, Option<&'a Spanned<TypeExpr>>, &'a [EnumVariant]);
 // A claim's fill types.
 #[derive(Default, Clone, Copy)]
 struct Fills<'a, 'b> {
-	decls: &'b [TraitFn<'a>],
+	decls: &'b [&'a Func],
 	generic: bool,
 	targs: &'b [(String, TypeExpr)],
 	ext: bool,
@@ -191,7 +191,7 @@ pub(crate) fn check_ann_typ(types: TypeCtx, names: &[String], typ: &Typ, span: S
 pub(crate) struct GenericFnDef {
 	pub params: Vec<Param>,
 	pub params_tuple: bool,
-	pub ret: Option<Box<Spanned<TypeExpr>>>,
+	pub ret: TypeSlot,
 	pub body: Vec<Spanned<Expr>>,
 	pub type_params: Vec<TypeParam>,
 	pub captures: Vec<(String, Typ, bool)>,
@@ -409,10 +409,10 @@ impl<'a> TypeCtx<'a> {
 		for a in self.consts.anns.values().flatten().chain(field_anns).chain(&generic_field_anns) {
 			match &a.0 {
 				Expr::StructLit { name, fields, .. } => self.check_struct_lit(name, fields, a.1)?,
-				Expr::Ident(name) if name == "unsafe" || name == "comp" => {}
+				Expr::Ident("unsafe" | "comp") => {}
 				Expr::Ident(name) => match self.consts.map.get(name) {
 					Some((Expr::StructLit { name, fields, .. }, _)) => self.check_struct_lit(name, fields, a.1)?,
-					Some((Expr::Tuple(fields), _)) if fields.is_empty() => {}
+					Some((Expr::Tuple([]), _)) => {}
 					Some(_) => return fail(format!("`{name}` is not an annotation value"), a.1, BARE_ANN),
 					// a bare struct type denotes its zero value
 					None if self.structs.contains_key(name) || self.generics.structs.contains_key(name) => {
@@ -420,7 +420,11 @@ impl<'a> TypeCtx<'a> {
 					}
 					None => return fail(format!("`{name}` is not a constant"), a.1, BARE_ANN),
 				},
-				Expr::Call { name, args, .. } if name == role::CTX && matches!(args[..], [(Expr::Ident(_), _)]) => {}
+				Expr::Call {
+					name,
+					args: [(Expr::Ident(_), _)],
+					..
+				} if name == role::CTX => {}
 				Expr::Call { .. } => {
 					let msg = "annotation fns aren't supported here yet";
 					return fail(msg, a.1, "only main-file items take fn annotations");
@@ -477,7 +481,7 @@ impl<'a> TypeCtx<'a> {
 			};
 			let typ = &field_defs[idx].typ;
 			match self.option_inner(typ) {
-				Some(_) if matches!(&value.0, Expr::Ident(n) if n == "none") => {}
+				Some(_) if matches!(&value.0, Expr::Ident("none")) => {}
 				inner => check_lit(&value.0, Some(inner.as_ref().unwrap_or(typ)), value.1)?,
 			}
 		}
@@ -573,11 +577,7 @@ pub(crate) fn subst(te: &TypeExpr, by: &[(String, TypeExpr)]) -> TypeExpr {
 }
 
 // `subst` over a whole fn signature.
-fn subst_sig(
-	params: &[Param],
-	ret: &Option<Box<Spanned<TypeExpr>>>,
-	by: &[(String, TypeExpr)],
-) -> (Vec<Param>, Option<Box<Spanned<TypeExpr>>>) {
+fn subst_sig(params: &[Param], ret: &TypeSlot, by: &[(String, TypeExpr)]) -> (Vec<Param>, TypeSlot) {
 	let params = params
 		.iter()
 		.map(|p| Param {
@@ -925,17 +925,8 @@ impl<M: Module> Compiler<M> {
 	) -> Result<(), Diagnostic> {
 		for m in fills {
 			let (anns, public, m) = Expr::peel_meta(m);
-			let Expr::Fn(Func {
-				name,
-				type_params: mtp,
-				params,
-				params_tuple,
-				ret,
-				body,
-			}) = &m.0
-			else {
-				continue;
-			};
+			let Expr::Fn(fill) = &m.0 else { continue };
+			let name = &fill.name;
 			// key claims by type+name to handle generics
 			let key = match claim.generic && type_params.is_empty() {
 				true => format!("{typ}.{name}#{}", m.1.start),
@@ -964,22 +955,22 @@ impl<M: Module> Compiler<M> {
 				let msg = format!("duplicate fill `{key}`");
 				return fail(msg, m.1, "one fill per name");
 			}
-			let (mut params, params_tuple, ret) = match claim.decls.iter().find(|(n, ..)| *n == name) {
+			let (mut params, params_tuple, ret) = match claim.decls.iter().find(|d| d.name == *name) {
 				// trait args name the trait's params, not the fill's
-				Some(&(n, dps, dret)) => {
-					let (dps, dret) = subst_sig(dps, dret, claim.targs);
-					fill_from_decl(params, *params_tuple, ret, (n, &dps, &dret), m.1)?
+				Some(decl) => {
+					let (dps, dret) = subst_sig(&decl.params, &decl.ret, claim.targs);
+					fill_from_decl(fill, &dps, &dret, m.1)?
 				}
-				None if params.is_empty() && !params_tuple => {
+				None if fill.params.is_empty() && !fill.params_tuple => {
 					let msg = format!("no trait method `{name}` supplies a signature");
 					return fail(msg, m.1, "write the `fn` header out");
 				}
-				None => (params.clone(), *params_tuple, ret.clone()),
+				None => (fill.params.clone(), fill.params_tuple, fill.ret.clone()),
 			};
 			Param::type_receiver(&mut params);
 
-			if type_params.is_empty() && mtp.is_empty() {
-				others.push(FnItem::new(key, scope, (params, params_tuple, ret), body));
+			if type_params.is_empty() && fill.type_params.is_empty() {
+				others.push(FnItem::new(key, scope, (params, params_tuple, ret), &fill.body));
 				continue;
 			}
 
@@ -994,7 +985,7 @@ impl<M: Module> Compiler<M> {
 				_ if type_params.is_empty() => TypeExpr::Resolved(typ.to_string()),
 				_ => TypeExpr::Name(typ.to_string()),
 			};
-			let mut all_params = [type_params, mtp].concat();
+			let mut all_params = [type_params, &fill.type_params].concat();
 
 			// generic claims
 			let targs: Vec<_> = (claim.targs.iter())
@@ -1008,7 +999,7 @@ impl<M: Module> Compiler<M> {
 
 			let def = GenericFnDef {
 				self_typ: Some(self_typ),
-				..GenericFnDef::new((params, params_tuple, ret), body, all_params, &scope.module, m.1)
+				..GenericFnDef::new((params, params_tuple, ret), &fill.body, all_params, &scope.module, m.1)
 			};
 			self.world.generic_fns.insert(key, def);
 		}
@@ -1163,38 +1154,21 @@ impl<M: Module> Compiler<M> {
 
 		let mut traits: HashMap<&str, TraitItem> = HashMap::new();
 		for (scope, (e, span)) in program.items() {
-			let Expr::TraitDef(TraitDef {
-				name,
-				type_params,
-				supers,
-				fields,
-				methods,
-			}) = e
-			else {
-				continue;
-			};
-
-			let supers = supers.iter().map(|s| scope.qualify_trait(s)).collect();
-			let item = (
-				supers,
-				type_params.as_slice(),
-				fields.as_slice(),
-				methods.as_slice(),
-				scope,
-			);
-			if traits.insert(name.as_str(), item).is_some() {
-				let msg = format!("duplicate trait `{name}`");
+			let Expr::TraitDef(def) = e else { continue };
+			let supers = def.supers.iter().map(|s| scope.qualify_trait(s)).collect();
+			if traits.insert(def.name.as_str(), (supers, &**def, scope)).is_some() {
+				let msg = format!("duplicate trait `{}`", def.name);
 				return fail(msg, *span, "already defined");
 			}
 
 			// generic trait defaults
 			let runs = |m: &&Spanned<Expr>| {
 				matches!(&m.0, Expr::Fn(Func { name, body, .. })
-					if !body.is_empty() && (!type_params.is_empty() || !has_slot(methods, name)))
+					if !body.is_empty() && (!def.type_params.is_empty() || !has_slot(&def.methods, name)))
 			};
-			for m in methods.iter().filter(runs) {
+			for m in def.methods.iter().filter(runs) {
 				let m = std::slice::from_ref(m);
-				self.register_fills(name, type_params, m, scope, &mut others, Fills::default())?;
+				self.register_fills(&def.name, &def.type_params, m, scope, &mut others, Fills::default())?;
 			}
 		}
 
@@ -1266,19 +1240,12 @@ impl<M: Module> Compiler<M> {
 				Expr::TraitDef(_) => {}
 				Expr::Claim(Claim {
 					typ,
-					type_params,
-					traits: ts,
-					via,
-					fills,
+					type_params: [],
+					traits: [(tn, [])],
+					via: None,
+					fills: [],
 					..
-				}) if fills.is_empty()
-					&& type_params.is_empty()
-					&& via.is_none()
-					&& !typ.contains("::")
-					&& matches!(ts.as_slice(), [(t, a)] if a.is_empty() && !traits.contains_key(scope.qualify_trait(t).as_str())) =>
-				{
-					loose_refs.push(item)
-				}
+				}) if !typ.contains("::") && !traits.contains_key(scope.qualify_trait(tn).as_str()) => loose_refs.push(item),
 				Expr::Claim(Claim {
 					typ,
 					type_params,
@@ -1303,16 +1270,18 @@ impl<M: Module> Compiler<M> {
 					}
 
 					// a claim implies each supertrait its defaults cover
-					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn(f) if f.body.is_empty());
+					let given = |m: &Spanned<Expr>| !matches!(&m.0, Expr::Fn(Func { body: [], .. }));
 					for i in 0..claimed.len() {
-						let Some((supers, _, _, ms, _)) = traits.get(claimed[i].0.as_str()) else {
+						let Some((supers, def, _)) = traits.get(claimed[i].0.as_str()) else {
 							continue;
 						};
 						let by = |m: &Spanned<Expr>| {
-							given(m) || ms.iter().any(|d| given(d) && d.0.def_name() == m.0.def_name())
+							given(m) || def.methods.iter().any(|d| given(d) && d.0.def_name() == m.0.def_name())
 						};
 						for sup in supers {
-							let covered = |t: &TraitItem| t.2.iter().all(|f| f.default.is_some()) && t.3.iter().all(by);
+							let covered = |(_, t, _): &TraitItem| {
+								t.fields.iter().all(|f| f.default.is_some()) && t.methods.iter().all(by)
+							};
 							if traits.get(sup.as_str()).is_some_and(covered) && claimed.iter().all(|(c, _)| c != sup) {
 								claimed.push((sup.clone(), &[]));
 							}
@@ -1323,17 +1292,16 @@ impl<M: Module> Compiler<M> {
 					let generic = claimed.iter().any(|(_, args)| !args.is_empty());
 					let claimed_traits =
 						|| claimed.iter().filter_map(|(tn, args)| Some((traits.get(tn.as_str())?, *args)));
+					let assoc = |t: &TraitDef, args| claim_assoc(fills, &t.fields, &trait_args(&t.type_params, args));
 					let targs: Vec<_> = claimed_traits()
-						.flat_map(|(t, args)| trait_args(t.1, args))
-						.chain(claimed_traits().flat_map(|(t, args)| claim_assoc(fills, t.2, &trait_args(t.1, args))))
+						.flat_map(|(t, args)| trait_args(&t.1.type_params, args))
+						.chain(claimed_traits().flat_map(|(t, args)| assoc(t.1, args)))
 						.collect();
 					let mut bounds = type_params.clone();
 					qualify_bounds(scope, &mut bounds);
 					for (tn, args) in &claimed {
 						self.world.claim_args.insert((typ.clone(), tn.clone()), args.to_vec());
-						let assoc = traits
-							.get(tn.as_str())
-							.map_or(vec![], |t| claim_assoc(fills, t.2, &trait_args(t.1, args)));
+						let assoc = traits.get(tn.as_str()).map_or(vec![], |t| assoc(t.1, args));
 						if type_params.is_empty() {
 							self.world.trait_impls.insert((typ.clone(), tn.clone()));
 							let me = [("Self".to_string(), TypeExpr::Name(typ.clone()))];
@@ -1355,9 +1323,11 @@ impl<M: Module> Compiler<M> {
 						// generic fills
 						if !is_hook_trait(tn) {
 							// unfilled defaults
-							let (tps, ms, home) =
-								traits.get(tn.as_str()).map_or((&[][..], &[][..], scope), |t| (t.1, t.3, t.4));
-							let decls: Vec<TraitFn> = trait_fns(ms).collect();
+							let (tps, ms, home) = match traits.get(tn.as_str()) {
+								Some((_, t, home)) => (&t.type_params[..], &t.methods[..], *home),
+								None => (&[][..], &[][..], scope),
+							};
+							let decls: Vec<_> = trait_fns(ms).collect();
 							let filled = |n: &str| {
 								(fills.iter()).any(|f| matches!(&Expr::peel_meta(f).2.0, Expr::Fn(f) if f.name == n))
 							};
@@ -1390,7 +1360,7 @@ impl<M: Module> Compiler<M> {
 						});
 					}
 
-					let decls: Vec<TraitFn> = claimed_traits().flat_map(|(t, _)| trait_fns(t.3)).collect();
+					let decls: Vec<_> = claimed_traits().flat_map(|(t, _)| trait_fns(&t.1.methods)).collect();
 					let claim = Fills {
 						decls: &decls,
 						generic,
@@ -1399,32 +1369,24 @@ impl<M: Module> Compiler<M> {
 					};
 					self.register_fills(typ, type_params, fills, scope, &mut others, claim)?;
 				}
-				Expr::Fn(Func { name, body, ret, .. }) if name == "main" => {
+				Expr::Fn(Func {
+					name: "main",
+					body,
+					ret,
+					..
+				}) => {
 					main_body = Some(body);
 					main_ret = ret.as_deref();
 				}
-				Expr::Fn(Func {
-					name,
-					type_params,
-					params,
-					params_tuple,
-					ret,
-					body,
-				}) if !type_params.is_empty() => {
-					let mut type_params = type_params.clone();
+				Expr::Fn(func) if !func.type_params.is_empty() => {
+					let mut type_params = func.type_params.clone();
 					qualify_bounds(scope, &mut type_params);
-					let sig = (params.clone(), *params_tuple, ret.clone());
-					let def = GenericFnDef::new(sig, body, type_params, &scope.module, item.1);
-					self.world.generic_fns.insert(name.clone(), def);
+					let sig = (func.params.clone(), func.params_tuple, func.ret.clone());
+					let def = GenericFnDef::new(sig, &func.body, type_params, &scope.module, item.1);
+					self.world.generic_fns.insert(func.name.clone(), def);
 				}
-				Expr::Fn(Func {
-					name,
-					params,
-					params_tuple,
-					ret,
-					body,
-					..
-				}) => {
+				Expr::Fn(func) => {
+					let Func { name, params, ret, .. } = &**func;
 					// `@test`
 					let test_ann = (!program.core_origin.contains(&scope.module))
 						.then(|| self.annotations.get(name))
@@ -1458,16 +1420,16 @@ impl<M: Module> Compiler<M> {
 						let msg = format!("duplicate fn `{}`", display_name(name));
 						return fail(msg, item.1, "already defined");
 					}
-					let sig = (params.clone(), *params_tuple, ret.clone());
-					others.push(FnItem::new(name.clone(), scope, sig, body))
+					let sig = (params.clone(), func.params_tuple, ret.clone());
+					others.push(FnItem::new(name.clone(), scope, sig, &func.body))
 				}
 				Expr::Doc(_) => {}
 				Expr::Bind {
 					name,
 					typ: Some((t, _)),
-					value: Some(v),
+					value: Some((Expr::Foreign, _)),
 					..
-				} if matches!(v.0, Expr::Foreign) => {
+				} => {
 					foreign_items.push((name.clone(), t.clone(), item.1, scope));
 				}
 				// statics
@@ -1947,16 +1909,16 @@ impl<M: Module> Compiler<M> {
 					continue;
 				}
 
-				let ((_, tparams, tfields, tmethods, home), sub) = base.trait_instance(&tn);
-				if sub.is_empty() && tparams.iter().any(|p| p.default.is_none()) {
+				let ((_, def, home), sub) = base.trait_instance(&tn);
+				if sub.is_empty() && def.type_params.iter().any(|p| p.default.is_none()) {
 					continue;
 				}
 
 				// an instance picks the claim whose sig fits
 				let types = base.with_type_params(&sub).with_scope(home);
-				let fill = |(n, params, ret): TraitFn| {
-					let key = format!("{typ}.{n}");
-					if !has_slot(tmethods, n) {
+				let fill = |Func { name, params, ret, .. }: &Func| {
+					let key = format!("{typ}.{name}");
+					if !has_slot(&def.methods, name) {
 						return Some(None);
 					}
 					if sub.is_empty() {
@@ -1972,22 +1934,24 @@ impl<M: Module> Compiler<M> {
 					(funcs.iter().find(|(k, s)| k.split('#').next() == Some(&key) && fits(s))).map(|(_, s)| Some(s))
 				};
 
-				let Some(methods) = trait_fns(tmethods).map(fill).collect::<Option<Vec<_>>>() else {
+				let Some(methods) = trait_fns(&def.methods).map(fill).collect::<Option<Vec<_>>>() else {
 					continue;
 				};
 
-				let mut bytes = vec![0u8; (methods.len() + tfields.len() + 1) * 8];
+				let mut bytes = vec![0u8; (methods.len() + def.fields.len() + 1) * 8];
 				let mut const_slots = Vec::new();
 				// associated types have no runtime slot, so they leave a hole
-				for (i, tf) in tfields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
+				for (i, tf) in def.fields.iter().enumerate().filter(|(_, tf)| !is_assoc_type(tf)) {
 					let at = (methods.len() + i) * 8;
 					match field_slot(&base, &typ, &tf.name) {
 						Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
 						None => {
 							let want = base.resolve(&tf.typ, tf.span)?;
 							let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
-							if let Expr::Cast { args, .. } = &lit
-								&& let [(Expr::Atom(a), _)] = &args[..]
+							if let Expr::Cast {
+								args: [(Expr::Atom(a), _)],
+								..
+							} = &lit
 							{
 								lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
 							}
@@ -2005,12 +1969,12 @@ impl<M: Module> Compiler<M> {
 				}
 
 				let cell = base.named(&typ, Span::default())?.slots().is_none();
-				for (i, (sig, (_, _, ret))) in methods.iter().zip(trait_fns(tmethods)).enumerate() {
+				for (i, (sig, Func { ret, .. })) in methods.iter().zip(trait_fns(&def.methods)).enumerate() {
 					let Some(sig) = sig else { continue };
 					self.out.wanted.push(sig.id);
 					let name = format!("{typ}_{tn}#{i}");
 					let spread = base.spread_words(base.ret_pack(&sig.ret).as_ref().unwrap_or(&sig.ret));
-					let bare = matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self");
+					let bare = matches!(ret, Some((TypeExpr::Name("Self"), _)));
 					let id = match cell && sig.access[0] != Access::Mut {
 						true => self.cell_thunk(sig.id, &name),
 						false if spread.is_some() && (bare || self_option(ret)) => {
@@ -2023,7 +1987,7 @@ impl<M: Module> Compiler<M> {
 				}
 
 				let fref = self.module.declare_func_in_data(render[typ.as_str()], &mut desc);
-				desc.write_function_addr(((methods.len() + tfields.len()) * 8) as u32, fref);
+				desc.write_function_addr(((methods.len() + def.fields.len()) * 8) as u32, fref);
 
 				let sym = oi_symbol(&format!("vtable_{typ}_{tn}"));
 				let id = self
@@ -2109,7 +2073,7 @@ impl<M: Module> Compiler<M> {
 		&mut self,
 		sym: &str,
 		sig: &FnSig,
-		(decls, ret): (&[Param], &Option<Box<Spanned<TypeExpr>>>),
+		(decls, ret): (&[Param], &TypeSlot),
 		def: FnDef,
 		funcs: &HashMap<String, FnSig>,
 		types: TypeCtx,
@@ -2453,7 +2417,7 @@ impl<M: Module> Compiler<M> {
 		let (mut dollar, mut writes) = (false, false);
 		Expr::Block(def.body.to_vec()).walk(&mut |e| match e {
 			Expr::Dollar => dollar = true,
-			Expr::Ref(inner) if let Expr::Ident(n) = &inner.0 => _ = trans.addressed.insert(n.clone()),
+			Expr::Ref((Expr::Ident(n), _)) => _ = trans.addressed.insert(n.clone()),
 			Expr::FieldAssign { name, .. } if name == CTX => writes = true,
 			e if e.assign_name().is_some_and(|name| name == CTX) => writes = true,
 			_ => {}

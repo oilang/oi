@@ -157,7 +157,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 					return ms.pop().unwrap();
 				}
 				let atom = |m: &TypeExpr| match m {
-					TypeExpr::AtomSum(a) if a.len() == 1 => Some(a[0].clone()),
+					TypeExpr::AtomSum([atom]) => Some(atom.clone()),
 					_ => None,
 				};
 				match ms.iter().map(atom).collect::<Option<Vec<_>>>() {

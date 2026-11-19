@@ -172,7 +172,7 @@ fn patch_first(items: &mut [Spanned<Expr>], lit: Expr) {
 			}
 			// comptime field inits
 			if let Expr::StructLit { fields, .. } = e {
-				let skipped = |i: &Spanned<Expr>| matches!(&i.0, Expr::Block(b) if b.is_empty());
+				let skipped = |i: &Spanned<Expr>| matches!(&i.0, Expr::Block([]));
 				*fields = (std::mem::take(fields).into_iter())
 					.flat_map(|field| match field {
 						(None, (Expr::Block(inits), _))
@@ -201,7 +201,7 @@ pub(crate) fn instantiate(
 	let mut bound = HashMap::new();
 	let (program, stage0) = types.consts.comp.expect("lowering always has a stage 0 host");
 	let as_type = |(e, span): &Spanned<Expr>| match e {
-		Expr::Tuple(fs) if fs.is_empty() => Some(Typ::unit()),
+		Expr::Tuple([]) => Some(Typ::unit()),
 		e => types.resolve(&TypeExpr::from_expr(e)?, *span).ok(),
 	};
 	while let Some(mut inner) = first_comp(body) {
@@ -322,8 +322,7 @@ fn type_pattern(types: &TypeCtx, (pat, span): &Spanned<Expr>, typ: &Typ) -> Opti
 	let (mut te, mut free) = (TypeExpr::from_expr(pat)?, vec![]);
 	te.walk_mut(&mut |t| {
 		let name = match &*t {
-			TypeExpr::FixedArray(_, len) if let Expr::Ident(name) = &len.0 => name,
-			TypeExpr::Name(name) => name,
+			TypeExpr::FixedArray(_, (Expr::Ident(name), _)) | TypeExpr::Name(name) => name,
 			_ => return,
 		};
 		if types.named(name, *span).is_err() {
@@ -483,31 +482,24 @@ fn reify(span: Span, instances: &HashMap<String, Vec<Typ>>) -> Expr {
 
 // Copy a comp fn to take its type params.
 fn bracket_copy((e, span): &Spanned<Expr>, anns: &HashMap<String, Vec<Annotation>>) -> Option<Spanned<Expr>> {
-	let Expr::Fn(Func {
-		name,
-		params,
-		ret,
-		body,
-		..
-	}) = e
-	else {
-		return None;
-	};
-	super::has_ann(anns, name, "comp").then_some(())?;
-	let type_params = (params.iter())
+	let Expr::Fn(func) = e else { return None };
+	super::has_ann(anns, &func.name, "comp").then_some(())?;
+
+	let type_params = (func.params.iter())
 		.map(|p| TypeParam {
 			name: p.name.clone(),
-			value_type: (!matches!(&p.typ, TypeExpr::Name(t) if t == "type")).then(|| p.typ.clone()),
+			value_type: (!matches!(&p.typ, TypeExpr::Name("type"))).then(|| p.typ.clone()),
 			..TypeParam::default()
 		})
 		.collect();
+
 	let copy = Expr::Fn(Box::new(Func {
-		name: format!("{name}#comp"),
+		name: format!("{}#comp", func.name),
 		type_params,
 		params: vec![],
 		params_tuple: true,
-		ret: ret.clone(),
-		body: body.clone(),
+		ret: func.ret.clone(),
+		body: func.body.clone(),
 	}));
 	Some((copy, *span))
 }
@@ -553,7 +545,7 @@ pub(crate) fn fold(
 		let span = cond.1;
 		let arm = match fold(*cond, target, consts, program, stage0)? {
 			Expr::Bool(true) => then,
-			Expr::Bool(false) if matches!(els.as_deref(), Some([(Expr::If { .. }, _)])) => {
+			Expr::Bool(false) if matches!(&els, Some([(Expr::If { .. }, _)])) => {
 				inner = els.expect("guard matched").remove(0);
 				continue;
 			}
@@ -757,7 +749,10 @@ pub(crate) fn eval(
 			let mut reads = false;
 			v.0.clone().walk(&mut |e| {
 				let path = match e {
-					Expr::Field { tuple, field } if let Expr::Ident(module) = &tuple.0 => format!("{module}.{field}"),
+					Expr::Field {
+						tuple: (Expr::Ident(module), _),
+						field,
+					} => format!("{module}.{field}"),
 					Expr::Ident(n) => n.clone(),
 					_ => return,
 				};

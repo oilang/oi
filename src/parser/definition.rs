@@ -2,7 +2,9 @@ use super::{
 	P, Parsers, Rec, Tokens, Trails, brace, bracket, ident, list1, loose_list, loose_list1, matrix, paren,
 	shadow_params, spanned, stmt, trailing_list, trailing_list1, types,
 };
-use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, alts, dollar_is, is_match, record_args};
+use crate::ast::{
+	self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, alts, dollar_is, is_match, record_args,
+};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -297,7 +299,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		});
 	let is_typ = (p.type_expr.clone())
 		.or(dot().ignore_then(ident()).map(|variant| TypeExpr::Name(format!(".{variant}"))))
-		.filter(|typ| !matches!(typ, TypeExpr::Name(n) if n == "_"))
+		.filter(|typ| !matches!(typ, TypeExpr::Name("_")))
 		.then_ignore(one_of([Token::Dot, Token::SpaceDot, Token::DotDot, Token::DotDotEq, Token::Pipe]).not())
 		.boxed();
 	let is = just(Token::Is).to(false).or(just(Token::NotIs).to(true));

@@ -46,7 +46,7 @@ impl<'d> Infer<'d> {
 				}
 				self.unify(elem, found)
 			}
-			(TypeExpr::FixedArray(val, key), Typ::Map(found_key, found_val)) if let Expr::Ident(key) = &key.0 => {
+			(TypeExpr::FixedArray(val, (Expr::Ident(key), _)), Typ::Map(found_key, found_val)) => {
 				self.unify(&TypeExpr::Name(key.clone()), found_key)?;
 				self.unify(val, found_val)
 			}
@@ -62,9 +62,7 @@ impl<'d> Infer<'d> {
 				.iter()
 				.zip(fields)
 				.try_for_each(|((_, elem), (_, found))| self.unify(elem, found)),
-			(TypeExpr::Name(unit), found) if unit == "()" && !found.is_unit() => {
-				Err(format!("expected (), got {found}"))
-			}
+			(TypeExpr::Name("()"), found) if !found.is_unit() => Err(format!("expected (), got {found}")),
 			(TypeExpr::Annotated(_, inner), Typ::Annotated(_, found)) => self.unify(inner, found),
 			(TypeExpr::Annotated(_, inner), found) => self.unify(inner, found),
 			(TypeExpr::Fn(params, ret), Typ::Fn(found, found_ret) | Typ::Closure(found, found_ret, _))

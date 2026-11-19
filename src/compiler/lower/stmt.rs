@@ -56,9 +56,11 @@ impl<'a, M: Module> Translator<'a, M> {
 						&& typ.is_none()
 						&& let Some(v) = value
 						&& let Some(te) = match &v.0 {
-							Expr::Call { name, args, .. } if name == "type" && args.len() == 1 => {
-								Some(TypeExpr::Infer(Box::new(args[0].clone())))
-							}
+							Expr::Call {
+								name: "type",
+								args: [arg],
+								..
+							} => Some(TypeExpr::Infer(Box::new(arg.clone()))),
 							Expr::Call { name, .. }
 								if (self.funcs.get(self.qualify(name).as_ref()))
 									.is_some_and(|f| f.ret == Typ::TypeId) =>
@@ -78,7 +80,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						check_reserved(name, stmt.1)?;
 					}
 					let annot = typ.as_ref().map(|(t, span)| self.resolve_local(t, *span)).transpose()?;
-					if !*mutable && matches!(value.as_deref(), Some((Expr::AnonFn { .. }, _))) {
+					if !*mutable && matches!(value, Some((Expr::AnonFn { .. }, _))) {
 						self.self_name = Some(name.clone());
 					}
 					let (val, typ) = match (value, annot) {
@@ -163,9 +165,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					self.bind_pat(pat, ptr, &typ, *mutable)?;
 				}
 
-				Expr::Assign { key, value } if matches!(&key.0, Expr::Ident(name) if name == "_") => {
-					last = self.expr(value)?
-				}
+				Expr::Assign {
+					key: (Expr::Ident("_"), _),
+					value,
+				} => last = self.expr(value)?,
 				Expr::Assign { value, .. } | Expr::DerefAssign { value, .. } => {
 					let ((Expr::DerefAssign { name, .. }, _) | (_, Some(name))) = (&stmt.0, stmt.0.assign_name())
 					else {
@@ -697,7 +700,10 @@ impl<'a, M: Module> Translator<'a, M> {
 fn place_read(stmt: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	let name = |n: &String| Box::new((Expr::Ident(n.clone()), stmt.1));
 	let read = match &stmt.0 {
-		Expr::Assign { key, .. } if matches!(&key.0, Expr::Ident(name) if name == "_") => return None,
+		Expr::Assign {
+			key: (Expr::Ident("_"), _),
+			..
+		} => return None,
 		Expr::Assign { key, .. } => key.0.clone(),
 		Expr::Bind { name, .. } | Expr::MapDelete { name, .. } => Expr::Ident(name.clone()),
 		Expr::Append { place, .. } => return Some((**place).clone()),

@@ -5,6 +5,7 @@ use chumsky::span::SimpleSpan;
 pub type Span = SimpleSpan;
 pub type Spanned<T> = (T, Span);
 pub type Bounds<'a> = (Option<&'a Spanned<Expr>>, Option<&'a Spanned<Expr>>, bool);
+pub type TypeSlot = Option<Box<Spanned<TypeExpr>>>;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -23,7 +24,7 @@ pub enum Expr {
 	Bind {
 		mutable: bool,
 		name: String,
-		typ: Option<Box<Spanned<TypeExpr>>>,
+		typ: TypeSlot,
 		value: Option<Box<Spanned<Expr>>>,
 	},
 
@@ -52,7 +53,7 @@ pub enum Expr {
 		captures: Option<Vec<Capture>>,
 		params: Vec<Param>,
 		params_tuple: bool,
-		ret: Option<Box<Spanned<TypeExpr>>>,
+		ret: TypeSlot,
 		body: Vec<Spanned<Expr>>,
 	},
 
@@ -99,12 +100,7 @@ pub enum Expr {
 	// macros
 
 	// `name! :: fn(params) Ast { body }`
-	MacroDef {
-		name: String,
-		params: Vec<Param>,
-		ret: Option<Box<Spanned<TypeExpr>>>,
-		body: Vec<Spanned<Expr>>,
-	},
+	MacroDef(Box<Func>),
 
 	// `name!(args)`, `name! expr`
 	MacroCall {
@@ -171,7 +167,7 @@ pub enum Expr {
 	// arrays
 	Array(Vec<Spanned<Expr>>),
 	// `.[ ..expr ]`, `T.[ ..expr ]`
-	DotArray(Option<Box<Spanned<TypeExpr>>>, Vec<Spanned<Expr>>),
+	DotArray(TypeSlot, Vec<Spanned<Expr>>),
 	// `.( ..expr )`
 	DotTuple(Vec<Spanned<Expr>>),
 	// `collection[index]`
@@ -337,7 +333,7 @@ pub struct Func {
 	pub type_params: Vec<TypeParam>,
 	pub params: Vec<Param>,
 	pub params_tuple: bool,
-	pub ret: Option<Box<Spanned<TypeExpr>>>,
+	pub ret: TypeSlot,
 	pub body: Vec<Spanned<Expr>>,
 }
 
@@ -409,7 +405,10 @@ impl Expr {
 	// The name written by an assignment.
 	pub fn assign_name(&self) -> Option<&String> {
 		match self {
-			Expr::Assign { key, .. } if let Expr::Ident(name) = &key.0 => Some(name),
+			Expr::Assign {
+				key: (Expr::Ident(name), _),
+				..
+			} => Some(name),
 			_ => None,
 		}
 	}
@@ -432,7 +431,7 @@ impl Expr {
 			Expr::Bind { typ: Some((t, _)), .. } | Expr::Cast { target: (t, _), .. } => vec![t],
 			Expr::Fn(Func { params, ret, .. })
 			| Expr::AnonFn { params, ret, .. }
-			| Expr::MacroDef { params, ret, .. } => {
+			| Expr::MacroDef(Func { params, ret, .. }) => {
 				let ret = ret.iter_mut().map(|(t, _)| t);
 				params.iter_mut().map(|p| &mut p.typ).chain(ret).collect()
 			}
@@ -494,7 +493,7 @@ impl Expr {
 			}
 			Expr::Fn(Func { body, .. })
 			| Expr::AnonFn { body, .. }
-			| Expr::MacroDef { body, .. }
+			| Expr::MacroDef(Func { body, .. })
 			| Expr::StructDef(StructDef { fills: body, .. })
 			| Expr::Claim(Claim { fills: body, .. })
 			| Expr::Block(body)
@@ -843,7 +842,7 @@ pub fn pin(place: &mut Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	}
 	if let Expr::Index { index, .. } = &mut place.0
 		&& !matches!(index.0, Expr::Ident(_) | Expr::Int(_) | Expr::String(_) | Expr::Atom(_))
-		&& !matches!(&index.0, Expr::EnumShorthand { args, .. } if args.is_empty())
+		&& !matches!(&index.0, Expr::EnumShorthand { args: [], .. })
 	{
 		let name = format!("$i{}_{}", index.1.start, index.1.end);
 		let ident = (Expr::Ident(name.clone()), index.1);
@@ -870,7 +869,10 @@ pub fn assign(mut place: Spanned<Expr>, op: Option<BinOp>, value: Spanned<Expr>,
 fn unplace(e: &Expr) -> Option<(String, Option<String>)> {
 	match e {
 		Expr::Ident(name) => Some((name.clone(), None)),
-		Expr::Field { tuple, field } if let Expr::Ident(name) = &tuple.0 => Some((name.clone(), Some(field.clone()))),
+		Expr::Field {
+			tuple: (Expr::Ident(name), _),
+			field,
+		} => Some((name.clone(), Some(field.clone()))),
 		_ => None,
 	}
 }
@@ -1084,7 +1086,7 @@ impl Param {
 
 	// Whether a fill method's first param is supposed to be its receiver.
 	pub fn is_receiver(&self) -> bool {
-		matches!(&self.typ, TypeExpr::Name(n) if n == "Self" || n == "$?")
+		matches!(&self.typ, TypeExpr::Name("Self" | "$?"))
 	}
 
 	pub fn type_receiver(params: &mut [Param]) {

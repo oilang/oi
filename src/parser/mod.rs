@@ -209,7 +209,7 @@ enum Member {
 fn group_untyped(group: &mut [Param]) {
 	let mut typed: Option<Param> = None;
 	for param in group.iter_mut().rev() {
-		if !matches!(&param.typ, TypeExpr::Name(n) if n == "$?") {
+		if !matches!(&param.typ, TypeExpr::Name("$?")) {
 			typed = Some(param.clone());
 		} else if let Some(t) = &typed {
 			(param.typ, param.default, param.mutable) = (t.typ.clone(), t.default.clone(), t.mutable);
@@ -254,7 +254,7 @@ fn named_ret(slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec
 // Bind return variables for named results.
 fn bind_return((e, span): &mut Spanned<Expr>, value: &Expr) {
 	match e {
-		Expr::Fn(_) | Expr::AnonFn { .. } | Expr::MacroDef { .. } | Expr::Quote(_) => return,
+		Expr::Fn(_) | Expr::AnonFn { .. } | Expr::MacroDef(_) | Expr::Quote(_) => return,
 		Expr::Return(v @ None) => *v = Some(Box::new((value.clone(), *span))),
 		_ => {}
 	}
@@ -485,7 +485,7 @@ where
 
 	// treat a list with an untyped slot as a tuple type
 	let slots = params.clone().map(|(slots, _)| slots);
-	let slots = slots.filter(|slots| slots.iter().all(|s| !matches!(&s.typ, TypeExpr::Name(n) if n == "$?")));
+	let slots = slots.filter(|slots| slots.iter().all(|s| !matches!(&s.typ, TypeExpr::Name("$?"))));
 	let fn_ret = named
 		.or(slots)
 		.map_with(|slots, ex| {
@@ -558,16 +558,16 @@ where
 		.then(params.clone())
 		.then(ret.clone())
 		.then(block.clone())
-		.map_with(|(((name, (params, _)), ret), body), ex| {
-			(
-				Expr::MacroDef {
-					name,
-					params,
-					ret: ret.map(Box::new),
-					body,
-				},
-				ex.span(),
-			)
+		.map_with(|(((name, (params, params_tuple)), ret), body), ex| {
+			let func = Func {
+				name,
+				type_params: vec![],
+				params,
+				params_tuple,
+				ret: ret.map(Box::new),
+				body,
+			};
+			(Expr::MacroDef(Box::new(func)), ex.span())
 		});
 
 	// blocks

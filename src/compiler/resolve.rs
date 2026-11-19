@@ -261,7 +261,8 @@ impl<'a> TypeCtx<'a> {
 	pub fn trait_instance(&self, tn: &str) -> (&'a TraitItem<'a>, HashMap<String, Typ>) {
 		let item = &self.traits[tn.split('[').next().unwrap_or(tn)];
 		let args = self.generics.instance_args(tn).unwrap_or_default();
-		(item, item.1.iter().map(|p| p.name.clone()).zip(args).collect())
+		let names = item.1.type_params.iter().map(|p| p.name.clone());
+		(item, names.zip(args).collect())
 	}
 }
 
@@ -412,7 +413,7 @@ impl TypeCtx<'_> {
 				check_ann_typ(*self, &names, &inner, span)?;
 				Ok(Typ::Annotated(names, Box::new(inner)))
 			}
-			TypeExpr::Map(k, v) if let TypeExpr::Name(name) = &**k => self.resolve(
+			TypeExpr::Map(TypeExpr::Name(name), v) => self.resolve(
 				&TypeExpr::FixedArray(v.clone(), Box::new((Expr::Ident(name.clone()), span))),
 				span,
 			),
@@ -426,19 +427,23 @@ impl TypeCtx<'_> {
 				{
 					return self.resolve(&TypeExpr::Generic(format!("{}::{t}", vis.module), args.clone()), span);
 				}
+
 				let name = self.scope.lookup(name).unwrap_or(name);
 				if let Some(def) = self.generics.structs.get(name) {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate(name, def, &subst, span);
 				}
+
 				if let Some(def) = self.generics.enums.get(name) {
 					let subst = self.generic_subst(name, &def.type_params, args, span)?;
 					return self.instantiate_enum(name, def, &subst, span);
 				}
-				if let Some((_, params, ..)) = self.traits.get(name.as_str()) {
-					let subst = self.generic_subst(name, params, args, span)?;
-					return Ok(Typ::Trait(self.register_instance(name, params, &subst)));
+
+				if let Some((_, def, _)) = self.traits.get(name.as_str()) {
+					let subst = self.generic_subst(name, &def.type_params, args, span)?;
+					return Ok(Typ::Trait(self.register_instance(name, &def.type_params, &subst)));
 				}
+
 				if let Some((params, te)) = self.generics.aliases.get(name) {
 					let type_params = &self.generic_subst(name, params, args, span)?;
 					let inner = TypeCtx { type_params, ..*self };
@@ -450,6 +455,7 @@ impl TypeCtx<'_> {
 						typ => typ,
 					});
 				}
+
 				let msg = match self.structs.contains_key(name) || self.enums.borrow().contains_key(name) {
 					true => format!("`{name}` is not generic"),
 					false => format!("unknown type `{name}`"),
@@ -465,7 +471,10 @@ impl TypeCtx<'_> {
 		e.walk(&mut |e| {
 			let path = match e {
 				Expr::Ident(path) => path.clone(),
-				Expr::Field { tuple, field } if let Expr::Ident(name) = &tuple.0 => format!("{name}.{field}"),
+				Expr::Field {
+					tuple: (Expr::Ident(name), _),
+					field,
+				} => format!("{name}.{field}"),
 				_ => return,
 			};
 			if let Some(n) = path.split_once('.').and_then(|(name, field)| self.assoc_int(name, field)) {
@@ -957,11 +966,11 @@ impl TypeCtx<'_> {
 			let msg = format!("`{name}` needs type arguments");
 			return fail(msg, span, format!("try `{name}[...]`"));
 		}
-		if let Some((_, params, ..)) = self.traits.get(name) {
-			if params.is_empty() {
+		if let Some((_, def, _)) = self.traits.get(name) {
+			if def.type_params.is_empty() {
 				return Ok(Typ::Trait(name.to_string()));
 			}
-			let Some(args) = params.iter().map(|p| Some(p.default.clone()?.0)).collect() else {
+			let Some(args) = def.type_params.iter().map(|p| Some(p.default.clone()?.0)).collect() else {
 				let name = display_name(name);
 				let msg = format!("`{name}` needs type arguments");
 				return fail(msg, span, format!("try `{name}[...]`"));
@@ -986,7 +995,7 @@ impl TypeCtx<'_> {
 		let mut variants: Vec<VariantInfo> = Vec::with_capacity(members.len());
 		for m in members {
 			match m {
-				TypeExpr::AtomSum(a) if a.len() == 1 => variants.push(VariantInfo::new(a[0].clone(), 0, vec![])),
+				TypeExpr::AtomSum([atom]) => variants.push(VariantInfo::new(atom.clone(), 0, vec![])),
 				_ => match self.resolve(m, span)? {
 					Typ::Sum(n, inner) if inner.is_empty() => variants.extend(self.named_sum(&n, span)?),
 					Typ::Sum(_, inner) => variants.extend(inner),
@@ -1050,11 +1059,7 @@ impl TypeCtx<'_> {
 	}
 
 	// Resolve a param list and optional return type annotation.
-	pub fn resolve_params_ret(
-		&self,
-		params: &[Param],
-		ret: &Option<Box<Spanned<TypeExpr>>>,
-	) -> Result<ParamsRet, Diagnostic> {
+	pub fn resolve_params_ret(&self, params: &[Param], ret: &TypeSlot) -> Result<ParamsRet, Diagnostic> {
 		let params = self.resolve_params(params)?;
 		let ret = ret
 			.as_ref()

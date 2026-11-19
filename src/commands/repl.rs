@@ -4,7 +4,7 @@ use std::path::Path;
 
 use indoc::eprintdoc;
 use oi::Reported;
-use oi::ast::{Claim, EnumDef, Expr, Span, Spanned, StructDef, TraitDef};
+use oi::ast::{Claim, EnumDef, Expr, Func, Span, Spanned, StructDef, TraitDef};
 use oi::driver::{DebugOpts, run_snippet};
 use oi::lexer::{lex_at, prescan};
 use oi::loader::{Program, core_source, load, parse_file};
@@ -129,7 +129,7 @@ fn find_def(items: &[Spanned<Expr>], prefix: &str, path: &str) -> Option<Span> {
 			| Expr::TraitDef(TraitDef {
 				name, methods: fills, ..
 			}) => (name, fills),
-			Expr::Bind { name, .. } | Expr::MacroDef { name, .. } => (name, &[]),
+			Expr::Bind { name, .. } | Expr::MacroDef(Func { name, .. }) => (name, &[]),
 			e => (e.def_name()?, &[]),
 		};
 		let full = format!("{prefix}{name}").replace("::", ".");
@@ -173,7 +173,7 @@ fn defs(line: &str, raw: &HashSet<String>) -> String {
 fn is_def(e: &Expr) -> bool {
 	match e {
 		Expr::Pub(_, b) | Expr::Annotated(_, b) => is_def(&b.0),
-		Expr::Bind { .. } | Expr::Use { .. } | Expr::Claim(_) | Expr::MacroDef { .. } => true,
+		Expr::Bind { .. } | Expr::Use { .. } | Expr::Claim(_) | Expr::MacroDef(_) => true,
 		_ => e.def_name().is_some(),
 	}
 }

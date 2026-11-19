@@ -200,7 +200,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut pat = h.clone();
 		if let Expr::PatBind { value, .. } = &mut pat.0
 			&& infallible(&h.0)
-			&& !matches!(&value.0, Expr::Ident(name) if name == "$pat")
+			&& !matches!(&value.0, Expr::Ident("$pat"))
 		{
 			// pattern unwrapping and then destructuring
 			let value = std::mem::replace(value, Box::new((Expr::Ident("$pat".into()), h.1)));
@@ -377,7 +377,10 @@ impl<'a, M: Module> Translator<'a, M> {
 	fn rewrap_writes(&mut self, body: &[Spanned<Expr>]) {
 		let mut written = HashSet::new();
 		Expr::Block(body.to_vec()).walk(&mut |e| match e {
-			Expr::Assign { key, .. } if let Expr::Ident(name) = &key.0 => _ = written.insert(name.clone()),
+			Expr::Assign {
+				key: (Expr::Ident(name), _),
+				..
+			} => _ = written.insert(name.clone()),
 			Expr::DerefAssign { name, .. }
 			| Expr::FieldAssign { name, .. }
 			| Expr::IndexAssign { name, .. }
@@ -575,7 +578,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& self.scopes.iter().flatten().any(|(var, _)| *var == local.var)
 			&& arms
 				.iter()
-				.any(|arm| arm.guard.is_none() && matches!(&arm.patterns[..], [pat] if takes(pat)))
+				.any(|arm| arm.guard.is_none() && matches!(&arm.patterns, [pat] if takes(pat)))
 		{
 			self.move_out(subject, &st)?;
 			self.temp(sv, &st);
@@ -588,7 +591,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let unguarded = || arms.iter().filter(|a| a.guard.is_none()).flat_map(|a| &a.patterns);
 		let pats = || unguarded().filter(|p| !refutable_subs(p));
-		let mut exhaustive = else_body.is_none() && pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
+		let mut exhaustive = else_body.is_none() && pats().any(|p| matches!(&p.0, Expr::Ident("_")));
 
 		// ensure match covers every variant when applicable
 		if st.is_enumish() {
@@ -775,7 +778,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let (pat, subs) = &split_subs(pat);
 		let (mut hit, found) = match &pat.0 {
-			Expr::Ident(w) if w == "_" => (yes(self), None),
+			Expr::Ident("_") => (yes(self), None),
 			_ if let Some(bounds) = pat.0.bounds() => (self.range_pattern(sv, st, bounds, pat.1)?, None),
 			_ if st.is_enumish() => {
 				let (disc, binds) = self.enum_pattern(pat, st)?;
@@ -949,9 +952,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.b.seal_block(catch.block);
 		let saved_dollar = self.dollar.replace((self.b.use_var(var), err));
 		let hint = match body.last() {
-			Some((Expr::Ident(name), _)) if name == "none" => {
-				self.types.core_enum(role::OPTION, std::slice::from_ref(&inner))
-			}
+			Some((Expr::Ident("none"), _)) => self.types.core_enum(role::OPTION, std::slice::from_ref(&inner)),
 			_ => inner.clone(),
 		};
 		let flow = self.branch(body, want.then_some(&hint))?;
@@ -2033,8 +2034,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		mutable: Option<bool>,
 	) -> Result<(), Diagnostic> {
 		// two names on a propagator split the payload from its ok flag or error
-		if let Expr::Tuple(names) = &pat.0
-			&& let [(_, value_pat), (_, flag_pat)] = names.as_slice()
+		if let Expr::Tuple([(_, value_pat), (_, flag_pat)]) = &pat.0
 			&& let Some((inner, err)) = self.fallible_split(typ).filter(|_| self.trailing(typ).is_none())
 		{
 			let tag = self.enum_tag(typ, val);
@@ -2064,7 +2064,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let parts = !matches!(&pat.0, Expr::Ident(_));
 		let binds = match &pat.0 {
-			Expr::Ident(name) if name == "_" => return Ok(()),
+			Expr::Ident("_") => return Ok(()),
 			Expr::Ident(name) => vec![(name.clone(), typ.clone(), 0)],
 			_ => self.pat_binds(pat, typ)?,
 		};

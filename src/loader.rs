@@ -15,8 +15,8 @@ use include_dir::{Dir, File, include_dir};
 
 use crate::Reported;
 use crate::ast::{
-	Annotation, BinOp, Child, Claim, EnumDef, Expr, Func, Span, Spanned, StructDef, TraitDef, TypeExpr, UseItem, Vis,
-	int_word,
+	Annotation, BinOp, Child, Claim, EnumDef, Expr, Func, Span, Spanned, StructDef, TraitDef, TypeExpr, TypeSlot,
+	UseItem, Vis, int_word,
 };
 use crate::compiler::{builtin, cache, role, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
@@ -312,7 +312,7 @@ fn flag(t: &TypeExpr, consts: &HashMap<String, Spanned<Expr>>, scope: &Scope) ->
 	}
 }
 
-type ConstFill<'a> = (&'a String, &'a Option<Box<Spanned<TypeExpr>>>, &'a Spanned<Expr>);
+type ConstFill<'a> = (&'a String, &'a TypeSlot, &'a Spanned<Expr>);
 
 // Fill an associated const.
 fn const_fill(e: &Expr) -> Option<ConstFill<'_>> {
@@ -857,7 +857,7 @@ impl Loader {
 						_ => {}
 					}
 				}
-				Expr::MacroDef { name, .. } => {
+				Expr::MacroDef(Func { name, .. }) => {
 					name.push('!');
 					self.define(m, name, !main, public, span)?;
 				}
@@ -866,7 +866,7 @@ impl Loader {
 					name,
 					typ,
 					value,
-				} if !main || matches!(value.as_deref(), Some((Expr::Foreign, _))) => {
+				} if !main || matches!(value, Some((Expr::Foreign, _))) => {
 					if let Some(v) = value.as_deref_mut()
 						&& let Some(c) = self.const_value(v, &m.scope)
 					{
@@ -878,7 +878,7 @@ impl Loader {
 							None
 						}
 						(true, ..) => Some(("a static needs a comptime initializer", "not a const expression")),
-						(_, _, Some(v)) if matches!(v.0, Expr::Foreign) => match typ {
+						(_, _, Some((Expr::Foreign, _))) => match typ {
 							Some((TypeExpr::Fn(..), _)) => {
 								self.define(m, name, !main, public, span)?;
 								if !anns.is_empty() {

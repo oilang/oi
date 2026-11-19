@@ -516,7 +516,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Typ::Trait(tn) = &recv_typ {
 						let key = format!("{}.{method}", rc::base_name(tn));
 						if let Some(def) = self.world.generic_fns.get(&key).cloned()
-							&& !has_slot(self.types.trait_instance(tn).0.3, method)
+							&& !has_slot(&self.types.trait_instance(tn).0.1.methods, method)
 						{
 							let recv = Some(((recv_val, recv_typ.clone()), recv));
 							return self.call_generic(&key, &def, type_args, args, recv, expr.1);
@@ -717,7 +717,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(c) = self.types.consts.map.get(&format!("{t}::{field}")).cloned() {
 						let declared = (self.types.traits.iter())
 							.filter(|(tn, _)| self.claims(&t, tn))
-							.find_map(|(_, tr)| Some((tr.2.iter().find(|f| f.name == *field)?, tr.4)))
+							.find_map(|(_, tr)| Some((tr.1.fields.iter().find(|f| f.name == *field)?, tr.2)))
 							.and_then(|(f, home)| self.types.with_scope(home).resolve(&f.typ, f.span).ok());
 						return self.check_expr(&c, &declared.unwrap_or(t));
 					}
@@ -1267,7 +1267,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				unreachable!("not an expression")
 			}
 
-			Expr::MacroDef { .. } => unreachable!("removed by macro expansion"),
+			Expr::MacroDef(_) => unreachable!("removed by macro expansion"),
 			Expr::Quote(stmts) => self.quote(stmts, expr.1),
 			Expr::Arm(_) => Err(Diagnostic::new("a match arm only fits in a match", expr.1.into_range())),
 			Expr::Gen { .. } => Err(Diagnostic::new(

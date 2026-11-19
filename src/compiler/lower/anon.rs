@@ -125,7 +125,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					false => (
 						(params.iter().enumerate())
 							.map(|(i, p)| match &p.typ {
-								TypeExpr::Name(n) if n == "$?" => Param {
+								TypeExpr::Name("$?") => Param {
 									typ: TypeExpr::Name(name(i)),
 									..p.clone()
 								},

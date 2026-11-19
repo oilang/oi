@@ -37,21 +37,14 @@ pub(super) fn lend(
 			// rebuilt so dead fills are never cloned
 			let mut items: Vec<_> = (m.items.iter().chain(&m.comptime).filter(|e| live(e)))
 				.map(|(e, span)| match e {
-					Expr::Claim(Claim {
-						typ,
-						type_params,
-						traits,
-						via,
-						fills,
-						fields,
-					}) => (
+					Expr::Claim(claim) => (
 						Expr::Claim(Box::new(Claim {
-							typ: typ.clone(),
-							type_params: type_params.clone(),
-							traits: traits.clone(),
-							via: via.clone(),
-							fills: fills.iter().filter(|e| live(e)).cloned().collect(),
-							fields: fields.clone(),
+							typ: claim.typ.clone(),
+							type_params: claim.type_params.clone(),
+							traits: claim.traits.clone(),
+							via: claim.via.clone(),
+							fills: claim.fills.iter().filter(|e| live(e)).cloned().collect(),
+							fields: claim.fields.clone(),
 						})),
 						*span,
 					),
@@ -99,8 +92,15 @@ fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]
 	for m in &mut program.modules {
 		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
 		for item in &mut m.items {
-			let items = if matches!(&item.0, Expr::Claim(c) if c.traits.is_empty())
-				&& let (Expr::Claim(Claim { fills, fields, .. }), _) = item
+			let items = if let (
+				Expr::Claim(Claim {
+					traits: [],
+					fills,
+					fields,
+					..
+				}),
+				_,
+			) = item
 			{
 				queue.extend(fields.iter_mut().filter_map(|f| f.default.as_mut()).map(|d| &mut d.0));
 				fills.as_mut_slice()
@@ -314,13 +314,11 @@ fn def_site(e: &mut Expr, scope: &Scope) {
 			*e = Expr::Ident(k)
 		}
 		Expr::MethodCall {
-			recv,
+			recv: (Expr::Ident(m), _),
 			method,
 			type_args,
 			args,
-		} if let Expr::Ident(m) = &recv.0
-			&& let Some(name) = key(&format!("{m}.{method}")) =>
-		{
+		} if let Some(name) = key(&format!("{m}.{method}")) => {
 			let (type_args, args) = (std::mem::take(type_args), std::mem::take(args));
 			*e = Expr::Call { name, type_args, args }
 		}
@@ -329,21 +327,15 @@ fn def_site(e: &mut Expr, scope: &Scope) {
 }
 
 impl Expander {
-	fn define(
-		&mut self,
-		name: String,
-		mut params: Vec<Param>,
-		ret: Option<Box<Spanned<TypeExpr>>>,
-		body: Vec<Spanned<Expr>>,
-		span: Span,
-	) -> Result<(), Diagnostic> {
-		let ast = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Ast");
-		let param = |te: &TypeExpr| ast(te) || matches!(te, TypeExpr::Name(n) if n == "Tokens");
-		let bare = name.rsplit("::").next().unwrap_or(&name);
+	fn define(&mut self, mut func: Box<Func>, span: Span) -> Result<(), Diagnostic> {
+		let Func { name, params, ret, .. } = &mut *func;
+		let ast = |te: &TypeExpr| matches!(te, TypeExpr::Name("Ast"));
+		let param = |te: &TypeExpr| matches!(te, TypeExpr::Name("Ast" | "Tokens"));
+		let bare = name.rsplit("::").next().unwrap_or(name);
 		if BUILTINS.contains(&bare.trim_end_matches('!')) {
 			return fail(format!("`{name}` is a builtin macro"), span, "reserved name");
 		}
-		if self.macros.contains_key(&name) {
+		if self.macros.contains_key(&*name) {
 			return fail(format!("`{name}` is already defined"), span, "duplicate macro");
 		}
 		if let Some(p) = params.iter().find(|p| !param(&p.typ)) {
@@ -353,21 +345,15 @@ impl Expander {
 		if params.len() > MAX_PARAMS {
 			return fail("macros take at most 4 arguments for now", span, "too many parameters");
 		}
-		if let Some((te, rspan)) = &ret
+		if let Some((te, rspan)) = ret.as_deref()
 			&& !ast(te)
 		{
 			return fail("macros return `Ast`", *rspan, "not Ast");
 		}
 		self.macros.insert(name.clone(), (params.len(), std::ptr::null()));
-		let f = Expr::Fn(Box::new(Func {
-			name,
-			type_params: vec![],
-			params_tuple: params.len() != 1,
-			params,
-			ret: Some(Box::new((TypeExpr::Name("Ast".into()), Span::default()))),
-			body,
-		}));
-		self.defs.push((f, span));
+		func.params_tuple = func.params.len() != 1;
+		func.ret = Some(Box::new((TypeExpr::Name("Ast".into()), Span::default())));
+		self.defs.push((Expr::Fn(func), span));
 		Ok(())
 	}
 
@@ -424,8 +410,7 @@ impl Expander {
 
 	// A `name!(T)` call.
 	fn type_call(&self, t: &TypeExpr, scope: &Scope) -> Option<Spanned<Expr>> {
-		if let TypeExpr::Annotated(anns, inner) = t
-			&& let [(Expr::Ident(name), span)] = &anns[..]
+		if let TypeExpr::Annotated([(Expr::Ident(name), span)], inner) = t
 			&& self.macros.contains_key(&resolve_bare(name, scope))
 		{
 			let (name, args) = (name.clone(), vec![(type_ast(inner), *span)]);
@@ -555,9 +540,7 @@ impl Expander {
 				match &e.0 {
 					Expr::Fn(f) if f.name.contains('!') => Ok(()),
 					Expr::Quote(_) => Ok(()),
-					Expr::MacroDef { .. } => {
-						fail("macros can only be defined at the top level", e.1, "nested macro def")
-					}
+					Expr::MacroDef(_) => fail("macros can only be defined at the top level", e.1, "nested macro def"),
 					_ => e.0.try_children(|c| self.expand(c, scope, depth)),
 				}
 			}
@@ -575,12 +558,7 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 	for m in &mut out.modules {
 		for item in std::mem::take(&mut m.items) {
 			match item.0 {
-				Expr::MacroDef {
-					name,
-					params,
-					ret,
-					body,
-				} => ex.define(name, params, ret, body, item.1)?,
+				Expr::MacroDef(func) => ex.define(func, item.1)?,
 				_ => m.items.push(item),
 			}
 		}
@@ -998,7 +976,7 @@ fn to_param(hole: &Param, a: &Spanned<Expr>) -> Param {
 // The slot a type hole names.
 fn hole_key(t: &TypeExpr) -> Option<&str> {
 	match t {
-		TypeExpr::Unquote(e) if let Expr::Unquote(k) = &e.0 => Some(k),
+		TypeExpr::Unquote((Expr::Unquote(k), _)) => Some(k),
 		_ => None,
 	}
 }
@@ -1318,7 +1296,10 @@ fn note_keys(def: &Spanned<Expr>) -> impl Iterator<Item = &String> {
 fn written(e: &Expr) -> String {
 	match e {
 		Expr::Ident(n) => n.clone(),
-		Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => format!("{m}.{field}"),
+		Expr::Field {
+			tuple: (Expr::Ident(m), _),
+			field,
+		} => format!("{m}.{field}"),
 		_ => String::new(),
 	}
 }
@@ -1401,7 +1382,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			let lit = |e: &Expr, quoted: bool| match e {
 				Expr::String(s) if quoted => format!("{s:?}"),
 				Expr::Ident(s) | Expr::String(s) | Expr::Atom(s) => s.clone(),
-				Expr::EnumShorthand { variant, args } if args.is_empty() => variant.clone(),
+				Expr::EnumShorthand { variant, args: [] } => variant.clone(),
 				Expr::Int(n) => n.to_string(),
 				Expr::Float(n) => n.to_string(),
 				Expr::Bool(b) => b.to_string(),

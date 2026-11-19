@@ -425,8 +425,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let lhs = self.expr(l)?;
 		let hint = rhint(self, &lhs.1);
 
-		let float =
-			matches!(&r.0, Expr::Float(_)) || matches!(&r.0, Expr::Negative(n) if matches!(n.0, Expr::Float(_)));
+		let float = matches!(&r.0, Expr::Float(_) | Expr::Negative((Expr::Float(_), _)));
 		let rhs = if float && l.0.anon() {
 			self.expr(r)?
 		} else {
@@ -494,9 +493,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			_ => (r, false),
 		};
 		let ((lv, lt), (rv, rt)) = self.operands(l, r, |s, lt| {
-			let int = [l, r].iter().any(|e| {
-				matches!(&e.0, Expr::Int(_)) || matches!(&e.0, Expr::Negative(n) if matches!(n.0, Expr::Int(_)))
-			});
+			let int = [l, r]
+				.iter()
+				.any(|e| matches!(&e.0, Expr::Int(_) | Expr::Negative((Expr::Int(_), _))));
 			if int && let Some(t) = s.int_operand(lt, method) {
 				return t;
 			}
@@ -771,7 +770,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			// compare with none
 			(opt, _)
 				if matches!(icc, IntCC::Equal | IntCC::NotEqual)
-					&& matches!(&r.0, Expr::Ident(n) if n == "none")
+					&& matches!(&r.0, Expr::Ident("none"))
 					&& self.types.option_inner(opt).is_some() =>
 			{
 				let tag = self.enum_tag(opt, lv);

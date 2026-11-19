@@ -251,7 +251,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		let hint = match target {
-			Typ::TupleStruct(_, fields) if fields.len() == 1 => &fields[0].1,
+			Typ::TupleStruct(_, [(_, inner)]) => inner,
 			t => t,
 		};
 		let lit =
@@ -329,9 +329,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok((ptr, target.clone()));
 		}
-		if let Typ::TupleStruct(_, fields) = target
-			&& let [(_, ft)] = &fields[..]
-		{
+		if let Typ::TupleStruct(_, [(_, ft)]) = target {
 			let (val, got) = self.coerce(val, &typ, ft, value.1)?;
 			if got == *ft {
 				return Ok((val, target.clone()));

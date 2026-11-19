@@ -3,20 +3,11 @@
 use super::*;
 use crate::loader::{fold_const, hook_method, is_hook_trait};
 
-// A trait's supertraits, fields, methods, and defining scope.
-pub(crate) type TraitItem<'a> = (
-	Vec<String>,
-	&'a [TypeParam],
-	&'a [Param],
-	&'a [Spanned<Expr>],
-	&'a Scope,
-);
-
-// A trait method's name, params, and return annotation.
-pub(crate) type TraitFn<'a> = (&'a str, &'a [Param], &'a Option<Box<Spanned<TypeExpr>>>);
+// A trait's qualified supertraits, definition, and defining scope.
+pub(crate) type TraitItem<'a> = (Vec<String>, &'a TraitDef, &'a Scope);
 
 // A fill's params, tuple-ness, and return annotation.
-pub(crate) type FillSig = (Vec<Param>, bool, Option<Box<Spanned<TypeExpr>>>);
+pub(crate) type FillSig = (Vec<Param>, bool, TypeSlot);
 
 // A trait impl body.
 pub(crate) struct TraitBody<'a> {
@@ -65,7 +56,7 @@ pub(crate) fn builtin_claim(typ: &Typ, tn: &str) -> bool {
 
 // A trait slot annotated `type` is an associated type, filled per claim as an alias.
 pub(crate) fn is_assoc_type(p: &Param) -> bool {
-	matches!(&p.typ, TypeExpr::Name(n) if n == "type")
+	matches!(&p.typ, TypeExpr::Name("type"))
 }
 
 // A claim's associated types, filled or defaulted.
@@ -129,47 +120,38 @@ pub(crate) fn bind_trait_args<'a>(
 	Box::leak(Box::new(method))
 }
 
-pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = TraitFn<'_>> {
+pub(crate) fn trait_fns(methods: &[Spanned<Expr>]) -> impl Iterator<Item = &Func> {
 	methods.iter().filter_map(|m| match &m.0 {
-		Expr::Fn(Func { name, params, ret, .. }) => Some((name.as_str(), params.as_slice(), ret)),
+		Expr::Fn(func) => Some(&**func),
 		_ => None,
 	})
 }
 
 // Whether a trait fn returns `?Self`, reboxed through an object.
-pub(crate) fn self_option(ret: &Option<Box<Spanned<TypeExpr>>>) -> bool {
-	matches!(ret, Some((TypeExpr::Generic(o, a), _)) if o == "Option" && matches!(&a[..], [TypeExpr::Name(n)] if n == "Self"))
+pub(crate) fn self_option(ret: &TypeSlot) -> bool {
+	matches!(ret, Some((TypeExpr::Generic("Option", [TypeExpr::Name("Self")]), _)))
 }
 
 // Whether an object can call it.
-pub(crate) fn object_safe((_, params, ret): TraitFn) -> bool {
-	let is_self = |te: &TypeExpr| matches!(te, TypeExpr::Name(n) if n == "Self");
+pub(crate) fn object_safe(Func { params, ret, .. }: &Func) -> bool {
 	let boxable = |te: &TypeExpr| match te {
-		TypeExpr::Generic(o, a) if o == "Option" && matches!(&a[..], [te] if is_self(te)) => true,
-		te => is_self(te) || !mentions(te, "Self"),
+		TypeExpr::Name("Self") | TypeExpr::Generic("Option", [TypeExpr::Name("Self")]) => true,
+		te => !mentions(te, "Self"),
 	};
 	ret.as_ref().is_none_or(|(te, _)| boxable(te)) && !params.iter().skip(1).any(|p| mentions(&p.typ, "Self"))
 }
 
 // Whether a method gets a vtable slot.
 pub(crate) fn has_slot(methods: &[Spanned<Expr>], method: &str) -> bool {
-	methods.iter().any(|m| {
-		matches!(&m.0, Expr::Fn(Func { name, type_params, params, ret, .. })
-			if name == method && type_params.is_empty() && object_safe((name, params, ret)))
-	})
+	trait_fns(methods).any(|f| f.name == method && f.type_params.is_empty() && object_safe(f))
 }
 
 // Complete a fill's signature from the trait's declaration.
 // An empty, non-tuple param list means the header was omitted entirely.
-pub(crate) fn fill_from_decl(
-	params: &[Param],
-	params_tuple: bool,
-	ret: &Option<Box<Spanned<TypeExpr>>>,
-	(_, dps, dret): TraitFn,
-	span: Span,
-) -> Result<FillSig, Diagnostic> {
-	let ret = ret.clone().or_else(|| dret.clone());
-	if params.is_empty() && !params_tuple {
+pub(crate) fn fill_from_decl(fill: &Func, dps: &[Param], dret: &TypeSlot, span: Span) -> Result<FillSig, Diagnostic> {
+	let params = &fill.params;
+	let ret = fill.ret.clone().or_else(|| dret.clone());
+	if params.is_empty() && !fill.params_tuple {
 		let ps = (dps.iter().enumerate())
 			.map(|(i, d)| {
 				let name = if i == 0 && d.is_receiver() {
@@ -187,7 +169,7 @@ pub(crate) fn fill_from_decl(
 			.collect();
 		return Ok((ps, dps.len() != 1, ret));
 	}
-	let omitted = |p: &Param| matches!(&p.typ, TypeExpr::Name(n) if n == "$?");
+	let omitted = |p: &Param| matches!(&p.typ, TypeExpr::Name("$?"));
 	// a spelled-out header of the wrong arity, receiver aside, is left for the signature check to report
 	if params.len() != dps.len() && params.iter().skip(1).any(omitted) {
 		return arity_err("this fn literal", dps.len(), params.len(), "param", span);
@@ -201,7 +183,7 @@ pub(crate) fn fill_from_decl(
 			_ => p.clone(),
 		})
 		.collect();
-	Ok((ps, params_tuple, ret))
+	Ok((ps, fill.params_tuple, ret))
 }
 
 // Embedding promotes the embedded type's claims, routed like an implicit `via`.
@@ -214,10 +196,11 @@ pub(super) fn promote_embeds<'p>(
 ) -> Vec<TraitBody<'p>> {
 	// a field only stands in for the receiver
 	let lifts = |tn: &str, args| {
-		traits.get(tn).is_some_and(|(_, tparams, tfields, tmethods, _)| {
-			let by = trait_args(tparams, args);
+		traits.get(tn).is_some_and(|(_, def, _)| {
+			let by = trait_args(&def.type_params, args);
 			let selfish = |p: &Param| mentions(&subst(&p.typ, &by), "Self");
-			!tfields.iter().any(is_assoc_type) && trait_fns(tmethods).all(|(_, ps, _)| !ps.iter().skip(1).any(selfish))
+			!def.fields.iter().any(is_assoc_type)
+				&& trait_fns(&def.methods).all(|f| !f.params.iter().skip(1).any(selfish))
 		})
 	};
 
@@ -296,10 +279,8 @@ pub(super) fn check_impls<'p>(
 		}
 		if is_hook_trait(&tn) {
 			let hook = hook_method(&tn);
-			let well_formed = methods.iter().any(|m| {
-				matches!(&m.0, Expr::Fn(Func { name, params, .. })
-					if *name == hook && params.len() == 1 && params[0].is_receiver() && params[0].access == Access::Mut)
-			});
+			let well_formed = trait_fns(methods)
+				.any(|f| f.name == hook && matches!(&f.params, [p] if p.is_receiver() && p.access == Access::Mut));
 			if !well_formed {
 				let msg = format!("`impl {tn} for {typ}` must define `fn {hook}(mut self)`");
 				let label = format!("missing or wrong `{hook}` method");
@@ -307,9 +288,10 @@ pub(super) fn check_impls<'p>(
 			}
 			continue;
 		}
-		let Some((supers, tparams, tfields, tmethods, home)) = types.traits.get(tn.as_str()) else {
+		let Some((supers, def, home)) = types.traits.get(tn.as_str()) else {
 			return fail(format!("unknown trait `{tn}`"), span, "no such trait");
 		};
+		let (tparams, tfields, tmethods) = (&def.type_params, &def.fields, &def.methods);
 		let required = tparams.iter().filter(|p| p.default.is_none()).count();
 		if args.len() > tparams.len() || args.len() < required {
 			let want = match required == tparams.len() {
@@ -335,7 +317,7 @@ pub(super) fn check_impls<'p>(
 		for (name, te) in &assoc {
 			sig_params.insert(name.clone(), types.with_scope(scope).resolve(&subst(te, &me), span)?);
 		}
-		for tf in *tfields {
+		for tf in tfields {
 			if is_assoc_type(tf) {
 				if assoc.iter().all(|(n, _)| *n != tf.name) {
 					let msg = format!("`{typ}` is missing associated type `{}` of trait `{tn}`", tf.name);
@@ -373,8 +355,9 @@ pub(super) fn check_impls<'p>(
 			let lit = typed_lit(types, lit, &want, msg)?;
 			consts.insert(key, lit);
 		}
+
 		let sig_types = types.with_self(Some(typ)).with_type_params(&sig_params).with_scope(scope);
-		let sig = |ps: &[Param], ret: &Option<Box<Spanned<TypeExpr>>>| -> Result<Typ, Diagnostic> {
+		let sig = |ps: &[Param], ret: &TypeSlot| -> Result<Typ, Diagnostic> {
 			let param = |p: &Param| {
 				let typ = sig_types.param(&p.typ, p.span)?;
 				Ok(FnParam::of(p, access_wrap(p.access, typ)))
@@ -393,56 +376,44 @@ pub(super) fn check_impls<'p>(
 				fail(msg, at, "wrong signature")
 			}
 		};
+
 		for m in methods {
-			let Expr::Fn(Func {
-				name,
-				params,
-				params_tuple,
-				ret,
-				..
-			}) = &m.0
-			else {
+			let Expr::Fn(fill) = &m.0 else { continue };
+			let Some(decl) = trait_fns(tmethods).find(|d| d.name == fill.name) else {
 				continue;
 			};
-			let Some(decl @ (_, tp, tr)) = trait_fns(tmethods).find(|(n, ..)| n == name) else {
-				continue;
-			};
-			let (params, _, ret) = fill_from_decl(params, *params_tuple, ret, decl, m.1)?;
-			let (mut got, want) = (sig(&params, &ret)?, sig(tp, tr)?);
+
+			let (params, _, ret) = fill_from_decl(fill, &decl.params, &decl.ret, m.1)?;
+			let (mut got, want) = (sig(&params, &ret)?, sig(&decl.params, &decl.ret)?);
 			if matches!(role::key(&tn), Some(role::Role("Add" | "Sub" | "Mul" | "Div" | "Mod")))
 				&& let (Typ::Fn(gp, _), Typ::Fn(wp, _)) = (&mut got, &want)
 				&& let ([_, gother], [_, wother]) = (gp.as_mut_slice(), wp.as_slice())
 			{
 				gother.typ = wother.typ.clone();
 			}
-			same_sig(name, got, want, m.1)?;
+			same_sig(&fill.name, got, want, m.1)?;
 		}
+
 		for t in tmethods.iter().map(|t| bind_trait_args(t, tparams, args)) {
-			let Expr::Fn(Func {
-				name,
-				params,
-				params_tuple,
-				ret,
-				body,
-				type_params: mtp,
-			}) = &t.0
-			else {
-				continue;
-			};
-			if !mtp.is_empty() || methods.iter().any(|m| matches!(&m.0, Expr::Fn(f) if f.name == *name)) {
+			let Expr::Fn(decl) = &t.0 else { continue };
+			let Func { name, params, ret, .. } = &**decl;
+			if !decl.type_params.is_empty() || trait_fns(methods).any(|f| f.name == *name) {
 				continue;
 			}
+
 			// check whether an overlapping fill is already present
 			let key = (typ.to_string(), name.clone());
 			let fn_key = format!("{typ}.{name}");
-			if (body.is_empty() || !defaults.contains_key(&key))
+			if (decl.body.is_empty() || !defaults.contains_key(&key))
 				&& let Some(f) = others.iter().find(|f| f.key == fn_key)
 			{
 				same_sig(name, sig(&f.params, &f.ret)?, sig(params, ret)?, span)?;
 				continue;
 			}
+
 			let (params, ret, body, default) = if let (Some(field), Some(lent)) = (via, &lent) {
 				let s = |e| (e, span);
+
 				// a method without a receiver belongs to the lent type, not the instance
 				let lent_fn = params.first().is_none_or(|p| !p.is_receiver());
 				let recv = match lent_fn {
@@ -462,7 +433,7 @@ pub(super) fn check_impls<'p>(
 						.map(|p| s(Expr::Ident(p.name.clone())))
 						.collect(),
 				};
-				let body = match lent_fn && matches!(ret, Some((TypeExpr::Name(n), _)) if n == "Self") {
+				let body = match lent_fn && matches!(ret, Some((TypeExpr::Name("Self"), _))) {
 					true => Expr::StructLit {
 						name: typ.into(),
 						type_args: vec![],
@@ -470,9 +441,10 @@ pub(super) fn check_impls<'p>(
 					},
 					false => call,
 				};
+
 				let (params, ret) = subst_sig(params, ret, &me);
 				(params, ret, &Box::leak(Box::new([s(body)]))[..], false)
-			} else if body.is_empty() {
+			} else if decl.body.is_empty() {
 				let msg = format!("`{typ}` is missing method `{name}` required by trait `{tn}`");
 				return fail(msg, span, "provide this method");
 			} else {
@@ -482,12 +454,12 @@ pub(super) fn check_impls<'p>(
 					let msg = format!("`{typ}` takes default `{name}` from both `{prev}` and `{tn}`");
 					return fail(msg, span, format!("fill `{name}` on `{typ}` to settle it"));
 				}
-				(params.clone(), ret.clone(), &body[..], true)
+				(params.clone(), ret.clone(), &decl.body[..], true)
 			};
 			let scope = if default { home } else { scope };
 			others.push(FnItem {
 				default,
-				..FnItem::new(fn_key, scope, (params, *params_tuple, ret), body)
+				..FnItem::new(fn_key, scope, (params, decl.params_tuple, ret), body)
 			});
 		}
 	}

@@ -56,7 +56,7 @@ fn lit_text(e: &Expr) -> String {
 		Expr::Array(es) => format!("[{}]", list(&mut es.iter())),
 		Expr::StructLit { name, fields, .. } => format!("{name}.{{{}}}", list(&mut fields.iter().map(|(_, v)| v))),
 		Expr::Cast { args, .. } => list(&mut args.iter()),
-		Expr::EnumShorthand { variant, args } if args.is_empty() => format!(":{variant}"),
+		Expr::EnumShorthand { variant, args: [] } => format!(":{variant}"),
 		Expr::EnumShorthand { variant, args } => format!(".{variant}.({})", list(&mut args.iter())),
 		Expr::DotTuple(es) => format!(".({})", list(&mut es.iter())),
 		e => format!("{e:?}"),
@@ -222,7 +222,7 @@ impl Typ {
 	}
 
 	pub fn is_unit(&self) -> bool {
-		matches!(self, Typ::Tuple(f) if f.is_empty())
+		matches!(self, Typ::Tuple([]))
 	}
 
 	// The word slots of a struct or tuple held inline.
@@ -267,7 +267,7 @@ impl Typ {
 	// Single-field tuple structs are transparent.
 	pub fn newtype(&self) -> Option<&Typ> {
 		match self {
-			Typ::TupleStruct(_, fields) if fields.len() == 1 => Some(&fields[0].1),
+			Typ::TupleStruct(_, [(_, inner)]) => Some(inner),
 			Typ::Annotated(_, t) if self.keyed().is_some() => Some(t),
 			_ => None,
 		}
@@ -417,7 +417,7 @@ impl fmt::Display for Typ {
 			Typ::Str => write!(f, "string"),
 			Typ::CStr => write!(f, "cstr"),
 			Typ::Atom => write!(f, "atom"),
-			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
+			Typ::Tuple([]) => write!(f, "()"),
 			Typ::Tuple(fields)
 				if let [lead @ .., (Some(n), slot)] = &fields[..]
 					&& [role::PACK_OK, role::PACK_ERR].contains(&&**n) =>

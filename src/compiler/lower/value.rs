@@ -266,8 +266,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			v => (false, v),
 		};
 		if *target == Typ::TypeId
-			&& let Some(te) = TypeExpr::from_expr(&value.0)
-				.or_else(|| matches!(&value.0, Expr::Tuple(f) if f.is_empty()).then(TypeExpr::unit))
+			&& let Some(te) =
+				TypeExpr::from_expr(&value.0).or_else(|| matches!(&value.0, Expr::Tuple([])).then(TypeExpr::unit))
 			&& !matches!(&value.0, Expr::Ident(n) if self.vars.contains_key(n))
 			&& let Ok(id) = self.type_val(&te, value.1)
 		{
@@ -280,9 +280,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if *target == Typ::Ast
 			&& let Some((n, q)) = match &value.0 {
 				Expr::Ident(n) if !self.vars.contains_key(n) => Some((n, self.qualify(n).into_owned())),
-				Expr::Field { tuple, field } if let Expr::Ident(m) = &tuple.0 => {
-					self.dotted_key(m, field).map(|q| (field, q))
-				}
+				Expr::Field {
+					tuple: (Expr::Ident(m), _),
+					field,
+				} => self.dotted_key(m, field).map(|q| (field, q)),
 				_ => None,
 			}
 			&& (self.types.named(n, value.1).is_ok()
@@ -303,7 +304,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		if let Some(res) = self.types.pack_ret(target) {
 			let (ok, err) = self.fallible_split(&res).expect("a return pack");
-			if err.is_none() && matches!(inner, Expr::Ident(n) if n == "none") {
+			if err.is_none() && matches!(inner, Expr::Ident("none")) {
 				return Ok(Some(self.owned_zero(target)));
 			}
 			for side in [ok].into_iter().chain(err) {
@@ -315,13 +316,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		if let Some(some) = self.types.option_inner(target) {
 			match inner {
-				Expr::Ident(n) | Expr::EnumShorthand { variant: n, .. } if n == "none" => {
+				Expr::Ident("none") | Expr::EnumShorthand { variant: "none", .. } => {
 					return Ok(Some(self.make_option(target, None)));
 				}
-				Expr::EnumShorthand { variant, args }
-					if variant == "some"
-						&& let [arg] = &args[..] =>
-				{
+				Expr::EnumShorthand {
+					variant: "some",
+					args: [arg],
+				} => {
 					let v = self.check_typed(arg, &some, "type mismatch")?;
 					self.move_resource(arg, &some)?;
 					return Ok(Some(self.make_option(target, Some(v))));
@@ -432,9 +433,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn peeled(&self, typ: &Typ) -> Typ {
 		match peel(typ) {
 			t if let Some((_, base)) = t.variant() => base.clone(),
-			Typ::Struct(n, f) if f.is_empty() => {
-				Typ::Struct(n.clone(), self.types.structs.get(n).cloned().unwrap_or_default())
-			}
+			Typ::Struct(n, []) => Typ::Struct(n.clone(), self.types.structs.get(n).cloned().unwrap_or_default()),
 			t => t.clone(),
 		}
 	}
@@ -761,7 +760,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Expr::Is { typ: te, .. } = &pat.0 {
 			let variant = match te {
 				TypeExpr::Name(name) => name.strip_prefix('.'),
-				TypeExpr::AtomSum(atoms) if atoms.len() == 1 => Some(atoms[0].as_str()),
+				TypeExpr::AtomSum([atom]) => Some(atom.as_str()),
 				_ => None,
 			};
 
@@ -780,7 +779,16 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& let Some((head, field)) = name.rsplit_once('.') =>
 				{
 					let tuple = Box::new((Expr::Ident(head.into()), pat.1));
-					self.enum_pattern(&(Expr::Field { tuple, field: field.into() }, pat.1), typ)
+					self.enum_pattern(
+						&(
+							Expr::Field {
+								tuple,
+								field: field.into(),
+							},
+							pat.1,
+						),
+						typ,
+					)
 				}
 				None => bad(format!("`{typ}` has no variant `{disp}`")).map_err(|d| match self.fallible_split(typ) {
 					Some(_) => d.with_note("bind it to unwrap: `if v := o { .. }`"),
@@ -808,7 +816,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
 			Expr::Atom(v) => (v, &[]),
-			Expr::Field { tuple, field } if matches!(tuple.0, Expr::Ident(_)) => (field, &[]),
+			Expr::Field {
+				tuple: (Expr::Ident(_), _),
+				field,
+			} => (field, &[]),
 			_ => return bad(format!("`{typ}` is matched by its variants")),
 		};
 
@@ -1507,8 +1518,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		if args.is_none() || args != self.types.generics.instance_args(tn) || !self.claims(typ, trait_name) {
 			return false;
 		}
-		let ((_, _, _, tmethods, _), _) = self.types.trait_instance(tn);
-		for (name, ..) in trait_fns(tmethods).filter(|(name, ..)| has_slot(tmethods, name)) {
+		let (_, def, _) = self.types.trait_instance(tn).0;
+		for Func { name, .. } in trait_fns(&def.methods).filter(|f| has_slot(&def.methods, &f.name)) {
 			let Some(sig) = self.resolve_method(typ, name) else {
 				return false;
 			};
@@ -1519,8 +1530,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Reject a cell-backed object whose trait returns `Self`.
 	pub(super) fn check_cell_object(&self, typ: &Typ, tn: &str, span: Span) -> Result<(), Diagnostic> {
-		let ((_, _, _, tmethods, _), _) = self.types.trait_instance(tn);
-		let reboxes = trait_fns(tmethods).any(|(_, _, ret)| matches!(ret, Some((te, _)) if mentions(te, "Self")));
+		let (_, def, _) = self.types.trait_instance(tn).0;
+		let reboxes = trait_fns(&def.methods).any(|f| matches!(&f.ret, Some((te, _)) if mentions(te, "Self")));
 		if typ.slots().is_none() && reboxes {
 			return fail(
 				format!("a `{typ}` can't be a `{tn}` object yet"),
@@ -1652,7 +1663,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			// defaults for any missing variants
 			let mut entries = entries.to_vec();
-			if let Some(at) = entries.iter().position(|(k, _)| matches!(&k.0, Expr::Ident(n) if n == "_")) {
+			if let Some(at) = entries.iter().position(|(k, _)| matches!(&k.0, Expr::Ident("_"))) {
 				let (k, v) = entries.remove(at);
 				let fill = |variant| ((Expr::EnumShorthand { variant, args: vec![] }, k.1), v.clone());
 				entries.extend(missing.into_iter().map(fill));
