@@ -1398,6 +1398,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			let lit = |e: &Expr, quoted: bool| match e {
 				Expr::String(s) if quoted => format!("{s:?}"),
 				Expr::Ident(s) | Expr::String(s) | Expr::Atom(s) => s.clone(),
+				Expr::EnumShorthand { variant, args } if args.is_empty() => variant.clone(),
 				Expr::Int(n) => n.to_string(),
 				Expr::Float(n) => n.to_string(),
 				Expr::Bool(b) => b.to_string(),
@@ -1425,6 +1426,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			| Expr::StructLit { name, .. },
 		) => ast(Expr::Ident(name.clone())),
 		(b"name", ident @ Expr::Ident(_)) => ast(ident.clone()),
+		(b"name", Expr::Atom(variant) | Expr::EnumShorthand { variant, .. }) => ast(Expr::Ident(variant.clone())),
 		(b"name", _) => flag("this Ast has no name", leak(empty()) as i64),
 		(b"items", Expr::Array(v) | Expr::DotArray(_, v) | Expr::Block(v) | Expr::Claim { fills: v, .. }) => {
 			asts(&mut v.iter())

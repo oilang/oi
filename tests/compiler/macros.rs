@@ -969,6 +969,24 @@ fn negative_literals_read_back() {
 }
 
 #[test]
+fn note_arrays_and_none() {
+	check(
+		indoc! {r#"
+			prop :: struct { names: []string, n: ?int }
+			P :: struct {
+				a: int @prop.{["x", "y"], none},
+				b: int @prop.{[], 3},
+			}
+			comp loop f in def(P).items { print(f.note[prop]()) }
+		"#},
+		[
+			r#"some.(prop.{names = ["x", "y"], n = none})"#,
+			"some.(prop.{names = [], n = some.(3)})",
+		],
+	);
+}
+
+#[test]
 fn relations() {
 	check(
 		indoc! {"

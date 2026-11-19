@@ -472,13 +472,24 @@ impl<'a> TypeCtx<'a> {
 					Some(idx) => idx,
 				},
 			};
-			check_lit(&value.0, Some(&field_defs[idx].typ), value.1)?;
+			let typ = &field_defs[idx].typ;
+			match self.option_inner(typ) {
+				Some(_) if matches!(&value.0, Expr::Ident(n) if n == "none") => {}
+				inner => check_lit(&value.0, Some(inner.as_ref().unwrap_or(typ)), value.1)?,
+			}
 		}
 		Ok(())
 	}
 }
 
 fn check_lit(e: &Expr, typ: Option<&Typ>, span: Span) -> Result<(), Diagnostic> {
+	match (e, typ) {
+		(Expr::Array(items), None) => return items.iter().try_for_each(|(item, span)| check_lit(item, None, *span)),
+		(Expr::Array(items), Some(Typ::Array(elem))) => {
+			return items.iter().try_for_each(|(item, span)| check_lit(item, Some(elem), *span));
+		}
+		_ => {}
+	}
 	if !is_literal(e) {
 		let msg = "annotation arguments must be literal values";
 		return fail(msg, span, "not a literal");
