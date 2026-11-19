@@ -759,9 +759,12 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<(i64, Vec<Bind>), Diagnostic> {
 		let bad = |msg| fail(msg, pat.1, "bad pattern");
 		if let Expr::Is { typ: te, .. } = &pat.0 {
-			if let TypeExpr::Name(name) = te
-				&& let Some(variant) = name.strip_prefix('.')
-			{
+			let variant = match te {
+				TypeExpr::Name(name) => name.strip_prefix('.'),
+				TypeExpr::AtomSum(atoms) if atoms.len() == 1 => Some(atoms[0].as_str()),
+				_ => None,
+			};
+			if let Some(variant) = variant {
 				return self.enum_pattern(&(Expr::Atom(variant.into()), pat.1), typ);
 			}
 			if *typ == Typ::Any {

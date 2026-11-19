@@ -320,12 +320,14 @@ fn is_pattern() {
 	check(
 		"x := 3
 		o: ?int = 3
+		c: :a | :b = :b
 		print(
 			x is 1..5 && x !is 3,
 			o is .some.(3),
 			(x, 2) is (3, _),
 			x is _,
+			c is :b && c !is :a,
 		)",
-		"false true true true",
+		"false true true true true",
 	);
 }
