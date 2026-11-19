@@ -52,6 +52,11 @@ fn comp_is_actually_comptime() {
 }
 
 #[test]
+fn comp_fold_that_diverges() {
+	fail(["X :: comp { loop {}; 1 }", "print(X)"], "never produces a value");
+}
+
+#[test]
 fn comp_if_is_conditional_compilation() {
 	let src = indoc! {r#"
 		log :: fn(msg: string) {

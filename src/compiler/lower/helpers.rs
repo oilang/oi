@@ -237,9 +237,12 @@ impl<M: Module> Translator<'_, M> {
 		out
 	}
 
-	// Jump into a block.
+	// Jump into a block, unless the current one already diverged.
 	pub(super) fn enter(&mut self, block: Block) {
-		self.b.ins().jump(block, &[]);
+		let last = self.b.current_block().and_then(|from| self.b.func.layout.last_inst(from));
+		if !last.is_some_and(|inst| self.b.func.dfg.insts[inst].opcode().is_terminator()) {
+			self.b.ins().jump(block, &[]);
+		}
 		self.b.seal_block(block);
 		self.b.switch_to_block(block);
 	}
