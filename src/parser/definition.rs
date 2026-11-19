@@ -2,7 +2,7 @@ use super::{
 	P, Parsers, Rec, Tokens, Trails, brace, bracket, ident, list1, loose_list, loose_list1, matrix, paren,
 	shadow_params, spanned, stmt, trailing_list, trailing_list1, types,
 };
-use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, record_args};
+use crate::ast::{self, Access, BinOp, Capture, Expr, MatchArm, Span, Spanned, TypeExpr, When, alts, dollar_is, is_match, record_args};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -64,44 +64,6 @@ fn pipe(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> 
 		Expr::Pipe {
 			value: Box::new(value),
 			step: Box::new(pipe_step(step)),
-		},
-		span,
-	)
-}
-
-// Builds `$ is T`.
-fn dollar_is(typ: TypeExpr, span: Span) -> Spanned<Expr> {
-	let (subject, negated) = (Box::new((Expr::Dollar, span)), false);
-	(Expr::Is { subject, typ, negated }, span)
-}
-
-// Splits `a | b` and `is A | B` into one pattern each.
-fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
-	match pat {
-		Expr::Binary(BinOp::BitOr, lhs, rhs) => [alts(*lhs), alts(*rhs)].concat(),
-		Expr::Is { subject, typ, negated } => match typ {
-			TypeExpr::Sum(typs) => typs.into_iter().map(|typ| dollar_is(typ, span)).collect(),
-			TypeExpr::AtomSum(atoms) => atoms.into_iter().map(|atom| (Expr::Atom(atom), span)).collect(),
-			typ => vec![(Expr::Is { subject, typ, negated }, span)],
-		},
-		pat => vec![(pat, span)],
-	}
-}
-
-// Desugars `x is P` into a one-arm match.
-fn is_match(subject: Spanned<Expr>, negated: bool, pat: Spanned<Expr>, span: Span) -> Spanned<Expr> {
-	let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
-	let arms = vec![MatchArm {
-		is: true,
-		body: hit(true),
-		patterns: alts(pat),
-		..Default::default()
-	}];
-	(
-		Expr::Match {
-			subject: Box::new(subject),
-			arms,
-			else_body: Some(hit(false)),
 		},
 		span,
 	)

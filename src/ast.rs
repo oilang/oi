@@ -928,6 +928,44 @@ pub fn bind(name: &str, value: Spanned<Expr>) -> Spanned<Expr> {
 	)
 }
 
+// Builds `$ is T`.
+pub fn dollar_is(typ: TypeExpr, span: Span) -> Spanned<Expr> {
+	let (subject, negated) = (Box::new((Expr::Dollar, span)), false);
+	(Expr::Is { subject, typ, negated }, span)
+}
+
+// Splits `a | b` and `is A | B` into one pattern each.
+pub fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	match pat {
+		Expr::Binary(BinOp::BitOr, lhs, rhs) => [alts(*lhs), alts(*rhs)].concat(),
+		Expr::Is { subject, typ, negated } => match typ {
+			TypeExpr::Sum(typs) => typs.into_iter().map(|typ| dollar_is(typ, span)).collect(),
+			TypeExpr::AtomSum(atoms) => atoms.into_iter().map(|atom| (Expr::Atom(atom), span)).collect(),
+			typ => vec![(Expr::Is { subject, typ, negated }, span)],
+		},
+		pat => vec![(pat, span)],
+	}
+}
+
+// Desugars `x is P` into a one-arm match.
+pub fn is_match(subject: Spanned<Expr>, negated: bool, pat: Spanned<Expr>, span: Span) -> Spanned<Expr> {
+	let hit = move |holds: bool| vec![(Expr::Bool(holds != negated), pat.1)];
+	let arms = vec![MatchArm {
+		is: true,
+		body: hit(true),
+		patterns: alts(pat),
+		..Default::default()
+	}];
+	(
+		Expr::Match {
+			subject: Box::new(subject),
+			arms,
+			else_body: Some(hit(false)),
+		},
+		span,
+	)
+}
+
 pub fn record_args(fields: Vec<(Option<String>, Spanned<Expr>)>, span: Span) -> Vec<Spanned<Expr>> {
 	if fields.iter().all(|(n, _)| n.is_none()) {
 		return fields.into_iter().map(|(_, v)| v).collect();

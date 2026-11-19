@@ -764,6 +764,15 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<(Value, Vec<ArmBinds>), Diagnostic> {
 		let yes = |s: &mut Self| s.b.ins().iconst(types::I8, 1);
 		let subject = |binds| Some(((sv, st.clone()), binds));
+
+		// nested `a | b`
+		if let Expr::Binary(BinOp::BitOr, ..) = pat.0 {
+			let outer = self.dollar.replace((sv, st.clone()));
+			let hit = self.expr(&crate::ast::is_match((Expr::Dollar, pat.1), false, pat.clone(), pat.1));
+			self.dollar = outer;
+			return Ok((hit?.0, vec![]));
+		}
+
 		let (pat, subs) = &split_subs(pat);
 		let (mut hit, found) = match &pat.0 {
 			Expr::Ident(w) if w == "_" => (yes(self), None),
@@ -795,6 +804,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					let msg = "a quote pattern is a single expression, alone in its arm";
 					return Err(Diagnostic::new(msg, pat.1.into_range()));
 				}
+
 				let (tpl, slots) = expand::register(q, pat.1)?;
 				let names: Vec<(String, Typ)> = (slots.iter())
 					.map(|slot| match slot.capture()? {

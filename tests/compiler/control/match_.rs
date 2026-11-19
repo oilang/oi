@@ -329,6 +329,7 @@ fn is_pattern() {
 			x is _,
 			c is :b && c !is :a,
 			x is 3 | 4 && o is .none | .some && c is :a | :b && a is int | string,
+			o is .some.(1 | 3) && ((1, 2), x) is ((1, 0) | (1, 2), 3),
 			match c {
 				is :a | :b => match x {
 					1 | 2 => 1,
@@ -337,7 +338,7 @@ fn is_pattern() {
 			},
 		)
 	"#;
-	check(src, "false true true true true true 2");
+	check(src, "false true true true true true true 2");
 }
 
 #[test]
