@@ -1661,7 +1661,7 @@ impl<M: Module> Compiler<M> {
 			return fail(msg, b.span, "claim `Drop` too");
 		}
 
-		let promoted = promote_embeds(&structs, &mut self.world.trait_impls, &trait_bodies, scope_of);
+		let promoted = promote_embeds(&structs, &mut self.world.trait_impls, &trait_bodies, &traits, scope_of);
 		trait_bodies.extend(promoted);
 
 		// generic claims

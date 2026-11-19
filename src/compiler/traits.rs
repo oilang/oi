@@ -209,8 +209,18 @@ pub(super) fn promote_embeds<'p>(
 	structs: &HashMap<String, Vec<FieldDef>>,
 	impls: &mut HashSet<(String, String)>,
 	claims: &[TraitBody<'p>],
+	traits: &HashMap<&str, TraitItem>,
 	scope_of: impl Fn(&str) -> &'p Scope,
 ) -> Vec<TraitBody<'p>> {
+	// a field only stands in for the receiver
+	let lifts = |tn: &str, args| {
+		traits.get(tn).is_some_and(|(_, tparams, tfields, tmethods, _)| {
+			let by = trait_args(tparams, args);
+			let selfish = |p: &Param| mentions(&subst(&p.typ, &by), "Self");
+			!tfields.iter().any(is_assoc_type) && trait_fns(tmethods).all(|(_, ps, _)| !ps.iter().skip(1).any(selfish))
+		})
+	};
+
 	let (mut out, mut settled) = (vec![], usize::MAX);
 	while out.len() != settled {
 		settled = out.len();
@@ -223,14 +233,16 @@ pub(super) fn promote_embeds<'p>(
 					Typ::Trait(_) | Typ::Error => vec![sn.clone()],
 					_ => continue,
 				};
+
 				for tn in tns {
-					if is_hook_trait(&tn) || !impls.insert((typ.clone(), tn.clone())) {
-						continue;
-					}
 					// a promoted claim inherits the embedded type's type arguments
 					let args = (claims.iter().chain(out.iter()))
 						.find(|b| b.typ == sn && b.trait_name == tn)
 						.map_or(&[][..], |b| b.args);
+					if is_hook_trait(&tn) || !lifts(&tn, args) || !impls.insert((typ.clone(), tn.clone())) {
+						continue;
+					}
+
 					out.push(TraitBody {
 						span: Span::default(),
 						typ: Box::leak(typ.clone().into_boxed_str()),

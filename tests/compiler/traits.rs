@@ -950,6 +950,16 @@ fn embedding_promotes_a_parameterized_claim() {
 }
 
 #[test]
+fn embedding_skips_claims_that_take_self() {
+	let src = indoc! {"
+		use time
+		T :: struct { time.Duration }
+		print(T.{ ns = 1500 }.ms(), T is Cmp)
+	"};
+	check(src, "0.0015 false");
+}
+
+#[test]
 fn a_claim_binds_its_trait_type_params_in_fills() {
 	let src = indoc! {r#"
 		Pair[T] :: trait { pair: fn(self; v: T) []T }
