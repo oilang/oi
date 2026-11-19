@@ -1,5 +1,6 @@
 //! Package manifests, `oi.toml`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -7,11 +8,13 @@ use serde::Deserialize;
 use crate::Reported;
 use crate::driver::fail;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct Manifest {
 	pub name: Option<String>,
 	#[serde(default)]
 	pub root: PathBuf,
+	#[serde(default)]
+	pub bins: BTreeMap<String, PathBuf>,
 }
 
 impl Manifest {

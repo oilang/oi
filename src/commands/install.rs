@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use oi::Reported;
-use oi::driver::{DebugOpts, build_source, fail};
+use oi::driver::fail;
 use oi::loader::home;
+use oi::manifest::Manifest;
 
 use crate::commands::run;
 
@@ -17,25 +18,47 @@ pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result
 	let cloned = url.map(|u| fetch(u, prefix)).transpose()?;
 	let path = cloned.as_deref().or(path).unwrap_or(Path::new("."));
 	let src = path.canonicalize().map_err(at(path))?;
-	let entry = [src.join("src/main.oi"), src.join("main.oi")].into_iter().find(|p| p.exists());
-	let kind = if entry.is_some() { "bin" } else { "lib" };
-	let dest = prefix
-		.map_or_else(home, Path::to_path_buf)
-		.join(kind)
-		.join(src.file_name().unwrap_or_default());
-	fs::create_dir_all(dest.parent().unwrap()).map_err(at(&dest))?;
+	let manifest = Manifest::read(&src)?.unwrap_or_default();
+	let (name, home) = (manifest.name(&src), prefix.map_or_else(home, Path::to_path_buf));
+	let main = ["src/main.oi", "main.oi"].into_iter().find(|main| src.join(main).exists());
+
+	let mut bins = manifest.bins;
+	if bins.is_empty() {
+		bins.extend(main.map(|main| (name.clone(), main.into())));
+	}
+
+	let dir = home.join(if bins.is_empty() { "lib" } else { "bin" });
+	fs::create_dir_all(&dir).map_err(at(&dir))?;
+	for (bin, main) in &bins {
+		run::build(&src.join(main), Some(&dir.join(bin)), false, None, false)?;
+		println!("oi: installed {}", dir.join(bin).display());
+	}
+	if !bins.is_empty() {
+		return Ok(());
+	}
+
+	let (lib, dest) = (src.join(manifest.root), dir.join(name));
+	let marker = dest.join(".source");
+	let source = fs::read_link(&dest).or_else(|_| fs::read_to_string(&marker).map(PathBuf::from));
+	if dest.is_dir() && !source.is_ok_and(|source| source == lib) {
+		return Err(fail(format!("{} is taken by another package", dest.display())));
+	}
+
 	if dest.is_symlink() {
 		fs::remove_file(&dest).map_err(at(&dest))?;
 	} else if link && dest.is_dir() {
 		fs::remove_dir_all(&dest).map_err(at(&dest))?;
 	}
-	let opts = DebugOpts::default();
-	match entry {
-		Some(e) => build_source(run::files(&e)?, run::root(&e), &run::stem(&e), &dest, false, None, opts)?,
-		None if src.is_file() => fs::copy(&src, &dest).map(drop).map_err(at(&src))?,
-		None if link => std::os::unix::fs::symlink(&src, &dest).map_err(at(&dest))?,
-		None => copy(&src, &dest).map_err(at(&src))?,
+
+	if src.is_file() {
+		fs::copy(&src, &dest).map_err(at(&src))?;
+	} else if link {
+		std::os::unix::fs::symlink(&lib, &dest).map_err(at(&dest))?;
+	} else {
+		copy(&lib, &dest).map_err(at(&lib))?;
+		fs::write(&marker, lib.to_string_lossy().as_bytes()).map_err(at(&marker))?;
 	}
+
 	println!("oi: installed {}", dest.display());
 	Ok(())
 }
