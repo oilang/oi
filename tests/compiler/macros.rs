@@ -956,6 +956,19 @@ fn values_read_back() {
 }
 
 #[test]
+fn negative_literals_read_back() {
+	check(
+		indoc! {"
+			prop :: struct { step: int, scale: float }
+			P :: struct { a: int @prop.{-1, -1.5} }
+			comp loop f in def(P).items { print(f.note[prop]()) }
+			comp print(`-2`.str(), `-2.5`.value[float]())
+		"},
+		["-2 -2.5", "some.(prop.{step = -1, scale = -1.5})"],
+	);
+}
+
+#[test]
 fn relations() {
 	check(
 		indoc! {"

@@ -1322,8 +1322,12 @@ fn written(e: &Expr) -> String {
 
 #[unsafe(export_name = "oi_ast_int")]
 pub(crate) extern "C" fn rt_ast_int(a: *mut Spanned<Expr>) -> i64 {
-	match unsafe { &(*a).0 } {
-		Expr::Int(n) if let Some(n) = int_word(*n) => n,
+	let (sign, e) = match unsafe { &(*a).0 } {
+		Expr::Negative(v) => (-1, &v.0),
+		e => (1, e),
+	};
+	match e {
+		Expr::Int(n) if let Some(n) = int_word(sign * n) => n,
 		_ => flag("`.int()` needs an Ast holding an Int literal", 0),
 	}
 }
@@ -1397,6 +1401,8 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 				Expr::Int(n) => n.to_string(),
 				Expr::Float(n) => n.to_string(),
 				Expr::Bool(b) => b.to_string(),
+				Expr::Negative(v) if let Expr::Int(n) = v.0 => (-n).to_string(),
+				Expr::Negative(v) if let Expr::Float(n) = v.0 => (-n).to_string(),
 				_ => flag("`.str()` needs an Ast holding a name or literal", String::new()),
 			};
 			let s = match e {
