@@ -449,3 +449,13 @@ fn keyed_loop_reuses_its_key() {
 	"#};
 	check(src, "33 1");
 }
+
+#[test]
+fn name_lists_group_a_type() {
+	let src = indoc! {r#"
+		a, b: string
+		x, y: f64 = 1, 2
+		print("[{a}{b}]", x, y)
+	"#};
+	check(src, "[] 1.0 2.0");
+}

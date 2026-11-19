@@ -182,6 +182,10 @@ Color :: struct {
 	a: u8 = 255
 }
 
+# block binds group too, zeroed or destructuring the rhs
+a, b, c: string
+x, y: f64 = 1, 2
+
 # a bind yields its value, so binds chain right-to-left
 lo := hi := 0 # essentially `hi := 0; lo := hi`
 # a := b := fs.open(path)? # error, the copy into `a` would move a Drop value

@@ -607,3 +607,11 @@ fn tuple_destructure_of_a_resource_as_last_statement() {
 		["drop 1"],
 	);
 }
+
+#[test]
+fn name_list_of_resources_drops_each_once() {
+	check(
+		[FILE, "a, b: File = File.{fd = 1}, File.{fd = 2}"],
+		["drop 2", "drop 1"],
+	);
+}

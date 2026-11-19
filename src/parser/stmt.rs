@@ -251,8 +251,30 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.at_least(2)
 		.collect::<Vec<_>>()
 		.map_with(|names, ex| (Expr::Tuple(names.into_iter().map(|n| (None, n)).collect()), ex.span()));
-	let pat = names.or(p.pat.clone()).boxed();
+	let pat = names.clone().or(p.pat.clone()).boxed();
 	let (list_bind, destructure) = binds(p, p.bind.clone().or(values.clone()).boxed(), pat);
+
+	// declaration destructuring
+	let decls = names
+		.clone()
+		.then(binding(p.annot.clone(), p.bind.clone().or(values.clone())))
+		.map_with(|(pat, (mutable, typ, value)), ex| {
+			let Expr::Tuple(names) = &pat.0 else { unreachable!() };
+			let typ = typ.map(|(t, s)| (TypeExpr::Tuple(vec![(None, t); names.len()]), s));
+			let (name, value) = (format!("${}", ex.span().start), value.map(Box::new));
+			let value = Box::new((
+				Expr::Bind {
+					mutable,
+					name,
+					typ,
+					value,
+				},
+				ex.span(),
+			));
+			let (pat, mutable) = (Box::new(pat), Some(mutable));
+			(Expr::PatBind { pat, value, mutable }, ex.span())
+		})
+		.boxed();
 
 	let return_list = just(Token::Return)
 		.ignore_then(values.clone())
@@ -268,6 +290,7 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	// statements
 	place.define(
 		destructure
+			.or(decls)
 			.or(list_bind)
 			.or(place_assign)
 			.or(multi_assign)
