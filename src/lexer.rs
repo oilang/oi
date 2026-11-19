@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::{LazyLock, Mutex};
@@ -13,11 +14,17 @@ impl From<&str> for Sym {
 	fn from(text: &str) -> Self {
 		// NOTE: leaks each lexeme for the process, though that's prolly fine for a compiler run
 		static TABLE: LazyLock<Mutex<HashSet<&'static str>>> = LazyLock::new(Mutex::default);
-		let mut table = TABLE.lock().unwrap();
-		Sym(table.get(text).copied().unwrap_or_else(|| {
-			let leaked = Box::leak(text.into());
-			table.insert(leaked);
-			leaked
+		// skips the lock for lexemes this thread has seen
+		thread_local!(static SEEN: RefCell<HashSet<&'static str>> = RefCell::default());
+		Sym(SEEN.with_borrow_mut(|seen| match seen.get(text) {
+			Some(&sym) => sym,
+			None => {
+				let mut table = TABLE.lock().unwrap();
+				let sym = table.get(text).copied().unwrap_or_else(|| Box::leak(text.into()));
+				table.insert(sym);
+				seen.insert(sym);
+				sym
+			}
 		}))
 	}
 }
