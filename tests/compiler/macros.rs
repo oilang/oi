@@ -947,11 +947,11 @@ fn values_read_back() {
 		indoc! {"
 			Color :: enum { red, green }
 			prop :: struct { c: Color, scale: float }
-			P :: struct { a: int @prop.{:green, 2.5} }
+			P :: struct { a: int @prop.{:green, 2.5}, b: int @prop.{.red, 1.0} }
 			comp loop f in def(P).items { print(f.note[prop]()) }
 			comp print(`[1, 2]`.value[[]int](), `none`.value[?int](), `3`.value[?int]())
 		"},
-		["[1, 2] none some.(3)", "some.(prop.{c = green, scale = 2.5})"],
+		["[1, 2] none some.(3)", "some.(prop.{c = green, scale = 2.5})", "some.(prop.{c = red, scale = 1.0})"],
 	);
 }
 

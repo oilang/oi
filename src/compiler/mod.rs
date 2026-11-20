@@ -493,7 +493,7 @@ fn check_lit(e: &Expr, typ: Option<&Typ>, span: Span) -> Result<(), Diagnostic> 
 		}
 		_ => {}
 	}
-	if !is_literal(e) {
+	if !is_literal(e) && !matches!(e, Expr::EnumShorthand { args: [], .. }) {
 		let msg = "annotation arguments must be literal values";
 		return fail(msg, span, "not a literal");
 	}
@@ -514,7 +514,7 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 		),
 		Expr::Float(_) => matches!(typ, Typ::Float(_)),
 		Expr::String(_) => matches!(typ, Typ::Str),
-		Expr::Atom(_) => typ.is_enumish() || matches!(typ, Typ::Atom),
+		Expr::Atom(_) | Expr::EnumShorthand { args: [], .. } => typ.is_enumish() || matches!(typ, Typ::Atom),
 		_ => false,
 	}
 }
