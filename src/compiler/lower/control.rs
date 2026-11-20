@@ -1729,11 +1729,23 @@ impl<'a, M: Module> Translator<'a, M> {
 			s.b.switch_to_block(body_block);
 			s.temp(yielded, &opt);
 			let v = s.take_payload(yielded, &opt, &item);
+
+			let owned = s.is_affine(&item);
 			let (Some((var, opt_key)), Typ::Tuple(fields)) = (&after, &item) else {
-				return s.bind_pat(pat, v, &item, Some(false));
+				if owned {
+					s.temp(v, &item);
+				}
+				return s.bind_parts(pat, pat, v, &item, Some(false));
 			};
-			let (value, key_val) = (s.ld_typ(v, 0, &fields[0].1), s.ld_typ(v, 8, &fields[1].1));
-			s.bind_pat(pat, value, &fields[0].1, Some(false))?;
+
+			let (mut value, mut key_val) = (s.ld_typ(v, 0, &fields[0].1), s.ld_typ(v, 8, &fields[1].1));
+			if owned {
+				(value, key_val) = (s.unbox_ret(value, &fields[0].1), s.unbox_ret(key_val, &fields[1].1));
+				s.temp(value, &fields[0].1);
+				s.temp(key_val, &fields[1].1);
+			}
+
+			s.bind_parts(pat, pat, value, &fields[0].1, Some(false))?;
 			if let (Some(key), Some(key_at)) = (key, &key_at) {
 				let (at, typ) = s.emit_call_at(key_at, &[it, key_val], Some(span));
 				s.bind_pat(key, at, &typ, Some(false))?;
@@ -1961,8 +1973,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				view.boxed = true;
 				s.vars.insert(name.clone(), view);
 			} else {
-				let item = s.load_nth(*data, iv, elem);
-				let item = if owns { s.unbox_ret(item, elem) } else { item };
+				let mut item = s.load_nth(*data, iv, elem);
+				if owns {
+					item = s.unbox_ret(item, elem);
+					s.temp(item, elem);
+				}
 				s.bind_pat(pat, item, elem, Some(false)).map_err(|d| match hint {
 					true => d.with_note("the key is a second name, as in `loop v, k in m`"),
 					false => d,

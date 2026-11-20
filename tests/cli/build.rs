@@ -254,6 +254,38 @@ fn c_calls_oi_with_structs_by_value() {
 }
 
 #[test]
+fn lib_unmaps_on_dlclose() {
+	// a cycle root and an interpolation reach both thread locals
+	let src = indoc! {r#"
+		Node :: struct { next: ?^Node }
+		@export
+		tick :: fn(v: int) int {
+			n := &Node.{}
+			n.next = ?^Node.(n)
+			"{v}".len()
+		}
+	"#};
+	let host = indoc! {r#"
+		#include <dlfcn.h>
+		int main(int argc, char **argv) {
+			void *lib = dlopen(argv[1], RTLD_NOW);
+			((long (*)(long))dlsym(lib, "tick"))(1);
+			dlclose(lib);
+			return dlopen(argv[1], RTLD_NOW | RTLD_NOLOAD) != 0;
+		}
+	"#};
+
+	let dir = Project::new().file("main.oi", src).file("host.c", host);
+	dir.ok(&["build", "--lib"]);
+	let mut cc = Command::new("cc");
+	cc.args(["host.c", "-o", "host"]).current_dir(&dir);
+	assert!(cc.output().unwrap().status.success());
+
+	let lib = dir.as_ref().join(format!("{DLL_PREFIX}main{DLL_SUFFIX}"));
+	assert!(Command::new(dir.as_ref().join("host")).arg(lib).status().unwrap().success());
+}
+
+#[test]
 fn aarch64_structs_past_the_last_reg_go_on_the_stack() {
 	// NOTE: needs qemu, the cross gcc, and `cargo build -p oi-runtime --target aarch64-unknown-linux-gnu`
 	let runtime =

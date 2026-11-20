@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char};
-use std::mem::size_of;
+use std::mem::{ManuallyDrop, size_of};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
@@ -67,8 +67,9 @@ impl Decode for Sink {
 	const WHAT: &str = "sink";
 }
 
+// a TLS dtor would pin a `--lib` past `dlclose`
 thread_local! {
-	static BUF: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+	static BUF: ManuallyDrop<RefCell<Vec<u8>>> = const { ManuallyDrop::new(RefCell::new(Vec::new())) };
 }
 
 // Route a fragment to its sink.
@@ -877,7 +878,7 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 
 thread_local! {
 	// Boxes whose non-zero release marked them as possible cycle roots.
-	static ROOTS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+	static ROOTS: ManuallyDrop<RefCell<HashSet<usize>>> = ManuallyDrop::new(RefCell::new(HashSet::new()));
 	// Root count that triggers a collection.
 	static THRESHOLD: Cell<usize> = const { Cell::new(10_000) };
 }
