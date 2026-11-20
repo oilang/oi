@@ -121,6 +121,17 @@ fn top_level_const_works_alongside_main() {
 }
 
 #[test]
+fn nested_struct_literal_const() {
+	let src = indoc! {"
+		P :: struct { x: int }
+		L :: struct { a: P, b: P }
+		K :: L.{ P.{ 1 }, P.{ 2 } }
+		main :: fn() { print(K.b.x) }
+	"};
+	check(src, "2");
+}
+
+#[test]
 fn array_static_rejects_mixed_element_types() {
 	let src = indoc! {r#"
 		idk := [ "foo" 3 ]
