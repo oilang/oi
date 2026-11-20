@@ -162,10 +162,25 @@ oi build
 oi repl
 oi install
 oi init
+oi lsp
 
 # not yet implemented:
 oi fmt
 oi doc
 oi watch
-oi lsp
+```
+
+Editors talk to `oi lsp` over stdio. In Neovim 0.11+:
+
+```lua
+vim.filetype.add({ extension = { oi = "oi" } })
+vim.lsp.config("oi", { cmd = { "oi", "lsp" }, filetypes = { "oi" }, root_markers = { "main.oi", ".git" } })
+vim.lsp.enable("oi")
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "oi",
+	callback = function()
+		vim.bo.commentstring = "# %s"
+		vim.bo.comments = "b:##,b:#"
+	end,
+})
 ```
