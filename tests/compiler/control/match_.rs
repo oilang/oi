@@ -28,6 +28,20 @@ fn match_literals() {
 }
 
 #[test]
+fn match_else_tail() {
+	let src = indoc! {r#"
+		name :: fn(n: int, dim: bool) string {
+			match n { 0 => "none", 1 => "one" }
+			else if dim { "dim" }
+			else do "many"
+		}
+		print(name(1, false), name(5, true), name(5, false))
+		print(if true do match 3 { 1 => 1 } else do 3)
+	"#};
+	check(src, ["one dim many", "3"]);
+}
+
+#[test]
 fn match_no_else_miss() {
 	check("match 5 { 1 => 10, }", "0");
 	check(r#"match "x" { "y" => "yes", }"#, "");

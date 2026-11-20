@@ -16,6 +16,11 @@ fn trailing_fn() {
 }
 
 #[test]
+fn block_on_the_next_line_is_not_a_trailing_arg() {
+	check(["n := [1][0]", "{ print(2) }", "n"], ["2", "1"]);
+}
+
+#[test]
 fn method_trailing_fn() {
 	let src = indoc! {"
 		Box :: struct { n: int }

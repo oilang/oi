@@ -16,6 +16,11 @@ fn array_line_ends_before_a_literal() {
 }
 
 #[test]
+fn line_opening_with_a_bracket_starts_a_statement() {
+	check(["v := 1", r#"["x"]"#, "v"], "1");
+}
+
+#[test]
 fn blocks_are_expressions() {
 	check(
 		["a := { print(3); 5 }", "print(a + { 1 })", "x := 1", "{ x = 7 }", "x"],

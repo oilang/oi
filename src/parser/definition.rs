@@ -367,32 +367,28 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 			.boxed()
 	};
 
-	let if_expr = recursive(|if_expr| {
-		just(Token::If)
-			.ignore_then(just(Token::With).or_not())
-			.then(header(header_cond.clone().boxed()))
-			.then(p.block.clone())
-			.then(
-				just(Token::Else)
-					.ignore_then(if_expr.map(|e| vec![e]).or(p.block.clone()))
-					.or_not(),
+	let mut else_tail = Recursive::declare();
+	let if_expr = just(Token::If)
+		.ignore_then(just(Token::With).or_not())
+		.then(header(header_cond.clone().boxed()))
+		.then(p.block.clone())
+		.then(else_tail.clone().or_not())
+		.validate(|(((with, cond), mut then), els), ex, emitter| {
+			if with.is_some() && !open_bound(&cond, &mut then) {
+				emitter.emit(I::fault(ex.span(), "`with` needs a name"));
+			}
+			(
+				Expr::If {
+					cond: Box::new(cond),
+					then,
+					els,
+					chain: false,
+				},
+				ex.span(),
 			)
-			.validate(|(((with, cond), mut then), els), ex, emitter| {
-				if with.is_some() && !open_bound(&cond, &mut then) {
-					emitter.emit(I::fault(ex.span(), "`with` needs a name"));
-				}
-				(
-					Expr::If {
-						cond: Box::new(cond),
-						then,
-						els,
-						chain: false,
-					},
-					ex.span(),
-				)
-			})
-	})
-	.boxed();
+		})
+		.boxed();
+	else_tail.define(just(Token::Else).ignore_then(if_expr.clone().map(|e| vec![e]).or(p.block.clone())));
 
 	// loops
 	let label = select! { Token::Atom(a) => a.to_string() };
@@ -552,12 +548,13 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 					.or_not(),
 			),
 		))
-		.map_with(|(subject, (arms, else_body)), ex| {
+		.then(else_tail.or_not())
+		.map_with(|((subject, (arms, inner_else)), else_tail), ex| {
 			(
 				Expr::Match {
 					subject: Box::new(subject.unwrap_or((Expr::Bool(true), ex.span()))),
 					arms,
-					else_body,
+					else_body: inner_else.or(else_tail),
 				},
 				ex.span(),
 			)
@@ -727,7 +724,9 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	.boxed();
 
 	// array subscripts
-	let subscript = bracket(p.expr.clone().map(Some).or(just(Token::DotDot).map(|_| None))).boxed();
+	let subscript = (p.same_line.clone())
+		.ignore_then(bracket(p.expr.clone().map(Some).or(just(Token::DotDot).map(|_| None))))
+		.boxed();
 
 	// infix operator builders
 	let binop_with = |assoc, pre: P<'token, I, ()>, tok: Token, op: BinOp| {
@@ -902,9 +901,9 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.boxed();
 
 	// juxts
-	let trailing = anon_fn.clone().or(p.block_ast.clone()).boxed();
+	let trailing = p.same_line.clone().ignore_then(anon_fn.clone().or(p.block_ast.clone())).boxed();
 	let trail_only = trailing.clone().map(|t| (None, Some(t))).boxed();
-	trail.define(p.same_line.clone().ignore_then(trailing.clone()));
+	trail.define(trailing.clone());
 
 	// labeled blocks
 	let labeled = label
