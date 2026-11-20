@@ -331,21 +331,22 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// A pattern taking a move-only part consumes its subject, dropping the rest.
-	pub(super) fn consume_parts(
+	// Bind a pattern, a move-only part consuming its subject and dropping the rest.
+	pub(super) fn bind_parts(
 		&mut self,
 		pat: &Spanned<Expr>,
 		subject: &Spanned<Expr>,
 		val: Value,
 		typ: &Typ,
+		mutable: Option<bool>,
 	) -> Result<(), Diagnostic> {
-		let Some(layout) = self.types.layout(typ) else {
-			return Ok(());
+		let (layout, binds) = match self.types.layout(typ) {
+			Some(layout) if !matches!(pat.0, Expr::Ident(_)) => (layout, self.pat_binds(pat, typ)?),
+			_ => Default::default(),
 		};
-		let binds = self.pat_binds(pat, typ)?;
 		let moved: Vec<i32> = binds.iter().filter(|b| self.is_affine(&b.1)).map(|b| b.2).collect();
 		if moved.is_empty() {
-			return Ok(());
+			return self.bind_pat(pat, val, typ, mutable);
 		}
 		if self.claims(typ, "Drop") {
 			return fail(
@@ -354,20 +355,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				"not movable",
 			);
 		}
+
 		self.move_resource(subject, typ)?;
 		self.untemp(val);
 		let pack = self.types.pack_ret(typ).is_some();
-		for field in &layout.fields {
-			match moved.contains(&field.off) {
-				true if field.words > 1 || pack => {}
-				true => {
-					let fv = self.ld_typ(val, field.off, &field.typ);
-					let fv = self.unbox_ret(fv, &field.typ);
-					self.st(val, field.off, fv);
-				}
-				false => self.rc_field(val, field, false),
-			}
+		let (taken, rest): (Vec<_>, Vec<_>) = layout.fields.iter().partition(|f| moved.contains(&f.off));
+		for field in taken.iter().filter(|f| f.words == 1 && !pack) {
+			let fv = self.ld_typ(val, field.off, &field.typ);
+			let fv = self.unbox_ret(fv, &field.typ);
+			self.st(val, field.off, fv);
 		}
+
+		self.bind_pat(pat, val, typ, mutable)?;
+		rest.iter().for_each(|field| self.rc_field(val, field, false));
 		Ok(())
 	}
 

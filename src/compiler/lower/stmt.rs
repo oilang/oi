@@ -154,8 +154,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if i + 1 == stmts.len() && !self.is_affine(&typ) {
 						last = (ptr, typ.clone());
 					}
-					self.consume_parts(pat, value, ptr, &typ)?;
-					self.bind_pat(pat, ptr, &typ, *mutable)?;
+					self.bind_parts(pat, value, ptr, &typ, *mutable)?;
 				}
 
 				Expr::Assign { key: (Expr::Ident("_"), _), value } => last = self.expr(value)?,

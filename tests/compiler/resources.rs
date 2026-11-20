@@ -436,6 +436,7 @@ fn a_move_loop_owns_each_element() {
 		[FILE, mk, "loop move f in fs { if f.fd == 0 do break }"],
 		["drop 0", "drop 1", "drop 2"],
 	);
+	check([FILE, mk, "loop move _ in fs {}"], ["drop 0", "drop 1", "drop 2"]);
 	fail(
 		[FILE, close, mk, "loop f in move fs { f.close() }"],
 		"`loop move x` bind owns",
@@ -614,4 +615,32 @@ fn name_list_of_resources_drops_each_once() {
 		[FILE, "a, b: File = File.{fd = 1}, File.{fd = 2}"],
 		["drop 2", "drop 1"],
 	);
+}
+
+#[test]
+fn a_pattern_taking_a_resource_drops_the_rest_after_binding() {
+	let two = r#"two :: fn(n: int) (File, string) { (File.{fd = n}, "s{n}") }"#;
+	let bind = "f, s := two(1)\nprint(s, f.fd)";
+	let src = [FILE, two, bind, "loop (_, s) in (0..1).map(two) do print(s)"];
+	check(src, ["s1 1", "s0", "drop 0", "drop 1"]);
+	assert_clean(src);
+}
+
+#[test]
+fn ptr_write_and_read_move_a_resource() {
+	let src = indoc! {r#"
+		calloc : fn(n: usize, size: usize) ptr : foreign
+		free : fn(p: ptr) : foreign
+		p := unsafe calloc(1, 8)
+		f := File.{fd = 1}
+		unsafe p.write(move f)
+		print("written")
+		g := unsafe p.read[File]()
+		unsafe free(p)
+	"#};
+	let src = [FILE, src].concat();
+	let src = src.as_str();
+	check(src, ["written", "drop 1"]);
+	assert_clean(src);
+	fail(src.replace("move f", "f").as_str(), "missing `move` at the callsite");
 }

@@ -51,13 +51,13 @@ ptr :< {
 		unsafe rt.oi_ptr_string(ctx.alloc, self, len)
 	}
 
-	## Copy a `T` out of the pointed-to memory.
+	## Move a `T` out of the pointed-to memory.
 	@unsafe @intrinsic
 	pub read[T] :: fn(self) T {}
 
-	## Copy `value` into the pointed-to memory.
+	## Move `value` into the pointed-to memory.
 	@unsafe @intrinsic
-	pub write[T] :: fn(self; value: T) {}
+	pub write[T] :: fn(self; move value: T) {}
 
 	## Copy `len` elements into an owned array.
 	@unsafe @intrinsic

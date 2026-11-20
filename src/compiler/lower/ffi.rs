@@ -6,7 +6,8 @@ use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
-use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct};
+use super::call::arg_inner;
+use super::{FieldDef, FnParam, Translator, Typ, TypedVal, c_layout, check_c_sig, cl_type, is_c_struct, rc};
 use crate::ast::{Access, Expr, Span, Spanned, TypeExpr};
 use crate::compiler::{CRegs, c_spread};
 use crate::diagnostics::{Diagnostic, fail};
@@ -41,19 +42,37 @@ impl<M: Module> Translator<'_, M> {
 			(true, Some(c), [(te, ts)], []) => {
 				let typ = self.types.resolve(te, *ts)?;
 				if self.oi_struct(&typ) {
-					return Ok((self.copy_in(c, &typ), typ));
+					let (elem, n) = rc::inline(&typ, &self.types).expect("a struct layout");
+					let slot = self.stack_slot((n as i64 * self.elem_stride(&elem)) as u32);
+					let out = self.fixed_move(slot, c, &elem, n, true);
+					self.temp(out, &typ);
+					return Ok((out, typ));
 				}
 				let Some(fields) = self.c_fields(&typ, *ts)? else {
 					return Ok((self.c_load(&typ, c, 0), typ));
 				};
+
 				let oi = self.struct_slot(&typ, &[])?;
 				self.copy_fields(oi, c, 0, &fields, false);
 				Ok((oi, typ))
 			}
+
 			(false, Some(c), [], [value]) => {
-				let (oi, typ) = self.expr(value)?;
-				if self.oi_struct(&typ) {
-					self.assign_slots(oi, c, &typ, false);
+				let arg = arg_inner(value);
+				let (oi, typ) = self.expr(arg)?;
+
+				// skip the `copy` hook
+				let moved = matches!(value.0, Expr::ArgMod(..)) || self.handover(oi, &typ);
+				if moved {
+					self.check_args(&[Access::Move], None, &[Some(value)])?;
+					self.move_out(arg, &typ)?;
+					self.untemp(oi);
+				}
+
+				if let Some((elem, n)) = rc::inline(&typ, &self.types).filter(|_| moved && self.oi_struct(&typ)) {
+					self.fixed_move(c, oi, &elem, n, true);
+				} else if self.oi_struct(&typ) {
+					self.copy_struct(oi, c, &typ);
 				} else if let Some(fields) = self.c_fields(&typ, value.1)? {
 					self.copy_fields(oi, c, 0, &fields, true);
 				} else {
@@ -61,6 +80,7 @@ impl<M: Module> Translator<'_, M> {
 				}
 				Ok(self.unit_value())
 			}
+
 			_ => {
 				let usage = if read { "p.read[T]()" } else { "p.write(v)" };
 				fail(
