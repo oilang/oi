@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex};
 
 use chumsky::span::SimpleSpan;
 use logos::{Lexer, Logos};
+use rustc_hash::FxHashSet;
 
 // An interned string, so tokens copy and compare by pointer.
 #[derive(Clone, Copy, Eq)]
@@ -13,9 +14,9 @@ pub struct Sym(&'static str);
 impl From<&str> for Sym {
 	fn from(text: &str) -> Self {
 		// NOTE: leaks each lexeme for the process, though that's prolly fine for a compiler run
-		static TABLE: LazyLock<Mutex<HashSet<&'static str>>> = LazyLock::new(Mutex::default);
+		static TABLE: LazyLock<Mutex<FxHashSet<&'static str>>> = LazyLock::new(Mutex::default);
 		// skips the lock for lexemes this thread has seen
-		thread_local!(static SEEN: RefCell<HashSet<&'static str>> = RefCell::default());
+		thread_local!(static SEEN: RefCell<FxHashSet<&'static str>> = RefCell::default());
 		Sym(SEEN.with_borrow_mut(|seen| match seen.get(text) {
 			Some(&sym) => sym,
 			None => {

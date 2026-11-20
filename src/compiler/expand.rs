@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::ast::{
 	Capture, Child, Claim, EnumDef, EnumVariant, Expr, Func, MatchArm, Param, Span, Spanned, StructDef, TraitDef,
 	TypeExpr, int_word,
@@ -28,7 +30,7 @@ pub(crate) const RT_QUOTE_MATCH: &str = "oi_rt_quote_match";
 // A copy of `program` minus dead fns, with each module's items filtered by `keep`.
 pub(super) fn lend(
 	program: &Program,
-	dead: &HashSet<String>,
+	dead: &FxHashSet<String>,
 	mut keep: impl FnMut(&str, &mut Vec<Spanned<Expr>>),
 ) -> Program {
 	let live = |e: &Spanned<Expr>| fn_name(e).is_none_or(|n| !dead.contains(&simple(n)));
@@ -87,8 +89,8 @@ fn simple(name: &str) -> String {
 }
 
 // Collects the dead library functions.
-fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]) -> [HashSet<String>; 2] {
-	let (mut queue, mut fns, mut named) = (vec![], HashMap::<_, Vec<_>>::new(), HashSet::new());
+fn dead_fns(program: &mut Program, roots: &[String], extra: &mut [Spanned<Expr>]) -> [FxHashSet<String>; 2] {
+	let (mut queue, mut fns, mut named) = (vec![], FxHashMap::<_, Vec<_>>::default(), FxHashSet::default());
 	for m in &mut program.modules {
 		let pinned = m.name == "main" || program.core_origin.contains(&m.name);
 		for item in &mut m.items {

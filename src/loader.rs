@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use chumsky::{input::Stream, prelude::*};
 use cranelift::codegen::incremental_cache::CacheKvStore;
 use include_dir::{Dir, File, include_dir};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::Reported;
 use crate::ast::{
@@ -77,8 +78,8 @@ impl Module {
 #[derive(Default, Clone)]
 pub struct Scope {
 	header: Option<String>,
-	pub env: HashMap<String, String>,
-	pub module_env: Arc<HashMap<String, String>>,
+	pub env: FxHashMap<String, String>,
+	pub module_env: Arc<FxHashMap<String, String>>,
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
 	pub files: Vec<(Range<usize>, Scope)>,
@@ -202,7 +203,7 @@ pub struct Program {
 	pub roots: Vec<PathBuf>,
 	pub core_origin: HashSet<String>,
 	pub selected: Vec<(String, String, String, Span)>,
-	pub(crate) needed: HashSet<String>,
+	pub(crate) needed: FxHashSet<String>,
 	pub(crate) held: HashMap<String, Scan>,
 }
 
@@ -453,13 +454,13 @@ pub struct Scan {
 	header: Option<String>,
 	pub decls: Vec<(String, Range<usize>)>,
 	claims: Vec<Vec<String>>,
-	idents: HashSet<String>,
+	idents: FxHashSet<String>,
 	eager: bool,
 }
 
 impl Scan {
 	// Checks whether a fill over `needed` parses this file.
-	pub(crate) fn fires(&self, needed: &HashSet<String>) -> bool {
+	pub(crate) fn fires(&self, needed: &FxHashSet<String>) -> bool {
 		self.eager
 			|| self.decls.iter().any(|(d, _)| needed.contains(d))
 			|| self.claims.iter().any(|head| head.iter().all(|n| needed.contains(n)))

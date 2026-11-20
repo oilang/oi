@@ -1005,6 +1005,7 @@ dependencies = [
  "postcard",
  "pretty_assertions",
  "reedline",
+ "rustc-hash",
  "serde",
  "serde_json",
  "target-lexicon",

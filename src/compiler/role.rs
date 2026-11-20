@@ -1,7 +1,8 @@
 // The compiler resolves in `core`.
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
+
+use rustc_hash::FxHashMap;
 
 use super::ann;
 use crate::ast::Expr;
@@ -12,12 +13,12 @@ use crate::loader::Program;
 pub(crate) struct Role(pub(crate) &'static str);
 
 // Role keys to def paths, and back.
-static TABLE: OnceLock<HashMap<String, String>> = OnceLock::new();
+static TABLE: OnceLock<FxHashMap<String, String>> = OnceLock::new();
 
 // Bind each role to the core def its `@lang` marks.
 pub(crate) fn fill(core: &Program) {
 	TABLE.get_or_init(|| {
-		let mut table = HashMap::new();
+		let mut table = FxHashMap::default();
 		for (def, anns) in &core.annotations {
 			let key = match anns.iter().find_map(|note| ann(note, "lang")) {
 				Some([]) => def.rsplit("::").next().unwrap(),
