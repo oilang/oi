@@ -56,6 +56,12 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		.boxed();
 
 	// struct defs
+	let notes = p
+		.same_line
+		.clone()
+		.ignore_then(p.annotation.clone())
+		.repeated()
+		.collect::<Vec<_>>();
 	let struct_field = just(Token::Pub)
 		.or_not()
 		.then(ident())
@@ -69,13 +75,7 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 				.rewind()
 				.to((TypeExpr::Name("$?".into()), None, false))),
 		)
-		.then(
-			p.same_line
-				.clone()
-				.ignore_then(p.annotation.clone())
-				.repeated()
-				.collect::<Vec<_>>(),
-		)
+		.then(notes.clone())
 		.map_with(|(((public, name), (typ, default, mutable)), annotations), ex| Param {
 			default,
 			mutable,
@@ -103,11 +103,13 @@ pub(super) fn item<'token, I: Tokens<'token>>(
 		_ => Member::Field(f),
 	});
 	// embedded structs
-	let path = p.dotted_name.clone();
-	let embedded = just(Token::Pub).or_not().then(path).map_with(|(public, typ), ex| Param {
-		public: public.is_some(),
-		..Param::new(typ.rsplit('.').next().unwrap().into(), TypeExpr::Name(typ), ex.span())
-	});
+	let embedded = just(Token::Pub).or_not().then(p.dotted_name.clone()).then(notes).map_with(
+		|((public, typ), annotations), ex| Param {
+			public: public.is_some(),
+			annotations,
+			..Param::new(typ.rsplit('.').next().unwrap().into(), TypeExpr::Name(typ), ex.span())
+		},
+	);
 	let struct_def = item_head
 		.clone()
 		.then_ignore(just(Token::Struct))

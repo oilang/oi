@@ -236,22 +236,23 @@ fn qualified_field_annotation() {
 			"main.oi",
 			[
 				"module main",
-				"use godot",
+				"use idk",
 				"read_export! :: fn(input: Ast) Ast {",
 				"	n := input.items[0].notes[0]",
 				"	print(n.items[0])",
 				"	print(n.items[1])",
+				"	print(input.items[1].notes[0].items[1])",
 				"	`%input`",
 				"}",
 				"@read_export!",
-				"Thing :: struct { x: int @godot.export.{ 0, 10 } }",
+				"Thing :: struct { x: int @idk.export.{ 0, 10 }, idk.export @idk.export.{ 1, 2 } }",
 			],
 		)
 		.file(
-			"godot/lib.oi",
-			["module godot", "pub export :: struct { lo: int, hi: int }"],
+			"idk/lib.oi",
+			["module idk", "pub export :: struct { lo: int, hi: int }"],
 		)
-		.check(["0", "10"]);
+		.check(["0", "10", "2"]);
 }
 
 #[test]
