@@ -65,8 +65,8 @@ fn assertion_casts() {
 		Cat :: struct {}
 		Cat :< Animal
 		a := Animal.(Dog.{})
-		print(match Dog.(a) { d => "dog", else => "?" })
-		print(match Cat.(a) { c => "cat", else => "?" })
+		print(match Dog.(a) { d => "dog", _ => "?" })
+		print(match Cat.(a) { c => "cat", _ => "?" })
 	"#};
 	check(src, ["dog", "?"]);
 }

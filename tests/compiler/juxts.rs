@@ -90,7 +90,7 @@ fn headers_stay_juxt_free() {
 		loop i < 3 { i = i + 1 }
 		print(i)
 		x :: 5
-		match x { 5 => print(9), else => print(0) }
+		match x { 5 => print(9), _ => print(0) }
 	"};
 	check(src, ["1", "3", "9"]);
 }

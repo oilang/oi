@@ -26,12 +26,12 @@ fn in_match() {
 		indoc! {r#"
 			Color :: enum { red green blue }
 			c :: Color.green
-			print(match c { Color.red => "r", Color.green => "g", else => "?" })
+			print(match c { Color.red => "r", Color.green => "g", _ => "?" })
 			print(c is Color.green, c !is Color.red)
 			match c {
 				.red => "r",
 				.green => "g",
-				else => "?",
+				_ => "?",
 			}
 		"#},
 		["g", "true true", "g"],
@@ -240,7 +240,7 @@ fn struct_form_construct_and_match() {
 			})
 			print(match mk() {
 				.rectangle.{ width = w, height } => w * height,
-				else => 0.0,
+				_ => 0.0,
 			})
 			print(Shape.point, s, Shape.triangle.(3.0, 4.0, 5.0))
 		"#},
@@ -254,7 +254,7 @@ fn struct_form_defaults() {
 		indoc! {"
 			Shape :: enum { circle { radius: f64 } rectangle { width: f64, height: f64 } }
 			S :: enum { rect { w: f64, h: f64 } }
-			a :: match Shape.{} { .circle.{ radius } => radius, else => -1.0 }
+			a :: match Shape.{} { .circle.{ radius } => radius, _ => -1.0 }
 			b :: match S.rect.{ h = 2.0 } { .rect.{ w, h } => w + h }
 			print(a, b, Shape.circle.{ 1.0 })
 		"},
@@ -330,14 +330,14 @@ fn shorthand_coerces_through_branches() {
 			tail_match :: fn(n: int) Color {
 				match n {
 					1 => .red,
-					else => .blue,
+					_ => .blue,
 				}
 			}
 			n :: 9
 			a : Color : if false { .red } else { .blue }
 			b : Color : match n {
 				1 => .red,
-				else => .blue,
+				_ => .blue,
 			}
 			print(name(.blue), tail_if(false), tail_match(9), a, b)
 		"},
@@ -356,7 +356,7 @@ fn backed_arrays_pack() {
 			print(a)
 			loop s in a { print(s) }
 			print(Status.err in a)
-			print(match a { [x, y, z] => z, else => Status.err })
+			print(match a { [x, y, z] => z, _ => Status.err })
 			f: [3]Status
 			f[1] = Status.err
 			print(f[1])
@@ -378,7 +378,7 @@ fn string_backed_raws() {
 			print(Suit.hearts == Suit.hearts)
 			a :: [Suit.spades, Suit.hearts]
 			print(string.(a[1]))
-			match Suit.spades { .spades => "s", else => "?" }
+			match Suit.spades { .spades => "s", _ => "?" }
 		"#},
 		["♠", "♥", "spades", "1", "true", "♥", "s"],
 	);
@@ -402,7 +402,7 @@ fn backed_array_signed_sextends() {
 			a :: [Delta.up, Delta.down]
 			d :: a[1]
 			print(int.(d))
-			print(match d { Delta.down => "yes", else => "no" })
+			print(match d { Delta.down => "yes", _ => "no" })
 			d == Delta.down
 		"#},
 		["-3", "yes", "true"],

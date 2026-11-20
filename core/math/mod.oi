@@ -20,7 +20,7 @@ pub clamp[T] :: fn(x: T, low: T, high: T) T {
 	match true {
 		x < low => low,
 		x > high => high,
-		else => x
+		_ => x
 	}
 }
 
@@ -35,7 +35,7 @@ pub floor :: fn(x: float) float {
 	match true {
 		t > x => t - 1.0,
 		x - t >= 1.0 => t + 1.0,
-		else => t
+		_ => t
 	}
 }
 
@@ -49,7 +49,7 @@ pub sign :: fn(x: float) int {
 	match true {
 		x < 0.0 => -1,
 		x > 0.0 => 1,
-		else => 0
+		_ => 0
 	}
 }
 
@@ -235,7 +235,7 @@ pub atan2 :: fn(y: float, x: float) float {
 		x < 0.0 => atan(y / x) - pi,
 		y > 0.0 => pi / 2.0,
 		y < 0.0 => -(pi / 2.0),
-		else => 0.0,
+		_ => 0.0,
 	}
 }
 

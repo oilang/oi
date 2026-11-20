@@ -134,7 +134,7 @@ utf8_len :: fn(lead: int) int {
 		lead < 0x80 => 1,
 		lead < 0xe0 => 2,
 		lead < 0xf0 => 3,
-		else => 4
+		_ => 4
 	}
 }
 

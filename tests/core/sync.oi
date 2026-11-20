@@ -99,9 +99,9 @@ test! "poll" {
 
 test! "select" {
 	ch := sync.Chan[int].{ cap = 1 }
-	assert! sync.select! { <-ch => "recv", else => "idle" } == "idle"
-	assert! sync.select! { ch <- 1 => "sent", else => "full" } == "sent"
-	assert! sync.select! { ch <- 2 => "sent", else => "full" } == "full"
+	assert! sync.select! { <-ch => "recv", _ => "idle" } == "idle"
+	assert! sync.select! { ch <- 1 => "sent", _ => "full" } == "sent"
+	assert! sync.select! { ch <- 2 => "sent", _ => "full" } == "full"
 	t := sync.spawn! { ch <- 7 or () }
 	got := sync.select! { m := <-ch => m or 0, sync.after(1000.ms()) => -1 }
 	late := sync.select! { m := <-ch => m or 0, sync.after(10.ms()) => -1 }
@@ -114,9 +114,9 @@ test! "select arms break the caller's loop" {
 	ch <- 5 or ()
 	n := 0
 	loop _ in 0..3 {
-		sync.select! { m := <-ch => { n = m or 0; break }, else => () }
+		sync.select! { m := <-ch => { n = m or 0; break }, _ => () }
 	}
-	r := loop sync.select! { m := <-ch => break 1, else => break 2 }
+	r := loop sync.select! { m := <-ch => break 1, _ => break 2 }
 	assert! n == 5 && r == 2
 }
 

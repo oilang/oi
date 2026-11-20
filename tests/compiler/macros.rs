@@ -340,7 +340,7 @@ fn quote_holes_in_positions() {
 			value! :: fn(e: Ast) Ast {
 				match e {
 					`%n := %v` => v,
-					else => e,
+					_ => e,
 				}
 			}
 			named! :: fn(name: Ast, p: Ast) Ast { `%{name} :: fn(%{p}: int) int { %{p} + 1 }` }
@@ -414,7 +414,7 @@ fn splat_spreads_match_patterns_and_arms() {
 			rank! :: fn() Ast {
 				low := [`1`, `2`]
 				mid := [`3 => "mid"`]
-				`rank :: fn(n: int) string { match n { %{..low} => "low", %{..mid} else => "high" } }`
+				`rank :: fn(n: int) string { match n { %{..low} => "low", %{..mid} _ => "high" } }`
 			}
 			rank!()
 			print(rank(1), rank(2), rank(3), rank(4))
@@ -678,7 +678,7 @@ fn brace_body_takes_arms() {
 			arms! {
 				n := 1 + 1 => 1,
 				<-ch => { 2 }
-				else => 3,
+				_ => 3,
 			}
 		"#},
 		["binary 1", "recv 2", "ident 3"],
@@ -710,7 +710,7 @@ fn quote_pattern_spread_captures() {
 			rest! :: fn(e: Ast) Ast {
 				match e {
 					`f(%a, %{..rest})` => `[%{..rest}]`,
-					else => e,
+					_ => e,
 				}
 			}
 			print(rest!(f(1, 2, 3)), rest!(5))
@@ -727,7 +727,7 @@ fn def() {
 		indoc! {r#"
 			P :: struct { x: int, y: int }
 			comp match def(P) { `%n :: struct { %{..fs} }` => print(n.str(), fs.len()) }
-			f[T] :: fn() { comp match def(T) { `%n :: struct { %{..fs} }` => print(fs.len()), else => print("no") } }
+			f[T] :: fn() { comp match def(T) { `%n :: struct { %{..fs} }` => print(fs.len()), _ => print("no") } }
 			f[P]()
 			f[int]()
 		"#},

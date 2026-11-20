@@ -55,7 +55,7 @@ quote :: fn(s: string) string {
 			10 => "\\n",
 			13 => "\\r",
 			9 => "\\t",
-			else => if c < 32 {
+			_ => if c < 32 {
 				n :: int.(c)
 				"\\u00" + hex[(n / 16)..(n / 16 + 1)] + hex[(n % 16)..(n % 16 + 1)]
 			} else { string.([c]) },
@@ -141,7 +141,7 @@ P :< {
 					}
 					rune.(cp).str()
 				},
-				else => { return error("invalid escape at {self.i - 1}") },
+				_ => { return error("invalid escape at {self.i - 1}") },
 			}
 
 			a = self.i
@@ -197,7 +197,7 @@ pub from_json[T] :: fn(j: Json) !T {
 		},
 		float, bool, string => want[T](j)?,
 		Json => j,
-		else => {
+		_ => {
 			obj :: want[Obj](j)?
 			T.{
 				comp loop f in def(T).items {
@@ -227,7 +227,7 @@ field[F] :: fn(obj: Obj, name: string) !F {
 	if v := obj[name] do return from_json[F](v)
 	comp match F {
 		Option[E], []E, bool => zero[F](),
-		else => error("missing field {name}"),
+		_ => error("missing field {name}"),
 	}
 }
 

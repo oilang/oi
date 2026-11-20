@@ -7,7 +7,7 @@ fn match_literals() {
 			match s {
 				"darwin", "macos" => "Apple",
 				"linux" => "Linux",
-				else => "other",
+				_ => "other",
 			}
 		}
 		print(os("linux"))
@@ -17,7 +17,7 @@ fn match_literals() {
 		label :: match 2 {
 			1 => "one",
 			2 => "two",
-			else => "other",
+			_ => "other",
 		}
 		print(label)
 		match "linux" {
@@ -54,7 +54,7 @@ fn match_true_as_if_chain() {
 		match true {
 			x < 5 => "small",
 			x < 10 => "medium",
-			else => "large",
+			_ => "large",
 		}
 	"#};
 	check(src, "medium");
@@ -185,8 +185,9 @@ fn match_errors() {
 		],
 		"non-exhaustive match, missing: blue",
 	);
-	fail(r#"match 1 { 1 => "str", else => 2 }"#, "mismatched types");
+	fail(r#"match 1 { 1 => "str", _ => 2 }"#, "mismatched types");
 	fail(r#"match 1 { "str" => 1, }"#, "type mismatch");
+	fail("match 1 { 1 => 2, else => 3 }", "`else =>` isn't an arm");
 }
 
 #[test]
@@ -197,8 +198,8 @@ fn match_arm_chain_across_lines() {
 		c :: C.{r = 3}
 		match true {
 			true => c
-				.area()
-			else => 0
+				.area(),
+			_ => 0
 		}
 	"};
 	check(src, "9");
@@ -226,14 +227,14 @@ fn payload_bind_is_independent_copy() {
 fn bare_name_binds_propagator_payloads() {
 	let src = indoc! {"
 		o :: ?int.(42)
-		match o { n => n, else => -1 }
+		match o { n => n, _ => -1 }
 	"};
 	check(src, "42");
-	check(["o :: ?int.(none)", "match o { n => n, else => -1 }"], "-1");
+	check(["o :: ?int.(none)", "match o { n => n, _ => -1 }"], "-1");
 
 	let src = indoc! {"
 		r :: !int.(42)
-		match r { v => v, else => -1 }
+		match r { v => v, _ => -1 }
 	"};
 	check(src, "42");
 }
@@ -246,7 +247,7 @@ fn fallthrough() {
 				1 => { print("one"); fallthrough },
 				2 => print("two"),
 				3 => { print("three"); fallthrough },
-				else => print("other"),
+				_ => print("other"),
 			}
 		}
 		f(1)
@@ -264,8 +265,8 @@ fn fallthrough() {
 fn match_bind_header() {
 	let src = indoc! {"
 		count :: fn() int { 3 }
-		match n := count() { 0 => print(0), else => print(n + 1) }
-		match n := 0 { 0 => print(n), else => () }
+		match n := count() { 0 => print(0), _ => print(n + 1) }
+		match n := 0 { 0 => print(n), _ => () }
 	"};
 	check(src, ["4", "0"]);
 	fail(["match n := 2 { _ => () }", "print(n)"], "undefined variable `n`");
@@ -305,7 +306,7 @@ fn match_without_subject() {
 		match {
 			x < 5 => "small",
 			x < 10 => "medium",
-			else => "large",
+			_ => "large",
 		}
 	"#};
 	check(src, "medium");

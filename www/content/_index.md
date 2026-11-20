@@ -38,7 +38,7 @@ area :: fn(s: Shape) f64 {
 	match s {
 		.circle.(r) => 3.14159 * r ** 2,
 		.rect.(w, h) => w * h,
-		else => 0.0,
+		_ => 0.0,
 	}
 }
 

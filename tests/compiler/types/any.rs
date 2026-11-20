@@ -9,7 +9,7 @@ fn coerce_and_match() {
 				match x {
 					is int => print(x + 1),
 					is string => print(x),
-					else => print("?"),
+					_ => print("?"),
 				}
 			}
 		"#},
@@ -24,7 +24,7 @@ fn zero_value_falls_to_else() {
 			x: any
 			match x {
 				is int => x,
-				else => -1,
+				_ => -1,
 			}
 		"},
 		"-1",

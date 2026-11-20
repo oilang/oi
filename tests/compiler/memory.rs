@@ -119,7 +119,7 @@ fn reassign_and_shadow() {
 fn branch_merges() {
 	assert_clean(indoc! {"
 		x :: if true { [1] } else { [2] }
-		y :: match 2 { 1 => [9], 2 => [4, 5], else => [0] }
+		y :: match 2 { 1 => [9], 2 => [4, 5], _ => [0] }
 		print(x)
 		print(y)
 	"});

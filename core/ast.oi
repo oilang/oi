@@ -59,7 +59,7 @@ Ast :< {
 				}
 				zero[T]()
 			},
-			else => {
+			_ => {
 				out := T.{}
 				# a bare `@note` is its zero value
 				if self.kind == "ident" do return out
@@ -73,7 +73,7 @@ Ast :< {
 								out.%{f.name} = given.value[%{f.typ}]()
 							}
 						},
-						else => comp loop f, i in def(T).items {
+						_ => comp loop f, i in def(T).items {
 							if at == %i {
 								out.%{f.name} = entry.value[%{f.typ}]()
 							}

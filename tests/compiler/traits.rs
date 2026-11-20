@@ -609,7 +609,7 @@ fn option_self_return_reboxes_through_object() {
 		p : Pet : Dog.{ "rex" }
 		match p.next() {
 			.some.(q) => print(q.name(), (q.next() or Dog.{ "end" }).name()),
-			else => print("none"),
+			_ => print("none"),
 		}
 	"#};
 	check(src, "max end");

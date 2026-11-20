@@ -459,9 +459,16 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		.clone()
 		.then_ignore(just(Token::Comma).or_not())
 		.or(juxt_expr.clone().map(|e| vec![e]).then_ignore(arm_end));
+	let else_arm = just(Token::Else).validate(|_, ex, emitter| {
+		emitter.emit(I::fault(
+			ex.span(),
+			"`else =>` isn't an arm, use `_ =>` or a trailing `else`",
+		));
+		(Expr::Ident("_".into()), ex.span())
+	});
 	let match_arm = just(Token::With)
 		.or_not()
-		.then(trailing_list1(match_pat.clone()).map(|pats| pats.into_iter().flat_map(alts).collect()))
+		.then(trailing_list1(match_pat.clone().or(else_arm)).map(|pats| pats.into_iter().flat_map(alts).collect()))
 		.then(just(Token::If).ignore_then(header_cond.clone()).map(Box::new).or_not())
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
@@ -497,7 +504,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 
 	// arms in macro bodies
 	let macro_arm = (p.bind.clone().or(p.expr.clone()))
-		.or(just(Token::Else).map_with(|_, ex| (Expr::Ident("else".into()), ex.span())))
+		.or(else_arm)
 		.then_ignore(just(Token::FatArrow))
 		.then(arm_body.clone())
 		.map_with(|(lhs, body), ex| {
@@ -540,21 +547,14 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	});
 	let match_expr = just(Token::Match)
 		.ignore_then(match_subjects.or_not())
-		.then(brace(
-			arm.repeated().collect::<Vec<_>>().then(
-				just(Token::Else)
-					.ignore_then(just(Token::FatArrow))
-					.ignore_then(arm_body)
-					.or_not(),
-			),
-		))
+		.then(brace(arm.repeated().collect::<Vec<_>>()))
 		.then(else_tail.or_not())
-		.map_with(|((subject, (arms, inner_else)), else_tail), ex| {
+		.map_with(|((subject, arms), else_body), ex| {
 			(
 				Expr::Match {
 					subject: Box::new(subject.unwrap_or((Expr::Bool(true), ex.span()))),
 					arms,
-					else_body: inner_else.or(else_tail),
+					else_body,
 				},
 				ex.span(),
 			)

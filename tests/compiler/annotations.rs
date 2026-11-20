@@ -296,7 +296,7 @@ fn c_fns_take_plain_enums() {
 			Mode :: enum { a, b, c = 3 }
 			S :: struct { f: @c fn(m: Mode) int }
 			pick :: fn(m: Mode) int {
-				match m { .a => 1, .c => 3, else => 0 }
+				match m { .a => 1, .c => 3, _ => 0 }
 			}
 			print(S.{ f = pick }.f(.c))
 		"},

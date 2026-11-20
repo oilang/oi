@@ -94,7 +94,7 @@ fn comp_match() {
 			comp match T { int => if b do 5, _ => none }
 		}
 		g[T] :: fn(n: int) !?int {
-			comp match T { int => match n { 1 => none, 2 => error("two"), else => n }, _ => 0 }
+			comp match T { int => match n { 1 => none, 2 => error("two"), _ => n }, _ => 0 }
 		}
 		print(f[int](false), f[int](true), g[int](1), g[int](2), g[int](3))
 	"#};
@@ -106,7 +106,7 @@ fn comp_match() {
 		OS :: :linux
 		K :: comp C.green
 		comp match OS { :windows => missing(), :linux => print("tux") }
-		comp match K { .red => missing(), else => print("green") }
+		comp match K { .red => missing(), _ => print("green") }
 		print(comp match 2 { 1 => missing(), 2, 3 => 5, _ => missing() })
 	"#};
 	check(src, ["tux", "green", "5"]);

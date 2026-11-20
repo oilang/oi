@@ -52,7 +52,7 @@ Duration :< {
 			self.ns >= 1000000000 => "{self.sec()}s",
 			self.ns >= 1000000 => "{self.ms()}ms",
 			self.ns >= 1000 => "{self.us()}us",
-			else => "{self.ns}ns",
+			_ => "{self.ns}ns",
 		}
 	}
 }

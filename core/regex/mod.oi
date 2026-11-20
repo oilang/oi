@@ -81,7 +81,7 @@ Parser :< {
 					"*" => wrapped << .split.(1, size + 2) << atom << .jmp.(-size - 1),
 					"+" => atom << .split.(-size, 1),
 					"?" => wrapped << .split.(1, size + 1) << atom,
-					else => break,
+					_ => break,
 				}
 				self.at += 1
 			}
@@ -112,7 +112,7 @@ Parser :< {
 			"^" => out << .bol,
 			"$" => out << .eol,
 			"*", "+", "?" => return error("regex: missing argument to repetition at {self.at - 1}"),
-			else => {
+			_ => {
 				self.at -= 1
 				set: Set
 				set[self.literal()?] = true
@@ -130,7 +130,7 @@ Parser :< {
 			"d" => of(digits),
 			"w" => of(word),
 			"s" => of(" \t\n\f\r"),
-			else => return none,
+			_ => return none,
 		}
 		self.at += 2
 		if letter != letter.lower() do invert(set) else do set
@@ -277,7 +277,7 @@ Dfa :< {
 			},
 			.bol => if at == 0 do self.add(mut threads, pc + 1, at, end),
 			.eol => if at == end do self.add(mut threads, pc + 1, at, end),
-			else => {},
+			_ => {},
 		}
 	}
 }

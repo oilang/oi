@@ -330,7 +330,7 @@ clamp :: fn(value: f64, low: f64, high: f64) f64 {
 	match {
 		value < low => low,
 		value > high => high,
-		else => value,
+		_ => value,
 	}
 }
 
@@ -1542,16 +1542,20 @@ main :: fn() {
 
 	# arms are `pattern => expr,` (last comma optional) or `pattern => { block }`
 
-	# else for catch-all
+	# `_` for catch-all
 	os := "linux"
 	match os {
 		"darwin" => print("I used to hate macOS but now I realize it's at least better than Windows."),
 		"linux" => print("I use Artix Linux btw"),
-		else => print(os),
+		_ => print(os),
 	}
 
 	# header binds are in scope for every arm
-	match n := count() { 0 => print("none"), else => print(n) }
+	match n := count() { 0 => print("none"), _ => print(n) }
+
+	# or an `else` after the braces, like `if`
+	match n := count() { 0 => print("none") } else do print(n)
+	match c { .red => 1 } else if dim { 2 } else { 3 }
 
 	# can be used as an if-else chain
 	# evaluated in order, first match wins if multiple satisfy the condition
@@ -1575,7 +1579,7 @@ main :: fn() {
 	match n {
 		1 => { print("one"); fallthrough },
 		2 => print("two"),
-		else => (),
+		_ => (),
 	}
 
 	# comma subjects match as a tuple
@@ -1789,7 +1793,7 @@ main :: fn() {
 		i < 3 => "love ya",
 		foo == bar => "soul mates",
 		u in me => "🥵",
-		else => "no dice",
+		_ => "no dice",
 	}
 
 	## `Option` and `Result` types
@@ -2180,10 +2184,10 @@ main :: fn() {
 		match v {
 			is int => "int {v}",
 			is string => "string {v}",
-			else => "something else", # required, `any` is open
+			_ => "something else", # required, `any` is open
 		}
 	}
-	# the zero value holds nothing and only matches `else`
+	# the zero value holds nothing and only matches `_` or `else`
 	nothing: any
 
 	# `type(x)` is the static type of `x`, fixed at comptime

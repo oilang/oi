@@ -25,7 +25,7 @@ fn atom_in_match() {
 		r#"x :: :ok
 match x {
 	:ok => "yes",
-	else => "no",
+	_ => "no",
 }"#,
 		"yes",
 	);
