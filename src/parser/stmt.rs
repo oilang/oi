@@ -180,7 +180,10 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.map(|f| Some(Ok(f)))
 		.or(bracket(p.expr.clone()).map(|i| Some(Err(i))))
 		.or(just(Token::Caret).to(None));
-	let target = spanned(ident().map(Expr::Ident))
+	let view = spanned(p.type_expr.clone()).map(Box::new).then_ignore(just(Token::Dot));
+	let view = (view.then(paren(loose_list(p.expr.clone()))))
+		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
+	let target = (view.or(p.unquote.clone()).or(spanned(ident().map(Expr::Ident))))
 		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
 			let e = match seg {
 				None => Expr::Deref(Box::new(lhs)),

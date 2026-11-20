@@ -663,6 +663,22 @@ fn unquote_in_method_position() {
 }
 
 #[test]
+fn unquote_field_assign() {
+	check(
+		indoc! {r"
+			S :: struct { n: int }
+			set! :: fn(x: Ast, f: Ast, v: Ast) Ast { `%x.%f = %v` }
+			main :: fn() {
+				s := S.{}
+				set!(s, n, 7)
+				print(s.n)
+			}
+		"},
+		"7",
+	);
+}
+
+#[test]
 fn brace_body_takes_arms() {
 	check(
 		indoc! {r#"

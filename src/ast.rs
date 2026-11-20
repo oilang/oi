@@ -871,15 +871,23 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 			span,
 		);
 	}
+
 	let value = Box::new(value);
-	match unplace(&place.0) {
-		Some((_, None)) => {
-			let key = Box::new(place);
-			return (Expr::Assign { key, value }, span);
-		}
-		Some((name, Some(field))) => return (Expr::FieldAssign { name, field, value }, span),
-		None => {}
+	if let Expr::Ident(_) | Expr::Unquote(_) = place.0 {
+		return (Expr::Assign { key: Box::new(place), value }, span);
 	}
+	if let Some((name, Some(field))) = unplace(&place.0) {
+		return (Expr::FieldAssign { name, field, value }, span);
+	}
+
+	// allow assigning fields through pointer views
+	if let Expr::Cast { target, args } = place.0 {
+		let name = format!("$v{}_{}", place.1.start, place.1.end);
+		let target = Box::new((TypeExpr::Ref(Box::new(target.0)), target.1));
+		let view = bind(&name, (Expr::Cast { target, args }, place.1));
+		return (Expr::Block(vec![view, (Expr::DerefAssign { name, value }, span)]), span);
+	}
+
 	if let Expr::Deref(base) = &place.0
 		&& let Some((name, None)) = unplace(&base.0)
 	{
@@ -891,6 +899,7 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 		let index = index.clone();
 		return (Expr::IndexAssign { name, field, index, value }, span);
 	}
+
 	let hole = match &mut place.0 {
 		Expr::UnquoteBind(_, field) => &mut field.0,
 		place => place,

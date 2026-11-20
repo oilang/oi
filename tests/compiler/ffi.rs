@@ -71,12 +71,23 @@ fn struct_place_behind_ptr() {
 	let src = indoc! {"
 		S :: struct { n: int }
 		S :< { bump :: fn(mut self) { self.n = self.n + 1 } }
-		buf: []u8 = .[0, 0, 0, 0, 0, 0, 0, 0]
+		buf: []u8 = .[0 0 0 0 0 0 0 0]
 		unsafe buf.ptr.write(S.{n = 1})
 		unsafe S.(buf.ptr).bump()
 		print(unsafe buf.ptr.read[S]().n)
 	"};
 	check(src, "2");
+}
+
+#[test]
+fn field_write_through_ptr_view() {
+	let src = indoc! {"
+		S :: struct { n, m: int }
+		buf: []u8 = .[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+		unsafe { S.(buf.ptr).m = 5 }
+		print(unsafe S.(buf.ptr))
+	"};
+	check(src, "S.{n = 0, m = 5}");
 }
 
 #[test]
