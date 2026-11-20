@@ -1153,3 +1153,17 @@ fn self_typed_trait_consts() {
 		"a `int` literal",
 	);
 }
+
+#[test]
+fn orphan_claims_count_trait_args() {
+	let main = indoc! {r#"
+		V :: struct { x: f64 }
+		f64 : Mul[V] < {
+			Out :: V
+			mul :: fn(self; v: V) V { V.{ self * v.x } }
+		}
+		main :: fn() { print(2.0.mul(V.{ 3.0 }).x) }
+	"#};
+	check(main, "6.0");
+	fail("f64 : Mul[f64] < { Out :: f64; mul :: fn(self; v: f64) f64 { v } }", "is an orphan claim");
+}

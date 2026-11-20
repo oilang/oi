@@ -1235,11 +1235,20 @@ impl<M: Module> Compiler<M> {
 						.collect();
 
 					let in_core = self.world.core_origin.contains(&scope.module);
-					let foreign = TypeCtx::builtin_type(typ) || module_of(typ).unwrap_or_default() != scope.module;
-					let blanket = type_params.iter().any(|p| p.name == *typ);
-					let local = |tn: &str| is_hook_trait(tn) || module_of(tn).unwrap_or_default() == scope.module;
-					if let Some((tn, _)) = claimed.iter().find(|(tn, _)| !in_core && (foreign || blanket) && !local(tn))
-					{
+					let ours = |n: &str| module_of(n).unwrap_or_default() == scope.module;
+					let param = |n: &str| type_params.iter().any(|p| p.name == n);
+					let foreign = TypeCtx::builtin_type(typ) || !ours(typ);
+					let blanket = param(typ);
+
+					// REF: [Rust RFC 2451](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html)
+					let covered = |args: &[Spanned<TypeExpr>]| {
+						(args.iter().map(|(te, _)| te))
+							.take_while(|te| !matches!(te, TypeExpr::Name(n) if param(n)))
+							.any(|te| matches!(te, TypeExpr::Resolved(n) if ours(n)))
+					};
+					if let Some((tn, _)) = (claimed.iter()).find(|(tn, args)| {
+						!in_core && (blanket || foreign && !covered(args)) && !is_hook_trait(tn) && !ours(tn)
+					}) {
 						let msg = format!("`{} : {}` is an orphan claim", display_name(typ), display_name(tn));
 						let home = if blanket { "the trait" } else { "the trait or the type" };
 						return fail(msg, item.1, format!("claim it in the module of {home}"));
