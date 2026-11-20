@@ -168,9 +168,10 @@ fn grouped_params() {
 		pad :: fn(s: string, left, right := "-") string { left + s + right }
 		Point :: struct { x: int, y: int }
 		Point :< { scale :: fn(self; x, y: int) int { self.x * x + self.y * y } }
-		print(area(6, 7), pad("x"), pad("x", "<"), Point.{ 1, 2 }.scale(3, 4))
+		Op :: fn(a, b: int) int
+		print(area(6, 7), pad("x"), pad("x", "<"), Point.{ 1, 2 }.scale(3, 4), Op.(area)(1, 2))
 	"#};
-	check(src, "42 -x- <x- 11");
+	check(src, "42 -x- <x- 11 2");
 }
 
 #[test]

@@ -44,6 +44,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				[(None, _)] => fs.pop().unwrap().1,
 				_ => TypeExpr::Tuple(fs),
 			});
+
 			// arrays
 			let len = select! { Token::Int(n) => Expr::Int(n) }.or(dotted_name.clone().map(Expr::Ident));
 			let len = spanned(len).or(paren(expr.clone())).or(unquote.clone());
@@ -62,29 +63,46 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 				.then(te.clone())
 				.map(|((a, n), t)| (n, a.unwrap_or_default(), t));
 			let fn_ret = same_line.clone().ignore_then(base.clone()).or_not();
-			let fn_type = just(Token::Fn)
-				.ignore_then(paren(loose_list(fn_param)))
-				.then(fn_ret)
-				.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret.unwrap_or(TypeExpr::unit()))));
+			let fn_type =
+				just(Token::Fn)
+					.ignore_then(paren(loose_list(fn_param)))
+					.then(fn_ret)
+					.map(|(mut params, ret)| {
+						for at in (1..params.len()).rev() {
+							if let ((None, _, TypeExpr::Name(bare)), (Some(_), access, typ)) =
+								(&params[at - 1], &params[at])
+								&& !bare.contains('.')
+							{
+								params[at - 1] = (Some(bare.clone()), *access, typ.clone());
+							}
+						}
+						TypeExpr::Fn(params, Box::new(ret.unwrap_or(TypeExpr::unit())))
+					});
+
 			// annotations
 			let annotated = annotation
 				.clone()
 				.then(base.clone())
 				.map(|(a, t)| TypeExpr::Annotated(vec![a], Box::new(t)));
+
 			// options
 			let option = just(Token::Question)
 				.ignore_then(base.clone())
 				.map(|t| TypeExpr::Generic("Option".into(), vec![t]));
+
 			// varargs
 			let variadic = just(Token::DotDot)
 				.ignore_then(base.clone())
 				.map(|t| TypeExpr::Variadic(Box::new(t)));
+
 			// results
 			let result = just(Token::Not)
 				.ignore_then(base.clone().or_not())
 				.map(|t| result_of(t.unwrap_or(TypeExpr::unit()), None));
+
 			// shared refs
 			let ref_type = just(Token::Caret).ignore_then(base.clone()).map(|t| TypeExpr::Ref(Box::new(t)));
+
 			// atom(s)
 			let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a.to_string()]) };
 
@@ -103,6 +121,7 @@ pub(super) fn type_expr<'token, I: Tokens<'token>>(
 			let type_of = (ident().filter(|n: &String| n == "type"))
 				.ignore_then(paren(expr.clone()))
 				.map(|e| TypeExpr::Infer(Box::new(e)));
+
 			// type fn calls
 			let call = spanned(
 				(dotted_name.clone())
