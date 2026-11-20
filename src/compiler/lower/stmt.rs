@@ -165,7 +165,17 @@ impl<'a, M: Module> Translator<'a, M> {
 					};
 					let deref = matches!(stmt.0, Expr::DerefAssign { .. });
 					let mutation = if deref { Mutation::DerefAssign } else { Mutation::Assign };
-					let mut local = self.mutable_local(name, stmt.1.into_range(), mutation)?;
+					let moved = |s: &Self| !deref && !s.vars.contains_key(name);
+
+					// let moved mutable bindings be reassignable in the scope that owns them
+					let revived = self.vars.moved.get(name).filter(|(_, local, depth)| {
+						moved(self) && local.mutable && depth.is_none_or(|d| d + 1 == self.scopes.len())
+					});
+					let mut local = match revived {
+						Some((_, local, _)) => local.clone(),
+						None => self.mutable_local(name, stmt.1.into_range(), mutation)?,
+					};
+
 					if deref {
 						let typ = self.pointee(&local.typ, stmt.1)?;
 						let var = self.b.declare_var(self.int);
@@ -176,12 +186,16 @@ impl<'a, M: Module> Translator<'a, M> {
 							..Local::plain(var, typ, true)
 						};
 					}
+
+					let fresh = |s: &Self| moved(s) || s.flagged.contains(&local.var);
 					self.appending = Some(stmt.1);
+
+					let outer = self.reinit.replace(local.var);
 					let (val, typ) = match self.types.option_inner(&local.typ) {
-						// a payload owning nothing overwrites the box in place
 						Some(inner) if self.enum_box(&local.typ) && !self.slot_owns(&inner) => {
 							let (val, typ) = self.lower(value, Some(&local.typ))?;
-							if typ == inner {
+							if typ == inner && !fresh(self) {
+								self.reinit = outer;
 								let (some, dst) = (self.b.ins().iconst(self.int, 1), self.read_local(&local));
 								self.store_slots(dst, &[some, val]);
 								continue;
@@ -190,6 +204,8 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						_ => self.check_expr(value, &local.typ)?,
 					};
+
+					self.reinit = outer;
 					if typ != local.typ {
 						return fail(
 							format!("cannot assign {typ} to `{name}`, which is {}", local.typ),
@@ -197,9 +213,26 @@ impl<'a, M: Module> Translator<'a, M> {
 							"type mismatch",
 						);
 					}
+
 					self.move_resource(value, &typ)?;
 					self.slots.retain(|s| s != name);
-					if typ.slots().is_some() {
+
+					if fresh(self) {
+						let old = self.read_local(&local);
+						if self.scopes.iter().flatten().any(|(var, _)| *var == local.var) {
+							self.when(old, |s| s.release_value(old, &typ));
+						} else if let Some((.., Some(depth))) = self.vars.moved.get(name) {
+							let owned = match local.boxed {
+								true => Typ::Ref(Box::new(typ.clone())),
+								false => typ.clone(),
+							};
+							self.scopes[*depth].push((local.var, owned));
+						}
+
+						let new = self.copy_bind(val, &typ);
+						self.write_local(&local, new);
+						self.vars.insert(name.clone(), local);
+					} else if typ.slots().is_some() {
 						let dst = self.read_local(&local);
 						let resource = self.is_resource(&typ);
 						if resource {

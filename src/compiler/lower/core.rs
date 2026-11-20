@@ -257,7 +257,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
 			if name == "none" {
 				Diagnostic::new("cannot infer the type", span.clone()).with_label("`none` needs type context")
-			} else if let Some(moved_at) = self.vars.moved.get(name) {
+			} else if let Some((moved_at, ..)) = self.vars.moved.get(name) {
 				Diagnostic::new(format!("`{name}` was moved"), span.clone())
 					.with_label("used after move")
 					.with_also(moved_at.clone(), "moved here")

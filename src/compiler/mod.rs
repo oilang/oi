@@ -2318,6 +2318,7 @@ impl<M: Module> Compiler<M> {
 			withs: types.scope.withs.iter().map(|name| (name.clone(), None)).collect(),
 			pack_call: None,
 			appending: None,
+			reinit: None,
 			eq_path: vec![],
 		};
 

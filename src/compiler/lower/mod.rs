@@ -82,6 +82,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub withs: Vec<(String, Option<(Expr, Typ)>)>,
 	pub pack_call: Option<Span>,
 	pub appending: Option<Span>,
+	pub reinit: Option<Variable>,
 	pub eq_path: Vec<Typ>,
 }
 
@@ -91,7 +92,7 @@ pub(super) struct Vars {
 	map: HashMap<String, Local>,
 	log: Vec<(String, Option<Local>)>,
 	marks: Vec<usize>,
-	moved: HashMap<String, Range<usize>>,
+	moved: HashMap<String, (Range<usize>, Local, Option<usize>)>,
 }
 
 impl std::ops::Deref for Vars {
@@ -140,9 +141,10 @@ impl Vars {
 	}
 
 	// Unbinds `name`, remembering where it moved.
-	pub(super) fn move_out(&mut self, name: &str, span: Range<usize>) {
-		self.remove(name);
-		self.moved.insert(name.to_string(), span);
+	pub(super) fn move_out(&mut self, name: &str, span: Range<usize>, depth: Option<usize>) {
+		if let Some(local) = self.remove(name) {
+			self.moved.insert(name.to_string(), (span, local, depth));
+		}
 	}
 
 	// Ends every unwrap below `path`.

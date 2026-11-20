@@ -679,13 +679,21 @@ impl<'a, M: Module> Translator<'a, M> {
 				Diagnostic::new("cannot move a local out of a defer body", span).with_label("runs on every exit")
 			);
 		}
+
+		let val = self.read_local(local);
 		if self.needs_release(&local.typ) {
 			let depth = depth.ok_or_else(|| {
 				Diagnostic::new(format!("cannot move `{name}`, it is borrowed here"), span.clone())
 					.with_label("only an owned binding can be moved")
 					.with_note("a `move x: T` param or a `loop move x` bind owns its value")
 			})?;
-			if let Some(frame) = self.loops.iter().rfind(|f| f.top.is_some())
+
+			// nulled until its own statement assigns it back
+			if self.reinit == Some(local.var) && !local.boxed {
+				let null = self.b.ins().iconst(self.int, 0);
+				self.b.def_var(local.var, null);
+				self.flagged.push(local.var);
+			} else if let Some(frame) = self.loops.iter().rfind(|f| f.top.is_some())
 				&& depth < frame.depth
 			{
 				return Err(
@@ -695,8 +703,8 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			self.scopes[depth].retain(|(v, _)| *v != local.var);
 		}
-		self.vars.move_out(name, span);
-		Ok(self.read_local(local))
+		self.vars.move_out(name, span, depth);
+		Ok(val)
 	}
 
 	// End a reached branch in its own tail, noting what it still owns.

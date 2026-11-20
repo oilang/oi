@@ -644,3 +644,23 @@ fn ptr_write_and_read_move_a_resource() {
 	assert_clean(src);
 	fail(src.replace("move f", "f").as_str(), "missing `move` at the callsite");
 }
+
+#[test]
+fn assigning_a_moved_binding_reinits_it() {
+	let src = indoc! {r#"
+		step :: fn(move f: File) File { File.{fd = f.fd + 1} }
+		eat :: fn(move f: File) {}
+		main :: fn() {
+			buf := File.{fd = 1}
+			loop i in 0..2 do buf = step(move buf)
+			maybe := File.{fd = 10}
+			if buf.fd > 1 do eat(move maybe)
+			maybe = File.{fd = 11}
+			print("end", buf.fd)
+		}
+	"#};
+	check(
+		[FILE, src],
+		["drop 1", "drop 2", "drop 10", "end 3", "drop 11", "drop 3"],
+	);
+}
