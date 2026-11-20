@@ -480,3 +480,14 @@ fn field_grouping() {
 		"unknown type `b`",
 	);
 }
+
+#[test]
+fn size_of_plain_struct() {
+	check(
+		indoc! {"
+			S :: struct { n: int, s: string }
+			print(S.size)
+		"},
+		"16",
+	);
+}

@@ -716,9 +716,9 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 
 					if field == "size"
-						&& let Some((n, _)) = t.c_size_align(&self.types)
+						&& let Some(n) = self.types.assoc_int(name, field)
 					{
-						return Ok((self.b.ins().iconst(self.int, n as i64), Typ::USize));
+						return Ok((self.b.ins().iconst(self.int, n), Typ::USize));
 					}
 				}
 

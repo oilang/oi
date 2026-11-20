@@ -508,7 +508,11 @@ impl TypeCtx<'_> {
 		let t = self.named(name, Span::default()).ok()?;
 		let variants = self.enums.borrow().get(&t.key()).filter(|vs| !enum_boxed(vs)).map(Vec::len);
 		match (field, variants, self.consts.map.get(&format!("{t}::{field}"))) {
-			("size", ..) => Some(t.c_size_align(self)?.0.into()),
+			("size", ..) => t
+				.c_size_align(self)
+				.map(|(n, _)| n)
+				.or_else(|| Some(self.layout(&t)?.size))
+				.map(i64::from),
 			("count", Some(n), _) => Some(n as i64),
 			(.., Some((Expr::Int(n), _))) => int_word(*n),
 			("count", ..) => t
