@@ -361,7 +361,7 @@ impl Typ {
 			Typ::Annotated(_, t) => t.c_size_align(types),
 			Typ::FixedArray(e, n) => e
 				.c_size_align(types)
-				.filter(|(es, _)| e.is_c_repr(types) && *es as i64 == elem_size(e))
+				.filter(|(es, _)| matches!(**e, Typ::Struct(..)) || e.is_c_repr(types) && *es as i64 == elem_size(e))
 				.map(|(es, ea)| (es * *n as u32, ea)),
 			Typ::Struct(name, fields) if types.is_c(name) => c_layout(fields, types).map(|l| (l.size, l.align)),
 			_ => None,

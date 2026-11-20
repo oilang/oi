@@ -241,9 +241,18 @@ impl<M: Module> Translator<'_, M> {
 			let (slot, off) = ((i * 8) as i32, at + off as i32);
 			match f.typ.newtype().unwrap_or(&f.typ) {
 				Typ::Struct(_, inner) => {
-					// nested structs are inline in C, behind a pointer in Oi
+					// nested structs are inline in C, and behind a pointer in Oi
 					let child = self.ld_word(oi, slot);
 					self.copy_fields(child, c, off, inner, to_c);
+				}
+				Typ::FixedArray(e, n) if let Typ::Struct(_, inner) = &**e => {
+					// struct elements are inline in C, and eah behind a pointer in Oi
+					let buf = self.ld_word(oi, slot);
+					let size = e.c_size_align(&self.types).expect("validated").0 as i32;
+					for i in 0..*n as i32 {
+						let child = self.ld_word(buf, i * 8);
+						self.copy_fields(child, c, off + i * size, inner, to_c);
+					}
 				}
 				Typ::FixedArray(e, n) => {
 					let (at, buf) = (self.b.ins().iadd_imm(c, off as i64), self.ld_word(oi, slot));

@@ -91,6 +91,22 @@ fn field_write_through_ptr_view() {
 }
 
 #[test]
+fn c_struct_array_field_lays_out_inline() {
+	let src = indoc! {"
+		@c P :: struct { x, y: f64 }
+		@c R :: struct { n: i32, ps: [4]P }
+		buf: []int = .[0 0 0 0 0 0 0 0 0]
+		r: R
+		r.ps[2].y = 1.5
+		unsafe buf.ptr.write(r)
+		print(unsafe buf.ptr.offset(48).read[f64]())
+		unsafe buf.ptr.offset(32).write(2.5)
+		print(unsafe buf.ptr.read[R]().ps[1].y, R.size)
+	"};
+	check(src, ["1.5", "2.5 72"]);
+}
+
+#[test]
 fn unowned_ref_does_not_become_owned() {
 	let src = indoc! {"
 		buf: []int = .[7, 0]
