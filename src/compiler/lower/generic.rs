@@ -107,12 +107,13 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn call_generic(
 		&mut self,
 		name: &str,
-		def: &GenericFnDef,
 		type_args: &[Spanned<TypeExpr>],
 		args: &[Spanned<Expr>],
 		recv: Option<(TypedVal, &Spanned<Expr>)>,
 		span: Span,
+		hint: Option<&Typ>,
 	) -> Result<TypedVal, Diagnostic> {
+		let def = &self.world.generic_fns[name];
 		if has_ann(self.types.consts.anns, name, "unsafe") {
 			self.require_unsafe(name, span)?;
 		}
@@ -199,6 +200,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			lent.extend(entry);
 			infer.bind(&param.typ, &typ, arg.1)?;
 			given.push(Some((val, typ)));
+		}
+
+		if let (Some((ret, _)), Some(hint)) = (&def.ret, hint)
+			&& !matches!(hint, Typ::Any | Typ::Trait(_) | Typ::Error)
+		{
+			let mut expected = Infer::new(&def.type_params, self.types.generics);
+			if expected.unify(ret, hint).is_ok() {
+				for (param, typ) in expected.subst {
+					infer.subst.entry(param).or_insert(typ);
+				}
+			}
 		}
 		self.type_defaults(def, &mut infer)?;
 

@@ -348,7 +348,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					None => match self.funcs.get(&qn).cloned() {
 						Some(sig) => self.call_sig(name, sig, None, None, args, expr.1),
 						None => match self.world.generic_fns.get(&qn).cloned() {
-							Some(def) => self.call_generic(&qn, &def, type_args, args, None, expr.1),
+							Some(_) => self.call_generic(&qn, type_args, args, None, expr.1, hint),
 							None if matches!(name.as_str(), "assert" | "panic") => {
 								fail(format!("`{name}` is a macro"), expr.1, format!("write `{name}!(...)`"))
 							}
@@ -388,10 +388,10 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Expr::Index { collection, index } = &callee.0
 					&& let Expr::Ident(n) = &collection.0
 					&& !self.vars.contains_key(n)
-					&& let Some(def) = self.world.generic_fns.get(self.qualify(n).as_ref()).cloned()
+					&& self.world.generic_fns.contains_key(self.qualify(n).as_ref())
 				{
 					let (key, arg) = (self.qualify(n).to_string(), [(TypeExpr::Value(index.clone()), index.1)]);
-					return self.call_generic(&key, &def, &arg, args, None, expr.1);
+					return self.call_generic(&key, &arg, args, None, expr.1, hint);
 				}
 				let (val, typ) = self.expr(callee)?;
 				self.call_value(&typ.to_string(), Callee::Object(val), &typ, args, None, expr.1)
@@ -416,7 +416,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					if let Some(out) = self.comp_call(&format!("{module}::{target}"), &(call, expr.1), hint)? {
 						return Ok(out);
 					}
-					return self.module_call(&module, &target, type_args, args, expr.1);
+					return self.module_call(&module, &target, type_args, args, expr.1, hint);
 				}
 
 				// enum payload
@@ -506,11 +506,11 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 					if let Typ::Trait(tn) = &recv_typ {
 						let key = format!("{}.{method}", rc::base_name(tn));
-						if let Some(def) = self.world.generic_fns.get(&key).cloned()
+						if self.world.generic_fns.contains_key(&key)
 							&& !has_slot(&self.types.trait_instance(tn).0.1.methods, method)
 						{
 							let recv = Some(((recv_val, recv_typ.clone()), recv));
-							return self.call_generic(&key, &def, type_args, args, recv, expr.1);
+							return self.call_generic(&key, type_args, args, recv, expr.1, hint);
 						}
 						if let Some(sig) = self.funcs.get(&key).cloned() {
 							return self.call_sig(&key, sig, Some(recv_val), Some(recv), args, expr.1);
@@ -572,8 +572,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				if let Some(sig) = self.funcs.get(&key).cloned() {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
-				if let Some(def) = self.world.generic_fns.get(&gkey).cloned() {
-					return self.call_generic(&gkey, &def, type_args, args, bound.zip(recv_expr), expr.1);
+				if self.world.generic_fns.contains_key(&gkey) {
+					return self.call_generic(&gkey, type_args, args, bound.zip(recv_expr), expr.1, hint);
 				}
 				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args)? {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, &args, expr.1);
@@ -588,15 +588,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				// blanket claims
 				if let Some(rt) =
 					(bound.as_ref().map(|(_, t)| t.clone())).or_else(|| self.types.named(&sname, expr.1).ok())
-					&& let Some((k, def)) = (self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
+					&& let Some((k, _)) = (self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
 						.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("[{}].{method}", p.name)))
 				{
-					let (k, def) = (k.clone(), def.clone());
+					let k = k.clone();
 					let targs = match bound {
 						Some(_) => type_args.to_vec(),
 						None => [vec![(TypeExpr::Name(sname.clone()), expr.1)], type_args.to_vec()].concat(),
 					};
-					return self.call_generic(&k, &def, &targs, args, bound.zip(recv_expr), expr.1);
+					return self.call_generic(&k, &targs, args, bound.zip(recv_expr), expr.1, hint);
 				}
 
 				// Display and Debug defaults

@@ -90,6 +90,24 @@ fn explicit_and_default_args() {
 }
 
 #[test]
+fn expected_type_fills_type_params() {
+	let src = indoc! {"
+		one[T :: int] :: fn() T do 1
+		some_zero[T] :: fn() ?T { ?T.(T.{}) }
+		id[T] :: fn(x: T) T do x
+		Money :: struct { cents: int }
+		Money : From[int] < {
+			from :: fn(n: int) Self { Money.{ n * 100 } }
+		}
+		v: float = one()
+		w: ?int = some_zero()
+		m: Money = id(5)
+		print(v / 2, one() / 2, w, m.cents)
+	"};
+	check(src, "0.5 0 some.(0) 500");
+}
+
+#[test]
 fn grouped_type_params() {
 	let src = indoc! {"
 		Grid[R, C: int] :: struct { cells: [R][C]float }

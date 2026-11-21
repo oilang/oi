@@ -1165,5 +1165,8 @@ fn orphan_claims_count_trait_args() {
 		main :: fn() { print(2.0.mul(V.{ 3.0 }).x) }
 	"#};
 	check(main, "6.0");
-	fail("f64 : Mul[f64] < { Out :: f64; mul :: fn(self; v: f64) f64 { v } }", "is an orphan claim");
+	fail(
+		"f64 : Mul[f64] < { Out :: f64; mul :: fn(self; v: f64) f64 { v } }",
+		"is an orphan claim",
+	);
 }

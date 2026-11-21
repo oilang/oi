@@ -200,6 +200,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		type_args: &[Spanned<TypeExpr>],
 		args: &[Spanned<Expr>],
 		span: Span,
+		hint: Option<&Typ>,
 	) -> Result<TypedVal, Diagnostic> {
 		let key = format!("{module}::{method}");
 		let key = self.world.reexports.get(&key).cloned().unwrap_or(key);
@@ -220,8 +221,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(sig) = self.funcs.get(&key).cloned() {
 			return self.call_sig(method, sig, None, None, args, span);
 		}
-		if let Some(def) = self.world.generic_fns.get(&key).cloned() {
-			return self.call_generic(&key, &def, type_args, args, None, span);
+		if self.world.generic_fns.contains_key(&key) {
+			return self.call_generic(&key, type_args, args, None, span, hint);
 		}
 		Err(unknown_member(format!("module `{module}`"), "function", method, span))
 	}
