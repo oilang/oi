@@ -495,6 +495,16 @@ fn manifest_name_reaches_package_root() {
 }
 
 #[test]
+fn package_modules_anchor_sibling_paths_at_root() {
+	let p = Project::new()
+		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])
+		.file("src/foo/util/lib.oi", ["pub v :: fn() int do 7"])
+		.file("src/foo/api/lib.oi", ["use foo.util", "pub v :: fn() int do util.v()"])
+		.file("tools/gen.oi", ["use dodge.foo.api", "print(api.v())"]);
+	assert_eq!(p.ok(&["run", "tools/gen.oi"]), "7");
+}
+
+#[test]
 fn manifest_name_clashing_with_entry_module_rejected() {
 	let p = Project::new()
 		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])

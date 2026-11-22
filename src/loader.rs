@@ -706,9 +706,11 @@ impl Loader {
 			if let Expr::Use { name, path, group, with } = &item.0 {
 				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
-				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
+				let whole =
+					path.len() == 1 || group.is_some() || self.is_module(&self.canon(&dotted(path.len()), &m.name));
 				let depth = path.len() - usize::from(!whole);
 				let module = &self.canon(&dotted(depth), &m.name);
+
 				// a `.item` import tail acts as a one-item group
 				let items: Vec<UseItem> = match (path.get(depth), group) {
 					(Some(it), _) => vec![UseItem {
@@ -718,6 +720,7 @@ impl Loader {
 					(None, Some(items)) => items.clone(),
 					(None, None) => vec![],
 				};
+
 				// ensure every imported item is public in its module
 				for it in &items {
 					let (remote, span) = it.remote();
@@ -725,6 +728,7 @@ impl Loader {
 						.selected
 						.push((module.clone(), remote.clone(), m.scope.module.clone(), *span));
 				}
+
 				let narrows = name.is_some() && group.is_some();
 				if public == Some(Vis::Package) {
 					return Err(err(
@@ -733,6 +737,7 @@ impl Loader {
 						"`pub(package) use` is not a thing yet",
 					));
 				}
+
 				if narrows || items.is_empty() {
 					// bind the module itself, or narrowed to its specified items
 					let local = name.as_ref().unwrap_or(&path[depth - 1]).0.clone();
@@ -742,6 +747,7 @@ impl Loader {
 					let only =
 						narrows.then(|| items.iter().map(|it| (it.local.0.clone(), it.remote().0.clone())).collect());
 					let vis = Visible { module: module.clone(), only };
+
 					if public.is_some() {
 						self.reexported_modules.insert(format!("{}::{local}", m.name), vis.clone());
 						if !narrows {
@@ -753,6 +759,7 @@ impl Loader {
 								.push(module.clone());
 						}
 					}
+
 					// handle re-importing
 					if let Some(prev) = m.scope.visible.insert(local.clone(), vis)
 						&& (narrows || prev.only.is_some() || prev.module != *module)
@@ -785,9 +792,11 @@ impl Loader {
 						}
 					}
 				}
+
 				imports.push((module.clone(), item.1));
 				continue;
 			}
+
 			let span = item.1;
 			// make fn bindings shadow
 			if let Expr::Fn(Func { name, .. }) = &item.0
@@ -801,6 +810,7 @@ impl Loader {
 				self.program.annotations.remove(&prev);
 				self.program.publics.vis.remove(&prev);
 			}
+
 			if let Expr::MacroCall { args, .. } = &mut item.0
 				&& let Some((pubbed, name)) = args.first_mut().and_then(|a| wrapped_def(&mut a.0))
 			{
@@ -808,6 +818,7 @@ impl Loader {
 				m.items.push(item);
 				continue;
 			}
+
 			if let Expr::TypeAlias { name, typ: TypeExpr::Sum(members), .. } = &mut item.0
 				&& let Some(v) = members
 					.iter()
@@ -886,6 +897,7 @@ impl Loader {
 						}
 						_ => Some(("cannot evaluate this at compile time", "not a const expression")),
 					};
+
 					if let Some((msg, label)) = bad {
 						return Err(err(msg, span, label));
 					}
@@ -1028,10 +1040,19 @@ impl Loader {
 	fn canon(&self, name: &str, from: &str) -> String {
 		let (dir, program) = (name.replace('.', "/"), &self.program);
 		let main = from == "main" || program.publics.packages.get(from) == program.roots.first();
-
 		let entry = || main && name != "core" && self.local(&dir) == dir && self.on_disk(&program.roots[0], &dir);
+
+		let (head, owner) = (
+			name.split('.').next().unwrap_or_default(),
+			from.split('.').next().unwrap_or_default(),
+		);
+		let sibling = head != "core" && !self.named.contains_key(head);
+
 		match (name.strip_prefix("core."), &self.prefix) {
 			(Some(x), _) if !program.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
+			_ if sibling && self.named.get(owner).is_some_and(|root| self.on_disk(root, &dir)) => {
+				format!("{owner}.{name}")
+			}
 			(None, Some(prefix)) if entry() => format!("{prefix}.{name}"),
 			_ => name.into(),
 		}
