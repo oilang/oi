@@ -116,3 +116,15 @@ fn test_dir_with_main_treats_siblings_as_modules() {
 	.file("rex.oi", "pub one :: fn() int { 1 }");
 	assert!(dir.ok(&["test", "."]).contains("1 passed"));
 }
+
+#[test]
+fn tests_dir_joins_the_manifest_package() {
+	let dir = Project::new()
+		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])
+		.file("src/foo/lib.oi", ["pub(package) hidden :: fn() int do 5"])
+		.file(
+			"tests/foo.oi",
+			["use dodge.foo", "@test reaches :: fn() { assert! foo.hidden() == 5 }"],
+		);
+	assert!(dir.ok(&["test", "tests/foo.oi"]).contains("1 passed"));
+}
