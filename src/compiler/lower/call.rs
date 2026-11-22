@@ -215,7 +215,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				)
 			};
 			let d = Diagnostic::new(msg, span.into_range()).with_label(label);
-			return Err(crate::loader::shadow_note(d, module, &self.world.core_origin));
+			return Err(crate::loader::shadow_note(d, module, &self.world.publics));
 		}
 		self.check_type_args(method, &key, type_args, span)?;
 		if let Some(sig) = self.funcs.get(&key).cloned() {

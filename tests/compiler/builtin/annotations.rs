@@ -62,5 +62,5 @@ fn noinit() {
 	Project::new()
 		.file("main.oi", ["use net.{ Handle }", "print(Handle.{ fd = 3 }.fd)"])
 		.file("net.oi", net)
-		.fail_with("can't build `Handle` outside module `net`");
+		.fail_with("can't build `Handle` outside module");
 }

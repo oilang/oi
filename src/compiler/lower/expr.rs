@@ -688,7 +688,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						None => (format!("module `{module}` has no const `{field}`"), "no such const"),
 					};
 					let d = Diagnostic::new(msg, expr.1.into_range()).with_label(label);
-					return Err(crate::loader::shadow_note(d, &module, &self.world.core_origin));
+					return Err(crate::loader::shadow_note(d, &module, &self.world.publics));
 				}
 
 				// associated consts

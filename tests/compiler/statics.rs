@@ -72,7 +72,7 @@ fn static_is_read_only_outside_its_module() {
 	Project::new()
 		.file("main.oi", ["use mem", "main :: fn() { mem.used = 9 }"])
 		.file("mem.oi", ["module mem", "pub used := 0"])
-		.fail_with("cannot assign to `mem.used` outside module `mem`");
+		.fail_with("cannot assign to `mem.used` outside module");
 }
 
 #[test]

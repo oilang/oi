@@ -1728,14 +1728,16 @@ impl<M: Module> Compiler<M> {
 				}
 				let Some(lib) = lib else { continue };
 
-				// search module dir, then each root
+				// search the declaring file's dir, then each root
 				let explicit = lib.contains(MAIN_SEPARATOR) || lib.contains(DLL_SUFFIX);
 				let file = if explicit {
 					lib.clone()
 				} else {
 					format!("{DLL_PREFIX}{lib}{DLL_SUFFIX}")
 				};
-				let dirs = program.roots.iter().flat_map(|r| [r.join(&scope.module), r.clone()]);
+
+				let here = Path::new(program.map.locate_span(span.into_range()).0).parent();
+				let dirs = here.into_iter().chain(program.roots.iter().map(|r| r.as_path()));
 				let found = dirs.map(|d| d.join(&file)).find(|p| p.is_file());
 				let lib = match found.or_else(|| explicit.then(|| lib.into())) {
 					Some(path) => match std::fs::canonicalize(path) {

@@ -221,9 +221,12 @@ fn err(msg: impl Into<String>, span: Span, label: &str) -> Diagnostic {
 }
 
 // Hint `core.x` when a local `x` shadows it.
-pub(crate) fn shadow_note(d: Diagnostic, module: &str, core_origin: &HashSet<String>) -> Diagnostic {
-	match CORE.get_dir(module.replace('.', "/")) {
-		Some(_) if !core_origin.contains(module) => d.with_note(format!("local `{module}` shadows `core.{module}`")),
+pub(crate) fn shadow_note(d: Diagnostic, module: &str, publics: &Publics) -> Diagnostic {
+	let packages = &publics.packages;
+	let main = packages.get(module) == packages.get("");
+	let local = module.split_once('.').filter(|_| main).map_or(module, |(_, path)| path);
+	match CORE.get_dir(local.replace('.', "/")) {
+		Some(_) if packages.contains_key(module) => d.with_note(format!("local `{local}` shadows `core.{local}`")),
 		_ => d,
 	}
 }
@@ -568,6 +571,7 @@ struct Loader {
 	pkg_store: Option<cache::Store>,
 	interfaces: HashMap<PathBuf, HashMap<String, Scanned>>,
 	named: HashMap<String, PathBuf>,
+	prefix: Option<String>,
 }
 
 impl Loader {
@@ -704,7 +708,7 @@ impl Loader {
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
 				let whole = path.len() == 1 || group.is_some() || self.is_module(&dotted(path.len()));
 				let depth = path.len() - usize::from(!whole);
-				let module = &self.canon(&dotted(depth));
+				let module = &self.canon(&dotted(depth), &m.name);
 				// a `.item` import tail acts as a one-item group
 				let items: Vec<UseItem> = match (path.get(depth), group) {
 					(Some(it), _) => vec![UseItem {
@@ -1020,10 +1024,15 @@ impl Loader {
 		r.join(dir).is_dir() || (file.is_file() && !self.entry_paths.contains(&file))
 	}
 
-	// `core.x` is `x` unless shadowed.
-	fn canon(&self, name: &str) -> String {
-		match name.strip_prefix("core.") {
-			Some(x) if !self.program.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
+	// Get the canonical name of a module.
+	fn canon(&self, name: &str, from: &str) -> String {
+		let (dir, program) = (name.replace('.', "/"), &self.program);
+		let main = from == "main" || program.publics.packages.get(from) == program.roots.first();
+
+		let entry = || main && name != "core" && self.local(&dir) == dir && self.on_disk(&program.roots[0], &dir);
+		match (name.strip_prefix("core."), &self.prefix) {
+			(Some(x), _) if !program.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
+			(None, Some(prefix)) if entry() => format!("{prefix}.{name}"),
 			_ => name.into(),
 		}
 	}
@@ -1038,7 +1047,7 @@ impl Loader {
 			&& let Expr::Ident(head) = &tuple.0
 			&& let Some(Visible { module, only }) = scope.visible.get(head)
 			&& let Some(vis) = self.reexported_modules.get(&format!("{module}::{field}")).cloned().or_else(|| {
-				let module = self.canon(&format!("{module}.{field}"));
+				let module = self.canon(&format!("{module}.{field}"), module);
 				(only.is_none() && self.is_module(&module)).then(|| {
 					imports.push((module.clone(), e.1));
 					Visible { module, only: None }
@@ -1078,12 +1087,10 @@ impl Loader {
 		let dir = &name.strip_prefix("core.").unwrap_or(name).replace('.', "/");
 		let file = format!("{dir}.oi");
 		let local = &self.local(dir);
-		let root = self
-			.program
-			.roots
-			.iter()
-			.find(|r| self.on_disk(r, dir))
-			.unwrap_or(&self.program.roots[0]);
+
+		let roots = &self.program.roots[usize::from(self.prefix.is_some() && local == dir)..];
+		let root = roots.iter().find(|r| self.on_disk(r, dir)).unwrap_or(&roots[0]);
+
 		let mut disk = if !from_core {
 			walk_oi(&root.join(local))
 		} else {
@@ -1091,6 +1098,7 @@ impl Loader {
 		};
 		disk.retain(|path| !self.entry_paths.contains(path));
 		disk.sort();
+
 		let candidate = root.join(format!("{local}.oi"));
 		let mut files: Vec<(String, String)> = if !disk.is_empty() {
 			disk.iter().map(|path| read_src(path)).collect::<Result<_, _>>()?
@@ -1099,6 +1107,7 @@ impl Loader {
 		} else {
 			vec![]
 		};
+
 		if files.is_empty() {
 			files = match (CORE.get_dir(dir), CORE.get_file(&file)) {
 				(Some(d), _) => core_files(d),
@@ -1117,6 +1126,7 @@ impl Loader {
 			};
 			self.program.publics.packages.insert(name.to_string(), pkg);
 		}
+
 		Ok(files)
 	}
 
@@ -1151,6 +1161,7 @@ impl Loader {
 		}
 
 		for m in imports {
+			let m = self.canon(&m, name);
 			if !self.prescanned.contains(&m) {
 				let inner = self.module_files(&m, from_core).unwrap_or_default();
 				self.prescan_module(&m, &inner);
@@ -1337,7 +1348,7 @@ impl Program {
 				}
 				_ => continue,
 			};
-			return Err(shadow_note(err(msg, *span, label), module, &self.core_origin));
+			return Err(shadow_note(err(msg, *span, label), module, &self.publics));
 		}
 		Ok(())
 	}
@@ -1365,6 +1376,7 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		core_origin: HashSet::from(["core".to_string()]),
 		..Program::default()
 	};
+
 	let mut loader = Loader {
 		program,
 		entry_paths: entry
@@ -1376,17 +1388,26 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 		..Loader::default()
 	};
 
-	if let Some((dir, manifest)) = Manifest::find(root)? {
-		let (name, dir) = (manifest.name(&dir), dir.join(manifest.root));
-		if loader.on_disk(root, &name) && fs::canonicalize(root.join(&name)).ok() != fs::canonicalize(&dir).ok() {
-			return Err(fail(format!("package `{name}` is also a module in {}", root.display())));
+	let full = root.canonicalize().unwrap_or_default();
+	let (pkg, manifest) = Manifest::find(root)?.unwrap_or_else(|| (full.clone(), Manifest::default()));
+	let (name, dir) = (manifest.name(&pkg), pkg.join(manifest.root));
+
+	// reserve core and its modules
+	if !matches!(name.as_str(), "" | "core") && !name.contains('.') && CORE.get_dir(&name).is_none() {
+		let same = |r: &&PathBuf| fs::canonicalize(r.join(&name)).ok() == fs::canonicalize(&dir).ok();
+		if let Some(r) = loader.program.roots.iter().find(|r| loader.on_disk(r, &name) && !same(r)) {
+			return Err(fail(format!("package `{name}` is also a module in {}", r.display())));
 		}
+
+		let rel = full.strip_prefix(&dir).ok();
+		loader.prefix = rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
 		loader.named.insert(name, dir);
 	}
 
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;
 	role::fill(&loader.program);
+
 	let os = (Expr::Atom(std::env::consts::OS.into()), Span::from(0..0));
 	loader.program.consts.insert("core::BUILD_OS".into(), os);
 	loader.program.publics.vis.insert("core::BUILD_OS".into(), Vis::Pub);
@@ -1396,5 +1417,6 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	loader.resolve_reexports();
 	loader.seed_prelude();
 	loader.resolve_claims();
+
 	Ok(loader.program)
 }

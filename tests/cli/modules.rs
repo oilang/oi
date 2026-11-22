@@ -22,7 +22,7 @@ fn private_fn_rejected() {
 	let p = Project::new()
 		.main(["use foo", "print(foo.secret())"])
 		.lib("foo", ["secret :: fn() int { 1 }"]);
-	p.fail_with("private to module `foo`");
+	p.fail_with("private to module");
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn selective_import_fails() {
 		"P :: 7",
 	] {
 		let p = Project::new().main(["use foo.{ P }"]).lib("foo", [lib]);
-		p.fail_with("private to module `foo`");
+		p.fail_with("private to module");
 	}
 }
 
@@ -195,7 +195,7 @@ fn member_visibility() {
 		let p = Project::new()
 			.main([main])
 			.lib("foo", [lib, "pub make :: fn() P { P.{ x = 1 } }"]);
-		p.fail_with("private to module `foo`");
+		p.fail_with("private to module");
 	}
 
 	let p = Project::new().main(["use foo.{ P }", "print(P.{ x = 3 }.shown())"]).lib(
@@ -227,15 +227,15 @@ fn package_visibility() {
 			"lib/util/lib.oi",
 			["module util", "pub(package) inner :: fn() int { 42 }"],
 		);
-	let entry = Project::new();
+	let entry = Project::new().lib("util", ["pub own :: fn() int { 1 }"]);
 	let exec = |key: &str, dir: &std::path::Path| {
-		oi(&["exec", "use greet\nprint(greet.hi())"])
+		oi(&["exec", "use greet\nuse util\nprint(greet.hi() + util.own())"])
 			.current_dir(&entry)
 			.env(key, dir)
 			.run(None)
 	};
-	// one package on OI_PATH, two once installed
-	assert_eq!(ok(exec("OI_PATH", &home.as_ref().join("lib"))), "42");
+	// one package on OI_PATH, two once installed, neither sees the entry's `util`
+	assert_eq!(ok(exec("OI_PATH", &home.as_ref().join("lib"))), "43");
 	assert!(err(exec("OI_HOME", home.as_ref())).contains("private to module `util`"));
 }
 
@@ -478,8 +478,19 @@ fn manifest_name_reaches_package_root() {
 	let p = Project::new()
 		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#, "[deps]"])
 		.file("src/lib.oi", ["pub top :: fn() int do 3"])
-		.file("src/foo/lib.oi", ["pub hi :: fn() int do 7"])
-		.file("src/main.oi", ["use dodge", "print(dodge.foo.hi() + dodge.top())"]);
+		.file(
+			"src/foo/lib.oi",
+			["pub P :: struct { pub x: int }", "pub mk :: fn() P do P.{ x = 7 }"],
+		)
+		.file(
+			"src/main.oi",
+			[
+				"use foo",
+				"use dodge",
+				"take :: fn(p: foo.P) int do p.x",
+				"print(take(dodge.foo.mk()) + dodge.top())",
+			],
+		);
 	assert_eq!(p.ok(&["run", "src/main.oi"]), "10");
 }
 
