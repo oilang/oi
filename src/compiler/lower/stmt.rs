@@ -175,6 +175,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						Some((_, local, _)) => local.clone(),
 						None => self.mutable_local(name, stmt.1.into_range(), mutation)?,
 					};
+					self.wrote(name);
 
 					if deref {
 						let typ = self.pointee(&local.typ, stmt.1)?;
@@ -374,9 +375,18 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						_ => None,
 					};
+
 					let (val, typ) = match value {
 						Some(e) => match self.ret.clone() {
-							Some((target, _)) => self.check_expr(e, &target)?,
+							Some((target, _)) => match e {
+								(Expr::Ident(name), at) if *at == stmt.1 && self.vars.contains_key(&format!("$some_{name}")) => {
+									let cond = Box::new((Expr::Ident(format!("$some_{name}")), *at));
+									let els = Some(vec![(Expr::Ident("none".into()), *at)]);
+									let pick = (Expr::If { cond, then: vec![(**e).clone()], els, chain: false }, *at);
+									self.check_expr(&pick, &target)?
+								}
+								_ => self.check_expr(e, &target)?,
+							},
 							None => self.expr(e)?,
 						},
 						None => {
@@ -389,6 +399,7 @@ impl<'a, M: Module> Translator<'a, M> {
 							(self.zero_or_err(&typ, stmt.1)?, typ)
 						}
 					};
+
 					if let Some(e) = value {
 						self.move_resource(e, &typ)?;
 					}

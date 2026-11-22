@@ -219,7 +219,16 @@ impl<'a, M: Module> Translator<'a, M> {
 			);
 		}
 		self.vars.forget(name);
+		self.wrote(name);
 		Ok(local)
+	}
+
+	// Mark a `?T` named result as written.
+	pub(super) fn wrote(&mut self, name: &str) {
+		if let Some(flag) = self.vars.get(&format!("$some_{name}")).map(|some| some.var) {
+			let one = self.b.ins().iconst(self.int, 1);
+			self.b.def_var(flag, one);
+		}
 	}
 
 	// Refuse a write to a `loop mut` binding.
@@ -450,6 +459,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Promote a local to a heap-boxed cell.
 	pub(super) fn box_local(&mut self, name: &str, local: &Local, span: Range<usize>) -> Result<Value, Diagnostic> {
+		self.wrote(name);
 		if local.boxed {
 			return Ok(self.b.use_var(local.var));
 		}

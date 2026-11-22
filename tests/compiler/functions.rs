@@ -100,6 +100,25 @@ fn named_result() {
 }
 
 #[test]
+fn named_result_payload() {
+	let src = indoc! {r#"
+		P :: struct { x: int }
+		evens :: fn(n: int) out: string![]int {
+			if n < 0 { return error("negative") }
+			loop i in ..n { out << i * 2 }
+			return
+		}
+		pick :: fn(xs: []int) out: ?P {
+			loop x in xs { if x > 3 { out.x = x } }
+			return
+		}
+		print(evens(3), evens(-1))
+		print(pick([1, 5]), pick([1]))
+	"#};
+	check(src, [r#"ok.([0, 2, 4]) err.("negative")"#, "some.(P.{x = 5}) none"]);
+}
+
+#[test]
 fn default_param() {
 	let src = indoc! {"
 		add :: fn(x: int, y: int = 10, z := 100, w := [-1]) int { x + y + z + w[0] }

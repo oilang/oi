@@ -282,6 +282,19 @@ commit :: fn(db: Db) (tx: Tx, err: ?Error) {
 	return
 }
 
+# a lone `?T` or `E!T` slot holds the zeroed `T`
+evens :: fn(n: int) out: string![]int {
+	if n < 0 { return error("negative") }
+	loop i in ..n { out << i * 2 }
+	return
+}
+# and a bare `return` yields `none` until something writes `out`
+find :: fn(xs: []int) out: ?int {
+	loop x in xs { if x > 3 { out = x; break } }
+	return
+}
+assert! find([1]) == none
+
 # default values
 three :: fn() r := 2 {
 	r = 3

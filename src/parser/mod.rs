@@ -231,13 +231,27 @@ fn split_members(members: Vec<Member>) -> (Vec<Param>, Vec<Spanned<Expr>>, Vec<E
 }
 
 // Handle named results.
-fn named_ret(slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec<Spanned<Expr>> {
+fn named_ret(mut slots: Vec<Param>, mut body: Vec<Spanned<Expr>>, span: Span) -> Vec<Spanned<Expr>> {
 	let value = match &slots[..] {
 		[] => return body,
 		[slot] => Expr::Ident(slot.name.clone()),
 		_ => Expr::Tuple(slots.iter().map(|s| (None, (Expr::Ident(s.name.clone()), s.span))).collect()),
 	};
 	body.iter_mut().for_each(|e| bind_return(e, &value));
+
+	// propagators
+	if let [slot] = &mut slots[..]
+		&& let TypeExpr::Generic(wrap, args) = &mut slot.typ
+		&& matches!(wrap.as_str(), "Option" | "Result")
+	{
+		let some = (wrap == "Option").then(|| Param {
+			default: slot.default.as_ref().map(|_| (Expr::Bool(true), slot.span)),
+			..Param::new(format!("$some_{}", slot.name), TypeExpr::Name("bool".into()), slot.span)
+		});
+		slot.typ = args.swap_remove(0);
+		slots.extend(some);
+	}
+
 	let decls = slots.into_iter().map(|s| {
 		let decl = Expr::Bind {
 			mutable: true,

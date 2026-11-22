@@ -769,6 +769,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			return fail(msg, e.1, "immutably bound");
 		}
 		self.vars.forget(name);
+		self.wrote(name);
 		Ok(name)
 	}
 
