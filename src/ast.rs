@@ -944,7 +944,9 @@ pub fn dot_fn(expr: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	fn root((expr, span): &mut Spanned<Expr>) -> bool {
 		let recv = Box::new((Expr::Dollar, *span));
 		*expr = match expr {
-			Expr::Field { tuple: next, .. } | Expr::MethodCall { recv: next, .. } => return root(next),
+			Expr::Field { tuple: next, .. } | Expr::MethodCall { recv: next, .. } | Expr::Propagate(next) => {
+				return root(next);
+			}
 			Expr::EnumShorthand { variant, args: [] } => Expr::Field { tuple: recv, field: variant.clone() },
 			Expr::Apply {
 				callee: (Expr::EnumShorthand { variant, args: [] }, _),

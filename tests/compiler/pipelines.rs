@@ -195,3 +195,18 @@ fn mutable_dollar() {
 	fail([defs, r#"xs |> .add("x")"#], "pipe from `mut x`");
 	fail([defs, r#"mut xs |> .add(xs[0])"#], "while it is lent `mut`");
 }
+
+#[test]
+fn dot_stage_propagates() {
+	let src = oi! {
+		string :< {
+			word :: fn(self) ?string {
+				if self == "" do return none
+				self
+			}
+		}
+		up :: fn(s: string) ?string { s |> .word()? |> .upper() }
+		print(up("a"), up(""))
+	};
+	check(src, r#"some.("A") none"#);
+}

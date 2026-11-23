@@ -6,7 +6,7 @@ tags: []
 # [[Oi|../]]
 > NOTE: I wrote this file in Obsidian. It craps out and looks like poo in Neovim because of comments with markdown.
 
-```rust
+```oi
 ## comments
 
 # Single line comments
@@ -2412,22 +2412,27 @@ main :: fn() {
 
 	## pipelines
 
-	call_to_action := "let's do this" |> trim |> upper
+	call_to_action := "let's do this" |> .trim() |> .upper()
 
 	# if any step returns none, the whole chain is none
-	"optional-aware" |> upper?
+	"optional-aware" |> .upper()?
 	nickname := find_user(id)
 		|> get_profile?
 		|> get_display_name?
 		or "anonymous"
 
 	# any error short circuits
-	"result-aware" |> upper?
-	result := input |> trim |> upper |> save?
+	"result-aware" |> .upper()?
+	result := input |> .trim() |> .upper() |> save?
 
 	# each step gets the piped value as `$`
-	# a bare fn like `trim` runs with the input as its first param (`trim` == `trim($)`)
-	# any other expression (a call using `$`, an `if`, a block) is evaluated in place with `$` bound
+	# a step without `$` is a fn, applied to it: `save`, `.trim()`, `.name`, `string.trim`, `fn {}`
+	# the same fns go anywhere a fn is expected
+	users.map(.name.len())
+	words.map(string.trim)
+
+	# `.m()` is a method, `.x` alone is a field
+	# a step using `$` (a call, an `if`, a block) is evaluated in place with `$` bound
 	# thus we have clojure-like threading
 	"threading"
 		|> wrap("[", $, "]")
@@ -2435,9 +2440,19 @@ main :: fn() {
 	"hello" |> $ + " world"
 	[2 4 6 8] |> if $.len() > 0 { print(true) }
 
+	# a void step yields `$`
+	"tap" |> print($) |> .upper()
+
+	# `$` is mutable over a temporary head or a lent `mut xs`
+	v := [3 1 2] |> .push(4) |> .sort()
+	mut xs |> .push(4) |> .sort()
+	xs |> .push(4) # error: pipe from `mut xs`
+	# a fn literal's `$` is `mut` if its param is
+	entities.each { $.pos += $.vel }
+
 	# any errors in the pipeline flow directly to an `or`
 	"error-only pipes"
-		|> upper
+		|> .upper()
 		or handler
 
 	# any expression can be used as a pipeline step, including blocks
@@ -2510,7 +2525,7 @@ main :: fn() {
 		or log
 
 	formatted := name
-		|> upper
+		|> .upper()
 		|> wrap("[", $, "]")
 		|> log(level = :info, $)
 
@@ -2519,11 +2534,11 @@ main :: fn() {
 	# a pipeline is a composition of stages
 
 	# a fn head composes the stages into a single fn
-	slugify :: trim |> lower |> replace(" ", "-")
+	slugify :: string.trim |> .lower() |> .replace(" ", "-")
 	assert!(slugify(" Hello World ") == "hello-world")
 
 	# a non-fn head immediately applies the stages to the input
-	" foo-bar " |> trim |> upper |> replace("-", "_") # "FOO_BAR"
+	" foo-bar " |> .trim() |> .upper() |> .replace("-", "_") # "FOO_BAR"
 
 	# fn literals chain by the same rule
 	f :: fn(x: int) (int, int) { (x, x) } |> fn(x: int, y: int) Point { Point.{ x, y } }
@@ -2533,12 +2548,12 @@ main :: fn() {
 	nums.map(double |> negate)
 
 	# annotations may be provided when desired, as with any other binding
-	slugify : fn(string) string : trim |> lower |> replace(" ", "-")
+	slugify : fn(string) string : .trim() |> .lower() |> .replace(" ", "-")
 
 	# when a stage needs a parameter by name, write the fn out and pipe from the param
 	# TODO: revisit, because I can see ways to make this more ergonomic like it was originally
 	count_letters :: fn(s: string) int {
-		s |> lower |> uniq |> replace("[^A-Za-z]", "") |> len |> {
+		s |> .lower() |> uniq |> .replace("[^A-Za-z]", "") |> .len() |> {
 			log.info("called count_letters with {s}, and it has {$} unique letters")
 			$
 		}
