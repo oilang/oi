@@ -509,8 +509,27 @@ fn manifest_name_clashing_with_entry_module_rejected() {
 	let p = Project::new()
 		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])
 		.file("dodge/lib.oi", ["pub hi :: fn() int do 1"])
-		.main(["print(1)"]);
+		.file("unused.oi", ["print(1)"])
+		.main(["use dodge", "print(1)"]);
+	assert_eq!(p.ok(&["run", "unused.oi"]), "1");
 	p.fail_with("package `dodge` is also a module");
+}
+
+#[test]
+fn lib_package_cannot_use_main_name() {
+	let home = Project::new().file("lib/helper/lib.oi", ["use dodge", "pub hi :: fn() int do dodge.v()"]);
+	let p = Project::new()
+		.file("oi.toml", [r#"name = "dodge""#, r#"root = "src""#])
+		.file("src/lib.oi", ["pub v :: fn() int do 7"])
+		.file("main.oi", ["use helper", "print(helper.hi())"]);
+	let run = oi(&["run", "main.oi"]).current_dir(&p).env("OI_HOME", home.as_ref()).run(None);
+	assert!(err(run).contains("only package `dodge` can use it"));
+}
+
+#[test]
+fn package_named_core_rejected() {
+	let p = Project::new().file("oi.toml", [r#"name = "core""#]).main(["print(1)"]);
+	p.fail_with("set `name` in oi.toml");
 }
 
 #[test]

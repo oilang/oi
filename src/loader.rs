@@ -571,6 +571,7 @@ struct Loader {
 	pkg_store: Option<cache::Store>,
 	interfaces: HashMap<PathBuf, HashMap<String, Scanned>>,
 	named: HashMap<String, PathBuf>,
+	clash: Option<PathBuf>,
 	prefix: Option<String>,
 }
 
@@ -704,6 +705,18 @@ impl Loader {
 				));
 			}
 			if let Expr::Use { name, path, group, with } = &item.0 {
+				let (head, at) = &path[0];
+				if self.named.contains_key(head) {
+					if let Some(root) = &self.clash {
+						let msg = format!("package `{head}` is also a module in {}", root.display());
+						return Err(err(msg, *at, "ambiguous"));
+					}
+					if !self.main_package(&m.name) {
+						let msg = format!("only package `{head}` can use it");
+						return Err(err(msg, *at, "outside the package"));
+					}
+				}
+
 				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
 				let dotted = |n: usize| path[..n].iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join(".");
 				let whole =
@@ -1036,10 +1049,15 @@ impl Loader {
 		r.join(dir).is_dir() || (file.is_file() && !self.entry_paths.contains(&file))
 	}
 
+	// Whether `module` is in the main package.
+	fn main_package(&self, module: &str) -> bool {
+		module == "main" || self.program.publics.packages.get(module) == self.program.roots.first()
+	}
+
 	// Get the canonical name of a module.
 	fn canon(&self, name: &str, from: &str) -> String {
 		let (dir, program) = (name.replace('.', "/"), &self.program);
-		let main = from == "main" || program.publics.packages.get(from) == program.roots.first();
+		let main = self.main_package(from);
 		let entry = || main && name != "core" && self.local(&dir) == dir && self.on_disk(&program.roots[0], &dir);
 
 		let (head, owner) = (
@@ -1415,20 +1433,25 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	let (pkg, manifest) = found.unwrap_or_else(|| (full.clone(), Manifest::default()));
 	let (name, dir) = (manifest.name(&pkg), pkg.join(manifest.root));
 
+	if explicit && name == "core" {
+		let msg = format!(
+			"{}: package can't be named `core`, set `name` in oi.toml",
+			pkg.display()
+		);
+		return Err(fail(msg));
+	}
+
 	// reserve core and its modules
 	if !matches!(name.as_str(), "" | "core") && !name.contains('.') && CORE.get_dir(&name).is_none() {
 		let same = |r: &&PathBuf| fs::canonicalize(r.join(&name)).ok() == fs::canonicalize(&dir).ok();
+		let clash = loader.program.roots.iter().find(|r| loader.on_disk(r, &name) && !same(r));
 
-		match loader.program.roots.iter().find(|r| loader.on_disk(r, &name) && !same(r)) {
-			Some(r) if explicit => return Err(fail(format!("package `{name}` is also a module in {}", r.display()))),
-			// dir with no manifest
-			Some(_) => {}
-			None => {
-				let rel = full.strip_prefix(&dir).ok();
-				loader.prefix =
-					rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
-				loader.named.insert(name, dir);
-			}
+		// dir with no manifest
+		if explicit || clash.is_none() {
+			loader.clash = clash.cloned();
+			let rel = full.strip_prefix(&dir).ok();
+			loader.prefix = rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
+			loader.named.insert(name, dir);
 		}
 	}
 
