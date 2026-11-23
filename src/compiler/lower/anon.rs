@@ -169,7 +169,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			&& param.access == Access::Mut
 		{
 			body.iter_mut()
-				.for_each(|(e, _)| rebind_dollar(e, &Expr::Ident(param.name.clone())));
+				.for_each(|(e, _)| _ = rebind_dollar(e, &Expr::Ident(param.name.clone())));
 		}
 
 		// context of the scope

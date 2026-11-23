@@ -93,16 +93,8 @@ impl<M: Module> Translator<'_, M> {
 	// Feed `$` through one application stage.
 	fn apply_step(&mut self, step: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let span = step.1;
+		let (mut placed, place) = (step.clone(), self.place.clone().unwrap_or((Expr::Dollar, span)));
 		match &step.0 {
-			_ if matches!(step.0, Expr::AnonFn { .. }) || self.type_method(step).is_some() => {
-				let (val, typ) = self.expr(step)?;
-				let arity = match &typ {
-					Typ::Fn(params, _) | Typ::Closure(params, _, _) => params.len(),
-					_ => 1,
-				};
-				let args = self.stage_args(arity, span);
-				self.call_value("this stage", Callee::Object(val), &typ, &args, None, span)
-			}
 			Expr::Call {
 				name,
 				type_args,
@@ -112,11 +104,19 @@ impl<M: Module> Translator<'_, M> {
 				let args = self.stage_args(arity, span);
 				self.expr(&called(name.clone(), type_args.clone(), args, span))
 			}
-			_ => {
-				// r/w `$` through its place
+			// r/w `$` through its place
+			_ if matches!(step.0, Expr::Block(_)) || rebind_dollar(&mut placed.0, &place.0) => {
 				self.dollar = None;
-				let step = self.placed(std::slice::from_ref(step));
-				self.expr(&step[0])
+				self.expr(&placed)
+			}
+			_ => {
+				let (val, typ) = self.expr(step)?;
+				let arity = match &typ {
+					Typ::Fn(params, _) | Typ::Closure(params, _, _) => params.len(),
+					_ => 1,
+				};
+				let args = self.stage_args(arity, place.1);
+				self.call_value("this stage", Callee::Object(val), &typ, &args, None, span)
 			}
 		}
 	}
@@ -128,7 +128,7 @@ impl<M: Module> Translator<'_, M> {
 		};
 
 		let mut body = body.to_vec();
-		body.iter_mut().for_each(|(e, _)| rebind_dollar(e, &place.0));
+		body.iter_mut().for_each(|(e, _)| _ = rebind_dollar(e, &place.0));
 		body.into()
 	}
 

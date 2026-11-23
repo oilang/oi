@@ -2,13 +2,17 @@ use crate::helpers::*;
 
 #[test]
 fn threads_steps() {
-	let src = indoc! {"
+	let src = oi! {
 		double :: fn(x: int) int { x * 2 }
 		inc :: fn(x: int) int { x + 1 }
-		print(3 |> double, 3 |> double |> inc |> double)
+		add :: fn(n: int) fn(int) int {
+			fn [move n] (x: int) int { x + n }
+		}
+		print(3 |> double, 3 |> double |> inc |> double, 3 |> add(2))
 		print(3 |> $ + 1, 1 + 1 |> double)
-	"};
-	check(src, ["6 14", "4 4"]);
+	};
+	check(src, ["6 14 5", "4 4"]);
+	fail(r#"print("x" |> 5)"#, "is not callable");
 }
 
 #[test]
