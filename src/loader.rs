@@ -1410,19 +1410,26 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 	};
 
 	let full = root.canonicalize().unwrap_or_default();
-	let (pkg, manifest) = Manifest::find(root)?.unwrap_or_else(|| (full.clone(), Manifest::default()));
+	let found = Manifest::find(root)?;
+	let explicit = found.is_some();
+	let (pkg, manifest) = found.unwrap_or_else(|| (full.clone(), Manifest::default()));
 	let (name, dir) = (manifest.name(&pkg), pkg.join(manifest.root));
 
 	// reserve core and its modules
 	if !matches!(name.as_str(), "" | "core") && !name.contains('.') && CORE.get_dir(&name).is_none() {
 		let same = |r: &&PathBuf| fs::canonicalize(r.join(&name)).ok() == fs::canonicalize(&dir).ok();
-		if let Some(r) = loader.program.roots.iter().find(|r| loader.on_disk(r, &name) && !same(r)) {
-			return Err(fail(format!("package `{name}` is also a module in {}", r.display())));
-		}
 
-		let rel = full.strip_prefix(&dir).ok();
-		loader.prefix = rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
-		loader.named.insert(name, dir);
+		match loader.program.roots.iter().find(|r| loader.on_disk(r, &name) && !same(r)) {
+			Some(r) if explicit => return Err(fail(format!("package `{name}` is also a module in {}", r.display()))),
+			// dir with no manifest
+			Some(_) => {}
+			None => {
+				let rel = full.strip_prefix(&dir).ok();
+				loader.prefix =
+					rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
+				loader.named.insert(name, dir);
+			}
+		}
 	}
 
 	// import core implicitly

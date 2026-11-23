@@ -512,3 +512,14 @@ fn manifest_name_clashing_with_entry_module_rejected() {
 		.main(["print(1)"]);
 	p.fail_with("package `dodge` is also a module");
 }
+
+#[test]
+fn unnamed_dir_yields_its_leaf_to_a_lib_module() {
+	let home = Project::new().file("lib/dodge/lib.oi", ["module dodge", "pub hi :: fn() int do 1"]);
+	let p = Project::new().file("dodge/main.oi", ["use dodge", "print(dodge.hi())"]);
+	let run = oi(&["run", "main.oi"])
+		.current_dir(p.as_ref().join("dodge"))
+		.env("OI_HOME", home.as_ref())
+		.run(None);
+	assert_eq!(ok(run), "1");
+}
