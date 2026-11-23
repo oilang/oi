@@ -1,6 +1,7 @@
 use std::process::Output;
 
 pub(crate) use indoc::indoc;
+pub(crate) use oi_macros::oi;
 use pretty_assertions::assert_eq;
 
 use crate::common::{Lines, Run, oi, ok, stderr, trim};

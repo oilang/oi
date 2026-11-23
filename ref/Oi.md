@@ -80,8 +80,6 @@ tags: []
 # TODO
 - immediate
 	- [ ] namespaced methods, like nushell's `" foo " | str trim` `nu`
-	- [ ] rust macro like `json!`/`html!`/`python!`/etc. to write Oi without `indoc` and all that
-		- if I could get syntax highlighting working too it would be chef's kiss, but it might be cool enough that I never feel compelled to venture into self-hosting territory
 	- [ ] `oi check` `rust`
 - [ ] let `:h <topic>` look at text files too, like vim does (offline wiki kind of thing? or maybe that's too much) `vim revo`
 - [ ] computed values `swift gdscript c# kotlin`

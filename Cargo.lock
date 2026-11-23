@@ -1001,6 +1001,7 @@ dependencies = [
  "libc",
  "logos",
  "lsp-server",
+ "oi-macros",
  "oi-runtime",
  "postcard",
  "pretty_assertions",
@@ -1011,6 +1012,10 @@ dependencies = [
  "target-lexicon",
  "toml",
 ]
+
+[[package]]
+name = "oi-macros"
+version = "0.1.0"
 
 [[package]]
 name = "oi-runtime"
