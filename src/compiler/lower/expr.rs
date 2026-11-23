@@ -1064,7 +1064,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => fail("this block never produces a value", expr.1, "every path returns"),
 			},
 
-			Expr::Pipe { value, step } => self.pipe(value, step, expr.1),
+			Expr::Pipe { value, step } => self.pipe(value, step, hint, expr.1),
 
 			Expr::OrElse { value, body } => self.or_else(value, body, expr.1, true),
 			Expr::AndThen { value, body } => self.and_then(value, body, expr.1),

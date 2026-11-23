@@ -132,13 +132,14 @@ fn composes_fn_literals() {
 }
 
 #[test]
-fn composition_tail_must_be_a_fn() {
-	let src = indoc! {"
-		double :: fn(x: int) int { x * 2 }
-		f :: double |> ($ + 1)
-		print(f(3))
-	"};
-	fail(src, "cannot infer the composed return type");
+fn composes_typed_dot_heads() {
+	let src = oi! {
+		slugify :: string.trim |> .lower() |> .replace(" ", "-")
+		shout : fn(string) string : .trim() |> .upper()
+		inc :: fn(x: int) int { x } |> ($ + 1)
+		print(slugify(" Hello World "), shout(" hi "), inc(3))
+	};
+	check(src, "hello-world HI 4");
 }
 
 #[test]

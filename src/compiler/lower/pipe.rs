@@ -1,9 +1,4 @@
 use super::*;
-use crate::ast::Param;
-
-fn unspellable(span: Span) -> Diagnostic {
-	Diagnostic::new("cannot express this composed signature", span.into_range()).with_label("write the fn out")
-}
 
 fn piped(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> {
 	let (value, step) = (Box::new(value), Box::new(step));
@@ -20,13 +15,15 @@ impl<M: Module> Translator<'_, M> {
 		&mut self,
 		value: &Spanned<Expr>,
 		step: &Spanned<Expr>,
+		hint: Option<&Typ>,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
 		let mut head = value;
 		while let Expr::Pipe { value, .. } = &head.0 {
 			head = value;
 		}
-		let Some(head_params) = self.head_fn_sig(head)? else {
+
+		let Some(head_params) = self.head_fn_sig(head, hint)? else {
 			let fed = self.expr(value)?;
 			let wrapped = match &step.0 {
 				Expr::Call { name, .. } if !matches!(value.0, Expr::Pipe { .. }) => {
@@ -35,23 +32,20 @@ impl<M: Module> Translator<'_, M> {
 				}
 				_ => false,
 			};
+
 			let saved = self.dollar.replace(fed);
 			let out = self.apply_step(step);
 			self.dollar = saved;
+
 			return out.map_err(|d| match wrapped {
 				true => d.with_note("add `?` to unwrap the head"),
 				false => d,
 			});
 		};
-		let mut params = Vec::with_capacity(head_params.len());
-		for (i, typ) in head_params.iter().enumerate() {
-			let (name, typ) = (format!("${i}"), type_expr(typ).ok_or_else(|| unspellable(span))?);
-			params.push(Param::new(name, typ, span));
-		}
-		let ret = self.stage_ret(step)?;
-		let body = [piped(self.feed(value), step.clone(), span)];
-		let sig = AnonSig::Explicit(&ret);
-		Ok(self.declare_anon_fn(&None, &params, params.len() != 1, sig, &body, span)?.0)
+
+		let block = (Expr::Block(vec![piped(self.feed(value), step.clone(), span)]), span);
+		let sig = self.anon_hint(&block, head_params)?;
+		self.lower(&block, sig.as_ref())
 	}
 
 	// The pipeline with its head turned into a stage that `$` flows into.
@@ -62,7 +56,7 @@ impl<M: Module> Translator<'_, M> {
 			Expr::Pipe { value, step } => return piped(self.feed(value), (**step).clone(), span),
 			Expr::Ident(n) if self.vars.contains_key(n) => called(n.clone(), vec![], dollar, span),
 			Expr::Ident(n) => called(self.qualify(n).into_owned(), vec![], dollar, span),
-			_ => expr.clone(),
+			_ => dot_fn(expr).unwrap_or_else(|| expr.clone()),
 		};
 		piped((Expr::Dollar, span), head, span)
 	}
@@ -71,7 +65,7 @@ impl<M: Module> Translator<'_, M> {
 	fn apply_step(&mut self, step: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let span = step.1;
 		match &step.0 {
-			Expr::AnonFn { .. } => {
+			_ if matches!(step.0, Expr::AnonFn { .. }) || self.type_method(step).is_some() => {
 				let (val, typ) = self.expr(step)?;
 				let arity = match &typ {
 					Typ::Fn(params, _) | Typ::Closure(params, _, _) => params.len(),
@@ -119,37 +113,25 @@ impl<M: Module> Translator<'_, M> {
 	}
 
 	// The parameter types of a pipeline head that is a fn value, or `None` to apply instead.
-	fn head_fn_sig(&self, head: &Spanned<Expr>) -> Result<Option<Vec<Typ>>, Diagnostic> {
+	fn head_fn_sig(&mut self, head: &Spanned<Expr>, hint: Option<&Typ>) -> Result<Option<Vec<FnParam>>, Diagnostic> {
 		let name = match &head.0 {
 			Expr::AnonFn { params, ret, .. } if ret.is_some() => {
 				let types = self.types;
-				let params = params.iter().map(|p| types.resolve(&p.typ, p.span));
+				let params = params.iter().map(|p| types.resolve(&p.typ, p.span).map(FnParam::new));
 				return Ok(Some(params.collect::<Result<_, _>>()?));
 			}
 			Expr::Ident(name) => name,
+			_ if let Some(sig) = self.type_method(head) => return Ok(Some(sig.value_params())),
+			_ if let (Some(_), Some(Typ::Fn(params, _))) = (dot_fn(head), hint) => return Ok(Some(params.clone())),
 			_ => return Ok(None),
 		};
 		if let Some((params, _)) = self.callable(name) {
-			return Ok(Some(params));
+			return Ok(Some(params.into_iter().map(FnParam::new).collect()));
 		}
 		if self.vars.contains_key(name) || !self.world.generic_fns.contains_key(self.qualify(name).as_ref()) {
 			return Ok(None);
 		}
 		let msg = format!("cannot compose a generic function `{name}`");
 		fail(msg, head.1, "instantiate it or write the fn out")
-	}
-
-	// A composition returns whatever its last stage does.
-	fn stage_ret(&self, stage: &Spanned<Expr>) -> Result<Spanned<TypeExpr>, Diagnostic> {
-		let vague = || {
-			Diagnostic::new("cannot infer the composed return type", stage.1.into_range())
-				.with_label("end the pipeline with a fn, or write the fn out")
-		};
-		let ret = match &stage.0 {
-			Expr::AnonFn { ret: Some(ret), .. } => return Ok((**ret).clone()),
-			Expr::Ident(name) | Expr::Call { name, .. } => self.callable(name).ok_or_else(vague)?.1,
-			_ => return Err(vague()),
-		};
-		Ok((type_expr(&ret).ok_or_else(|| unspellable(stage.1))?, stage.1))
 	}
 }
