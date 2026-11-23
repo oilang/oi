@@ -365,3 +365,13 @@ fn not_negates_a_predicate() {
 	"};
 	check(src, "true [2, 4]");
 }
+
+#[test]
+fn type_method_values() {
+	let src = oi! {
+		first := string.first
+		xs := [" ab ", "cd "]
+		print(xs.map(string.trim), xs.map(string.first), first("abc", 2))
+	};
+	check(src, r#"["ab", "cd"] [" ", "c"] ab"#);
+}

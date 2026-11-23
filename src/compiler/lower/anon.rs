@@ -14,6 +14,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if let Some(dot) = dot_fn(lit) {
 			return self.anon_hint(&dot, params);
 		}
+		if let Some(sig) = self.type_method(lit) {
+			return Ok(Some(Typ::Fn(params, Box::new(sig.ret))));
+		}
+
 		let (names, body) = match &lit.0 {
 			Expr::AnonFn { ret: None, params, body, .. } => (&params[..], body),
 			Expr::Block(body) => (&[][..], body),
@@ -33,6 +37,17 @@ impl<'a, M: Module> Translator<'a, M> {
 			s.expr(&(Expr::Block(body.clone()), lit.1))
 		})?;
 		Ok(Some(Typ::Fn(params, Box::new(ret))))
+	}
+
+	// The method that `T.m` names on type `T`.
+	pub(super) fn type_method(&mut self, expr: &Spanned<Expr>) -> Option<FnSig> {
+		let Expr::Field { tuple, field } = &expr.0 else {
+			return None;
+		};
+		let Expr::Ident(name) = &tuple.0 else { return None };
+
+		let recv = (!self.vars.contains_key(name)).then(|| self.types.named(name, tuple.1).ok())??;
+		self.resolve_method(&recv, field)
 	}
 
 	// Declare an anon fn literal, with the FuncId of its code.

@@ -728,6 +728,27 @@ impl<'a, M: Module> Translator<'a, M> {
 					}
 				}
 
+				// unbound methods
+				if let Some(sig) = self.type_method(expr) {
+					let (arity, typ) = match hint {
+						Some(t @ Typ::Fn(params, _)) => (params.len(), t.clone()),
+						_ => (sig.params.len(), Typ::Fn(sig.value_params(), Box::new(sig.ret))),
+					};
+
+					let args = (0..arity).map(|i| (Expr::Ident(format!("${i}")), expr.1)).collect();
+					let call = Expr::MethodCall {
+						recv: Box::new(tuple.clone()),
+						method: field.clone(),
+						type_args: vec![],
+						args,
+					};
+
+					let body = [(call, expr.1)];
+					return Ok(self
+						.declare_anon_fn(&None, &[], false, AnonSig::Inferred(typ), &body, expr.1)?
+						.0);
+				}
+
 				// enum variants
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
