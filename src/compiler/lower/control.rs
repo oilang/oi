@@ -2041,37 +2041,46 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.bind_pat(value_pat, payload, &inner, mutable)?;
 			return self.bind_pat(flag_pat, flag, &flag_typ, mutable);
 		}
+
 		let parts = !matches!(&pat.0, Expr::Ident(_));
 		let binds = match &pat.0 {
 			Expr::Ident("_") => return Ok(()),
 			Expr::Ident(name) => vec![(name.clone(), typ.clone(), 0)],
 			_ => self.pat_binds(pat, typ)?,
 		};
+
 		let (hidden, binds): (Vec<_>, _) = binds.into_iter().partition(|(name, ..)| name.starts_with("$sub"));
 		for ((_, ftyp, off), sub) in hidden.iter().zip(&split_subs(pat).1) {
 			let field = self.load_bind(val, typ, ftyp, *off, sub.1);
 			self.bind_pat(sub, field, ftyp, mutable)?;
 		}
+
 		for (name, ftyp, off) in binds {
 			let v = if parts {
 				self.load_bind(val, typ, &ftyp, off, pat.1)
 			} else {
 				val
 			};
-			let v = self.copy_bind(v, &ftyp);
+
 			let Some(mutable) = mutable else {
 				let local = self.mutable_local(&name, pat.1.into_range(), Mutation::Assign)?;
 				if local.typ != ftyp {
 					let msg = format!("cannot assign {ftyp} to `{name}`, which is {}", local.typ);
 					return fail(msg, pat.1, "type mismatch");
 				}
+
+				// release first, because copy_bind's slot may be the old value's
 				let old = self.read_local(&local);
-				self.write_local(&local, v);
 				self.release_value(old, &ftyp);
+				let v = self.copy_bind(v, &ftyp);
+				self.write_local(&local, v);
 				continue;
 			};
+
+			let v = self.copy_bind(v, &ftyp);
 			self.bind_local(&name, v, ftyp, mutable);
 		}
+
 		Ok(())
 	}
 

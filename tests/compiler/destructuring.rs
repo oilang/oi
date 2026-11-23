@@ -23,7 +23,21 @@ fn tuple_bind() {
 fn fail_tuple_bind() {
 	fail("(a, b, c) :: (1, 2)", "fields");
 	fail("(a, b) :: 5", "cannot destructure");
-	fail("(a, b) :: (1, 2)\n(a, b) = (3, 4)", "immutably bound");
+	fail(["(a, b) :: (1, 2)", "(a, b) = (3, 4)"], "immutably bound");
+}
+
+#[test]
+fn tuple_reassign_struct_in_loop() {
+	let src = indoc! {r#"
+		Box :: struct { words: []string }
+		make :: fn(text: string) (Box, int) {
+			(Box.{ text.split(" ") }, 1)
+		}
+		(box, n) := make("a b")
+		loop i in 0..3 { (box, n) = make("c d") }
+		print(box.words[1], n)
+	"#};
+	check(src, "d 1");
 }
 
 #[test]
@@ -36,7 +50,7 @@ fn loose_commas() {
 		loop (x y) in [(1 2)] { print(x + y) }
 		match (a b) { (l r) => print(l - r), }
 	"#};
-	check(src, "3\n-5");
+	check(src, ["3", "-5"]);
 }
 
 #[test]
@@ -59,8 +73,11 @@ fn struct_bind() {
 
 #[test]
 fn fail_struct_bind() {
-	fail("Point :: struct { x: int }\nPoint.{ z } :: Point.{ 1 }", "no field `z`");
-	fail("Point :: struct { x: int }\nPoint.{ x } :: 5", "cannot destructure");
+	fail(
+		["Point :: struct { x: int }", "Point.{ z } :: Point.{ 1 }"],
+		"no field `z`",
+	);
+	fail(["Point :: struct { x: int }", "Point.{ x } :: 5"], "cannot destructure");
 }
 
 #[test]
