@@ -1,5 +1,5 @@
 use super::*;
-use crate::ast::{Capture, Param};
+use crate::ast::{Capture, Param, rebind_dollar};
 use crate::compiler::CONTEXT;
 
 // An anon fn's signature.
@@ -128,11 +128,15 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !params.is_empty() && params.len() != ptyps.len() {
 					return arity_err("this fn literal", ptyps.len(), params.len(), "param", span);
 				}
+
 				// a fn header keeps its names and fills its omitted types from the type sig
 				let (params, tuple) = match params.is_empty() {
 					true => (
-						(0..ptyps.len())
-							.map(|i| Param::new(name(i), TypeExpr::Name(name(i)), span))
+						(ptyps.iter().enumerate())
+							.map(|(i, p)| Param {
+								access: access_of(&p.typ),
+								..Param::new(name(i), TypeExpr::Name(name(i)), span)
+							})
 							.collect(),
 						ptyps.len() != 1,
 					),
@@ -149,7 +153,8 @@ impl<'a, M: Module> Translator<'a, M> {
 						params_tuple,
 					),
 				};
-				let subst = (ptyps.into_iter().enumerate().map(|(i, p)| (name(i), p.typ)))
+
+				let subst = (ptyps.iter().enumerate().map(|(i, p)| (name(i), access_peel(&p.typ).clone())))
 					.chain([("$ret".into(), *ret)])
 					.collect();
 				(params, tuple, (TypeExpr::Name("$ret".into()), span), subst)
@@ -157,10 +162,20 @@ impl<'a, M: Module> Translator<'a, M> {
 			AnonSig::Inferred(_) => unreachable!("a fn literal is only inferred against a fn target"),
 		};
 
+		// bind a header-less literal's `$` to its `mut` param
+		let mut body = body.to_vec();
+		if let [param] = &params[..]
+			&& param.name == "$0"
+			&& param.access == Access::Mut
+		{
+			body.iter_mut()
+				.for_each(|(e, _)| rebind_dollar(e, &Expr::Ident(param.name.clone())));
+		}
+
 		// context of the scope
 		let base = self.types.named(CONTEXT, span)?;
 		let mut needs = false;
-		Expr::Block(body.to_vec()).walk(&mut |e| {
+		Expr::Block(body.clone()).walk(&mut |e| {
 			needs |= match e {
 				Expr::Field { tuple, field } => {
 					matches!(&tuple.0, Expr::Ident(n) if n == CTX)
@@ -181,7 +196,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			params,
 			params_tuple,
 			ret: Some(Box::new(ret_te)),
-			body: body.to_vec(),
+			body,
 			type_params: vec![],
 			captures: resolved.iter().map(|(n, t, boxed, _)| (n.clone(), t.clone(), *boxed)).collect(),
 			self_name,

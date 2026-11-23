@@ -873,7 +873,7 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 	}
 
 	let value = Box::new(value);
-	if let Expr::Ident(_) | Expr::Unquote(_) = place.0 {
+	if let Expr::Ident(_) | Expr::Unquote(_) | Expr::Dollar = place.0 {
 		return (Expr::Assign { key: Box::new(place), value }, span);
 	}
 	if let Some((name, Some(field))) = unplace(&place.0) {

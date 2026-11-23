@@ -183,7 +183,8 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 	let view = spanned(p.type_expr.clone()).map(Box::new).then_ignore(just(Token::Dot));
 	let view = (view.then(paren(loose_list(p.expr.clone()))))
 		.map_with(|(target, args), ex| (Expr::Cast { target, args }, ex.span()));
-	let target = (view.or(p.unquote.clone()).or(spanned(ident().map(Expr::Ident))))
+	let root = spanned(ident().map(Expr::Ident).or(just(Token::Dollar).to(Expr::Dollar)));
+	let target = (view.or(p.unquote.clone()).or(root))
 		.foldl_with(seg.repeated().at_least(1), |lhs, seg, ex| {
 			let e = match seg {
 				None => Expr::Deref(Box::new(lhs)),
