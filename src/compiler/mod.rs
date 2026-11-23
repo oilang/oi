@@ -2302,6 +2302,7 @@ impl<M: Module> Compiler<M> {
 			vars: Default::default(),
 			params: vec![],
 			dollar: None,
+			tapped: None,
 			catch: None,
 			module: &mut self.module,
 			funcs,

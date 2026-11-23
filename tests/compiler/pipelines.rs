@@ -166,3 +166,13 @@ fn dot_fns() {
 	};
 	check(src, [r#"[3] [["a", "b"]]"#, "3 bo"]);
 }
+
+#[test]
+fn void_stage_yields_dollar() {
+	let src = oi! {
+		n := 3 |> print($) |> $ * 2
+		tap :: fn(x: int) int do x |> print($) |> $ + 1
+		print(n, tap(4))
+	};
+	check(src, ["3", "4", "6 5"]);
+}

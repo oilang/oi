@@ -654,7 +654,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !self.types.fallible(&typ) {
 			let val = self.copy_bind(val, &typ);
-			if self.script && !self.comptime {
+			if self.script && !self.comptime && self.tapped != Some(span) {
 				self.emit_print(val, &typ, false, runtime::Sink::Out);
 				self.write_lit("\n", runtime::Sink::Out);
 			}

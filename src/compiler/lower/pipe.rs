@@ -33,14 +33,20 @@ impl<M: Module> Translator<'_, M> {
 				_ => false,
 			};
 
-			let saved = self.dollar.replace(fed);
+			let saved = self.dollar.replace(fed.clone());
 			let out = self.apply_step(step);
 			self.dollar = saved;
 
-			return out.map_err(|d| match wrapped {
+			let out = out.map_err(|d| match wrapped {
 				true => d.with_note("add `?` to unwrap the head"),
 				false => d,
-			});
+			})?;
+			if !out.1.is_unit() {
+				return Ok(out);
+			}
+
+			self.tapped = Some(span);
+			return Ok(fed);
 		};
 
 		let block = (Expr::Block(vec![piped(self.feed(value), step.clone(), span)]), span);

@@ -50,6 +50,7 @@ pub(super) struct Translator<'a, M: Module> {
 	pub vars: Vars,
 	pub params: Vec<Local>,
 	pub dollar: Option<TypedVal>,
+	pub tapped: Option<Span>,
 	pub catch: Option<control::Catch>,
 	pub module: &'a mut M,
 	pub funcs: &'a HashMap<String, FnSig>,
