@@ -274,11 +274,17 @@ pub(super) fn stmt<'token, I: Tokens<'token>>(
 		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()))
 		.then_ignore(just(Token::DocBreak).or_not());
 
+	// unsafe assignment
+	let unsafe_assign = just(Token::Unsafe)
+		.ignore_then(place_assign.clone().or(assign.clone()))
+		.map_with(|inner, ex| (Expr::Unsafe(Box::new(inner)), ex.span()));
+
 	// statements
 	place.define(
 		destructure
 			.or(decls)
 			.or(list_bind)
+			.or(unsafe_assign)
 			.or(place_assign)
 			.or(multi_assign)
 			.or(assign.clone())

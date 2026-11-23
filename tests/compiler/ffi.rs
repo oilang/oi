@@ -84,7 +84,7 @@ fn field_write_through_ptr_view() {
 	let src = indoc! {"
 		S :: struct { n, m: int }
 		buf: []u8 = .[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
-		unsafe { S.(buf.ptr).m = 5 }
+		unsafe S.(buf.ptr).m = 5
 		print(unsafe S.(buf.ptr))
 	"};
 	check(src, "S.{n = 0, m = 5}");
