@@ -523,7 +523,7 @@ fn lib_package_cannot_use_main_name() {
 		.file("src/lib.oi", ["pub v :: fn() int do 7"])
 		.file("main.oi", ["use helper", "print(helper.hi())"]);
 	let run = oi(&["run", "main.oi"]).current_dir(&p).env("OI_HOME", home.as_ref()).run(None);
-	assert!(err(run).contains("only package `dodge` can use it"));
+	assert!(err(run).contains("package `helper` doesn't depend on `dodge`"));
 }
 
 #[test]
@@ -541,4 +541,45 @@ fn unnamed_dir_yields_its_leaf_to_a_lib_module() {
 		.env("OI_HOME", home.as_ref())
 		.run(None);
 	assert_eq!(ok(run), "1");
+}
+
+#[test]
+fn dependencies() {
+	// path deps bind keys and load a diamond once
+	let deps = ["[deps]", r#"gfx = { path = "draw" }"#, r#"kit = { path = "kit" }"#];
+	let p = Project::new()
+		.file("oi.toml", deps)
+		.file("draw/oi.toml", [r#"name = "draw""#, r#"root = "src""#])
+		.file("draw/src/lib.oi", ["pub P :: struct { pub x: int }"])
+		.file("kit/oi.toml", ["[deps]", r#"shapes = { path = "../draw" }"#])
+		.file("kit/lib.oi", ["use shapes", "pub x :: fn(p: shapes.P) int do p.x"])
+		.main(["use gfx", "use kit", "print(kit.x(gfx.P.{ x = 42 }))"]);
+	assert_eq!(ok(p.run()), "42");
+	p.main(["use draw"]).fail_with("doesn't depend on `draw`");
+
+	// dep does not see main modules
+	let p = Project::new()
+		.file("oi.toml", ["[deps]", r#"kit = { path = "kit" }"#])
+		.file("kit/oi.toml", "")
+		.file("kit/lib.oi", ["use util"])
+		.lib("util", ["pub v :: fn() int do 1"])
+		.main(["use kit"]);
+	p.fail_with("cannot find module `util`");
+
+	// dep key shadowing a module rejected
+	let p = Project::new()
+		.file("oi.toml", ["[deps]", r#"util = { path = "kit" }"#])
+		.file("kit/lib.oi", "")
+		.lib("util", ["pub v :: fn() int do 2"])
+		.main(["use util"]);
+	p.fail_with("package `util` is also a module");
+}
+
+#[test]
+fn nested_manifest_is_not_a_module() {
+	let p = Project::new()
+		.file("ex/oi.toml", [r#"name = "ex""#])
+		.lib("ex", ["pub v :: fn() int do 1"])
+		.main(["use ex", "print(ex.v())"]);
+	p.fail_with("cannot find module");
 }

@@ -1,7 +1,7 @@
 //! Multi-file module loading.
 //! Read imported dirs, parse and validate each file, and qualify definition names as `module::name`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
@@ -23,7 +23,7 @@ use crate::compiler::{builtin, cache, role, sized};
 use crate::diagnostics::{Diagnostic, SourceMap};
 use crate::driver::fail;
 use crate::lexer::{Token, lex_at, prescan, splice_raw};
-use crate::manifest::Manifest;
+use crate::manifest::{Dep, Manifest};
 use crate::parser::parser;
 
 static CORE: Dir = include_dir!("$CARGO_MANIFEST_DIR/core");
@@ -571,7 +571,9 @@ struct Loader {
 	pkg_store: Option<cache::Store>,
 	interfaces: HashMap<PathBuf, HashMap<String, Scanned>>,
 	named: HashMap<String, PathBuf>,
-	clash: Option<PathBuf>,
+	clashes: HashMap<String, PathBuf>,
+	deps: HashMap<String, HashMap<String, String>>,
+	own: String,
 	prefix: Option<String>,
 }
 
@@ -706,15 +708,15 @@ impl Loader {
 			}
 			if let Expr::Use { name, path, group, with } = &item.0 {
 				let (head, at) = &path[0];
-				if self.named.contains_key(head) {
-					if let Some(root) = &self.clash {
-						let msg = format!("package `{head}` is also a module in {}", root.display());
-						return Err(err(msg, *at, "ambiguous"));
-					}
-					if !self.main_package(&m.name) {
-						let msg = format!("only package `{head}` can use it");
-						return Err(err(msg, *at, "outside the package"));
-					}
+				let package = self.package(&m.name);
+				if let Some(root) = self.clashes.get(head).filter(|_| self.main_package(&m.name)) {
+					let msg = format!("package `{head}` is also a module in {}", root.display());
+					return Err(err(msg, *at, "ambiguous"));
+				}
+				let dep = head == package || self.deps.get(package).is_some_and(|keys| keys.contains_key(head));
+				if self.named.contains_key(head) && !dep {
+					let msg = format!("package `{package}` doesn't depend on `{head}`");
+					return Err(err(msg, *at, "not a dep"));
 				}
 
 				// `a.b.c` is module `a.b.c` if it's a dir, otherwise item `c` of `a.b`
@@ -1044,14 +1046,46 @@ impl Loader {
 
 	// Whether root `r` has module `dir`.
 	fn on_disk(&self, r: &Path, dir: &str) -> bool {
+		// a dir with its own oi.toml is another package, unless it's a package or lib root
+		let top = self.named.contains_key(dir) || r != self.program.roots[0] && !dir.contains('/');
 		let dir = self.local(dir);
-		let file = r.join(format!("{dir}.oi"));
-		r.join(dir).is_dir() || (file.is_file() && !self.entry_paths.contains(&file))
+		let (path, file) = (r.join(&dir), r.join(format!("{dir}.oi")));
+		path.is_dir() && (top || !path.join("oi.toml").is_file()) || file.is_file() && !self.entry_paths.contains(&file)
 	}
 
 	// Whether `module` is in the main package.
 	fn main_package(&self, module: &str) -> bool {
 		module == "main" || self.program.publics.packages.get(module) == self.program.roots.first()
+	}
+
+	// Name the package a given module is in.
+	fn package<'a>(&'a self, module: &'a str) -> &'a str {
+		if self.main_package(module) {
+			&self.own
+		} else {
+			module.split('.').next().unwrap_or_default()
+		}
+	}
+
+	// Bind `package`'s dep keys to the packages they name, and then do the same to the deps of those packages.
+	fn depend(&mut self, package: &str, dir: &Path, deps: BTreeMap<String, Dep>) -> Result<(), Reported> {
+		for (key, dep) in deps {
+			let at = |e| fail(format!("dep `{key}`: {}: {e}", dep.path.display()));
+			let src = dir.join(&dep.path).canonicalize().map_err(at)?;
+			let manifest = Manifest::read(&src)?.unwrap_or_default();
+			let (name, root) = (manifest.name(&src), src.join(&manifest.root));
+
+			match self.named.insert(name.clone(), root.clone()) {
+				Some(prev) if prev != root => {
+					let msg = format!("package `{name}` is both {} and {}", prev.display(), root.display());
+					return Err(fail(msg));
+				}
+				Some(_) => {}
+				None => self.depend(&name, &src, manifest.deps)?,
+			}
+			self.deps.entry(package.into()).or_default().insert(key, name);
+		}
+		Ok(())
 	}
 
 	// Get the canonical name of a module.
@@ -1064,8 +1098,11 @@ impl Loader {
 			name.split('.').next().unwrap_or_default(),
 			from.split('.').next().unwrap_or_default(),
 		);
-		let sibling = head != "core" && !self.named.contains_key(head);
+		if let Some(dep) = self.deps.get(self.package(from)).and_then(|keys| keys.get(head)) {
+			return format!("{dep}{}", &name[head.len()..]);
+		}
 
+		let sibling = head != "core" && !self.named.contains_key(head);
 		match (name.strip_prefix("core."), &self.prefix) {
 			(Some(x), _) if !program.roots.iter().any(|r| self.on_disk(r, &x.replace('.', "/"))) => x.into(),
 			_ if sibling && self.named.get(owner).is_some_and(|root| self.on_disk(root, &dir)) => {
@@ -1128,13 +1165,10 @@ impl Loader {
 		let local = &self.local(dir);
 
 		let roots = &self.program.roots[usize::from(self.prefix.is_some() && local == dir)..];
-		let root = roots.iter().find(|r| self.on_disk(r, dir)).unwrap_or(&roots[0]);
+		let root = roots.iter().find(|r| self.on_disk(r, dir));
 
-		let mut disk = if !from_core {
-			walk_oi(&root.join(local))
-		} else {
-			Vec::default()
-		};
+		let mut disk = root.filter(|_| !from_core).map_or(vec![], |root| walk_oi(&root.join(local)));
+		let root = root.unwrap_or(&roots[0]);
 		disk.retain(|path| !self.entry_paths.contains(path));
 		disk.sort();
 
@@ -1157,11 +1191,11 @@ impl Loader {
 				self.program.core_origin.insert(name.to_string());
 			}
 		} else {
-			let lib = self.program.roots.last() == Some(root);
-			let pkg = if lib {
-				root.join(dir.split('/').next().unwrap())
-			} else {
-				root.clone()
+			let head = dir.split('/').next().unwrap();
+			let pkg = match self.named.get(head) {
+				Some(dep) if head != self.own => dep.clone(),
+				_ if self.program.roots.last() == Some(root) => root.join(head),
+				_ => root.clone(),
 			};
 			self.program.publics.packages.insert(name.to_string(), pkg);
 		}
@@ -1448,12 +1482,18 @@ pub fn load(entry: Entry, root: &Path) -> Result<Program, Reported> {
 
 		// dir with no manifest
 		if explicit || clash.is_none() {
-			loader.clash = clash.cloned();
+			loader.clashes.extend(clash.map(|root| (name.clone(), root.clone())));
 			let rel = full.strip_prefix(&dir).ok();
 			loader.prefix = rel.map(|rel| rel.iter().fold(name.clone(), |key, dir| format!("{key}.{}", dir.display())));
+			loader.own.clone_from(&name);
 			loader.named.insert(name, dir);
 		}
 	}
+
+	let shadowed = manifest.deps.keys().filter(|key| loader.on_disk(root, key));
+	let shadowed: Vec<_> = shadowed.map(|key| (key.clone(), root.into())).collect();
+	loader.clashes.extend(shadowed);
+	loader.depend(&loader.own.clone(), &pkg, manifest.deps)?;
 
 	// import core implicitly
 	loader.load_files("core", core_files(&CORE))?;

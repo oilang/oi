@@ -14,7 +14,14 @@ pub struct Manifest {
 	#[serde(default)]
 	pub root: PathBuf,
 	#[serde(default)]
+	pub deps: BTreeMap<String, Dep>,
+	#[serde(default)]
 	pub bins: BTreeMap<String, PathBuf>,
+}
+
+#[derive(Deserialize)]
+pub struct Dep {
+	pub path: PathBuf,
 }
 
 impl Manifest {
