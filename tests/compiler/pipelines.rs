@@ -151,3 +151,17 @@ fn generic_head_cannot_compose() {
 	"};
 	fail(src, "cannot compose a generic function");
 }
+
+#[test]
+fn dot_fns() {
+	let src = oi! {
+		P :: struct { name: string, old: bool }
+		ps := [
+			P.{ name = "ann", old = true },
+			P.{ name = "bo", old = false },
+		]
+		print(ps.filter(.old).map(.name.len()), [" a b "].map(.trim().split(" ")))
+		print(" foo " |> .trim().upper() |> .len(), ps[1] |> .name)
+	};
+	check(src, [r#"[3] [["a", "b"]]"#, "3 bo"]);
+}

@@ -379,10 +379,20 @@ impl<'a, M: Module> Translator<'a, M> {
 					let (val, typ) = match value {
 						Some(e) => match self.ret.clone() {
 							Some((target, _)) => match e {
-								(Expr::Ident(name), at) if *at == stmt.1 && self.vars.contains_key(&format!("$some_{name}")) => {
+								(Expr::Ident(name), at)
+									if *at == stmt.1 && self.vars.contains_key(&format!("$some_{name}")) =>
+								{
 									let cond = Box::new((Expr::Ident(format!("$some_{name}")), *at));
 									let els = Some(vec![(Expr::Ident("none".into()), *at)]);
-									let pick = (Expr::If { cond, then: vec![(**e).clone()], els, chain: false }, *at);
+									let pick = (
+										Expr::If {
+											cond,
+											then: vec![(**e).clone()],
+											els,
+											chain: false,
+										},
+										*at,
+									);
 									self.check_expr(&pick, &target)?
 								}
 								_ => self.check_expr(e, &target)?,

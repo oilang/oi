@@ -97,11 +97,17 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	pub(super) fn lower(&mut self, expr: &Spanned<Expr>, hint: Option<&Typ>) -> Result<TypedVal, Diagnostic> {
+		if let Some(Typ::Fn(..)) = hint
+			&& let Some(dot) = dot_fn(expr)
+		{
+			return self.lower(&dot, hint);
+		}
 		if let Some(t) = hint
 			&& let Some(v) = self.coerce_lit(expr, t)?
 		{
 			return Ok((v, t.clone()));
 		}
+
 		match &expr.0 {
 			Expr::Int(n) => match int_word(*n) {
 				Some(bits) => Ok((self.b.ins().iconst(types::I64, bits), Typ::Int(64))),
@@ -118,7 +124,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				expr.1.into_range(),
 			)
 			.with_label("no enum type is expected in this position")
-			.with_note(format!("qualify it, e.g. `Color.{variant}`"))),
+			.with_note(format!("qualify it as `Color.{variant}`, or pass it as a fn"))),
 
 			Expr::ArgMod(a, _) => fail(
 				format!("`{a}` is only allowed on call arguments"),

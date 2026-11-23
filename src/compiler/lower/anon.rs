@@ -11,11 +11,15 @@ pub(super) enum AnonSig<'a> {
 impl<'a, M: Module> Translator<'a, M> {
 	// Type a returnless fn literal against `params`, inferring its return from the body.
 	pub(super) fn anon_hint(&mut self, lit: &Spanned<Expr>, params: Vec<FnParam>) -> Result<Option<Typ>, Diagnostic> {
+		if let Some(dot) = dot_fn(lit) {
+			return self.anon_hint(&dot, params);
+		}
 		let (names, body) = match &lit.0 {
 			Expr::AnonFn { ret: None, params, body, .. } => (&params[..], body),
 			Expr::Block(body) => (&[][..], body),
 			_ => return Ok(None),
 		};
+
 		let ret = self.dead_typ(|s| {
 			let locals: Vec<_> = (params.iter())
 				.map(|p| Local::plain(s.b.declare_var(cl_type(&p.typ, s.int)), p.typ.clone(), false))

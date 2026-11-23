@@ -65,7 +65,7 @@ fn pipe(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> 
 	(
 		Expr::Pipe {
 			value: Box::new(value),
-			step: Box::new(pipe_step(step)),
+			step: Box::new(ast::dot_fn(&step).unwrap_or_else(|| pipe_step(step))),
 		},
 		span,
 	)

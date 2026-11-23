@@ -939,6 +939,30 @@ pub fn dollar_is(typ: TypeExpr, span: Span) -> Spanned<Expr> {
 	(Expr::Is { subject, typ, negated }, span)
 }
 
+// Builds `{ $.x.m(args) }` from a chain rooted at `.x` or `.m(args)`.
+pub fn dot_fn(expr: &Spanned<Expr>) -> Option<Spanned<Expr>> {
+	fn root((expr, span): &mut Spanned<Expr>) -> bool {
+		let recv = Box::new((Expr::Dollar, *span));
+		*expr = match expr {
+			Expr::Field { tuple: next, .. } | Expr::MethodCall { recv: next, .. } => return root(next),
+			Expr::EnumShorthand { variant, args: [] } => Expr::Field { tuple: recv, field: variant.clone() },
+			Expr::Apply {
+				callee: (Expr::EnumShorthand { variant, args: [] }, _),
+				args,
+			} => {
+				let (method, args) = (variant.clone(), args.clone());
+				Expr::MethodCall { recv, method, type_args: vec![], args }
+			}
+			_ => return false,
+		};
+		true
+	}
+
+	// skip cloning fn literals
+	let mut stage = (!matches!(expr.0, Expr::AnonFn { .. } | Expr::Block(_))).then(|| expr.clone())?;
+	root(&mut stage).then(|| (Expr::Block(vec![stage]), expr.1))
+}
+
 // Splits `a | b` and `is A | B` into one pattern each.
 pub fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	match pat {
