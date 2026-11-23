@@ -144,9 +144,9 @@ impl Project {
 			.file("cext.oi", &cext)
 	}
 
-	/// Run `oi` in the project dir.
+	/// Run `oi` in the project dir, its `lib/` standing in for installed packages.
 	pub fn oi(&self, args: &[&str]) -> Output {
-		oi(args).current_dir(self).run(None)
+		oi(args).current_dir(self).env("OI_HOME", &self.0).run(None)
 	}
 
 	/// Like `oi`, asserting success and returning stdout.

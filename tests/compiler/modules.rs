@@ -461,15 +461,22 @@ fn comp_selects_a_module() {
 }
 
 #[test]
-fn orphan_claims() {
+fn orphan_claims_scope_to_the_package() {
+	let main = [
+		"use shapes",
+		"use show",
+		"shapes.P : show.Show < { show :: fn(self) int do 1 }",
+		"print(shapes.P.{ x = 2 }.show())",
+	];
 	Project::new()
-		.main([
-			"use shapes",
-			"use show",
-			"shapes.P : show.Show < { show :: fn(self) int do 1 }",
-		])
-		.lib("shapes", ["pub P :: struct { x: int }"])
+		.main(main)
+		.lib("shapes", ["pub P :: struct { pub x: int }"])
 		.lib("show", ["pub Show :: trait { show: fn(self) int }"])
+		.check("1");
+	Project::new()
+		.main(main)
+		.file("lib/shapes/lib.oi", ["pub P :: struct { pub x: int }"])
+		.file("lib/show/lib.oi", ["pub Show :: trait { show: fn(self) int }"])
 		.fail_with("`P : Show` is an orphan claim");
 }
 
@@ -482,7 +489,7 @@ fn unnamed_lib_fns_are_never_checked() {
 			[
 				"pub half :: fn() int do 5",
 				"pub stale :: fn(m: Missing) int do 0",
-				"pub P :: struct { x: int }",
+				"pub P :: struct { pub x: int }",
 				"P :< { pub gone :: fn(self, m: Missing) {} }",
 			],
 		)

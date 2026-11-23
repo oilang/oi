@@ -38,7 +38,7 @@ fn needs_else() {
 			x: any = 7
 			match x { is int => x }
 		"},
-		"needs `else`",
+		"`_ =>` or `else`",
 	);
 }
 

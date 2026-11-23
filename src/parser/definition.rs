@@ -451,7 +451,7 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 	let arm_end = choice((
 		just(Token::Comma).ignored(),
 		just(Token::RBrace).rewind().ignored(),
-		just(Token::Else).rewind().ignored(),
+		just(Token::Ident("_".into())).then(just(Token::FatArrow)).rewind().ignored(),
 		just(Token::Backtick).rewind().ignored(),
 	));
 	let arm_body = p

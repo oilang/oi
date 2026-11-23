@@ -567,7 +567,10 @@ impl<'a, M: Module> Translator<'a, M> {
 		if st.is_enumish() {
 			let catch_all = else_body.is_some() || exhaustive;
 			if !catch_all && st == Typ::Any {
-				return Err(Diagnostic::new("a match on `any` needs `else`", span.into_range()));
+				return Err(Diagnostic::new(
+					"a match on `any` needs `_ =>` or `else`",
+					span.into_range(),
+				));
 			}
 			if !catch_all {
 				let variants = self.variants_of(&st);
@@ -583,7 +586,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				if !exhaustive {
 					if gap.is_none() {
 						let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
-						return fail(msg, span, "cover these variants or add `else`");
+						return fail(msg, span, "cover these variants or add `_ =>` or `else`");
 					}
 					else_body = gap.filter(|g| !g.is_empty());
 				}
