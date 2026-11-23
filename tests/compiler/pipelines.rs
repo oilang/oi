@@ -176,3 +176,22 @@ fn void_stage_yields_dollar() {
 	};
 	check(src, ["3", "4", "6 5"]);
 }
+
+#[test]
+fn mutable_dollar() {
+	let defs = oi! {
+		[]T :< {
+			add :: fn(mut self; x: T) { self = self << x }
+		}
+		xs := ["a"]
+	};
+	let src = oi! {
+		v := ["a"] |> .add("b") |> .add("c")
+		w := mut xs |> .add("b") |> { { $.add("c") }; n := { $.len() }; n }
+		print(v, w, xs, [[1] [2 3]] |> $.map { $.len() })
+	};
+	check([defs, src], r#"["a", "b", "c"] 3 ["a", "b", "c"] [1, 2]"#);
+	assert_clean([defs, src]);
+	fail([defs, r#"xs |> .add("x")"#], "pipe from `mut x`");
+	fail([defs, r#"mut xs |> .add(xs[0])"#], "while it is lent `mut`");
+}

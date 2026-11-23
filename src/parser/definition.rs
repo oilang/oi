@@ -95,38 +95,30 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 		Token::Dollar => Expr::Dollar,
 	};
 
-	// arg mods
-	let mod_arg = p
-		.access
-		.clone()
-		.then(p.expr.clone())
-		.map_with(|(a, e), ex| (Expr::ArgMod(a, Box::new(e)), ex.span()));
 	// named args collect into one trailing record arg
 	let named_arg = ident()
 		.map_with(|n, ex| (Expr::Ident(n), ex.span()))
 		.then_ignore(just(Token::Assign))
-		.then(mod_arg.clone().or(p.expr.clone()))
+		.then(p.expr.clone())
 		.map(|(key, value)| (Some(key), value));
 	// variable vs. call vs. struct literal
-	let args = paren(trailing_list(
-		named_arg.or(mod_arg.or(p.expr.clone()).map(|e| (None, e))),
-	))
-	.validate(|elems, ex, emitter| {
-		let mut args = Vec::new();
-		let mut named = Vec::new();
-		for (key, value) in elems {
-			match key {
-				Some(key) => named.push((key, value)),
-				None if named.is_empty() => args.push(value),
-				None => emitter.emit(I::fault(ex.span(), "positional args go before named args")),
+	let args = paren(trailing_list(named_arg.or(p.expr.clone().map(|e| (None, e)))))
+		.validate(|elems, ex, emitter| {
+			let mut args = Vec::new();
+			let mut named = Vec::new();
+			for (key, value) in elems {
+				match key {
+					Some(key) => named.push((key, value)),
+					None if named.is_empty() => args.push(value),
+					None => emitter.emit(I::fault(ex.span(), "positional args go before named args")),
+				}
 			}
-		}
-		if !named.is_empty() {
-			args.push((Expr::Record(named), ex.span()));
-		}
-		args
-	})
-	.boxed();
+			if !named.is_empty() {
+				args.push((Expr::Record(named), ex.span()));
+			}
+			args
+		})
+		.boxed();
 
 	// named or positional field entry
 	let struct_field_entry = ident().then_ignore(just(Token::Assign)).or_not().then(p.expr.clone());
@@ -793,8 +785,8 @@ pub(super) fn definition<'token, I: Tokens<'token>>(
 				prefix(13, just(Token::ArrowL), |_, rhs, ex| {
 					(Expr::Recv(Box::new(rhs)), ex.span())
 				}),
-				prefix(13, just(Token::Move), |_, rhs, ex| {
-					(Expr::ArgMod(Access::Move, Box::new(rhs)), ex.span())
+				prefix(13, p.access.clone(), |access, rhs, ex| {
+					(Expr::ArgMod(access, Box::new(rhs)), ex.span())
 				}),
 			),
 			prefix(13, just(Token::Not), |_, rhs, ex| match rhs {

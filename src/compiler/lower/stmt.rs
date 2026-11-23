@@ -9,7 +9,9 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Coerces a bare trailing expression against `tail`.
 	pub fn block_tail(&mut self, stmts: &[Spanned<Expr>], tail: Option<&Typ>) -> Result<Option<TypedVal>, Diagnostic> {
+		let stmts = &*self.placed(stmts);
 		let mut last = self.unit_value();
+
 		for (i, stmt) in stmts.iter().enumerate() {
 			let want = i + 1 == stmts.len();
 			let stmt_target = if want { tail } else { None };
@@ -34,6 +36,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 				_ => stmt,
 			};
+
 			match &stmt.0 {
 				Expr::Bind { mutable, name, typ, value } => {
 					// spliced definitions
@@ -69,13 +72,16 @@ impl<'a, M: Module> Translator<'a, M> {
 						self.types.type_params = Box::leak(Box::new(params));
 						continue;
 					}
+
 					if *mutable {
 						check_reserved(name, stmt.1)?;
 					}
+
 					let annot = typ.as_ref().map(|(t, span)| self.resolve_local(t, *span)).transpose()?;
 					if !*mutable && matches!(value, Some((Expr::AnonFn { .. }, _))) {
 						self.self_name = Some(name.clone());
 					}
+
 					let (val, typ) = match (value, annot) {
 						(Some(value), Some(target)) => {
 							let val = self.check_typed(value, &target, "does not match the declared type")?;
@@ -111,6 +117,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
+
 					if name == CTX && typ.ctx_path(crate::compiler::CONTEXT).is_none() {
 						return fail(
 							format!("`ctx` can't be {typ}"),
@@ -119,6 +126,7 @@ impl<'a, M: Module> Translator<'a, M> {
 						);
 					}
 					self.self_name = None;
+
 					if let Some(v) = value {
 						if matches!(v.0, Expr::Bind { .. }) && (self.is_affine(&typ) || self.is_linear(&typ)) {
 							return fail(
@@ -129,12 +137,14 @@ impl<'a, M: Module> Translator<'a, M> {
 						}
 						self.move_resource(v, &typ)?;
 					}
+
 					// zeros are already owned
 					let final_val = match value.is_none() {
 						true => val,
 						false => self.copy_bind(val, &typ),
 					};
 					let linear = self.is_linear(&typ);
+
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					self.bind_local(name, final_val, typ, *mutable);
 					if linear {
@@ -654,7 +664,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let (val, typ) = self.autowrap_return(val, typ, span)?;
 		if self.is_main && !typ.is_unit() && !self.types.fallible(&typ) {
 			let val = self.copy_bind(val, &typ);
-			if self.script && !self.comptime && self.tapped != Some(span) {
+			if self.script && !self.comptime && self.tapped.as_ref().map(|t| t.0) != Some(span) {
 				self.emit_print(val, &typ, false, runtime::Sink::Out);
 				self.write_lit("\n", runtime::Sink::Out);
 			}

@@ -514,8 +514,11 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// `$` implicit input
 	// TODO: migrate to its own submodule. idk what to call it yet so putting it here. `sigils`?
-	pub(super) fn dollar(&mut self) -> TypedVal {
-		self.dollar.clone().expect("`bind_dollar` runs before the body is lowered")
+	pub(super) fn dollar(&mut self) -> Result<TypedVal, Diagnostic> {
+		match (self.dollar.clone(), self.place.clone()) {
+			(Some(dollar), _) => Ok(dollar),
+			(None, place) => self.expr(&place.expect("`bind_dollar` runs before the body is lowered")),
+		}
 	}
 
 	// Determine type of `$` once params are bound.

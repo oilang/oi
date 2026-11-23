@@ -963,6 +963,20 @@ pub fn dot_fn(expr: &Spanned<Expr>) -> Option<Spanned<Expr>> {
 	root(&mut stage).then(|| (Expr::Block(vec![stage]), expr.1))
 }
 
+// Replaces this scope's `$` with `to`, leaving the `$` of nested blocks, fns, stages and handlers.
+pub fn rebind_dollar(expr: &mut Expr, to: &Expr) {
+	let rebind = |(e, _): &mut Spanned<Expr>| rebind_dollar(e, to);
+	match expr {
+		Expr::Dollar => *expr = to.clone(),
+		Expr::AnonFn { .. } | Expr::Block(_) | Expr::Fn(_) | Expr::MacroDef(_) | Expr::Defer { .. } => {}
+		Expr::Pipe { value, .. } | Expr::OrElse { value, .. } | Expr::AndThen { value, .. } => rebind(value),
+		_ => expr.for_children(|child| match child {
+			List(list) => list.iter_mut().for_each(rebind),
+			One(e) => rebind(e),
+		}),
+	}
+}
+
 // Splits `a | b` and `is A | B` into one pattern each.
 pub fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
 	match pat {

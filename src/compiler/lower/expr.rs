@@ -173,7 +173,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				},
 			},
 
-			Expr::Dollar => Ok(self.dollar()),
+			Expr::Dollar => self.dollar(),
 
 			Expr::Is { subject, typ, negated } => {
 				let tn = match typ {

@@ -765,9 +765,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		};
 		let local = self.local(name, e.1.into_range())?;
 		self.walked(&local, name, e.1)?;
+
 		if !local.mutable {
-			return fail(msg, e.1, "immutably bound");
+			let label = match name.starts_with("$pipe") {
+				true => "pipe from `mut x` to mutate it",
+				false => "immutably bound",
+			};
+			return fail(msg, e.1, label);
 		}
+
 		self.vars.forget(name);
 		self.wrote(name);
 		Ok(name)

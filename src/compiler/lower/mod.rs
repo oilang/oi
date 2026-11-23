@@ -16,6 +16,7 @@ use super::{
 };
 use crate::ast::{
 	Access, BinOp, Bounds, Claim, Expr, Func, MatchArm, Span, Spanned, TypeExpr, When, dot_fn, int_word, place,
+	rebind_dollar,
 };
 use crate::diagnostics::{Diagnostic, arity_err, fail, unknown_member};
 use crate::loader::{Scope, module_of};
@@ -50,7 +51,8 @@ pub(super) struct Translator<'a, M: Module> {
 	pub vars: Vars,
 	pub params: Vec<Local>,
 	pub dollar: Option<TypedVal>,
-	pub tapped: Option<Span>,
+	pub tapped: Option<(Span, Spanned<Expr>)>,
+	pub place: Option<Spanned<Expr>>,
 	pub catch: Option<control::Catch>,
 	pub module: &'a mut M,
 	pub funcs: &'a HashMap<String, FnSig>,

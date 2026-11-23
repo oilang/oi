@@ -1,3 +1,4 @@
+use super::call::arg_inner;
 use super::*;
 
 fn piped(value: Spanned<Expr>, step: Spanned<Expr>, span: Span) -> Spanned<Expr> {
@@ -24,7 +25,7 @@ impl<M: Module> Translator<'_, M> {
 		}
 
 		let Some(head_params) = self.head_fn_sig(head, hint)? else {
-			let fed = self.expr(value)?;
+			let fed = self.expr(arg_inner(value))?;
 			let wrapped = match &step.0 {
 				Expr::Call { name, .. } if !matches!(value.0, Expr::Pipe { .. }) => {
 					let first = self.callable(name).and_then(|(ps, _)| ps.into_iter().next());
@@ -33,9 +34,30 @@ impl<M: Module> Translator<'_, M> {
 				_ => false,
 			};
 
-			let saved = self.dollar.replace(fed.clone());
+			// `$` is the place yielded by a void stage
+			let place = match self.tapped.take_if(|(at, _)| *at == value.1) {
+				Some((_, place)) => place,
+				None if let Expr::ArgMod(..) = value.0 => value.clone(),
+				None => {
+					let name = format!("$pipe{}_{}", value.1.start, value.1.end);
+					match Self::is_place(value) || matches!(value.0, Expr::Dollar) {
+						true => self.hidden_local(name.clone(), fed.0, fed.1.clone()),
+						false => {
+							let owned = self.copy_bind(fed.0, &fed.1);
+							self.bind_local(&name, owned, fed.1.clone(), true);
+						}
+					}
+					(Expr::Ident(name), value.1)
+				}
+			};
+
+			if let Expr::ArgMod(..) = place.0 {
+				self.check_args(&[Access::Mut, Access::Read], None, &[Some(&place), Some(step)])?;
+			}
+
+			let saved = (self.dollar.replace(fed), self.place.replace(arg_inner(&place).clone()));
 			let out = self.apply_step(step);
-			self.dollar = saved;
+			(self.dollar, self.place) = saved;
 
 			let out = out.map_err(|d| match wrapped {
 				true => d.with_note("add `?` to unwrap the head"),
@@ -45,8 +67,9 @@ impl<M: Module> Translator<'_, M> {
 				return Ok(out);
 			}
 
-			self.tapped = Some(span);
-			return Ok(fed);
+			let out = self.expr(arg_inner(&place));
+			self.tapped = Some((span, place));
+			return out;
 		};
 
 		let block = (Expr::Block(vec![piped(self.feed(value), step.clone(), span)]), span);
@@ -89,8 +112,24 @@ impl<M: Module> Translator<'_, M> {
 				let args = self.stage_args(arity, span);
 				self.expr(&called(name.clone(), type_args.clone(), args, span))
 			}
-			_ => self.expr(step),
+			_ => {
+				// r/w `$` through its place
+				self.dollar = None;
+				let step = self.placed(std::slice::from_ref(step));
+				self.expr(&step[0])
+			}
 		}
+	}
+
+	// Rebinds `$` to the place it stands for in an expression stage.
+	pub(super) fn placed<'e>(&self, body: &'e [Spanned<Expr>]) -> std::borrow::Cow<'e, [Spanned<Expr>]> {
+		let (None, Some(place)) = (&self.dollar, &self.place) else {
+			return body.into();
+		};
+
+		let mut body = body.to_vec();
+		body.iter_mut().for_each(|(e, _)| rebind_dollar(e, &place.0));
+		body.into()
 	}
 
 	// `$` as a stage's arguments, matching the call signature.

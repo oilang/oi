@@ -2303,6 +2303,7 @@ impl<M: Module> Compiler<M> {
 			params: vec![],
 			dollar: None,
 			tapped: None,
+			place: None,
 			catch: None,
 			module: &mut self.module,
 			funcs,
