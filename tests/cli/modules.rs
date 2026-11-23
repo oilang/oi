@@ -599,11 +599,18 @@ fn git_dep_fetches_its_rev() {
 		assert!(status.unwrap().success());
 	}
 
-	let dep = |rev| format!("[deps]\ngfx = {{ git = \"{}\"{rev} }}", draw.display());
+	let dep = |rev: &str| format!("[deps]\ngfx = {{ git = \"{}\"{rev} }} # draws\n", draw.display());
+	let toml = p.as_ref().join("oi.toml");
 
-	std::fs::write(p.as_ref().join("oi.toml"), dep(r#", rev = "HEAD""#)).unwrap();
+	std::fs::write(&toml, dep(r#", rev = "HEAD""#)).unwrap();
 	assert_eq!(ok(p.run()), "3");
 
-	std::fs::write(p.as_ref().join("oi.toml"), dep("")).unwrap();
+	std::fs::write(&toml, dep("")).unwrap();
 	assert!(stderr(&p.run()).contains("dep `gfx` has no `rev`"));
+
+	ok(p.oi(&["fetch"]));
+	let sha = Command::new("git").current_dir(&draw).args(["rev-parse", "HEAD"]).output();
+	let sha = String::from_utf8(sha.unwrap().stdout).unwrap();
+	let pinned = dep(&format!(r#", rev = "{}""#, sha.trim()));
+	assert_eq!(std::fs::read_to_string(&toml).unwrap(), pinned);
 }

@@ -120,4 +120,7 @@ pub enum Command {
 		#[arg(long)]
 		link: bool,
 	},
+
+	/// Fetch git deps, pinning unpinned ones in oi.toml.
+	Fetch,
 }

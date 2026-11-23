@@ -34,6 +34,7 @@ tags: []
 	- importing a parent reaches its submodules, `use raylib` then `raylib.math.lerp(a, b)`
 	- as the entry, a dir runs its `main.oi` when present (siblings are modules for `use`), else each file is an entry
 	- `core` is a root too: `use core.math`, a local `math/` still wins for bare `use math`
+	- an `oi.toml` names the package
 }#
 
 # optional header, the module is named by its dir

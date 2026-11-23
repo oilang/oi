@@ -32,6 +32,7 @@ serde = { version = "1", features = ["derive"] }
 lsp-server = "0.10.0"
 serde_json = "1"
 toml = "1.2.1"
+toml_edit = "0.25.20"
 
 [dev-dependencies]
 oi-macros = { path = "base/macros" }
