@@ -50,9 +50,6 @@ fn installs_from_git_url() {
 	// ensure re-install doesn't choke on the existing clone
 	install();
 
-	let name = repo.as_ref().file_name().unwrap();
-	assert!(home.as_ref().join("src").join(name).is_dir());
-
-	let bin = home.as_ref().join("bin").join(name);
+	let bin = home.as_ref().join("bin").join(repo.as_ref().file_name().unwrap());
 	assert_eq!(ok(Command::new(bin).stdout(Stdio::piped()).run(None)), "hi");
 }

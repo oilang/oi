@@ -1070,8 +1070,7 @@ impl Loader {
 	// Bind `package`'s dep keys to the packages they name, and then do the same to the deps of those packages.
 	fn depend(&mut self, package: &str, dir: &Path, deps: BTreeMap<String, Dep>) -> Result<(), Reported> {
 		for (key, dep) in deps {
-			let at = |e| fail(format!("dep `{key}`: {}: {e}", dep.path.display()));
-			let src = dir.join(&dep.path).canonicalize().map_err(at)?;
+			let src = dep.source(&key, dir)?;
 			let manifest = Manifest::read(&src)?.unwrap_or_default();
 			let (name, root) = (manifest.name(&src), src.join(&manifest.root));
 

@@ -1,4 +1,6 @@
-use crate::common::{Project, Run, err, oi, ok};
+use std::process::Command;
+
+use crate::common::{Project, Run, err, oi, ok, stderr};
 
 #[test]
 fn imports_work() {
@@ -582,4 +584,26 @@ fn nested_manifest_is_not_a_module() {
 		.lib("ex", ["pub v :: fn() int do 1"])
 		.main(["use ex", "print(ex.v())"]);
 	p.fail_with("cannot find module");
+}
+
+#[test]
+fn git_dep_fetches_its_rev() {
+	let p = Project::new()
+		.file("draw/oi.toml", [r#"name = "draw""#])
+		.file("draw/lib.oi", ["pub v :: fn() int do 3"])
+		.main(["use gfx", "print(gfx.v())"]);
+	let draw = p.as_ref().join("draw");
+	let id = ["-c", "user.name=t", "-c", "user.email=t@t"];
+	for args in [&["init", "-q"][..], &["add", "-A"], &["commit", "-qm", "init"]] {
+		let status = Command::new("git").args(id).args(args).current_dir(&draw).status();
+		assert!(status.unwrap().success());
+	}
+
+	let dep = |rev| format!("[deps]\ngfx = {{ git = \"{}\"{rev} }}", draw.display());
+
+	std::fs::write(p.as_ref().join("oi.toml"), dep(r#", rev = "HEAD""#)).unwrap();
+	assert_eq!(ok(p.run()), "3");
+
+	std::fs::write(p.as_ref().join("oi.toml"), dep("")).unwrap();
+	assert!(stderr(&p.run()).contains("dep `gfx` has no `rev`"));
 }

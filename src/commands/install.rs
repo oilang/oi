@@ -1,12 +1,11 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use oi::Reported;
 use oi::driver::fail;
 use oi::loader::home;
-use oi::manifest::Manifest;
+use oi::manifest::{self, Manifest};
 
 use crate::commands::run;
 
@@ -15,11 +14,12 @@ pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result
 	let url = path
 		.and_then(Path::to_str)
 		.filter(|s| s.contains("://") || s.starts_with("git@"));
-	let cloned = url.map(|u| fetch(u, prefix)).transpose()?;
+	let home = prefix.map_or_else(home, Path::to_path_buf);
+	let cloned = url.map(|url| manifest::fetch(url, None, &home)).transpose()?;
 	let path = cloned.as_deref().or(path).unwrap_or(Path::new("."));
 	let src = path.canonicalize().map_err(at(path))?;
 	let manifest = Manifest::read(&src)?.unwrap_or_default();
-	let (name, home) = (manifest.name(&src), prefix.map_or_else(home, Path::to_path_buf));
+	let name = manifest.name(&src);
 	let main = ["src/main.oi", "main.oi"].into_iter().find(|main| src.join(main).exists());
 
 	let mut bins = manifest.bins;
@@ -61,37 +61,6 @@ pub fn install(path: Option<&Path>, prefix: Option<&Path>, link: bool) -> Result
 
 	println!("oi: installed {}", dest.display());
 	Ok(())
-}
-
-// Shallow-clone (or fast-forward) a git URL into OI_HOME/src/<name>, returning that checkout.
-fn fetch(url: &str, prefix: Option<&Path>) -> Result<PathBuf, Reported> {
-	let name = url.trim_end_matches('/').rsplit('/').next().unwrap_or(url);
-	let dir = prefix
-		.map_or_else(home, Path::to_path_buf)
-		.join("src")
-		.join(name.trim_end_matches(".git"));
-	let fresh = !dir.exists();
-	let mut git = Command::new("git");
-	if !fresh {
-		git.arg("-C").arg(&dir).args(["pull", "-q", "--ff-only"]);
-	} else {
-		git.args(["clone", "-q", "--depth", "1", url]).arg(&dir);
-	}
-	let mut ok = git.status().map_err(at(&dir))?.success();
-	// retry as full clone
-	if !ok && fresh {
-		let _ = fs::remove_dir_all(&dir);
-		ok = Command::new("git")
-			.args(["clone", "-q", url])
-			.arg(&dir)
-			.status()
-			.map_err(at(&dir))?
-			.success();
-	}
-	if !ok {
-		return Err(fail(format!("{url}: git failed")));
-	}
-	Ok(dir)
 }
 
 // Recursively copy Oi files and shared libs.
