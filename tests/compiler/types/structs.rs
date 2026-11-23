@@ -385,6 +385,14 @@ fn open_structs_gain_fields_from_modules() {
 }
 
 #[test]
+fn open_structs_gain_fields_only_inside_their_package() {
+	Project::new()
+		.file("lib/cfg/lib.oi", ["@open", "pub Config :: struct { name: string }"])
+		.main(["use cfg.{ Config }", "Config :< { dt: float = 0.5 }"])
+		.fail_with("`cfg::Config` gains fields only inside its package");
+}
+
+#[test]
 fn closed_structs_reject_fields() {
 	fail("Context :< { x: int = 0 }", "`core::Context` can't gain fields");
 }

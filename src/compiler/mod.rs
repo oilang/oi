@@ -1097,24 +1097,32 @@ impl<M: Module> Compiler<M> {
 		}
 		// field amendments
 		let mut added: HashMap<String, Vec<Param>> = HashMap::new();
-		for (e, span) in program.modules.iter().flat_map(|m| &m.items) {
+		let packages = &program.publics.packages;
+		for (scope, (e, span)) in program.items() {
 			let Expr::Claim(Claim { typ, fields, .. }) = e else {
 				continue;
 			};
+
 			let open = has_ann(&self.annotations, typ, role::OPEN.path());
 			if !fields.is_empty() && !open {
 				let msg = format!("`{typ}` can't gain fields");
 				return fail(msg, *span, "only `@open` structs gain fields");
 			}
+			if !fields.is_empty() && packages.get(module_of(typ).unwrap_or_default()) != packages.get(&scope.module) {
+				let msg = format!("`{typ}` gains fields only inside its package");
+				return fail(msg, *span, "amended from another package");
+			}
 			if let Some(f) = fields.iter().find(|f| f.default.is_none()) {
 				let msg = format!("field `{}` needs a default", f.name);
 				return fail(msg, f.span, "the defining module has to fill it");
 			}
+
 			added
 				.entry(typ.clone())
 				.or_default()
 				.extend(fields.iter().cloned().map(|f| Param { public: true, ..f }));
 		}
+
 		for (e, _) in program.modules.iter_mut().flat_map(|m| &mut m.items) {
 			if let Expr::StructDef(StructDef { name, fields, .. }) = e
 				&& let Some(extra) = added.remove(name.as_str())
@@ -1122,6 +1130,7 @@ impl<M: Module> Compiler<M> {
 				fields.extend(extra);
 			}
 		}
+
 		// comp module aliases
 		let scopes: HashMap<&str, &Scope> = program.modules.iter().map(|m| (m.name.as_str(), &m.scope)).collect();
 		let defs: HashMap<&str, &Scope> = program.items().filter_map(|(s, i)| Some((i.0.def_name()?, s))).collect();
