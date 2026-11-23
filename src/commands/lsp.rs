@@ -134,11 +134,12 @@ fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 					_ => None,
 				};
 
+				let rust = file.extension().is_some_and(|ext| ext == "rs");
 				if let Some(text) = text {
-					docs.insert(file.clone(), text.into());
+					docs.insert(file.clone(), if rust { embedded(text) } else { text.into() });
 				}
 
-				if text.is_some() || note.method == "textDocument/didSave" {
+				if !rust && (text.is_some() || note.method == "textDocument/didSave") {
 					checks.send(entry(&file))?;
 				}
 			}
@@ -231,6 +232,30 @@ fn highlight(src: &str) -> Vec<u32> {
 	}
 
 	data
+}
+
+/// Blank all but the bodies of `oi! { .. }` calls, keeping every position.
+fn embedded(src: &str) -> String {
+	let blank = |text: &str| text.replace(|ch| ch != '\n', " ");
+	let (mut out, mut rest) = (String::new(), src);
+	while let Some(at) = rest.find("oi! {") {
+		let (call, body) = rest.split_at(at + 4);
+		let mut depth = 0;
+		let end = Token::lexer(body).spanned().find_map(|(tok, span)| {
+			depth += match tok {
+				Ok(Token::LBrace) => 1,
+				Ok(Token::RBrace) => -1,
+				_ => 0,
+			};
+			(depth == 0).then_some(span.end)
+		});
+
+		let (code, after) = body.split_at(end.unwrap_or(body.len()));
+		out += &blank(call);
+		out += code;
+		rest = after;
+	}
+	out + &blank(rest)
 }
 
 /// List top-level declarations as document symbols.
