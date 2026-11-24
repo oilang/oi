@@ -109,8 +109,17 @@ impl SourceMap {
 		&file.src[..local.start]
 	}
 
-	// The `##` block above a given line.
+	// The `##` block before a given line.
 	pub fn docs(&self, at: usize) -> Vec<&str> {
+		// block docs
+		let before = self.before(at).trim_end();
+		if let Some(block) = before.strip_suffix("}##")
+			&& let Some((_, body)) = block.rsplit_once("##{")
+		{
+			return body.trim().lines().map(str::trim).collect();
+		}
+
+		// normal docs
 		let (above, lead) = self.before(at).rsplit_once('\n').unwrap_or_default();
 		let above = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
 		let docs = above.take_while(|l| l.starts_with("##") && !lead.contains([':', ',', '{', ';']));

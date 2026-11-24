@@ -274,6 +274,29 @@ fn reads_docs() {
 }
 
 #[test]
+fn reads_block_docs() {
+	check(
+		indoc! {r#"
+			docs! :: fn(input: Ast) Ast {
+				s := input.doc
+				loop it in input.items { s += "|{it.doc}" }
+				`%input
+				print(%s)`
+			}
+			@docs!
+			##{ Compass. }## Dir :: enum { ##{ Up. }## n, s }
+			@docs!
+			##{
+				Adds.
+				#{ nested }#
+			}##
+			add :: fn(##{ Left. }## a: int, b: int) int do a + b
+		"#},
+		["Compass.|Up.|", "Adds.", "#{ nested }#|Left.|"],
+	);
+}
+
+#[test]
 fn introspects_names_and_items() {
 	check(
 		indoc! {r#"

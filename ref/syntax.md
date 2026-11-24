@@ -23,6 +23,10 @@ tags: []
 ## # code block language defaults to Oi
 ## ```
 
+
+# Inline doc comments
+fn move(##{in tiles}## dist: i32) {}
+
 ## modules
 
 #{

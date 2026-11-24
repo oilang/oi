@@ -72,7 +72,7 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 				i += 2;
 			}
 			(b'}', Some(b'#')) => {
-				i += 2;
+				i += 2 + usize::from(src.get(i + 2) == Some(&b'#'));
 				depth -= 1;
 				if depth == 0 {
 					break;
@@ -387,6 +387,7 @@ pub enum Token {
 
 	// comments
 	#[token("#{", lex_block_comment)]
+	#[token("##{", lex_block_comment)]
 	BlockComment,
 	#[regex(r"#([^{#\r\n][^\r\n]*)?")]
 	Comment,
