@@ -1057,6 +1057,21 @@ fn blanket_claims() {
 }
 
 #[test]
+fn casts_through_blanket_from() {
+	let main = oi! {
+		V :: struct { at: int }
+		Class :: trait { name: fn(self) string }
+		P :: struct { x: int }
+		P : Class < { name :: fn(self) string { "p{self.x}" } }
+		[T: Class] T : From[V] < {
+			from :: fn(v: V) T { T.{ x = v.at } }
+		}
+		print(P.from(V.{ 1 }).name(), P.(V.{ 2 }).name())
+	};
+	check(main, "p1 p2");
+}
+
+#[test]
 fn bounds_with_trait_args() {
 	let src = oi! {
 		Get[T] :: trait { get: fn(self) T }

@@ -338,7 +338,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		// support userland From claims
 		if self.claims(target, "core::From")
-			&& let Some(sig) = self.find_fill(&format!("{target}.from"), 0, &typ)
+			&& let Some(sig) = self.pick_from(target, |p| *p == typ, value.1)?
 		{
 			let (out, _) = self.emit_call(&sig, &[val]);
 			return Ok((out, target.clone()));

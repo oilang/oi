@@ -337,7 +337,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	pub(super) fn pick_from(
 		&mut self,
 		typ: &Typ,
-		fits: fn(&Typ) -> bool,
+		fits: impl Fn(&Typ) -> bool,
 		span: Span,
 	) -> Result<Option<FnSig>, Diagnostic> {
 		let tag = format!("{typ}.from#");
@@ -346,6 +346,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			.map(|(_, s)| s.clone())
 			.collect();
 		sigs.extend(self.ret_instance(&format!("{}.from", rc::base_name(&typ.key())), typ));
+
+		if let Some(blanket) = self.world.blankets.get("core::From").cloned()
+			&& blanket.bound.is_some_and(|bound| self.claims(typ, &bound))
+		{
+			sigs.extend(self.ret_instance(&format!("[{}].from", blanket.name), typ));
+		}
+
 		let mut hits = sigs.into_iter().filter(|s| fits(access_peel(&s.params[0].typ)));
 		match (hits.next(), hits.next()) {
 			(Some(_), Some(_)) => fail(format!("ambiguous `{typ}.from`"), span, "two claims fit"),
