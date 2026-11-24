@@ -305,6 +305,33 @@ fn soa_expansion_and_keyed_loop_are_freed() {
 }
 
 #[test]
+fn keyed_items_drop_without_a_copy() {
+	let src = oi! {
+		live := 0
+		D :: struct { n: int }
+		D : Drop, Copy < {
+			drop :: fn(mut self) { live -= 1 }
+			copy :: fn(mut self) { live += 100 }
+		}
+		L :: struct { n: int }
+		L : Keyed[int, D] < {
+			pairs :: fn(self; after: ?int) ?(D, int) {
+				i := (after or -1) + 1
+				if i >= self.n do return none
+				live += 1
+				(D.{ i }, i)
+			}
+		}
+		main :: fn() {
+			loop d in L.{ 2 } do print(d.n, live)
+			print(live)
+		}
+	};
+	check(src, ["0 1", "1 1", "0"]);
+	assert_clean(src);
+}
+
+#[test]
 fn unwrapped_drop_payloads_drop_once() {
 	let src = indoc! {r#"
 		Res :: struct { fd: int }
