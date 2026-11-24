@@ -222,33 +222,39 @@ impl<'a, M: Module> Translator<'a, M> {
 	// RC bump.
 	// The underlying buffer clone waits for a write.
 	pub(super) fn copy_in(&mut self, val: Value, typ: &Typ) -> Value {
+		// a move keeps blocks of its inline fields instead of deep-copying them
+		if rc::inline(typ, &self.types).is_some() && self.handover(val, typ) {
+			self.untemp(val);
+			return self.heap_move(val, typ);
+		}
+
 		if let Some(layout) = self.types.layout(typ) {
-			// a move keeps blocks of its inline fields instead of deep-copying them
-			if self.handover(val, typ) {
-				self.untemp(val);
-				return self.heap_move(val, typ);
-			}
 			let heap = self.call_alloc_bytes(layout.size.into());
 			return self.copy_struct(val, heap, typ);
 		}
+
 		// a fixed array's buffer is inline, so a copy must escape the frame with its owner
 		if let Typ::FixedArray(elem, n) = typ.newtype().unwrap_or(typ) {
 			let (elem, n) = ((**elem).clone(), *n);
 			let heap = self.call_alloc_bytes(n as i64 * self.elem_stride(&elem));
 			return self.fixed_move(heap, val, &elem, n, false);
 		}
+
 		// move resource to new owner
 		if self.handover(val, typ) {
 			self.untemp(val);
 		}
+
 		if self.is_affine(typ) {
 			return val;
 		}
+
 		// a fresh value moves
 		if self.temps.contains_key(&val) {
 			self.untemp(val);
 			return val;
 		}
+
 		if self.enum_box(typ) {
 			let words: Vec<_> = (0..enum_slots(&self.variants_of(typ)) as i32)
 				.map(|i| self.ld_word(val, i * 8))
@@ -257,12 +263,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.owned_payloads(dst, typ, |s, payload| s.rc_field(dst, payload, true));
 			return dst;
 		}
+
 		if let Some(inner) = self.types.nullable(typ) {
 			return self.copy_in(val, &inner);
 		}
+
 		let Some((share, _)) = rc::handle_fns(typ) else {
 			return val;
 		};
+
 		self.rt_call(share, &[val]).unwrap()
 	}
 

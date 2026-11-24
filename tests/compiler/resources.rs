@@ -78,6 +78,18 @@ fn fixed_array_passed_as_slice_moves_once() {
 }
 
 #[test]
+fn returned_fixed_array_literal_moves_out() {
+	let src = [
+		FILE,
+		"mk :: fn() [2]File { .[File.{fd = 1}, File.{fd = 2}] }",
+		"fs :: mk()",
+		r#"print("end")"#,
+	];
+	check(src, ["end", "drop 1", "drop 2"]);
+	assert_clean(src);
+}
+
+#[test]
 fn block_tail_moves_its_local_out() {
 	check(
 		[
