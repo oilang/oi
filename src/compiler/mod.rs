@@ -1599,13 +1599,23 @@ impl<M: Module> Compiler<M> {
 		}
 
 		for b in &trait_bodies {
-			if let Some(bound) = self.world.blankets.get(&b.trait_name).and_then(|p| p.bound.as_ref())
+			let resolve = |args: &[Spanned<TypeExpr>]| {
+				args.iter()
+					.map(|(te, sp)| base.with_scope(b.scope).resolve(te, *sp).ok())
+					.collect::<Vec<_>>()
+			};
+
+			if let Some(blanket) = self.world.blankets.get(&b.trait_name)
+				&& let Some(bound) = &blanket.bound
 				&& self.world.trait_impls.contains(&(b.typ.to_string(), bound.clone()))
+				&& let Some(args) = self.world.claim_args.get(&(blanket.name.clone(), b.trait_name.clone()))
+				&& resolve(args) == resolve(b.args)
 			{
 				let msg = format!("`{}` claims `{}` twice", b.typ, b.trait_name);
 				return fail(msg, b.span, format!("the blanket over `{bound}` covers it"));
 			}
 		}
+
 		for b in trait_bodies.iter().filter(|b| b.trait_name == "Copy") {
 			let drops = (b.typ.to_string(), "Drop".to_string());
 			if self.world.trait_impls.contains(&drops) || self.world.generic_claims.contains_key(&drops) {

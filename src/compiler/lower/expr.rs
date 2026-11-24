@@ -581,7 +581,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				if self.world.generic_fns.contains_key(&gkey) {
 					return self.call_generic(&gkey, type_args, args, bound.zip(recv_expr), expr.1, hint);
 				}
-				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args)? {
+
+				// blanket claims
+				let blanket = (bound.as_ref().map(|(_, t)| t.clone()))
+					.or_else(|| self.types.named(&sname, expr.1).ok())
+					.and_then(|rt| {
+						(self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
+							.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("[{}].{method}", p.name)))
+							.map(|(k, _)| k.clone())
+					});
+				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args, blanket.is_some())? {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, &args, expr.1);
 				}
 				if let Some((_, rt)) = &bound
@@ -590,14 +599,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				{
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, args, expr.1);
 				}
-
-				// blanket claims
-				if let Some(rt) =
-					(bound.as_ref().map(|(_, t)| t.clone())).or_else(|| self.types.named(&sname, expr.1).ok())
-					&& let Some((k, _)) = (self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
-						.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("[{}].{method}", p.name)))
-				{
-					let k = k.clone();
+				if let Some(k) = blanket {
 					let targs = match bound {
 						Some(_) => type_args.to_vec(),
 						None => [vec![(TypeExpr::Name(sname.clone()), expr.1)], type_args.to_vec()].concat(),

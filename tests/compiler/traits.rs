@@ -1066,9 +1066,16 @@ fn casts_through_blanket_from() {
 		[T: Class] T : From[V] < {
 			from :: fn(v: V) T { T.{ x = v.at } }
 		}
-		print(P.from(V.{ 1 }).name(), P.(V.{ 2 }).name())
+		P : From[string] < {
+			from :: fn(s: string) P { P.{ x = s.len() } }
+		}
+		print(P.from(V.{ 1 }).name(), P.(V.{ 2 }).name(), P.from("abc").name())
 	};
-	check(main, "p1 p2");
+	check(main, "p1 p2 p3");
+	fail(
+		&format!("{main}P : From[V] < {{ from :: fn(v: V) P {{ P.{{}} }} }}"),
+		"`P` claims `core::From` twice",
+	);
 }
 
 #[test]

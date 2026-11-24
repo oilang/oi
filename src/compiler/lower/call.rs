@@ -269,16 +269,25 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Picks one of key's numbered fills by the first arg's type, lowering that arg into a hidden temp.
+	// Defers to a `blanket` claim when no fill takes the arg.
 	pub(super) fn pick_fill(
 		&mut self,
 		key: &str,
 		skip: usize,
 		args: &[Spanned<Expr>],
+		blanket: bool,
 	) -> Result<Option<Picked>, Diagnostic> {
 		let tag = format!("{key}#");
-		if args.is_empty() || !self.funcs.keys().any(|k| k.starts_with(&tag)) {
+		if args.is_empty()
+			|| !self.funcs.keys().any(|k| k.starts_with(&tag))
+			|| blanket
+				&& self
+					.type_of(&args[0])
+					.is_ok_and(|typ| self.find_fill(key, skip, &typ).is_none())
+		{
 			return Ok(None);
 		}
+
 		let (val, typ) = match self.sole_fill(key) {
 			Some(s) => self.check_expr(&args[0], access_peel(&s.params[skip].typ))?,
 			None => self.expr(&args[0])?,
@@ -287,6 +296,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let msg = format!("no claim fills `{}` for a `{typ}`", display_name(key));
 			return fail(msg, args[0].1, "no matching claim");
 		};
+
 		let name = format!("$fill{}", self.vars.len());
 		self.hidden_local(name.clone(), val, typ);
 		let mut args = args.to_vec();

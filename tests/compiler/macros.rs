@@ -1125,11 +1125,11 @@ fn map_entries_are_items() {
 
 #[test]
 fn spliced_place_is_assignable() {
-	let src = oi! {
+	let src = indoc! {"
 		set! :: fn(place: Ast, v: Ast) Ast { `%place = %v` }
 		xs := [1 2]
 		set!(xs[1], 7)
 		print(xs)
-	};
+	"};
 	check(src, "[1, 7]");
 }
