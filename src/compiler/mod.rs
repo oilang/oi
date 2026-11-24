@@ -1256,16 +1256,14 @@ impl<M: Module> Compiler<M> {
 
 					// REF: [Rust RFC 2451](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html)
 					let covered = |args: &[Spanned<TypeExpr>]| {
-						(args.iter().map(|(te, _)| te))
-							.take_while(|te| !matches!(te, TypeExpr::Name(n) if param(n)))
-							.any(|te| matches!(te, TypeExpr::Resolved(n) if ours(n)))
+						args.iter().any(|(te, _)| matches!(te, TypeExpr::Resolved(n) if ours(n)))
 					};
 					if let Some((tn, _)) = (claimed.iter()).find(|(tn, args)| {
-						!in_core && (blanket || foreign && !covered(args)) && !is_hook_trait(tn) && !ours(tn)
+						!in_core && (blanket || foreign) && !covered(args) && !is_hook_trait(tn) && !ours(tn)
 					}) {
 						let msg = format!("`{} : {}` is an orphan claim", display_name(typ), display_name(tn));
-						let home = if blanket { "the trait" } else { "the trait or the type" };
-						return fail(msg, item.1, format!("claim it in the package of {home}"));
+						let home = if blanket { "a trait arg" } else { "the type" };
+						return fail(msg, item.1, format!("claim it in the package of the trait or {home}"));
 					}
 
 					// a claim implies each supertrait its defaults cover

@@ -1162,12 +1162,15 @@ fn orphan_claims_count_trait_args() {
 			Out :: V
 			mul :: fn(self; v: V) V { V.{ self * v.x } }
 		}
+		[T: Float] T : Contains[V] < {
+			contains :: fn(self; v: V) bool { "{self}" == "{v.x}" }
+		}
 		main :: fn() {
-			print(2.0.mul(V.{ 3.0 }).x)
+			print(2.0.mul(V.{ 3.0 }).x, 2.0.contains(V.{ 2.0 }))
 			print((2.0 * V.{ 3.0 }).x)
 		}
 	};
-	check(main, ["6.0", "6.0"]);
+	check(main, ["6.0 true", "6.0"]);
 	fail(
 		"f64 : Mul[f64] < { Out :: f64; mul :: fn(self; v: f64) f64 { v } }",
 		"is an orphan claim",
