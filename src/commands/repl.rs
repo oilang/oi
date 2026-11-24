@@ -107,10 +107,8 @@ pub fn definition(program: &Program, name: &str) -> Option<Span> {
 pub fn lookup(program: &Program, name: &str) -> Option<String> {
 	let span = definition(program, name)?;
 	let (.., text) = program.map.locate_span(span.into_range());
-	let (above, indent) = program.map.before(span.start).rsplit_once('\n').unwrap_or_default();
-	let docs = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
-	let docs: Vec<_> = docs.take_while(|l| l.starts_with("##")).collect();
-	let docs: String = docs.iter().rev().map(|doc| format!("{doc}\n")).collect();
+	let (_, indent) = program.map.before(span.start).rsplit_once('\n').unwrap_or_default();
+	let docs: String = program.map.docs(span.start).iter().map(|doc| format!("## {doc}\n")).collect();
 	Some(docs + indent.trim_start() + text.lines().next().unwrap_or_default())
 }
 

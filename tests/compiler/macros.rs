@@ -233,6 +233,47 @@ fn splat_spreads_into_a_claim_body() {
 }
 
 #[test]
+fn reads_docs() {
+	check(
+		indoc! {r#"
+			docs! :: fn(input: Ast) Ast {
+				s := input.doc
+				loop it in input.items { s += "|{it.doc}" }
+				`%input
+				print(%s)`
+			}
+			## Detached.
+
+			## A point.
+			@docs!
+			pub Pt :: struct {
+				## The x.
+				##
+				## Twice.
+				x: int,
+				y: int,
+			}
+			## Hue.
+			@docs!
+			Hue :: enum {
+				## Warm.
+				red
+				blue
+			}
+			## Flat.
+			@docs!
+			Flat :: struct { z: int }
+			@docs!
+			Pt :< {
+				## Says hi.
+				hi :: fn(self) int do 1
+			}
+		"#},
+		["A point.|The x.", "", "Twice.|", "Hue.|Warm.|", "Flat.|", "|Says hi."],
+	);
+}
+
+#[test]
 fn introspects_names_and_items() {
 	check(
 		indoc! {r#"

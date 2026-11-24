@@ -48,6 +48,7 @@ pub(crate) const AST_FIELDS: &[&str] = &[
 	"typ",
 	"kind",
 	"len",
+	"doc",
 	"items",
 	"notes",
 	"fills",

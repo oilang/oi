@@ -782,12 +782,14 @@ impl<'a, M: Module> Translator<'a, M> {
 				if typ == Typ::Ast {
 					let ret = match field.as_str() {
 						"name" | "typ" | "kind" | "len" => Some(Typ::Ast),
+						"doc" => Some(Typ::Str),
 						f if crate::compiler::AST_FIELDS.contains(&f) => Some(Typ::Array(Box::new(Typ::Ast))),
 						_ => None,
 					};
+
 					if let Some(ret) = ret {
 						let val = self.ast_method(ptr, field, None);
-						if let Typ::Array(_) = ret {
+						if ret != Typ::Ast {
 							self.temp(val, &ret);
 						}
 						return Ok((val, ret));

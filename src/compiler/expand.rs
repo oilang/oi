@@ -10,7 +10,7 @@ use crate::ast::{
 	Capture, Child, Claim, EnumDef, EnumVariant, Expr, Func, MatchArm, Param, Span, Spanned, StructDef, TraitDef,
 	TypeExpr, int_word,
 };
-use crate::diagnostics::{Diagnostic, arity_err, fail};
+use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail};
 use crate::loader::{Module, Program, Publics, Scope, module_of, wrapped_def};
 use crate::runtime;
 
@@ -543,7 +543,10 @@ pub fn expand(mut out: Program) -> Result<(Program, Option<Compiler>), Diagnosti
 		publics: out.publics.clone(),
 		..Default::default()
 	};
+
+	MAP.set(out.map.clone());
 	let selected = std::mem::take(&mut out.selected);
+
 	for m in &mut out.modules {
 		for item in std::mem::take(&mut m.items) {
 			match item.0 {
@@ -673,6 +676,7 @@ thread_local! {
 	static ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
 	pub(crate) static DEFS: RefCell<(Scope, String, Vec<Def>, Publics)> = RefCell::default();
 	static CLAIMS: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+	static MAP: RefCell<SourceMap> = RefCell::default();
 }
 
 // name, def
@@ -1314,7 +1318,8 @@ fn field_ast(f: &Param) -> Expr {
 
 // Ast dispatch for the lowerer.
 pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime::StrHeader, arg: i64) -> i64 {
-	let ast = |e: Expr| leak((e, Span::default())) as i64;
+	let at = |e: Expr, span: Span| leak((e, span)) as i64;
+	let ast = |e: Expr| at(e, Span::default());
 	let list = |ptrs: Vec<i64>| runtime::array_of(&ptrs, 8) as i64;
 	let asts = |es: &mut dyn Iterator<Item = &Spanned<Expr>>| list(es.map(|e| leak(e.clone()) as i64).collect());
 	let pair = |(key, value): &(Spanned<Expr>, Spanned<Expr>)| {
@@ -1329,6 +1334,10 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 	};
 	match (m, subject) {
 		(b"notes", _) => asts(&mut notes.iter()),
+		(b"doc", _) => {
+			let doc = MAP.with_borrow(|map| map.docs(span.start).join("\n"));
+			runtime::str_new(runtime::system_allocator(), doc.as_bytes()) as i64
+		}
 		(b"typ", Expr::Bind { typ: Some((t, _)), .. } | Expr::Fn(Func { ret: Some((t, _)), .. })) => ast(type_ast(t)),
 		(b"typ", Expr::TypePat(TypeExpr::Array(t) | TypeExpr::FixedArray(t, _))) => ast(type_ast(t)),
 		(b"typ", Expr::Fn(Func { ret: None, .. })) => ast(Expr::TypePat(TypeExpr::Tuple(vec![]))),
@@ -1391,7 +1400,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			list(entries.collect())
 		}
 		(b"items", Expr::StructDef(StructDef { fields, .. }) | Expr::Fn(Func { params: fields, .. })) => {
-			list(fields.iter().map(|f| ast(field_ast(f))).collect())
+			list(fields.iter().map(|f| at(field_ast(f), f.span)).collect())
 		}
 		(b"items", Expr::StructLit { fields, .. }) => {
 			let entries = (fields.iter().cloned()).map(|(name, value)| match (name, Box::new(value)) {
@@ -1406,7 +1415,7 @@ pub(crate) extern "C" fn rt_ast_method(a: *mut Spanned<Expr>, m: *const runtime:
 			leak((Expr::Block(arm.body.clone()), *span)) as i64,
 		]),
 		(b"items", Expr::EnumDef(EnumDef { variants, .. })) => {
-			list(variants.iter().map(|v| ast(Expr::Ident(v.name.clone()))).collect())
+			list(variants.iter().map(|v| at(Expr::Ident(v.name.clone()), v.span)).collect())
 		}
 		(b"items", _) => flag("this Ast has no items", list(vec![])),
 		(

@@ -108,6 +108,16 @@ impl SourceMap {
 		let (file, local) = self.locate(&(at..at));
 		&file.src[..local.start]
 	}
+
+	// The `##` block above a given line.
+	pub fn docs(&self, at: usize) -> Vec<&str> {
+		let (above, lead) = self.before(at).rsplit_once('\n').unwrap_or_default();
+		let above = above.lines().rev().map(str::trim_start).skip_while(|l| l.starts_with('@'));
+		let docs = above.take_while(|l| l.starts_with("##") && !lead.contains([':', ',', '{', ';']));
+		let mut docs: Vec<_> = docs.map(|l| l.get(3..).unwrap_or("")).collect();
+		docs.reverse();
+		docs
+	}
 }
 
 // A user-facing error rendered with ariadne.
