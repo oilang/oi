@@ -333,7 +333,10 @@ fn qualify_anns(scope: &Scope, anns: &[Annotation]) -> Vec<Annotation> {
 			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. }
 				if name != "unsafe" && name != "comp" && !name.contains("::") =>
 			{
-				*name = role::marker(name).map_or_else(|| scope.qualify_name(name), String::from)
+				let qualified = scope.qualify_name(name);
+				let imported =
+					(qualified.rsplit_once("::")).is_some_and(|(module, _)| module != "core" && module != scope.module);
+				*name = role::marker(name).filter(|_| !imported).map_or(qualified, String::from)
 			}
 			_ => {}
 		}

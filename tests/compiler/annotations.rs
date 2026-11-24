@@ -363,3 +363,14 @@ fn pure_fn_values() {
 		"can't capture",
 	);
 }
+
+#[test]
+fn glob_import_shadows_a_core_marker() {
+	crate::common::Project::new()
+		.file(
+			"main.oi",
+			["with use m", "@export.{ 1 }", "f :: fn() int do 2", "print(f())"],
+		)
+		.file("m.oi", ["module m", "pub export :: struct { lo: int }"])
+		.check("2");
+}

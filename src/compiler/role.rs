@@ -118,7 +118,7 @@ pub(crate) const UNOWNED: &str = "core::unowned";
 pub(crate) const ISOLATED: Role = Role("isolated");
 pub(crate) const INTRINSIC: Role = Role("intrinsic");
 
-// Annotation markers resolve to core even where a local name shadows them.
+// Annotation markers resolve to core unless an import shadows them.
 pub(crate) fn marker(name: &str) -> Option<&'static str> {
 	let markers = [
 		PARAMS, REQUIRED, TEST, LINK, EXPORT, C, IMPLICIT, PURE, NOZERO, NOINIT, OPEN, ISOLATED,
