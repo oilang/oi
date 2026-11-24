@@ -386,8 +386,7 @@ pub enum Token {
 	Semicolon,
 
 	// comments
-	#[token("#{", lex_block_comment)]
-	#[token("##{", lex_block_comment)]
+	#[regex(r"##?\{", lex_block_comment)]
 	BlockComment,
 	#[regex(r"#([^{#\r\n][^\r\n]*)?")]
 	Comment,
