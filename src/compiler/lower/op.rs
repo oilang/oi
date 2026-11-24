@@ -549,6 +549,14 @@ impl<'a, M: Module> Translator<'a, M> {
 			return fail(format!("cannot send to {lt}"), span, "claim `Send` to overload `<-`");
 		}
 
+		// claims on primitives
+		if let Some(sig) = rt
+			.nominal()
+			.and_then(|_| self.find_fill(&format!("{}.{method}", lt.key()), 1, &rt))
+		{
+			return Ok(self.emit_call(&sig, &[lv, rv]));
+		}
+
 		// commutative operators
 		if matches!(op, BinOp::Add | BinOp::Mul)
 			&& matches!(lt, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize | Typ::Float(_))
