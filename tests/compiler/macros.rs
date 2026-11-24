@@ -1122,3 +1122,14 @@ fn map_entries_are_items() {
 		["k = 1", r#""two" = 2"#, r#"["one" = 1, "two" = 2]"#],
 	);
 }
+
+#[test]
+fn spliced_place_is_assignable() {
+	let src = oi! {
+		set! :: fn(place: Ast, v: Ast) Ast { `%place = %v` }
+		xs := [1 2]
+		set!(xs[1], 7)
+		print(xs)
+	};
+	check(src, "[1, 7]");
+}

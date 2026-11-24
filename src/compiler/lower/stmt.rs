@@ -34,6 +34,10 @@ impl<'a, M: Module> Translator<'a, M> {
 					zeroed = member;
 					&zeroed
 				}
+				Expr::Assign { key, value } if stmt.0.assign_name().is_none() => {
+					zeroed = crate::ast::assign(*key.clone(), None, *value.clone(), stmt.1);
+					&zeroed
+				}
 				_ => stmt,
 			};
 
