@@ -411,11 +411,24 @@ fn via_delegation() {
 }
 
 #[test]
+fn via_rejects_a_method_taking_self() {
+	let src = oi! {
+		V :: struct { x: int }
+		V : Add < {
+			add :: fn(self; other: V) V { V.{ self.x + other.x } }
+		}
+		T :: struct { v: V }
+		T :< Add via v
+	};
+	fail(src, "`add` uses `Self` past the receiver, so `core::Add` cannot pass");
+}
+
+#[test]
 fn embedded_field_satisfies_requirement() {
 	let src = oi! {
 		Meta :: struct { kind: string, id: int }
 		Enemy :: struct { Meta; hp: int }
-		Enemy : Animal < { speak :: fn(self) string { "rawr" } }
+		Enemy : Animal < { speak :: fn(self) string do "rawr" }
 		zoo : []Animal : [ Enemy.{ Meta = Meta.{ kind = "goblin" } } ]
 		loop a in zoo { print("a {a.kind} says {a.speak()}") }
 	};
@@ -957,6 +970,19 @@ fn embedding_skips_claims_that_take_self() {
 		print(T.{ ns = 1500 }.ms(), T is Cmp)
 	};
 	check(src, "0.0015 false");
+}
+
+#[test]
+fn embedding_skips_claims_that_return_self_from_a_receiver() {
+	let src = oi! {
+		P :: struct { b: int }
+		P : Neg < {
+			neg :: fn(self) Self { P.{ -self.b } }
+		}
+		C :: struct { P; c: int }
+		print(C.{ P = P.{ 3 } }.neg().b, C is Neg)
+	};
+	check(src, "-3 false");
 }
 
 #[test]

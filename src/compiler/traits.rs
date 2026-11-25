@@ -176,6 +176,14 @@ pub(crate) fn fill_from_decl(fill: &Func, dps: &[Param], dret: &TypeSlot, span: 
 	Ok((ps, fill.params_tuple, ret))
 }
 
+// Whether a field is unable to stand in for the receiver of a given fn.
+fn unliftable(f: &Func, by: &[(String, TypeExpr)]) -> bool {
+	let selfish = |te: &TypeExpr| mentions(&subst(te, by), "Self");
+	let lent_fn = f.params.first().is_none_or(|p| !p.is_receiver());
+	f.params.iter().skip(!lent_fn as usize).any(|p| selfish(&p.typ))
+		|| (f.ret.as_ref()).is_some_and(|(te, _)| selfish(te) && !(lent_fn && matches!(te, TypeExpr::Name("Self"))))
+}
+
 // Embedding promotes the embedded type's claims, routed like an implicit `via`.
 pub(super) fn promote_embeds<'p>(
 	structs: &HashMap<String, Vec<FieldDef>>,
@@ -184,13 +192,10 @@ pub(super) fn promote_embeds<'p>(
 	traits: &HashMap<&str, TraitItem>,
 	scope_of: impl Fn(&str) -> &'p Scope,
 ) -> Vec<TraitBody<'p>> {
-	// a field only stands in for the receiver
 	let lifts = |tn: &str, args| {
 		traits.get(tn).is_some_and(|(_, def, _)| {
 			let by = trait_args(&def.type_params, args);
-			let selfish = |p: &Param| mentions(&subst(&p.typ, &by), "Self");
-			!def.fields.iter().any(is_assoc_type)
-				&& trait_fns(&def.methods).all(|f| !f.params.iter().skip(1).any(selfish))
+			!def.fields.iter().any(is_assoc_type) && !trait_fns(&def.methods).any(|f| unliftable(f, &by))
 		})
 	};
 
@@ -402,6 +407,12 @@ pub(super) fn check_impls<'p>(
 			}
 
 			let (params, ret, body, default) = if let (Some(field), Some(lent)) = (via, &lent) {
+				if unliftable(decl, &[]) {
+					let msg =
+						format!("`{name}` uses `Self` past the receiver, so `{tn}` cannot pass through `{field}`");
+					return fail(msg, span, format!("fill `{name}` in the claim"));
+				}
+
 				let s = |e| (e, span);
 
 				// a method without a receiver belongs to the lent type, not the instance

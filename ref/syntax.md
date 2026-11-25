@@ -1623,6 +1623,15 @@ main :: fn() {
 		_ => "",
 	}
 
+	# `x is P` is a bool, true when arm `P` would match
+	# `!is` negates it
+	assert! n is 1..9 && (n, 2) is (5, _) && opt is .some.(2)
+	assert! user is User.{ age = 0..18 } && n !is 3
+
+	# `|` alternates, at the top or nested in a sub-pattern
+	assert! c is .red | .green && k is :x | :y && id is int | string
+	assert! opt is .some.(1 | 2) && n is 1..3 | 4..6
+
 	## loops
 
 	# `loop {}`: infinite
