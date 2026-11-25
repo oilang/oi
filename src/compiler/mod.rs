@@ -519,6 +519,7 @@ fn lit_matches(e: &Expr, typ: &Typ) -> bool {
 		Expr::Float(_) => matches!(typ, Typ::Float(_)),
 		Expr::String(_) => matches!(typ, Typ::Str),
 		Expr::Atom(_) | Expr::EnumShorthand { args: [], .. } => typ.is_enumish() || matches!(typ, Typ::Atom),
+		Expr::StructLit { name, .. } => matches!(typ, Typ::Struct(n, _) if name.is_empty() || n == name),
 		_ => false,
 	}
 }
@@ -1947,7 +1948,12 @@ impl<M: Module> Compiler<M> {
 						Some((enc, _)) => bytes[at..at + 8].copy_from_slice(&enc.to_le_bytes()),
 						None => {
 							let want = base.resolve(&tf.typ, tf.span)?;
-							let mut lit = self.consts[&format!("{typ}::{}", tf.name)].0.clone();
+							let (mut lit, span) = self.consts[&format!("{typ}::{}", tf.name)].clone();
+
+							if matches!(lit, Expr::StructLit { .. }) {
+								return fail("struct trait consts can't be read through `dyn` yet", span, "a struct");
+							}
+
 							if let Expr::Cast { args: [(Expr::Atom(a), _)], .. } = &lit {
 								lit = Expr::Int(base.unit_disc(&want, a).expect("checked against the trait").into());
 							}

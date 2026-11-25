@@ -1207,6 +1207,20 @@ fn self_typed_trait_consts() {
 }
 
 #[test]
+fn struct_trait_consts() {
+	let src = oi! {
+		Origin :: trait { origin: Self }
+		P :: struct { x: int, y: int }
+		P : Origin < { origin :: P.{ 1, 2 } }
+		Q :: struct { x: int }
+		Q : Origin < { origin :: Self.{ 5 } }
+		get[T: Origin] :: fn() T { T.origin }
+		print(P.origin.y, get[P]().x, Q.origin.x)
+	};
+	check(src, "2 1 5");
+}
+
+#[test]
 fn orphan_claims_count_trait_args() {
 	let main = oi! {
 		V :: struct { x: f64 }

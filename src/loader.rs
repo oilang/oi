@@ -614,7 +614,7 @@ impl Loader {
 		let mut e =
 			fold_const(&v.0, &self.program.consts, scope).or_else(|| is_const_value(&v.0).then(|| v.0.clone()))?;
 		match &mut e {
-			Expr::StructLit { name, .. } if !name.is_empty() => *name = scope.qualify_name(name),
+			Expr::StructLit { name, .. } if !name.is_empty() && name != "Self" => *name = scope.qualify_name(name),
 			Expr::Field { tuple, .. } => {
 				if let Expr::Ident(n) = &mut tuple.0 {
 					*n = scope.qualify_name(n);
@@ -635,7 +635,12 @@ impl Loader {
 		let mut aliases = vec![];
 		for (n, t, v) in fills.iter().filter_map(|f| const_fill(&f.0)) {
 			let key = format!("{typ}::{n}");
-			if let Some(lit) = self.const_value(v, scope) {
+			if let Some(mut lit) = self.const_value(v, scope) {
+				if let Expr::StructLit { name, .. } = &mut lit.0
+					&& name == "Self"
+				{
+					*name = typ.to_string();
+				}
 				if let Some(t) = t {
 					self.program.const_types.insert(key.clone(), (**t).clone());
 				}
