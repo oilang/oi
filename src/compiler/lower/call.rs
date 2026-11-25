@@ -576,7 +576,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		arg: &Spanned<Expr>,
 		want: Option<&Typ>,
 	) -> Result<ArgValue, Diagnostic> {
-		let arg = arg_inner(arg);
+		let (given, arg) = (arg, arg_inner(arg));
 		if access == Access::Mut {
 			let (cell, typ, entry) = self.lend_mut(arg)?;
 			if let Some(to @ Typ::Trait(tn)) = want
@@ -616,9 +616,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			None => self.expr(arg)?,
 		};
 
-		if access == Access::Move {
+		if access == Access::Move && self.moves(given, val, &typ)? {
 			self.move_out(arg, &typ)?;
 			self.untemp(val);
+		} else if access == Access::Move {
+			return Ok((self.copy_bind(val, &typ), typ, None));
 		} else if let Expr::Ident(name) = &arg.0
 			&& let Some(Typ::FixedArray(..)) = self.vars.get(name).map(|l| &l.typ)
 			&& matches!(typ, Typ::Array(_))
@@ -719,8 +721,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			let Some(arg) = arg else { continue };
 			let given = match &arg.0 {
 				Expr::ArgMod(a, _) => *a,
-				// temps have no other owners, so `move` is implied
-				_ if want == Access::Move && !Self::is_place(arg) => want,
+				_ if want == Access::Move => want,
 				_ => Access::Read,
 			};
 
@@ -773,6 +774,16 @@ impl<'a, M: Module> Translator<'a, M> {
 	// Whether moving `expr` would take it from a binding.
 	pub(super) fn is_place(expr: &Spanned<Expr>) -> bool {
 		matches!(Self::place_root(expr).0, Expr::Ident(_))
+	}
+
+	// Decides whether a `move` arg should be handed over.
+	pub(super) fn moves(&self, arg: &Spanned<Expr>, val: Value, typ: &Typ) -> Result<bool, Diagnostic> {
+		let explicit = matches!(arg.0, Expr::ArgMod(..));
+		if !explicit && Self::is_place(arg) && self.is_affine(typ) {
+			let msg = "this parameter is `move`, missing `move` at the callsite";
+			return fail(msg, arg.1, "wrap it, e.g. `f(move x)`");
+		}
+		Ok(explicit || self.handover(val, typ))
 	}
 
 	// Require a mutable binding place.

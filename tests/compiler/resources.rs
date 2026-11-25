@@ -215,6 +215,19 @@ fn a_move_arg_transfers_ownership() {
 }
 
 #[test]
+fn a_plain_value_copies_into_a_move_param() {
+	check(
+		oi! {
+			eat :: fn(move n: int) do print(n)
+			n := 1
+			eat(n)
+			print(n)
+		},
+		["1", "1"],
+	);
+}
+
+#[test]
 fn a_mutable_copy_of_a_resource_is_owned() {
 	let f = "f :: fn(x: ?File = none) int { x = File.{fd = 9}; 1 }";
 	let g = "g :: File.{fd = 1}";

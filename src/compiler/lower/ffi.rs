@@ -62,7 +62,7 @@ impl<M: Module> Translator<'_, M> {
 				let (oi, typ) = self.expr(arg)?;
 
 				// skip the `copy` hook
-				let moved = matches!(value.0, Expr::ArgMod(..)) || self.handover(oi, &typ);
+				let moved = self.moves(value, oi, &typ)?;
 				if moved {
 					self.check_args(&[Access::Move], None, &[Some(value)])?;
 					self.move_out(arg, &typ)?;
