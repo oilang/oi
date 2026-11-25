@@ -258,35 +258,32 @@ impl<M: Module> Translator<'_, M> {
 	fn copy_fields(&mut self, oi: Value, c: Value, at: i32, fields: &[FieldDef], to_c: bool) {
 		let offsets = c_layout(fields, &self.types).expect("validated").offsets;
 		for ((i, f), off) in fields.iter().enumerate().zip(offsets) {
-			let (slot, off) = ((i * 8) as i32, at + off as i32);
-			match f.typ.newtype().unwrap_or(&f.typ) {
-				Typ::Struct(_, inner) => {
-					// nested structs are inline in C, and behind a pointer in Oi
-					let child = self.ld_word(oi, slot);
-					self.copy_fields(child, c, off, inner, to_c);
+			self.copy_val(oi, (i * 8) as i32, c, at + off as i32, &f.typ, to_c);
+		}
+	}
+
+	// Copy a value between its Oi slot and its C offset.
+	// Aggregates are inline in C and behind a pointer in Oi.
+	fn copy_val(&mut self, oi: Value, slot: i32, c: Value, off: i32, typ: &Typ, to_c: bool) {
+		match typ.newtype().unwrap_or(typ) {
+			Typ::Struct(_, inner) => {
+				let child = self.ld_word(oi, slot);
+				self.copy_fields(child, c, off, inner, to_c);
+			}
+			Typ::FixedArray(e, n) => {
+				let (buf, stride) = (self.ld_word(oi, slot), self.elem_stride(e) as i32);
+				let size = e.c_size_align(&self.types).expect("validated").0 as i32;
+				for i in 0..*n as i32 {
+					self.copy_val(buf, i * stride, c, off + i * size, e, to_c);
 				}
-				Typ::FixedArray(e, n) if let Typ::Struct(_, inner) = &**e => {
-					// struct elements are inline in C, and eah behind a pointer in Oi
-					let buf = self.ld_word(oi, slot);
-					let size = e.c_size_align(&self.types).expect("validated").0 as i32;
-					for i in 0..*n as i32 {
-						let child = self.ld_word(buf, i * 8);
-						self.copy_fields(child, c, off + i * size, inner, to_c);
-					}
-				}
-				Typ::FixedArray(e, n) => {
-					let (at, buf) = (self.b.ins().iadd_imm(c, off as i64), self.ld_word(oi, slot));
-					let (dst, src) = if to_c { (at, buf) } else { (buf, at) };
-					self.fixed_move(dst, src, e, *n, true);
-				}
-				typ if to_c => {
-					let v = self.ld_typ(oi, slot, typ);
-					self.c_store(typ, v, c, off);
-				}
-				typ => {
-					let v = self.c_load(typ, c, off);
-					self.st(oi, slot, v);
-				}
+			}
+			typ if to_c => {
+				let v = self.ld_typ(oi, slot, typ);
+				self.c_store(typ, v, c, off);
+			}
+			typ => {
+				let v = self.c_load(typ, c, off);
+				self.st(oi, slot, v);
 			}
 		}
 	}
