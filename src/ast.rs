@@ -984,8 +984,18 @@ pub fn rebind_dollar(expr: &mut Expr, to: &Expr) -> bool {
 	hit
 }
 
-// Splits `a | b` and `is A | B` into one pattern each.
-pub fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
+// Splits `a | b` and `is A | B` into one pattern each, lifting nested ones.
+pub fn alts((mut pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
+	let mut slots = pattern_slots(&mut pat).into_iter().map(|sub| alts(sub.clone())).enumerate();
+	if let Some((slot, subs)) = slots.find(|(_, subs)| subs.len() > 1) {
+		let lift = |sub| {
+			let mut pat = pat.clone();
+			*pattern_slots(&mut pat)[slot] = sub;
+			alts((pat, span))
+		};
+		return subs.into_iter().flat_map(lift).collect();
+	}
+
 	match pat {
 		Expr::Binary(BinOp::BitOr, lhs, rhs) => [alts(*lhs), alts(*rhs)].concat(),
 		Expr::Is { subject, typ, negated } => match typ {
@@ -994,6 +1004,22 @@ pub fn alts((pat, span): Spanned<Expr>) -> Vec<Spanned<Expr>> {
 			typ => vec![(Expr::Is { subject, typ, negated }, span)],
 		},
 		pat => vec![(pat, span)],
+	}
+}
+
+// Returns a pattern's sub-pattern slots.
+pub fn pattern_slots(pat: &mut Expr) -> Vec<&mut Spanned<Expr>> {
+	match pat {
+		Expr::Tuple(elems) => elems.iter_mut().map(|(_, e)| e).collect(),
+		Expr::Array(elems) => elems.iter_mut().collect(),
+		Expr::StructLit { fields, .. } => {
+			fields.iter_mut().filter(|(name, _)| name.is_some()).map(|(_, e)| e).collect()
+		}
+		Expr::EnumShorthand { args, .. } => match &mut args[..] {
+			[(Expr::Record(entries), _)] => entries.iter_mut().map(|(_, e)| e).collect(),
+			args => args.iter_mut().collect(),
+		},
+		_ => vec![],
 	}
 }
 

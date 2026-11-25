@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::compiler::expand;
 
 use super::*;
@@ -536,6 +538,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 		let (sv, st) = self.flow_operand(subject)?;
 		let (sv, st) = self.deref(sv, &st);
+		let arms = &self.split_alts(arms, &st)?[..];
 
 		// an arm that takes a payload consumes an owned subject
 		let takes = |pat: &Spanned<Expr>| {
@@ -730,6 +733,48 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(self.finish_merge(merge, join.result))
 	}
 
+	// Gives each alternative that binds its own arm, each binding the same names.
+	fn split_alts<'e>(&self, arms: &'e [MatchArm], st: &Typ) -> Result<Cow<'e, [MatchArm]>, Diagnostic> {
+		let mut out = Cow::Borrowed(arms);
+		for (i, arm) in arms.iter().enumerate().rev().filter(|(_, arm)| arm.patterns.len() > 1) {
+			let names: Vec<_> = arm.patterns.iter().map(|pat| self.pat_names(pat, st)).collect();
+
+			for (pat, have) in arm.patterns.iter().zip(&names).filter(|_| !arm.is) {
+				if let Some((name, typ)) = names.iter().flatten().find(|bind| !have.contains(bind)) {
+					let label = match have.iter().find(|(other, _)| other == name) {
+						Some((_, other)) => format!("binds it as {other}, not {typ}"),
+						None => format!("no `{name}` here"),
+					};
+					return fail(format!("`{name}` isn't bound in every alternative"), pat.1, label);
+				}
+			}
+
+			if names.iter().any(|have| !have.is_empty()) {
+				let alts = arm.patterns.iter().map(|pat| vec![pat.clone()]);
+				let split = alts.map(|patterns| MatchArm { patterns, ..arm.clone() });
+				out.to_mut().splice(i..=i, split);
+			}
+		}
+		Ok(out)
+	}
+
+	// Lists the names a pattern (including sub-patterns) binds.
+	fn pat_names(&self, pat: &Spanned<Expr>, typ: &Typ) -> Vec<(String, Typ)> {
+		let (shape, subs) = split_subs(pat);
+		let binds = match typ.is_enumish() {
+			true => self.enum_pattern(&shape, typ).map(|(_, binds)| binds),
+			false => self.pat_binds(&shape, typ),
+		};
+
+		let mut subs = subs.iter();
+		let each = |(name, typ, _): Bind| match name.starts_with("$sub") {
+			true => subs.next().map_or(vec![], |sub| self.pat_names(sub, &typ)),
+			false => vec![(name, typ)],
+		};
+
+		binds.unwrap_or_default().into_iter().flat_map(each).collect()
+	}
+
 	// Tests a pattern against the subject.
 	fn pat_test(
 		&mut self,
@@ -740,14 +785,6 @@ impl<'a, M: Module> Translator<'a, M> {
 	) -> Result<(Value, Vec<ArmBinds>), Diagnostic> {
 		let yes = |s: &mut Self| s.b.ins().iconst(types::I8, 1);
 		let subject = |binds| Some(((sv, st.clone()), binds));
-
-		// nested `a | b`
-		if let Expr::Binary(BinOp::BitOr, ..) = pat.0 {
-			let outer = self.dollar.replace((sv, st.clone()));
-			let hit = self.expr(&crate::ast::is_match((Expr::Dollar, pat.1), false, pat.clone(), pat.1));
-			self.dollar = outer;
-			return Ok((hit?.0, vec![]));
-		}
 
 		let (pat, subs) = &split_subs(pat);
 		let (mut hit, found) = match &pat.0 {
@@ -2165,18 +2202,7 @@ pub(super) fn place_key(e: &Expr) -> Option<String> {
 // Swaps a pattern's sub-patterns for hidden names, returning them in order.
 fn split_subs(pat: &Spanned<Expr>) -> (Spanned<Expr>, Vec<Spanned<Expr>>) {
 	let (mut pat, mut subs) = (pat.clone(), vec![]);
-	let slots = match &mut pat.0 {
-		Expr::Tuple(elems) => elems.iter_mut().map(|(_, e)| e).collect(),
-		Expr::Array(elems) => elems.iter_mut().collect(),
-		Expr::StructLit { fields, .. } => {
-			fields.iter_mut().filter(|(name, _)| name.is_some()).map(|(_, e)| e).collect()
-		}
-		Expr::EnumShorthand { args, .. } => match &mut args[..] {
-			[(Expr::Record(entries), _)] => entries.iter_mut().map(|(_, e)| e).collect(),
-			args => args.iter_mut().collect(),
-		},
-		_ => vec![],
-	};
+	let slots = crate::ast::pattern_slots(&mut pat.0);
 	for slot in slots.into_iter().filter(|e| !matches!(e.0, Expr::Ident(_))) {
 		let hidden = (Expr::Ident(format!("$sub{}", subs.len())), slot.1);
 		subs.push(std::mem::replace(slot, hidden));

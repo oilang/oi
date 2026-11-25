@@ -357,6 +357,27 @@ fn is_pattern() {
 }
 
 #[test]
+fn alternatives_bind() {
+	let src = oi! {
+		E :: enum { a(int) b(int) c }
+		swap :: fn(p: (int, int)) int do match p {
+			(x, 0) | (0, x) => x,
+			_ => -1
+		}
+		pick :: fn(o: ?E) int do match o {
+			.some.(.a.(n) | .b.(n)) => n,
+			_ => -1
+		}
+		print(swap((3, 0)), swap((0, 4)), swap((1, 1)), pick(.some.(E.b.(7))))
+	};
+	check(src, "3 4 -1 7");
+	fail(
+		"match (1, 2) { (x, 0) | (0, y) => 1, _ => 2 }",
+		"`y` isn't bound in every alternative",
+	);
+}
+
+#[test]
 fn is_pattern_rejects_binds() {
 	fail(
 		["o: ?(int, int) = .none", "print(o is .some.((a, 1)))"],
