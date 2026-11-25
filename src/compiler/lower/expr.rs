@@ -583,14 +583,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				}
 
 				// blanket claims
+				let skip = bound.is_some() as usize;
 				let blanket = (bound.as_ref().map(|(_, t)| t.clone()))
 					.or_else(|| self.types.named(&sname, expr.1).ok())
 					.and_then(|rt| {
-						(self.world.blankets.iter().filter(|(tn, _)| self.claims(&rt, tn)))
-							.find_map(|(_, p)| self.world.generic_fns.get_key_value(&format!("[{}].{method}", p.name)))
-							.map(|(k, _)| k.clone())
+						let keys = self.blanket_fills(&rt, method);
+						// the first arg disambiguates
+						let arg = args.first().filter(|_| keys.len() > 1).and_then(|a| self.type_of(a).ok());
+						let takes = |s: FnSig| s.params.get(skip).map(|p| access_peel(&p.typ)) == arg.as_ref();
+						(keys.into_iter()).find(|k| arg.is_none() || self.self_instance(k, &rt).is_some_and(takes))
 					});
-				if let Some((sig, args)) = self.pick_fill(&key, bound.is_some() as usize, args, blanket.is_some())? {
+				if let Some((sig, args)) = self.pick_fill(&key, skip, args, blanket.is_some())? {
 					return self.call_sig(&key, sig, bound.map(|(v, _)| v), recv_expr, &args, expr.1);
 				}
 				if let Some((_, rt)) = &bound

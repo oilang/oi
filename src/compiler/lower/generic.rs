@@ -261,9 +261,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.instance(key, typ, |def| Some(&def.params.first()?.typ))
 	}
 
-	// Instantiate a generic fill from its return type.
-	pub(super) fn ret_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
-		self.instance(key, typ, |def| Some(&def.ret.as_ref()?.0))
+	// Instantiate a generic fill from its self type.
+	pub(super) fn self_instance(&mut self, key: &str, typ: &Typ) -> Option<FnSig> {
+		self.instance(key, typ, |def| def.self_typ.as_ref())
 	}
 
 	fn instance(&mut self, key: &str, typ: &Typ, at: fn(&GenericFnDef) -> Option<&TypeExpr>) -> Option<FnSig> {

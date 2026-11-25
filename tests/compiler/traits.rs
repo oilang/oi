@@ -1086,18 +1086,22 @@ fn blanket_claims() {
 fn casts_through_blanket_from() {
 	let main = oi! {
 		V :: struct { at: int }
+		W :: struct { at: int }
 		Class :: trait { name: fn(self) string }
 		P :: struct { x: int }
-		P : Class < { name :: fn(self) string { "p{self.x}" } }
+		P : Class < { name :: fn(self) string do "p{self.x}" }
 		[T: Class] T : From[V] < {
 			from :: fn(v: V) T { T.{ x = v.at } }
+		}
+		[T: Class] T : From[W] < {
+			from :: fn(w: W) T { T.{ x = w.at * 10 } }
 		}
 		P : From[string] < {
 			from :: fn(s: string) P { P.{ x = s.len() } }
 		}
-		print(P.from(V.{ 1 }).name(), P.(V.{ 2 }).name(), P.from("abc").name())
+		print(P.from(V.{ 1 }).name(), P.from(W.{ 2 }).name(), P.(W.{ 3 }).name(), P.from("abc").name())
 	};
-	check(main, "p1 p2 p3");
+	check(main, "p1 p20 p30 p3");
 	fail(
 		&format!("{main}P : From[V] < {{ from :: fn(v: V) P {{ P.{{}} }} }}"),
 		"`P` claims `core::From` twice",

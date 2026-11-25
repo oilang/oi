@@ -16,7 +16,7 @@ use target_lexicon::{BinaryFormat, Triple};
 
 use crate::ast::{
 	Access, Annotation, Capture, Claim, EnumDef, EnumVariant, Expr, Func, Param, Span, Spanned, StructDef, TraitDef,
-	TypeExpr, TypeParam, TypeSlot, int_word,
+	TraitRef, TypeExpr, TypeParam, TypeSlot, int_word,
 };
 use crate::diagnostics::{Diagnostic, SourceMap, arity_err, fail, unknown_member};
 use crate::loader::{Program, Publics, Scope, is_hook_trait, is_literal, module_of};
@@ -612,7 +612,7 @@ struct World {
 	generic_fns: HashMap<String, GenericFnDef>,
 	trait_impls: HashSet<(String, String)>,
 	generic_claims: HashMap<(String, String), Vec<TypeParam>>,
-	blankets: HashMap<String, TypeParam>,
+	blankets: Vec<(Option<String>, TraitRef)>,
 	claim_args: HashMap<(String, String), Vec<Spanned<TypeExpr>>>,
 	module_scopes: HashMap<String, Scope>,
 	map: SourceMap,
@@ -916,7 +916,10 @@ impl<M: Module> Compiler<M> {
 			let key = match claim.generic && type_params.is_empty() {
 				true => format!("{typ}.{name}#{}", m.1.start),
 				// blanket claims
-				false if type_params.iter().any(|p| p.name == typ) => format!("[{typ}].{name}"),
+				false if type_params.iter().any(|p| p.name == typ) => match claim.generic {
+					true => format!("[{typ}].{name}#{}", m.1.start),
+					false => format!("[{typ}].{name}"),
+				},
 				false if claim.ext => {
 					let entry = (scope.module.clone(), public, m.1);
 					self.world.extensions.entry(format!("{typ}.{name}")).or_default().push(entry);
@@ -1310,10 +1313,11 @@ impl<M: Module> Compiler<M> {
 							for (slot, te) in assoc.into_iter().filter(|_| !blanket) {
 								generics.aliases.insert(format!("{typ}::{slot}"), (type_params.clone(), te));
 							}
-							if let Some(p) = bounds.iter().find(|p| p.name == *typ)
-								&& self.world.blankets.insert(tn.clone(), p.clone()).is_some()
-							{
-								return fail(format!("`{tn}` has two blanket claims"), item.1, "one per trait");
+							if let Some(p) = bounds.iter().find(|p| p.name == *typ) {
+								if args.is_empty() && self.world.blankets.iter().any(|(_, (t, _))| t == tn) {
+									return fail(format!("`{tn}` has two blanket claims"), item.1, "one per trait");
+								}
+								self.world.blankets.push((p.bound.clone(), (tn.clone(), args.to_vec())));
 							}
 							self.world.generic_claims.insert((typ.clone(), tn.clone()), bounds.clone());
 						}
@@ -1606,11 +1610,10 @@ impl<M: Module> Compiler<M> {
 					.collect::<Vec<_>>()
 			};
 
-			if let Some(blanket) = self.world.blankets.get(&b.trait_name)
-				&& let Some(bound) = &blanket.bound
-				&& self.world.trait_impls.contains(&(b.typ.to_string(), bound.clone()))
-				&& let Some(args) = self.world.claim_args.get(&(blanket.name.clone(), b.trait_name.clone()))
-				&& resolve(args) == resolve(b.args)
+			if let Some(bound) = (self.world.blankets.iter())
+				.filter(|(_, (tn, args))| *tn == b.trait_name && resolve(args) == resolve(b.args))
+				.filter_map(|(bound, _)| bound.as_ref())
+				.find(|bound| self.world.trait_impls.contains(&(b.typ.to_string(), bound.to_string())))
 			{
 				let msg = format!("`{}` claims `{}` twice", b.typ, b.trait_name);
 				return fail(msg, b.span, format!("the blanket over `{bound}` covers it"));

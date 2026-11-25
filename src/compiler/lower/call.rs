@@ -343,6 +343,24 @@ impl<'a, M: Module> Translator<'a, M> {
 		.find(|t| matches!(t, Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize))
 	}
 
+	// List the fills of a method from the blanket claims covering a type.
+	pub(super) fn blanket_fills(&self, typ: &Typ, method: &str) -> BTreeSet<String> {
+		let claims = |tn: &String| self.claims(typ, tn);
+		let covers = |bound: &Option<String>| {
+			bound.as_ref().is_none_or(claims) && self.world.blankets.iter().any(|(b, (tn, _))| b == bound && claims(tn))
+		};
+		(self.world.generic_fns.iter())
+			.filter(|(key, def)| {
+				let fill = key.strip_prefix('[').and_then(|k| k.split_once("]."));
+				fill.is_some_and(|(me, name)| {
+					name.split('#').next() == Some(method)
+						&& def.type_params.iter().any(|p| p.name == me && covers(&p.bound))
+				})
+			})
+			.map(|(key, _)| key.clone())
+			.collect()
+	}
+
 	// Pick the From claim of a type whose parameter fits the given check.
 	pub(super) fn pick_from(
 		&mut self,
@@ -355,12 +373,9 @@ impl<'a, M: Module> Translator<'a, M> {
 			.filter(|(k, _)| k.starts_with(&tag))
 			.map(|(_, s)| s.clone())
 			.collect();
-		sigs.extend(self.ret_instance(&format!("{}.from", rc::base_name(&typ.key())), typ));
-
-		if let Some(blanket) = self.world.blankets.get("core::From").cloned()
-			&& blanket.bound.is_some_and(|bound| self.claims(typ, &bound))
-		{
-			sigs.extend(self.ret_instance(&format!("[{}].from", blanket.name), typ));
+		sigs.extend(self.self_instance(&format!("{}.from", rc::base_name(&typ.key())), typ));
+		for key in self.blanket_fills(typ, "from") {
+			sigs.extend(self.self_instance(&key, typ));
 		}
 
 		let mut hits = sigs.into_iter().filter(|s| fits(access_peel(&s.params[0].typ)));
