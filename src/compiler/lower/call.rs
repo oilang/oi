@@ -722,14 +722,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		recv: Option<&Spanned<Expr>>,
 		args: &[Option<&Spanned<Expr>>],
 	) -> Result<(), Diagnostic> {
+		let mut lent_recv = None;
 		if let Some(re) = recv
 			&& access[0] == Access::Mut
 			&& !matches!(re.0, Expr::Cast { .. })
 		{
-			self.mut_place(
+			lent_recv = Some(self.mut_place(
 				Self::place_root(re),
 				"calling a `mut self` method needs a `mut` binding",
-			)?;
+			)?);
 		}
 
 		for (i, (&arg, &want)) in args.iter().zip(&access[recv.is_some() as usize..]).enumerate() {
@@ -753,6 +754,16 @@ impl<'a, M: Module> Translator<'a, M> {
 				};
 				return fail(msg, arg.1, label);
 			}
+
+			if want == Access::Read
+				&& let Some(root) = lent_recv
+				&& matches!(&Self::place_root(arg).0, Expr::Ident(name) if name == root)
+				&& self.type_of(arg).is_ok_and(|typ| self.needs_release(&typ))
+			{
+				let msg = format!("cannot pass a borrow of `{root}` to its own `mut self` call");
+				return fail(msg, arg.1, "the call may free this").map_err(|d| d.with_note("bind a copy first"));
+			}
+
 			if want != Access::Mut {
 				continue;
 			}

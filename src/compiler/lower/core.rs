@@ -233,7 +233,7 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// Refuse a write to a binding used elsewhere.
 	pub(super) fn walked(&self, local: &Local, name: &str, span: Span) -> Result<(), Diagnostic> {
-		let held = |marker: &str| self.vars.get(&format!("${marker}_{name}")).map(|m| m.var) == Some(local.var);
+		let held = |marker: &str| self.vars.get(&format!("${marker}_{name}")).map(|pin| pin.var) == Some(local.var);
 		if held("walk") {
 			let msg = format!("cannot write `{name}` while `loop mut` walks it");
 			return fail(msg, span, "written mid-walk");

@@ -1165,6 +1165,12 @@ impl<'a, M: Module> Translator<'a, M> {
 			return Ok((val, if built && vt == *base { target.clone() } else { vt }));
 		}
 		let (val, vt) = self.lower(value, Some(target))?;
+
+		// check a return payload before the `?`/`!` wrap drops its closure flag
+		if self.ret.as_ref().is_some_and(|(ret, _)| ret == target) && self.types.happy(target).is_some() {
+			closure_escape(&vt, value.1.into_range(), "returned")?;
+		}
+
 		if *target == Typ::Any {
 			self.move_resource(value, &vt)?;
 		}

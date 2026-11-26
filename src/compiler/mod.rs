@@ -299,9 +299,13 @@ pub(crate) fn escapes(name: &str, typ: &Typ, body: &[Spanned<Expr>]) -> bool {
 	if !matches!(access_peel(typ), Typ::Fn(..) | Typ::Closure(..)) {
 		return false;
 	}
-	let is = |e: &Spanned<Expr>| matches!(&e.0, Expr::Ident(n) if n == name);
-	let mut hit = body.last().is_some_and(is);
+
+	let is = |names: &[String], e: &Spanned<Expr>| matches!(&e.0, Expr::Ident(n) if names.contains(n));
+	let mut names = vec![name.to_string()];
+	let mut hit = false;
+
 	Expr::Block(body.to_vec()).walk(&mut |e| {
+		let is = |v: &Spanned<Expr>| is(&names, v);
 		hit |= match e {
 			Expr::Return(Some(v))
 			| Expr::Assign { value: v, .. }
@@ -312,11 +316,20 @@ pub(crate) fn escapes(name: &str, typ: &Typ, body: &[Spanned<Expr>]) -> bool {
 			Expr::Array(es) | Expr::DotArray(_, es) | Expr::DotTuple(es) => es.iter().any(is),
 			Expr::Tuple(fs) | Expr::StructLit { fields: fs, .. } => fs.iter().any(|(_, v)| is(v)),
 			Expr::Map(es) | Expr::Record(es) => es.iter().any(|(_, v)| is(v)),
-			Expr::AnonFn { captures: Some(cs), .. } => cs.iter().any(|c| matches!(c, Capture::Move(n) if n == name)),
+			Expr::AnonFn { captures: Some(cs), .. } => {
+				cs.iter().any(|c| matches!(c, Capture::Move(n) if names.contains(n)))
+			}
 			_ => false,
+		};
+
+		// track a local alias `g := f` as `f`
+		if let Expr::Bind { name: alias, value: Some(v), .. } = e
+			&& is(v)
+		{
+			names.push(alias.clone());
 		}
 	});
-	hit
+	hit || body.last().is_some_and(|e| is(&names, e))
 }
 
 // Qualify each type param's trait bound through its defining scope.

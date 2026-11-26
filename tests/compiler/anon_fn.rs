@@ -57,13 +57,13 @@ fn implicit_captures() {
 
 #[test]
 fn closure_cannot_escape() {
-	let src = indoc! {"
+	let src = oi! {
 		make :: fn() {
 			n :: 10
-			return fn() int { n }
+			return fn() int do n
 		}
 		make()
-	"};
+	};
 	fail(src, "borrows its captures, so it can't be returned");
 	fail(
 		["n :: 10", "arr :: [fn [n] () int { n }]"],
@@ -74,15 +74,15 @@ fn closure_cannot_escape() {
 		"borrows its captures, so it can't be boxed as `any`",
 	);
 
-	let src = indoc! {"
+	let src = oi! {
 		smuggle[T] :: fn(x: T) []T {
 			a: []T
 			a << x
 			a
 		}
 		n :: 10
-		smuggle(fn [n] () int { n })
-	"};
+		smuggle(fn [n] () int do n)
+	};
 	fail(src, "borrows its captures, so it can't be stored in an array");
 	fail(
 		["n :: 10", r#"["a" = fn [n] () int { n }]"#],
@@ -97,64 +97,95 @@ fn closure_cannot_escape() {
 		"borrows its captures, so it can't be stored in a field",
 	);
 
-	let src = indoc! {"
+	let src = oi! {
 		Box :: struct { f: fn() int }
 		keep :: fn(f: fn() int) Box { Box.{ f = f } }
-		apply :: fn(f: fn() int) int { f() }
+		apply :: fn(f: fn() int) int do f()
 		n :: 10
-		print(apply(fn [n] () int { n }))
-		keep(fn [n] () int { n })
-	"};
+		print(apply(fn [n] () int do n))
+		keep(fn [n] () int do n)
+	};
 	fail(
 		src,
 		"borrows its captures, so it can't be passed to `keep`, which keeps it",
 	);
 
-	let src = indoc! {"
+	let src = oi! {
+		keep :: fn(f: fn() int) fn() int {
+			g := f
+			return g
+		}
+		n :: 10
+		keep(fn [n] () int { n })
+	};
+	fail(
+		src,
+		"borrows its captures, so it can't be passed to `keep`, which keeps it",
+	);
+
+	let src = oi! {
 		pair :: fn() (fn() int, int) {
 			n :: 10
-			return (fn [n] () int { n }, 1)
+			return (fn [n] () int do n, 1)
 		}
 		pair()
-	"};
+	};
+	fail(src, "borrows its captures, so it can't be returned");
+
+	let src = oi! {
+		maybe :: fn(c: bool) ?fn() int {
+			n :: 10
+			if c do fn() int { n } else do none
+		}
+		maybe(true)
+	};
+	fail(src, "borrows its captures, so it can't be returned");
+
+	let src = oi! {
+		attempt :: fn() !fn() int {
+			n :: 10
+			return fn() int do n
+		}
+		attempt()
+	};
 	fail(src, "borrows its captures, so it can't be returned");
 }
 
 #[test]
 fn zeroed_fns() {
-	let src = indoc! {"
+	let src = oi! {
 		f: fn()
 		f()
 		g: fn(int) bool
 		print(g(7))
-	"};
+	};
 	check(src, "false");
-	let src = indoc! {"
+	let src = oi! {
 		P :: struct { pee: float }
 		Q :: struct { cue: int, p: P }
 		p: fn() P
 		q: fn() Q
 		print(p())
 		print(q())
-	"};
+	};
 	check(src, ["P.{pee = 0.0}", "Q.{cue = 0, p = P.{pee = 0.0}}"]);
 }
 
 #[test]
 fn capture_mut_writes_visible_outside() {
-	let src = indoc! {"
+	let src = oi! {
 		counter := 0
 		inc :: fn [mut counter] () int { counter = counter + 1; counter }
 		inc()
 		inc()
 		counter
-	"};
+	};
 	check(src, "2");
 }
 
 #[test]
 fn move_capture_escapes_via_return() {
-	let src = indoc! {"
+	let src = oi! {
 		P :: struct { x: int }
 		make :: fn() fn() int {
 			xs :: [7]
@@ -168,7 +199,7 @@ fn move_capture_escapes_via_return() {
 		g :: mk(7)
 		h :: mk(8)
 		print(f(), g(), h())
-	"};
+	};
 	check(src, "7 7 8");
 }
 
