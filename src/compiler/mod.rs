@@ -331,13 +331,15 @@ fn qualify_anns(scope: &Scope, anns: &[Annotation]) -> Vec<Annotation> {
 	let mut anns = anns.to_vec();
 	for a in &mut anns {
 		match &mut a.0 {
-			Expr::StructLit { name, .. } | Expr::Ident(name) | Expr::Call { name, .. }
+			Expr::Call { name, .. } if name == "ctx" => *name = role::CTX.into(),
+			Expr::Call { name, .. } if !name.contains("::") => *name = scope.qualify_name(name),
+			Expr::StructLit { name, .. } | Expr::Ident(name)
 				if name != "unsafe" && name != "comp" && !name.contains("::") =>
 			{
+				// skip a bare name's fn or var binding to core
 				let qualified = scope.qualify_name(name);
-				let imported =
-					(qualified.rsplit_once("::")).is_some_and(|(module, _)| module != "core" && module != scope.module);
-				*name = role::marker(name).filter(|_| !imported).map_or(qualified, String::from)
+				let value = !name.contains('.') && scope.values.contains(&qualified);
+				*name = if value { format!("core::{name}") } else { qualified }
 			}
 			_ => {}
 		}

@@ -374,3 +374,13 @@ fn glob_import_shadows_a_core_marker() {
 		.file("m.oi", ["module m", "pub export :: struct { lo: int }"])
 		.check("2");
 }
+
+#[test]
+fn local_type_shadows_a_core_marker() {
+	let greet = "greet :: fn(name: string) int { 1 }";
+	check(["export :: struct {}", "@export", greet, r#"print(greet("hi"))"#], "1");
+	fail(
+		["export :: struct {}", "@core.export", greet],
+		"has no C representation",
+	);
+}

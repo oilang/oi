@@ -80,6 +80,7 @@ pub struct Scope {
 	header: Option<String>,
 	pub env: FxHashMap<String, String>,
 	pub module_env: Arc<FxHashMap<String, String>>,
+	pub values: Arc<FxHashSet<String>>,
 	pub visible: HashMap<String, Visible>,
 	pub module: String,
 	pub files: Vec<(Range<usize>, Scope)>,
@@ -1321,11 +1322,25 @@ impl Loader {
 			}
 		}
 
+		// fns and vars, which an annotation's lookup skips
+		let values: Arc<FxHashSet<_>> = Arc::new(
+			(self.program.modules.iter().flat_map(|m| &m.items))
+				.filter_map(|(item, _)| match item {
+					Expr::Fn(Func { name, .. }) | Expr::Bind { mutable: true, name, .. } => Some(name),
+					Expr::Bind { name, value: Some(value), .. } if matches!(value.0, Expr::Foreign) => Some(name),
+					_ => None,
+				})
+				.cloned()
+				.collect(),
+		);
+
 		// files see their module's names under their own imports
 		for m in &mut self.program.modules {
 			let module_env = Arc::new(m.scope.env.clone());
+			m.scope.values = values.clone();
 			for (_, f) in &mut m.scope.files {
 				f.module_env = module_env.clone();
+				f.values = values.clone();
 			}
 		}
 
