@@ -4,7 +4,7 @@ use std::io::IsTerminal;
 use std::ops::Range;
 use std::sync::OnceLock;
 
-use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, IndexType, Label, Report, ReportKind};
 use chumsky::error::{Rich, RichReason};
 use serde_json::json;
 
@@ -222,14 +222,17 @@ impl Diagnostic {
 					.with_message(self.label.as_deref().unwrap_or("here"))
 					.with_color(Color::Red),
 			);
+		let mut sources = vec![(id, &file.src)];
 		if let Some((at, label)) = self.also.as_deref() {
-			let (_, local) = map.locate(at);
-			builder = builder.with_label(Label::new((id.clone(), local)).with_message(label).with_color(Color::Blue));
+			let (also, local) = map.locate(at);
+			sources.push((also.name.clone(), &also.src));
+			let at = (also.name.clone(), local);
+			builder = builder.with_label(Label::new(at).with_message(label).with_color(Color::Blue));
 		}
 		if let Some(note) = &self.note {
 			builder = builder.with_note(note);
 		}
-		let _ = builder.finish().eprint((id, Source::from(&file.src)));
+		let _ = builder.finish().eprint(ariadne::sources(sources));
 		Reported
 	}
 }

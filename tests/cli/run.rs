@@ -55,6 +55,19 @@ fn directory_entry_runs_all_its_files_as_one_main() {
 }
 
 #[test]
+fn moved_here_label_names_its_own_file() {
+	let moved = [
+		"File :: struct { fd: int }",
+		"File : Drop < { drop :: fn(mut self) {} }",
+		"f :: File.{fd = 1}",
+		"g :: f",
+	];
+	let dir = Project::new().file("src/a.oi", moved).file("src/b.oi", "print(f)");
+	let stderr = stderr(&dir.oi(&["run", "src"]));
+	assert!(stderr.contains("src/a.oi:4:6"), "stderr was:\n{stderr}");
+}
+
+#[test]
 fn emit_dumps_each_stage_to_stderr() {
 	let dir = Project::new().file("main.oi", "1 + 2");
 	for (stage, expected) in [("tokens", "Plus"), ("ast", "Binary"), ("clif", "function u0:0")] {
