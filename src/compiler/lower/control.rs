@@ -658,20 +658,28 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			let flow = self.scoped(|s| {
 				s.rebind_unwrapped(unwrapping)?;
+
 				if arm.with {
 					let Expr::Ident(name) = &subject.0 else {
 						return fail("`with` needs a named subject", arm.patterns[0].1, "ex: `match x := ..`");
 					};
 					s.withs.push((name.clone(), None));
 				}
+
 				let owner = arm.guard.is_none() && s.temps.contains_key(&sv);
 				for ((base, base_typ), list) in &binds {
 					for (name, typ, off) in list {
 						let field = s.load_bind(*base, base_typ, typ, *off, span);
 						if !owner && s.is_affine(typ) {
 							s.hidden_local(name.clone(), field, typ.clone());
+							if let Expr::Ident(root) = &Self::place_root(subject).0
+								&& let Some(local) = s.vars.get(root).cloned()
+							{
+								s.vars.insert(format!("$lent_{root}"), local);
+							}
 							continue;
 						}
+
 						let field = match s.is_affine(typ) && s.enum_box(base_typ) {
 							true => s.take_boxed(*base, field, typ),
 							false => s.copy_bind(field, typ),

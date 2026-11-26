@@ -378,6 +378,25 @@ fn unwrapped_drop_payloads_drop_once() {
 }
 
 #[test]
+fn lent_payload_pins_its_place() {
+	let defs = oi! {
+		F :: struct { fd: int }
+		F : Drop < { drop :: fn(mut self) {} }
+		B :: struct { o: ?F }
+		b := B.{ o = F.{ fd = 3 } }
+	};
+	for body in [
+		"match b.o {
+			.some.(f) => { b.o = none; print(f.fd) },
+			.none => {}
+		}",
+		"if f := b.o { b.o = none; print(f.fd) }",
+	] {
+		fail([defs, body], "cannot write `b` while a bind borrows from it");
+	}
+}
+
+#[test]
 fn string_views_outlive_their_parents() {
 	let src = indoc! {r#"
 		Named :: struct { name: string }

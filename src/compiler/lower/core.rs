@@ -231,12 +231,19 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 	}
 
-	// Refuse a write to a `loop mut` binding.
+	// Refuse a write to a binding used elsewhere.
 	pub(super) fn walked(&self, local: &Local, name: &str, span: Span) -> Result<(), Diagnostic> {
-		if self.vars.get(&format!("$walk_{name}")).map(|walk| walk.var) == Some(local.var) {
+		let held = |marker: &str| self.vars.get(&format!("${marker}_{name}")).map(|m| m.var) == Some(local.var);
+		if held("walk") {
 			let msg = format!("cannot write `{name}` while `loop mut` walks it");
 			return fail(msg, span, "written mid-walk");
 		}
+
+		if held("lent") {
+			let msg = format!("cannot write `{name}` while a bind borrows from it");
+			return fail(msg, span, "written mid-borrow");
+		}
+
 		Ok(())
 	}
 
