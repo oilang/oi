@@ -14,7 +14,7 @@ pub lang :: struct { key: string }
 ## Expands to a `@test` fn right now.
 pub test! :: fn(name: Ast, body: Ast) Ast {
 	id := gensym("test")
-	`@test.{%name} %id :: fn() { %{..body.items} }`
+	`@test.{%name} %id :: fn() !() { %{..body.items} }`
 }
 
 @lang pub link :: struct { lib: string, name: string }

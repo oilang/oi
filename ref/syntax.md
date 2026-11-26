@@ -2744,8 +2744,9 @@ main :: fn() {
 	}
 
 	# `@name!` runs a macro on the following expression
-	@derive!(Hash, Debug)
+	@derive!
 	Point :: struct { x: int, y: int }
+	assert! Point.{ 1, 2 }.get_y() == 2
 
 	# inline calls
 	dbg!(count_letters("hi, mom!"))

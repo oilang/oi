@@ -1396,10 +1396,16 @@ impl<M: Module> Compiler<M> {
 						if !self.include_tests {
 							continue;
 						}
-						if !params.is_empty() || ret.is_some() {
+
+						let fallible = matches!(
+							ret,
+							Some((TypeExpr::Generic("Option" | "Result", [TypeExpr::Tuple([]), ..]), _))
+						);
+						if !params.is_empty() || ret.is_some() && !fallible {
 							let msg = format!("test `{name}` must be `fn()`");
-							return fail(msg, item.1, "tests take no params and return nothing");
+							return fail(msg, item.1, "tests take no params and return nothing, `?()` or `!()`");
 						}
+
 						let lit = |key: &str, i: usize| {
 							fields.iter().enumerate().find_map(|(j, (k, v))| {
 								(k.as_deref() == Some(key) || k.is_none() && j == i).then_some(&v.0)
@@ -1416,10 +1422,12 @@ impl<M: Module> Compiler<M> {
 						});
 						self.tests.push((name.clone(), display, skip, tags.collect()));
 					}
+
 					if others.iter().any(|f| f.key == *name) {
 						let msg = format!("duplicate fn `{}`", display_name(name));
 						return fail(msg, item.1, "already defined");
 					}
+
 					let sig = (params.clone(), func.params_tuple, ret.clone());
 					others.push(FnItem::new(name.clone(), scope, sig, &func.body))
 				}
@@ -1864,6 +1872,7 @@ impl<M: Module> Compiler<M> {
 			let msg = format!("`main` cannot return `{typ}`");
 			return fail(msg, *span, "`main` returns nothing or `!`");
 		}
+
 		let typ = self.translate(
 			FnDef {
 				params_tuple: true,
@@ -1876,8 +1885,19 @@ impl<M: Module> Compiler<M> {
 			&funcs,
 			types,
 		)?;
+
 		let entry_id = self.finish_fn("oi_main");
-		let id = self.compile_entry(entry_id, typ, &funcs, types);
+		self.compile_entry(entry_id, typ, &funcs, types);
+
+		// wrap fallible tests to fail on none/error
+		let id = self.finish_fn("__oi_main");
+		for (name, ..) in self.tests.clone() {
+			let FnSig { id, ret, .. } = funcs[&name].clone();
+			if !ret.is_unit() {
+				self.compile_entry(id, ret, &funcs, types);
+				self.finish_fn(&format!("__oi_test_{name}"));
+			}
+		}
 
 		let mut render = HashMap::new();
 		loop {
@@ -2099,7 +2119,7 @@ impl<M: Module> Compiler<M> {
 		Ok(())
 	}
 
-	fn compile_entry(&mut self, entry: FuncId, typ: Typ, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {
+	fn compile_entry(&mut self, entry: FuncId, typ: Typ, funcs: &HashMap<String, FnSig>, types: TypeCtx) {
 		let (mut trans, _) = self.translator(&FnDef::default(), funcs, types);
 
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
@@ -2109,8 +2129,6 @@ impl<M: Module> Compiler<M> {
 		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();
-
-		self.finish_fn("__oi_main")
 	}
 
 	// Queued printer bodies, and whatever they queued in turn.
@@ -2502,8 +2520,12 @@ impl Compiler {
 	}
 
 	pub(crate) fn finalized_test(&self, name: &str) -> fn() {
-		// SAFETY: `@test` fns are checked to be `fn()` at compile
-		unsafe { std::mem::transmute::<*const u8, fn()>(self.finalized(name)) }
+		let code = match self.module.get_name(&format!("__oi_test_{name}")) {
+			Some(FuncOrDataId::Func(id)) => self.module.get_finalized_function(id),
+			_ => self.finalized(name),
+		};
+		// SAFETY: a `@test` is `fn()`, or entered through its `fn()` wrapper
+		unsafe { std::mem::transmute::<*const u8, fn()>(code) }
 	}
 
 	// Compile and run a stage-0 program, leaving `roots` callable.

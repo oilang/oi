@@ -1283,22 +1283,30 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((payload, inner))
 	}
 
-	// Report the error and exit 1 (main's sad path).
+	// Report the error/none and exit 1.
 	pub(crate) fn emit_fail(&mut self, val: Value, typ: &Typ) {
-		let Some((_, err)) = self.types.result_parts(typ) else {
+		let Some((_, err)) = self.fallible_split(typ) else {
 			return;
 		};
+
 		let tag = self.enum_tag(typ, val);
-		let (sad, done) = self.fork(tag);
+		let is_sad = self.b.ins().icmp_imm(IntCC::Equal, tag, err.is_some() as i64);
+		let (sad, done) = self.fork(is_sad);
 		self.b.switch_to_block(sad);
-		let e = self.ld_word(val, 8);
-		let mut msg = self.derived_str(e, &err, false);
-		if err == Typ::Error
-			&& let Some(sig) = self.funcs.get(role::ORIGIN.path()).cloned()
-		{
-			let (at, _) = self.emit_call(&sig, &[e]);
-			msg = self.rt_call("str_concat", &[msg, at]).unwrap();
+
+		let mut msg = self.str_const("unwrapped `none`");
+		if let Some(err) = err {
+			let e = self.ld_word(val, 8);
+			msg = self.derived_str(e, &err, false);
+
+			if err == Typ::Error
+				&& let Some(sig) = self.funcs.get(role::ORIGIN.path()).cloned()
+			{
+				let (at, _) = self.emit_call(&sig, &[e]);
+				msg = self.rt_call("str_concat", &[msg, at]).unwrap();
+			}
 		}
+
 		self.rt_call("fail", &[msg]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		self.b.switch_to_block(done);

@@ -108,6 +108,19 @@ fn failing_test_is_isolated() {
 }
 
 #[test]
+fn fallible_test_fails_on_none_or_error() {
+	let dir = project(indoc! {r#"
+		load :: fn() !int do error("disk on fire")
+		test! "loads" { assert! load()? == 1 }
+		@test finds :: fn() ?() do none
+	"#});
+	let out = dir.oi(&["test"]);
+	let stdout = String::from_utf8_lossy(&out.stdout);
+	assert!(stdout.contains("loads ... FAILED") && stdout.contains("finds ... FAILED"));
+	assert!(stderr(&out).contains("error: disk on fire"));
+}
+
+#[test]
 fn test_dir_with_main_treats_siblings_as_modules() {
 	let dir = project(indoc! {r#"
 		use rex
