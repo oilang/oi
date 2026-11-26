@@ -109,11 +109,8 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok(())
 	}
 
-	// The optional message argument for the aborting macros.
-	fn msg_arg(&mut self, name: &str, arg: Option<&Spanned<Expr>>, default: &str) -> Result<Value, Diagnostic> {
-		let Some(arg) = arg else {
-			return Ok(self.str_const(default));
-		};
+	// Lower the message argument of an aborting macro.
+	fn msg_arg(&mut self, name: &str, arg: &Spanned<Expr>) -> Result<Value, Diagnostic> {
 		match self.expr(arg)? {
 			(val, Typ::Str) => Ok(val),
 			(_, typ) => fail(format!("`{name}!` message must be Str, got {typ}"), arg.1, "not a Str"),
@@ -155,15 +152,8 @@ impl<'a, M: Module> Translator<'a, M> {
 				let (file, line, col, _) = self.world.map.locate_span(span.into_range());
 				let snippet = self.world.map.locate_span(args[0].1.into_range()).3;
 				self.write_lit(&format!("[{file}:{line}:{col}] {snippet} = "), runtime::Sink::Err);
-				let recv = format!("$dbg{}", self.vars.len());
-				self.hidden_local(recv.clone(), val, typ.clone());
-				let repr = Expr::MethodCall {
-					recv: Box::new((Expr::Ident(recv), span)),
-					method: "repr".into(),
-					type_args: vec![],
-					args: vec![],
-				};
-				let (s, _) = self.expr(&(repr, span))?;
+				let repr = self.call_on((val, typ.clone()), "repr", vec![], span);
+				let (s, _) = self.expr(&repr)?;
 				self.emit_print(s, &Typ::Str, false, runtime::Sink::Err);
 				self.write_lit("\n", runtime::Sink::Err);
 				Ok((val, typ))
@@ -172,14 +162,37 @@ impl<'a, M: Module> Translator<'a, M> {
 			"src" => self.src_lit(span),
 
 			"assert" => {
-				let cond = self.bool_value(&args[0], "`assert!` condition")?;
-				// the failure message defaults to the condition's source
-				let snippet = self.world.map.locate_span(args[0].1.into_range()).3;
-				let msg = self.msg_arg(name, args.get(1), snippet)?;
+				let (cond, at) = &args[0];
+				// each condition fails on its own
+				if let (Expr::Binary(BinOp::And, lhs, rhs), None) = (cond, args.get(1)) {
+					self.macro_call(name, std::slice::from_ref(lhs), span)?;
+					return self.macro_call(name, std::slice::from_ref(rhs), span);
+				}
+
+				// the failure message defaults to the condition's source, then a comparison's sides
+				let mut msg = (Expr::String(self.world.map.locate_span(at.into_range()).3.into()), *at);
+
+				let cond = match cond {
+					Expr::Binary(
+						op @ (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge),
+						lhs,
+						rhs,
+					) => {
+						let sides = self.operands(lhs, rhs, |_, typ| typ.clone())?;
+						let add = |lhs, rhs| (Expr::Binary(BinOp::Add, Box::new(lhs), Box::new(rhs)), span);
+						for (side, val) in [("\n  left: ", &sides.0), ("\n  right: ", &sides.1)] {
+							let repr = self.call_on(val.clone(), "repr", vec![], span);
+							msg = add(add(msg, (Expr::String(side.into()), span)), repr);
+						}
+						self.cmp(*op, sides, &rhs.0, *at)?.0
+					}
+					_ => self.bool_value(&args[0], "`assert!` condition")?,
+				};
 
 				let (ok_block, fail_block) = self.fork(cond);
 
 				self.b.switch_to_block(fail_block);
+				let msg = self.msg_arg(name, args.get(1).unwrap_or(&msg))?;
 				self.ctx_panic("assert_fail", msg, span)?;
 
 				self.b.switch_to_block(ok_block);
@@ -192,12 +205,15 @@ impl<'a, M: Module> Translator<'a, M> {
 					"todo" => "not yet implemented",
 					_ => "entered unreachable code",
 				};
-				let msg = self.msg_arg(name, args.first(), default)?;
+				let default = (Expr::String(default.into()), span);
+				let msg = self.msg_arg(name, args.first().unwrap_or(&default))?;
 				self.ctx_panic("panic", msg, span)?;
+
 				// code after the panic lands in a dead block
 				let dead = self.b.create_block();
 				self.b.seal_block(dead);
 				self.b.switch_to_block(dead);
+
 				Ok(self.unit_value())
 			}
 		}

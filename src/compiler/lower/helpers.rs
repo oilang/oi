@@ -278,4 +278,12 @@ impl<M: Module> Translator<'_, M> {
 		self.b.def_var(var, val);
 		self.vars.insert(name, Local::plain(var, typ, false));
 	}
+
+	// Build a method call on a lowered value.
+	pub(super) fn call_on(&mut self, on: TypedVal, name: &str, args: Vec<Spanned<Expr>>, span: Span) -> Spanned<Expr> {
+		let recv = format!("$recv{}", self.vars.len());
+		self.hidden_local(recv.clone(), on.0, on.1);
+		let (recv, method, type_args) = (Box::new((Expr::Ident(recv), span)), name.into(), vec![]);
+		(Expr::MethodCall { recv, method, type_args, args }, span)
+	}
 }

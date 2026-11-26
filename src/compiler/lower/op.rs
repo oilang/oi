@@ -405,7 +405,7 @@ impl<'a, M: Module> Translator<'a, M> {
 	}
 
 	// Lower the hinted side first so an anon literal on the other side borrows its type.
-	fn operands(
+	pub(super) fn operands(
 		&mut self,
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
@@ -726,15 +726,15 @@ impl<'a, M: Module> Translator<'a, M> {
 		Ok((out, lt))
 	}
 
+	// Compare lowered operands.
 	pub(super) fn cmp(
 		&mut self,
-		icc: IntCC,
-		fcc: FloatCC,
-		l: &Spanned<Expr>,
-		r: &Spanned<Expr>,
+		op: BinOp,
+		((lv, lt), (rv, rt)): (TypedVal, TypedVal),
+		r: &Expr,
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
-		let ((lv, lt), (rv, rt)) = self.operands(l, r, |_, t| t.clone())?;
+		let (icc, fcc) = cmp_cc(op);
 		let (lv, lt, rv, rt) = self.promote(lv, lt, rv, rt);
 		let (lv, rv) = (self.widen_f16(lv, &lt), self.widen_f16(rv, &rt));
 
@@ -779,7 +779,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			// compare with none
 			(opt, _)
 				if matches!(icc, IntCC::Equal | IntCC::NotEqual)
-					&& matches!(&r.0, Expr::Ident("none"))
+					&& matches!(r, Expr::Ident("none"))
 					&& self.types.option_inner(opt).is_some() =>
 			{
 				let tag = self.enum_tag(opt, lv);

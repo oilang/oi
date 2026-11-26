@@ -34,16 +34,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 	// `recv[index]` through its `Index` claim.
 	fn index_call(&mut self, (ptr, typ): TypedVal, index: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
-		let recv = format!("$recv{}", self.vars.len());
-		self.hidden_local(recv.clone(), ptr, typ);
-		let recv = Box::new((Expr::Ident(recv), span));
-		let call = Expr::MethodCall {
-			recv,
-			method: "index".into(),
-			type_args: vec![],
-			args: vec![index.clone()],
-		};
-		self.expr(&(call, span))
+		let call = self.call_on((ptr, typ), "index", vec![index.clone()], span);
+		self.expr(&call)
 	}
 
 	// Lowers a flow operand, keeping the `?V` an index or cast drops in value position.
@@ -256,8 +248,8 @@ impl<'a, M: Module> Translator<'a, M> {
 
 			Expr::Binary(op, l, r) => match op {
 				BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-					let (icc, fcc) = cmp_cc(*op);
-					self.cmp(icc, fcc, l, r, expr.1)
+					let sides = self.operands(l, r, |_, typ| typ.clone())?;
+					self.cmp(*op, sides, &r.0, expr.1)
 				}
 				BinOp::And => self.logical(true, l, r),
 				BinOp::Or => self.logical(false, l, r),
@@ -822,18 +814,8 @@ impl<'a, M: Module> Translator<'a, M> {
 					&& sig.params.first().is_some_and(|p| p.typ == typ)
 				{
 					let (span, rest) = (expr.1, sig.value_params()[1..].to_vec());
-					let recv = format!("$recv{}", self.vars.len());
-					self.hidden_local(recv.clone(), ptr, typ.clone());
 					let args = (0..rest.len()).map(|i| (Expr::Ident(format!("${i}")), span)).collect();
-					let body = [(
-						Expr::MethodCall {
-							recv: Box::new((Expr::Ident(recv), span)),
-							method: field.clone(),
-							type_args: vec![],
-							args,
-						},
-						span,
-					)];
+					let body = [self.call_on((ptr, typ.clone()), field, args, span)];
 					let fsig = AnonSig::Inferred(Typ::Fn(rest, Box::new(sig.ret)));
 					return Ok(self.declare_anon_fn(&None, &[], false, fsig, &body, span)?.0);
 				}

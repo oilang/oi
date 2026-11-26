@@ -25,7 +25,10 @@ fn src_captures_the_call_site() {
 fn assert_statement_form() {
 	check("assert! 1 + 1 == 2", "");
 	check(["x: u64 = 3", "assert! u64.(x) == 3"], "");
-	fail_rt("assert! 1 == 2", "assertion failed: 1 == 2");
+	fail_rt(
+		"assert! 1 == 1 && 1 + 1 == 3",
+		"assertion failed: 1 + 1 == 3\n  left: 2\n  right: 3",
+	);
 }
 
 #[test]
