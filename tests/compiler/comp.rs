@@ -284,7 +284,7 @@ fn struct_fields_are_typed_asts() {
 		indoc! {r#"
 			mirror! :: fn(s: Ast) Ast {
 				f := s.items[0]
-				line := "{f.name.str()} {f.typ.str()} {f.notes.len()}"
+				line := "{f.name} {f.typ} {f.notes.len()}"
 				`
 					print(%line)
 					show :: fn(%{..s.items}) { print(speed) }
@@ -304,7 +304,7 @@ fn fns_claims_and_notes_are_typed_asts() {
 			export :: struct { hint: string = "" }
 			note! :: fn(s: Ast) Ast {
 				n := s.items[0].notes[0]
-				line := "{n.name.str()} {n.items[0].str()}"
+				line := "{n.name} {n.items[0]}"
 				`
 					print(%line)
 					%s
@@ -312,7 +312,7 @@ fn fns_claims_and_notes_are_typed_asts() {
 			}
 			api! :: fn(c: Ast) Ast {
 				m := c.items[0]
-				line := "{c.name.str()} {m.name.str()} {m.items.len()} {m.typ.str()}"
+				line := "{c.name} {m.name} {m.items.len()} {m.typ}"
 				`
 					print(%line)
 					%c
@@ -394,7 +394,7 @@ fn comp_loops() {
 		name :: fn(c: Color) string {
 			match c {
 				comp loop v in def(Color).items {
-					Color.%{v} => "{v.str()}!"
+					Color.%{v} => "{v}!"
 				}
 			}
 		}

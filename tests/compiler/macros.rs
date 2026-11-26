@@ -319,7 +319,9 @@ fn introspects_names_and_items() {
 fn ast_str_reads_names_and_literals() {
 	check(
 		indoc! {r#"
-			def! :: fn(x: Ast, s: Ast, n: Ast) Ast { `%{ident("get_" + x.str())} :: fn() string { %{s.str() + n.str()} }` }
+			def! :: fn(x: Ast, s: Ast, n: Ast) Ast {
+				`%{ident("get_{x}")} :: fn() string { %{s.str() + n.str()} }`
+			}
 			def!(foo, "hi", 42)
 			print(get_foo())
 		"#},
@@ -1107,7 +1109,7 @@ fn relations() {
 					pub names! :: fn() Ast {
 						s := "claimants:"
 						loop T in def(Component).claimants {
-							s = "{s} {T.name.str()}"
+							s = "{s} {T.name}"
 						}
 						`print(%s)`
 					}

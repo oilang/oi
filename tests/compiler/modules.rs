@@ -399,7 +399,11 @@ fn trait_defaults_reflect_their_claimant() {
 		.lib(
 			"show",
 			[r#"pub Show :: trait {
-				show :: fn(self) { comp loop f in def(Self).items { print("{f.name.str()} = {self.(f.name)}") } }
+				show :: fn(self) {
+					comp loop f in def(Self).items {
+						print("{f.name} = {self.(f.name)}")
+					}
+				}
 			}"#],
 		)
 		.lib(
