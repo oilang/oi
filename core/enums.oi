@@ -16,6 +16,11 @@ Option[T] :< {
 	pub filter :: fn(self; predicate: fn(T) bool) ?T {
 		if (value := self) && predicate(value) do value
 	}
+
+	## The value, or a given error message if none.
+	pub context :: fn(self; msg: string) !T {
+		self or return error(msg)
+	}
 }
 
 Result[T, E] :< {

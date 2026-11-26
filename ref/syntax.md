@@ -2681,11 +2681,12 @@ main :: fn() {
 	GetProc :: @c fn(name: cstr) ptr
 
 	# `test! "name" { ... }` is the usual way to write a test
-	# it expands to an `@test` fn
+	# it expands to `@test name :: fn() !() {}`, so `?` works inside
 	test! "trims edges" { assert! trim(" hi ") == "hi" }
 
 	# `@test` is the underlying annotation, needed for fields `test!` doesn't expose (like `skip`)
 	# they get stripped from normal builds, and are run by `oi test`
+	# a test returns `()`, `?()`, or `!()`
 	# pub test :: struct { name: string = "", skip: bool = false }
 	@test trims_edges :: fn() { assert! trim(" hi ") == "hi" }
 	@test.{"trims nothing", skip = true}
@@ -2696,8 +2697,12 @@ main :: fn() {
 	@test @:slow @:live
 	parses_big :: fn() { assert! parse(big_input).ok }
 
-	# TODO: the comp and reflection stuff not fleshed out yet
-	comp loop note in def(yell).notes { ... }
+	# `def(x)` is one definition, `defs(note)` is every one carrying `note`
+	comp loop d in defs(deprecated) { print(d.name.str()) } # yell, bellow
+	# `.note[T]()` reads a note back as a `T`, or `none`
+	if dep := def(yell).note[deprecated]() { print(dep.reason) }
+	# a marker has no payload, so test for it in `.notes`
+	comp assert! def(Handle).notes.contains(nozero)
 
 	## macros
 
@@ -2725,22 +2730,16 @@ main :: fn() {
 		_ => expr,
 	}
 
-	derive! :: fn(input: Ast, traits: Ast) Ast {
-		# input is the parsed struct, traits is the list passed to @derive!()
-		name := input.type_name()
-		fields := input.struct_fields()
-		impls := traits.items().map(fn (t) {
-			match t.name() {
-				"Hash" => {
-					hashes := fields.map(fn (f) { `self.%f.hash()` })
-					`%name : Hash {
-						hash :: fn(self) int { %{hashes.reduce(fn (a, b) { `%a * 31 + %b` })} }
-					}`
-				}
-				"Debug" => `%name : Debug { ... }`,
-			}
-		})
-		`%{..impls}`
+	# a trait default reflecting on `def(Self)` covers most derives (see `ToJson` in core/json)
+	# a macro is for new defs beside the type
+	derive! :: fn(input: Ast) Ast {
+		name := input.name
+		getters := loop f in input.items {
+			get := ident("get_{f.name}")
+			`%get :: fn(self) %{f.typ} { self.%{f.name} }`
+		}
+		`%input
+		%name :< { %{..getters} }`
 	}
 
 	# `@name!` runs a macro on the following expression
@@ -2783,7 +2782,7 @@ main :: fn() {
 	# that is, `comp loop` is not the same as `comp { loop .. }`, which is is fully comptime
 	debug_print[T] :: fn(value: T) {
 		comp loop field in def(T).items {
-			println("{field.name} = {value.(field.name)}")
+			print("{field.name} = {value.(field.name)}")
 		}
 	}
 	axis_name :: fn(a: Axis) string {
