@@ -676,7 +676,11 @@ impl<'a, M: Module> Translator<'a, M> {
 			let (val, typ) = self.unit_value();
 			return self.emit_return(val, typ, span);
 		}
-		closure_escape(&typ, span.into_range(), "returned")?;
+
+		// pass a generic instance's borrowing closure back out, and its caller checks the result
+		if !matches!(self.ret, Some((Typ::Closure(_, _, false), _))) {
+			closure_escape(&typ, span.into_range(), "returned")?;
+		}
 		if let Some((declared, _)) = &self.ret
 			&& &typ != declared
 		{
@@ -686,6 +690,7 @@ impl<'a, M: Module> Translator<'a, M> {
 				"wrong return type",
 			);
 		}
+
 		if typ.is_unit() {
 			self.release_scopes(0, Some((val, typ.clone())))?;
 			self.b.ins().return_(&[]);
@@ -694,6 +699,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			}
 			return Ok(());
 		}
+
 		let (rets, final_val) = match &typ {
 			// defers read `$` from the frame copy
 			Typ::Tuple(fields) => {

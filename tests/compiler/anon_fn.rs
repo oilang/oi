@@ -152,6 +152,27 @@ fn closure_cannot_escape() {
 }
 
 #[test]
+fn generic_pass_through_keeps_the_borrow() {
+	let src = oi! {
+		id[T] :: fn(x: T) T do x
+		n :: 10
+		f := id(fn [n] () int do n)
+		print(f())
+	};
+	check(src, "10");
+
+	let src = oi! {
+		id[T] :: fn(x: T) T do x
+		make :: fn() fn() int {
+			n :: 10
+			return id(fn [n] () int do n)
+		}
+		make()
+	};
+	fail(src, "borrows its captures, so it can't be returned");
+}
+
+#[test]
 fn zeroed_fns() {
 	let src = oi! {
 		f: fn()
