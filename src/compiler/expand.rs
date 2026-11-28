@@ -722,9 +722,9 @@ fn push_name(slots: &mut Vec<Slot>, n: &str) {
 }
 
 // Collect a template's unquote slots and binders, pulling unquote expressions out into slots.
-fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested: &mut bool) {
+fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>) {
 	match e {
-		Expr::Quote(_) => *nested = true,
+		Expr::Quote(_) => return,
 		Expr::Unquote(n) => push_name(slots, n),
 		Expr::UnquoteExpr(inner) | Expr::UnquoteSplat(inner) => {
 			let taken = std::mem::replace(inner.as_mut(), (Expr::Unquote(String::new()), Span::default()));
@@ -759,20 +759,17 @@ fn scan(e: &mut Expr, slots: &mut Vec<Slot>, bound: &mut HashSet<String>, nested
 		bound.insert(n.clone());
 	});
 	e.for_children(|c| match c {
-		List(list) => list.iter_mut().for_each(|(e, _)| scan(e, slots, bound, nested)),
-		One((e, _)) => scan(e, slots, bound, nested),
+		List(list) => list.iter_mut().for_each(|(e, _)| scan(e, slots, bound)),
+		One((e, _)) => scan(e, slots, bound),
 	});
 }
 
-// Validate a quote and leak it as a template.
-pub(crate) fn register(stmts: &[Spanned<Expr>], span: Span) -> Result<(usize, Vec<Slot>), Diagnostic> {
+// Leak a quote as a template.
+pub(crate) fn register(stmts: &[Spanned<Expr>]) -> (usize, Vec<Slot>) {
 	let mut stmts = stmts.to_vec();
-	let (mut slots, mut bound, mut nested) = (Vec::new(), HashSet::new(), false);
+	let (mut slots, mut bound) = (Vec::new(), HashSet::new());
 	for (e, _) in &mut stmts {
-		scan(e, &mut slots, &mut bound, &mut nested);
-	}
-	if nested {
-		return fail("nested quotes aren't supported yet", span, "nested quote");
+		scan(e, &mut slots, &mut bound);
 	}
 	let names = slots
 		.iter()
@@ -784,7 +781,7 @@ pub(crate) fn register(stmts: &[Spanned<Expr>], span: Span) -> Result<(usize, Ve
 		})
 		.collect();
 	let tpl = Template { names, stmts, bound };
-	Ok((leak(tpl) as usize, slots))
+	(leak(tpl) as usize, slots)
 }
 
 // Fill a template copy, suffixing its own binders for good hygiene (see what I did there?).
@@ -870,6 +867,7 @@ fn fill(e: &mut Spanned<Expr>, bound: &HashSet<String>, args: &HashMap<&str, Arg
 				})
 				.collect();
 		}
+		Expr::Quote(_) => {}
 		_ => e.0.for_children(|c| match c {
 			List(list) => splice(list, bound, args, suffix),
 			One(one) => fill(one, bound, args, suffix),

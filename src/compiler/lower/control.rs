@@ -826,7 +826,7 @@ impl<'a, M: Module> Translator<'a, M> {
 					return Err(Diagnostic::new(msg, pat.1.into_range()));
 				}
 
-				let (tpl, slots) = expand::register(q, pat.1)?;
+				let (tpl, slots) = expand::register(q);
 				let names: Vec<(String, Typ)> = (slots.iter())
 					.map(|slot| match slot.capture()? {
 						(name, true) => Some((name.into(), Typ::Ast)),

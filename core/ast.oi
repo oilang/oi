@@ -65,19 +65,15 @@ Ast :< {
 				if self.kind == "ident" do return out
 
 				loop entry, at in self.items {
-					# a loop per arm
-					# TODO: revisit after nested quotes. a quote pattern can't be in a `comp loop` yet
-					match entry {
-						`%key = %given` => comp loop f in def(T).items {
-							if key == %{f.name.str()} {
+					comp loop f, i in def(T).items {
+						match entry {
+							`%key = %given` => if key == %{f.name.str()} {
 								out.%{f.name} = given.value[%{f.typ}]()
-							}
-						},
-						_ => comp loop f, i in def(T).items {
-							if at == %i {
+							},
+							_ => if at == %i {
 								out.%{f.name} = entry.value[%{f.typ}]()
-							}
-						},
+							},
+						}
 					}
 				}
 

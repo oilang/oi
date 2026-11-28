@@ -8,7 +8,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		if !self.comptime {
 			return fail("quotes only exist at comptime", span, "runtime quote");
 		}
-		let (tpl, slots) = expand::register(stmts, span)?;
+		let (tpl, slots) = expand::register(stmts);
 		let mut ptrs = Vec::with_capacity(slots.len());
 		for slot in &slots {
 			let ptr = match slot {

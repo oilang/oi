@@ -1172,8 +1172,10 @@ fn comp_loop_selects_by_shape() {
 				v: t = .{}
 				print(T.str(), v, rest.len())
 			}
+			each! :: fn(body: Ast) Ast { `comp loop `%T :: struct { %{..fs} }` in defs(mark) { %body }` }
+			each!(print(fs.len()))
 		"},
-		["A 2 A.{x = 0, y = 0}", r#"B 1 B.{x = ""}"#, "A 0 1", "B  0"],
+		["A 2 A.{x = 0, y = 0}", r#"B 1 B.{x = ""}"#, "A 0 1", "B  0", "2", "1"],
 	);
 }
 

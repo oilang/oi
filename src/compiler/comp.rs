@@ -541,9 +541,9 @@ pub(crate) fn fold(
 
 		// quote arms
 		let probe_arm = |arm: &MatchArm, i| match arm.patterns.first() {
-			Some((Expr::Quote(q), _)) if let Ok((_, slots)) = super::expand::register(q, span) => {
+			Some((Expr::Quote(q), _)) => {
 				let mut body = (Expr::Block(arm.body.clone()), span);
-				for (var, ast) in slots.iter().filter_map(Slot::capture) {
+				for (var, ast) in super::expand::register(q).1.iter().filter_map(Slot::capture) {
 					unquote(&mut body, var, ast);
 				}
 				vec![(Expr::Quote(vec![body]), span)]
@@ -591,7 +591,7 @@ pub(crate) fn fold(
 		&& let Expr::Gen { pat, key, .. } = &mut cond.0
 	{
 		let captures = match &pat.0 {
-			Expr::Quote(q) => super::expand::register(q, span)?.1,
+			Expr::Quote(q) => super::expand::register(q).1,
 			_ => vec![],
 		};
 		let vars: Vec<_> = std::iter::once(pat)
