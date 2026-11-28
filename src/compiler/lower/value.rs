@@ -1946,13 +1946,17 @@ impl<'a, M: Module> Translator<'a, M> {
 				annotations: vec![],
 			});
 		}
+
 		let shape: Vec<_> = fields.iter().map(|f| format!("{}: {}", f.name, f.typ)).collect();
 		let typ = Typ::Struct(format!("struct{{{}}}", shape.join(", ")), fields);
 		let layout = self.types.layout(&typ).unwrap_or_default();
 		let ptr = self.stack_slot(layout.size);
+
 		for (field, val) in layout.fields.into_iter().zip(vals) {
 			self.st_field(ptr, &field, val);
 		}
+
+		self.temp(ptr, &typ);
 		Ok((ptr, typ))
 	}
 

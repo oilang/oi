@@ -689,3 +689,11 @@ fn assigning_a_moved_binding_reinits_it() {
 		["drop 1", "drop 2", "drop 10", "end 3", "drop 11", "drop 3"],
 	);
 }
+
+#[test]
+fn anon_struct_literal_is_owned() {
+	assert_clean([
+		r#"p := .{s = "a" + "b", xs = [1 2]}"#,
+		r#"print(p.s, .{s = "c" + "d"}.s)"#,
+	]);
+}
