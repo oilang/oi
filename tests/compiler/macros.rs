@@ -1203,4 +1203,18 @@ fn spliced_place_is_assignable() {
 		print(xs)
 	"};
 	check(src, "[1, 7]");
+
+	let src = oi!(r#"
+		set! :: fn(place: Ast, v: Ast) Ast { `%{place} = %v` }
+		P :: struct { x: int }
+		p := P.{ 1 }
+		set!(p.x, 7)
+		print(p.x)
+	"#);
+	check(src, "7");
+
+	fail(
+		"set! :: fn(v: Ast) Ast { `%{v} = 1` }\nset!(1 + 2)",
+		"only a name can be assigned",
+	);
 }

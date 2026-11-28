@@ -873,7 +873,7 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 	}
 
 	let value = Box::new(value);
-	if let Expr::Ident(_) | Expr::Unquote(_) | Expr::Dollar = place.0 {
+	if let Expr::Ident(_) | Expr::Unquote(_) | Expr::UnquoteExpr(_) | Expr::Dollar = place.0 {
 		return (Expr::Assign { key: Box::new(place), value }, span);
 	}
 	if let Some((name, Some(field))) = unplace(&place.0) {
@@ -905,7 +905,7 @@ fn set(mut place: Spanned<Expr>, value: Spanned<Expr>, span: Span) -> Spanned<Ex
 		place => place,
 	};
 	let (Expr::Field { tuple: base, .. } | Expr::Index { collection: base, .. } | Expr::Deref(base)) = hole else {
-		unreachable!("not a place")
+		return (Expr::Assign { key: Box::new(place), value }, span);
 	};
 	let t = format!("$t{}_{}", base.1.start, base.1.end);
 	let base = std::mem::replace(&mut **base, (Expr::Ident(t.clone()), span));
