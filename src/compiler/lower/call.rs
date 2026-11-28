@@ -636,12 +636,13 @@ impl<'a, M: Module> Translator<'a, M> {
 			self.untemp(val);
 		} else if access == Access::Move {
 			return Ok((self.copy_bind(val, &typ), typ, None));
-		} else if let Expr::Ident(name) = &arg.0
-			&& let Some(Typ::FixedArray(..)) = self.vars.get(name).map(|l| &l.typ)
-			&& matches!(typ, Typ::Array(_))
+		} else if matches!(typ, Typ::Array(_))
+			&& matches!(arg.0, Expr::Ident(_) | Expr::Field { .. } | Expr::Index { .. })
+			&& self.is_affine(&typ)
+			&& let fixed @ Typ::FixedArray(..) = self.type_of(arg)?
 		{
 			// widening moves resources into the fresh buffer
-			self.move_resource(arg, &typ)?;
+			self.move_resource(arg, &fixed)?;
 		}
 
 		Ok((val, typ, None))

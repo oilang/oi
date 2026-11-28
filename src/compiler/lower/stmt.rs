@@ -355,8 +355,9 @@ impl<'a, M: Module> Translator<'a, M> {
 							return fail(format!("`{name}` is not an array"), stmt.1, "not an array");
 						}
 					};
+
 					let (val, vtyp) = self.check_expr(value, &elem)?;
-					// a shared buffer clones before it grows
+					self.move_resource(value, &vtyp)?;
 					self.cow_array(ptr, &elem);
 
 					if vtyp == elem {
@@ -601,7 +602,11 @@ impl<'a, M: Module> Translator<'a, M> {
 				None => self.expr(read)?,
 			};
 		}
-		// a tail local moves out to whoever takes the block's value
+		if let Some((Expr::Append { .. }, _)) = stmts.last()
+			&& self.is_affine(&last.1)
+		{
+			return Ok(Some(self.unit_value()));
+		}
 		if let Some(e) = read.as_ref().or(stmts.last()) {
 			self.move_resource(e, &last.1)?;
 			if matches!(last.1, Typ::Closure(_, _, Some(depth)) if depth > 0 && depth == self.vars.marks.len()) {

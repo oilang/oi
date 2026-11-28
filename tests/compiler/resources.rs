@@ -75,6 +75,14 @@ fn fixed_array_passed_as_slice_moves_once() {
 	];
 	check(src, ["2", "drop 1", "drop 2"]);
 	assert_clean(src);
+
+	let spread = [src[0], src[1], src[2], "xs := [..fs, File.{fd = 3}]", "count([..xs])"];
+	check(spread, ["3", "drop 1", "drop 2", "drop 3"]);
+	assert_clean(spread);
+
+	let held = "S :: struct { arr: [2]File }; s := S.{arr = .[File.{fd = 1}, File.{fd = 2}]}";
+	fail([FILE, src[1], held, "count(s.arr)"], "cannot move [2]File out");
+	fail([FILE, held, "xs := [..s.arr]"], "cannot move [2]File out");
 }
 
 #[test]
@@ -696,4 +704,22 @@ fn anon_struct_literal_is_owned() {
 		r#"p := .{s = "a" + "b", xs = [1 2]}"#,
 		r#"print(p.s, .{s = "c" + "d"}.s)"#,
 	]);
+}
+
+#[test]
+fn append_moves_resources_in() {
+	let src = [
+		FILE,
+		"xs := [File.{fd = 1}]",
+		"ys := [File.{fd = 2}]",
+		"f := File.{fd = 3}",
+		"xs << ys << f",
+		"print(xs.len())",
+	];
+	check(src, ["3", "drop 1", "drop 2", "drop 3"]);
+	assert_clean(src);
+	fail(
+		[src[0], src[1], src[2], "xs << ys", "print(ys.len())"],
+		"`ys` was moved",
+	);
 }

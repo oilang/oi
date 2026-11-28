@@ -54,6 +54,15 @@ impl<'a, M: Module> Translator<'a, M> {
 			start = i + 1;
 			let Some(inner) = inner else { break };
 			let (val, typ) = self.expr(inner)?;
+
+			// moved bindings
+			if self.is_affine(&typ) {
+				self.move_out(inner, &typ)?;
+				if !self.temps.contains_key(&val) {
+					self.temp(val, &typ);
+				}
+			}
+
 			if let Typ::Int(_) = typ {
 				let (val, rtyp) = self.upto(val, inner.1)?;
 				unify_elem(&mut elem, &rtyp, inner.1)?;
@@ -71,16 +80,19 @@ impl<'a, M: Module> Translator<'a, M> {
 				_ => val,
 			});
 		}
+
 		let elem = elem.expect("a spread sets the element type");
 		let typ = Typ::Array(Box::new(elem.clone()));
 		if let ([part], [(Expr::Spread(_), _)]) = (&parts[..], elems) {
 			return Ok((*part, typ));
 		}
+
 		let (data, len) = self.heap_alloc(Vec::new(), &elem);
 		let out = self.make_array(data, len, &typ);
 		for part in parts {
 			self.extend_array(out, part, &elem);
 		}
+
 		Ok((out, typ))
 	}
 
@@ -305,11 +317,17 @@ impl<'a, M: Module> Translator<'a, M> {
 		self.st(header, 8, new_len);
 	}
 
-	// Append `src` to `dst`, retaining the copied elements.
+	// Append `src` to `dst`, retaining the copied elements or consuming a move-only `src`.
 	pub(super) fn extend_array(&mut self, dst: Value, src: Value, elem: &Typ) {
 		let (lo, n, size) = (self.array_len(dst), self.array_len(src), self.stride_val(elem));
 		self.rt_call("array_extend", &[dst, src, size]);
-		self.elems_rc(dst, lo, n, elem, true);
+
+		if self.is_affine(elem) {
+			self.untemp(src);
+			self.rt_call("array_release", &[src]);
+		} else {
+			self.elems_rc(dst, lo, n, elem, true);
+		}
 	}
 
 	// Retain every element of a fresh copy.
