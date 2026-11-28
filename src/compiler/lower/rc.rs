@@ -402,12 +402,13 @@ impl<'a, M: Module> Translator<'a, M> {
 		let mut words = vec![0i64, slots.iter().any(|f| cyclic(&f.typ)) as i64, 0, 0];
 		let mut relocs = Vec::new();
 		for Field { off, typ: t, .. } in &slots {
-			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map, 4 string
+			// kinds: 0 ref, 1 nested struct + description, 2 array, 3 map, 4 string, 5 array of refs
 			let off = *off as i64;
 			// fn envs aren't traced, so a cycle through one leaks
 			if let Some((_, release)) = handle_fns(t).filter(|(_, r)| *r != "fn_release") {
 				words.push(
 					off | match release {
+						"array_release" if cyclic(t) => 5,
 						"array_release" => 2,
 						"map_release" => 3,
 						"str_release" => 4,
@@ -792,9 +793,11 @@ pub(super) fn handle_fns(typ: &Typ) -> Option<(&'static str, &'static str)> {
 
 // Whether a slot can hold a ref back into the box graph.
 fn cyclic(typ: &Typ) -> bool {
+	let is_ref = |t: &Typ| handle_fns(t).is_some_and(|(_, release)| release == "ref_release");
 	match typ {
 		Typ::Struct(_, fields) => fields.iter().any(|f| cyclic(&f.typ)),
-		t => handle_fns(t).is_some_and(|(_, release)| release == "ref_release"),
+		Typ::Array(elem) => is_ref(elem),
+		t => is_ref(t),
 	}
 }
 

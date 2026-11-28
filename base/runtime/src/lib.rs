@@ -845,7 +845,7 @@ pub unsafe extern "C" fn ref_share(ptr: *mut u8) -> *mut u8 {
 }
 
 // Walk a box's trace descriptor, calling `visit` on each live ref slot.
-// Array/map handles aren't graph edges, so when `drop` they're only released.
+// Other handles aren't graph edges, so when `drop` they're only released.
 unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn FnMut(*mut u8)) {
 	if desc.is_null() {
 		return;
@@ -866,6 +866,16 @@ unsafe fn trace(fields: *mut u8, desc: *const i64, drop: bool, visit: &mut dyn F
 				1 => {
 					trace(slot, *p as *const i64, drop, &mut *visit);
 					p = p.add(1);
+				}
+				5 => {
+					let elems = (*(slot as *const Header)).data as *const *mut u8;
+					(0..array_owned(slot.cast()) as usize)
+						.map(|i| *elems.add(i))
+						.filter(|e| !e.is_null())
+						.for_each(&mut *visit);
+					if drop {
+						array_release(slot.cast());
+					}
 				}
 				2 if drop => array_release(slot.cast()),
 				3 if drop => map_release(slot.cast()),
