@@ -604,6 +604,9 @@ impl<'a, M: Module> Translator<'a, M> {
 		// a tail local moves out to whoever takes the block's value
 		if let Some(e) = read.as_ref().or(stmts.last()) {
 			self.move_resource(e, &last.1)?;
+			if matches!(last.1, Typ::Closure(_, _, Some(depth)) if depth > 0 && depth == self.vars.marks.len()) {
+				closure_escape(&last.1, e.1.into_range(), "yielded from this block")?;
+			}
 		}
 
 		Ok(Some(last))
@@ -678,7 +681,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		}
 
 		// pass a generic instance's borrowing closure back out, and its caller checks the result
-		if !matches!(self.ret, Some((Typ::Closure(_, _, false), _))) {
+		if !matches!(self.ret, Some((Typ::Closure(_, _, Some(_)), _))) {
 			closure_escape(&typ, span.into_range(), "returned")?;
 		}
 		if let Some((declared, _)) = &self.ret

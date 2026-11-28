@@ -131,6 +131,12 @@ impl Vars {
 		}
 	}
 
+	// Counts the scopes open where `name` was last bound.
+	pub(super) fn depth(&self, name: &str) -> usize {
+		let at = self.log.iter().rposition(|(n, _)| n == name);
+		at.map_or(0, |i| self.marks.partition_point(|&mark| mark <= i))
+	}
+
 	pub(super) fn insert(&mut self, name: String, local: Local) -> Option<Local> {
 		self.forget(&name);
 		let old = self.map.insert(name.clone(), local);

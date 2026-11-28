@@ -86,14 +86,16 @@ impl<'a, M: Module> Translator<'a, M> {
 
 		let isolated = std::mem::take(&mut self.isolated);
 		let owned = |c: &Capture| matches!(c, Capture::Move(_)) || (isolated && matches!(c, Capture::ReadOnly(_)));
-		let owns = !captures.is_empty() && captures.iter().all(owned);
-		let mut resolved = Vec::with_capacity(captures.len());
+		let (mut resolved, mut depth) = (Vec::with_capacity(captures.len()), None);
 		for c in captures {
 			let (name, boxed) = match c {
 				Capture::Mut(name) => (name, true),
 				Capture::ReadOnly(name) | Capture::Move(name) => (name, false),
 			};
 			check_reserved(name, span)?;
+			if !owned(c) {
+				depth = depth.max(Some(self.vars.depth(name)));
+			}
 
 			let local = self.local(name, span.into_range())?;
 			word_slot(local.typ.clone(), span)?;
@@ -242,7 +244,7 @@ impl<'a, M: Module> Translator<'a, M> {
 		let env = self.rc_alloc((slots.len() * 8) as i64, &[thunk]);
 		self.store_slots(env, &slots);
 
-		let mut typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), owns));
+		let mut typ = sig.ctx_marked(Typ::Closure(params, Box::new(sig.ret.clone()), depth));
 		if isolated {
 			typ = Typ::Annotated(vec![role::ISOLATED.path().into()], typ.into());
 		}

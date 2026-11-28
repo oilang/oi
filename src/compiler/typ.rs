@@ -34,7 +34,7 @@ pub(crate) enum Typ {
 	Error,
 	Fn(Vec<FnParam>, Box<Typ>),
 	Annotated(Vec<String>, Box<Typ>),
-	Closure(Vec<FnParam>, Box<Typ>, bool),
+	Closure(Vec<FnParam>, Box<Typ>, Option<usize>),
 	Map(Box<Typ>, Box<Typ>),
 	Access(Access, Box<Typ>),
 	Ref(Box<Typ>),

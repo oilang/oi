@@ -48,7 +48,7 @@ pub(super) fn struct_pattern(
 
 // Enforce a closure not outliving its captures.
 pub(super) fn closure_escape(typ: &Typ, span: Range<usize>, action: &str) -> Result<(), Diagnostic> {
-	if let Typ::Closure(_, _, false) = typ {
+	if let Typ::Closure(_, _, Some(_)) = typ {
 		return Err(Diagnostic::new(
 			format!("this closure borrows its captures, so it can't be {action}"),
 			span,

@@ -149,6 +149,19 @@ fn closure_cannot_escape() {
 		attempt()
 	};
 	fail(src, "borrows its captures, so it can't be returned");
+
+	let src = oi! {
+		inner := { m :: 2; fn [m] () int do m }
+	};
+	fail(src, "borrows its captures, so it can't be yielded from this block");
+
+	let src = oi! {
+		n :: 1
+		x := 2
+		outer := { m :: 3; fn [n, mut x] () int { n + x } }
+		print(outer())
+	};
+	check(src, "3");
 }
 
 #[test]

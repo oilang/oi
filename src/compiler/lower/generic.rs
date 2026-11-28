@@ -369,7 +369,7 @@ impl<'a, M: Module> Translator<'a, M> {
 			access: params.iter().map(|(_, _, a)| *a).collect(),
 			params: (params.into_iter().zip(&def.params))
 				.map(|((_, t, _), p)| FnParam {
-					escapes: !matches!(access_peel(&t), Typ::Closure(_, _, false)) && escapes(&p.name, &t, &def.body),
+					escapes: !matches!(access_peel(&t), Typ::Closure(_, _, Some(_))) && escapes(&p.name, &t, &def.body),
 					..FnParam::of(p, t)
 				})
 				.collect(),
